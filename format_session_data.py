@@ -1,3 +1,5 @@
+# This script goes form one downloaded csv with bank details to i) csv with payment information and ii) csv with anonymous experimentaldata.
+
 #!/usr/bin/env python3
 import os
 import sys

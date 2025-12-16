@@ -1,0 +1,25 @@
+{{ block content }}
+<link rel="stylesheet" href="{% static 'global/style.css' %}">
+
+<div class="instructions">
+    <h2>Instructions</h2>
+    <div id="instruction-wrapper" class="instruction-wrapper">
+        {% include "intro/instructions.html" %}
+    </div>
+
+    <div class="instruction-progress">
+        <span id="instruction-counter"></span>
+    </div>
+
+    <div class="instruction-controls">
+        <button type="button" id="prevBtn" class="next-button secondary-button">
+            Back
+        </button>
+        <button type="button" id="nextBtn" class="next-button">
+            Next
+        </button>
+    </div>
+</div>
+
+<script src="{% static 'global/js/instructions.js' %}"></script>
+{{ endblock }}

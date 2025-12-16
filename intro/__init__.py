@@ -20,12 +20,12 @@ class Group(BaseGroup):
 
 # --- Central quiz configuration: update this to change questions, choices, and solutions in one place ---
 QUIZ_ITEMS = [
-    # dict(
-    #     field='quiz1',
-    #     prompt='Did you read and understand the instructions?',
-    #     choices=['YES', 'NO'],
-    #     answer='YES'
-    # ),
+    dict(
+        field='quiz1',
+        prompt='Did you read and understand the instructions?',
+        choices=['YES', 'NO'],
+        answer='YES'
+    ),
     # dict(
     #     field='quiz2',
     #     prompt='Quiz question 2 (placeholder)',
@@ -80,24 +80,9 @@ def common_template_vars(session, group):
     }  
 
 # PAGES    
-class instr_1(Page):
-    def before_next_page(player, timeout_happened):
-        pass
+class instructing(Page):
+    pass
 
-    def vars_for_template(self):
-        return {
-
-        }     
-
-class instr_2(Page):
-    def before_next_page(player, timeout_happened):
-        pass
-
-    def vars_for_template(self):
-        return {
-
-        } 
-    
 class prequiz(Page):
     form_model = 'player'
     form_fields = ['redoinstructions']
@@ -150,5 +135,5 @@ class quiz(Page):
         if player.redoinstructions ==0:
             return app_sequence[0]
         
-page_sequence = [instr_1, instr_2, prequiz, quiz]
+page_sequence = [instructing, prequiz, quiz]
 
