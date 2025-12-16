@@ -1,0 +1,61 @@
+{{ block content }}
+<link rel="stylesheet" href="{% static 'global/style.css' %}">
+<div class="bigting">
+<h2 style="margin-bottom: 20px;">You have reached the end of the experiment. </h2>
+
+Please fill out the information below. Once you press next you'll see your payment. 
+<br><br>
+<div style="align-content: left; text-align: left;">
+    <form style="text-align: left;">
+    <label for gender>Age*</label><br>
+    <input type="text" id="age" name="age"> <br><br>
+    <div class="form-group">
+        <label>Gender*</label>
+        <label style="display: flex; align-items: center; margin-bottom: 5px;">
+            <input type="radio" name="gender" value="Male" style="margin-right: 10px;"> Male
+        </label>
+        <label style="display: flex; align-items: center; margin-bottom: 5px;">
+            <input type="radio" name="gender" value="Female" style="margin-right: 10px;"> Female
+        </label>
+        <label style="display: flex; align-items: center; margin-bottom: 5px;">
+            <input type="radio" name="gender" value="Other" style="margin-right: 10px; vertical-align: middle;"> Other:
+            <input type="text" id="other_input" name="other" placeholder="Please specify" style="margin-left: 10px; height: 28px; width: 150px; vertical-align: middle;">
+        </label>
+        <label style="display: flex; align-items: center; margin-bottom: 5px;">
+            <input type="radio" name="gender" value="Prefer not to say" style="margin-right: 10px;"> Prefer not to say
+        </label>
+    </div>
+    <br>
+    <!-- Bank Account Number -->
+    <label for="bank">Bank Account Number*</label><br>
+    <input type="text" id="bank" name="bank"><br><br>
+    <!-- Confirm Bank Account Number -->
+    <label for="bank_confirmation">Bank Account Number Confirmation*</label><br>
+    <input type="text" id="bank_confirmation" name="bank_confirmation" placeholder="Re-enter account number"><br><br>
+    <label for="bank_confirmation">BIC (if international)</label><br>
+    <input type="text" id="bic" name="bic" placeholder=""><br><br>
+</form>
+</div>
+</div>
+<script>
+    // Get the confirm bank account input field
+    const confirmBankAccount = document.getElementById('confirmBankAccount');
+
+    // Disable copy, cut, and paste events
+    bank.oncopy = function(e) {
+        e.preventDefault();
+    };
+    bank.oncut = function(e) {
+        e.preventDefault();
+    };
+    bank_confirmation.onpaste = function(e) {
+        e.preventDefault();
+    };
+</script>
+
+
+
+<div class="next">
+    <input type="submit" value="Next" class="next-button">
+</div>
+{{endblock}}

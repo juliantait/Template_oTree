@@ -1,0 +1,29 @@
+{% block content %}
+<link rel="stylesheet" href="{% static 'global/style.css' %}">
+
+<div class="bigting" style="text-align: center;">
+    <h2>Round {{ round_count }}</h2>
+<br><br>
+    {% if blockStart %}
+        {% if player.matched == 0 %}
+            <p>You were <strong>rematched with a new team</strong>.</p>
+        {% elif player.matched == 1 %}
+            <p>It's the first round of the block so you were <strong>matched with a new team</strong>.</p>
+        {% endif %}
+    {% else %}
+        {% if player.matched == 0 %}
+            <p>You were <strong>rematched with a new team</strong>.</p>
+        {% elif player.matched == 1 %}
+            <p>You have been matched with <strong>the same team</strong>.</p>
+        {% endif %}
+    {% endif %}
+
+    <br><br>
+
+</div>
+
+<div class="next">
+    <input type="submit" value="Next" class="next-button">
+</div>
+
+{% endblock %}

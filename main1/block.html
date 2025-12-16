@@ -1,0 +1,30 @@
+{{block content}}
+<link rel="stylesheet" href="{% static 'global/style.css' %}">
+
+<div style="text-align: center;">
+    <h2 style="margin-bottom: 20px;"> Block {{blockNow}}</h2>
+
+                {% if round_count != 1 %}
+                You have finished Block {{previousblock}}. These are the instructions for Block {{blockNow}}. 
+                <br><br>
+                <b>The payoff of the Ambitious Project has changed.</b> <br><br> It now pays <strong>{{x}} to each team member if it is successful</strong> and <strong>{{fail}} if it fails</strong>. <br><br>
+                The Backup Project <strong>always pays {{y}}</strong> as in Block 1. <br><br>
+            
+                {% endif %}
+
+            {% if player.matched == 0%}
+                <p>You will be <strong>rematched with a new team</strong> for each of the next {{C.numTaskRounds}} rounds.</p>
+            {% elif player.matched == 1%}
+                {% if round_count == 1 %}
+                    <p>You will <strong>remain with the same team </strong> for the following {{C.numTaskRounds}} rounds.</p>
+                {% else %}
+                    <p>You will be rematched once in round 11 and then <strong>remain with the same team </strong> for the following {{C.numTaskRounds}} rounds.</p>
+                {% endif %}
+            {% endif %}
+            {{ if round_count != 1 }}
+            <p> Everything else remains the same as in Block {{previousblock}}. <br> There are <strong>another {{C.numTaskRounds}} rounds </strong>with 20 tasks each.</b> </p>
+            {{endif}}
+                <div class="next">
+                    <input type="submit" value="Next" class="next-button">
+                </div>
+{{endblock}}

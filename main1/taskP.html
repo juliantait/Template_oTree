@@ -1,0 +1,177 @@
+{{ block content }} 
+<!-- DYNAMIC -->
+
+<link rel="stylesheet" href="{% static 'global/style.css' %}">
+
+<div id="content" style="display: block;">
+<div id="timer" style="font-size: 24px; text-align: center; width: 100px; height: 100px; border: 5px solid #A4C8E1; border-radius: 50%; display: flex; align-items: center; justify-content: center; position: fixed; top: 20px; right: 20px;">
+    <span id="timerValue">{{bigtime}}</span>
+</div>
+<div></div>
+
+    <div id="taskForm" class="forms" style="display: none;">
+        <form  method="post">
+            <input type="hidden" name="mistakeList" id="mistakeList">
+
+            <input type="hidden" name="task_start_times" id="task_start_times">
+            <input type="hidden" name="task_end_times" id="task_end_times">
+            <input type=" " name="mistake_1" id="mistake_1">
+            <input type=" " name="mistake_2" id="mistake_2">
+            <input type=" " name="mistake_3" id="mistake_3">
+            <input type=" " name="mistake_4" id="mistake_4">
+            <input type=" " name="mistake_5" id="mistake_5">
+            <input type=" " name="mistake_6" id="mistake_6">
+            <input type=" " name="mistake_7" id="mistake_7">
+            <input type=" " name="mistake_8" id="mistake_8">
+            <input type=" " name="mistake_9" id="mistake_9">
+            <input type=" " name="mistake_10" id="mistake_10">
+            <input type=" " name="mistake_11" id="mistake_11">
+            <input type=" " name="mistake_12" id="mistake_12">
+            <input type=" " name="mistake_13" id="mistake_13">
+            <input type=" " name="mistake_14" id="mistake_14">
+            <input type=" " name="mistake_15" id="mistake_15">
+            <input type=" " name="mistake_16" id="mistake_16">
+            <input type=" " name="mistake_17" id="mistake_17">
+            <input type=" " name="mistake_18" id="mistake_18">
+            <input type=" " name="mistake_19" id="mistake_19">
+            <input type=" " name="mistake_20" id="mistake_20">
+            <input type=" " id="bigtimeout" name="bigtimeout">
+        </form>
+    </div>
+
+    <div id="ready" style="display: flex; justify-content: center; align-items: center; height: 70vh;">
+        <button type="button" onclick="taskReady(); startTimer(); loadTaskContent()">
+          <h1>Start Tasks</h1>
+        </button>
+      </div>
+
+    <div id="tasking" style="text-align: center;display: none;">
+        <br><br>
+        <h1> Task </h1>
+            <div id="task">
+
+            </div>
+    </div>
+
+    <div id="timeup" style="display: none; text-align: center; align-items: center;">
+        <br><br><h1>You were too slow...</h1>
+        <br><br>
+        <div class="next">
+            <input type="button" value="Next" id="" class="next-button" onclick="checkAndSetMistakeTimeout()">
+        </div>
+    </div>
+
+</div>
+
+<div id="loaded" style="display: none;text-align: center;">
+    <h1>You've refreshed the page. <br> This round counts as a mistake.</h1>
+    <br><br>
+    <div class="next">
+        <input type="button" value="Next" id="" class="next-button" onclick="checkAndSetMistakeTimeout()">
+    </div>
+</div>
+
+<input type="submit" value="Next" id="submitButton" class="next-button" style="display: none;">
+
+
+<script src="{% static 'global/js/global.js' %}"></script>
+<script src="{% static 'global/js/math.js' %}"></script>
+<script src="{% static 'global/js/tasks.js' %}"></script>
+<script src="{% static 'global/js/color.js' %}"></script>
+
+<script>
+        // global variables
+        var ww = {
+            colorDict: JSON.parse(`{{ colorNames_json | safe }}`),
+            colors : `{{C.colors}}`,
+            taskList : JSON.parse('{{ taskList_json | safe }}'),
+            colorNumbers : `{{C.colorNumbers}}`,
+            numTasks : `{{numTasks}}`,
+            timerTime: '{{bigtime}}',
+            roundNumber: `{{player.round_number}}`,
+            practice: 0,
+
+        };
+        let variablesOfInterest = JSON.parse('{{variablesOfInterest|safe}}');
+        // Dynamically create variables
+        variablesOfInterest.forEach(variable => {   
+             window[variable] = undefined;  // or any default value you prefer
+            });
+        // console.log("Variables created:", variablesOfInterest); // debugging
+
+        // start the task page
+        let taskNumber = 1;
+        let doubleNum ;
+        let refresh = 0;
+        let mistakeList = [];
+        //  collecting time taken per task
+        let taskStartTimes = [];
+        let taskEndTimes = [];
+        //load all future content
+        function loadTaskContent() {
+            // setting task 
+            const textElement = document.querySelector('#tasking h1');
+            textElement.textContent = 'Task '+ taskNumber;
+            var taskData = ww.taskList[taskNumber-1];
+            // console.log(taskData); // debugging
+            let type = getTaskAttribute('taskType');
+                if (type === 'color') {
+                    document.getElementById('task').innerHTML = `{{ include 'main1/color.html' }}`;
+                    updateTextAndColor(1);
+                } else if (type === 'doubleColor') {
+                    document.getElementById('task').innerHTML = `{{ include 'main1/color.html'}}`;
+                    doubleNum=1
+                    updateTextAndColor(1)
+                } else if (type === 'multiply') {
+                    document.getElementById('task').innerHTML = `{{ include 'main1/multiply.html'}}`;
+                    updateEquation();
+                } else if (type === 'sum') {
+                    document.getElementById('task').innerHTML = `{{ include 'main1/sum.html'}}`;
+                    updateEquation();
+                } else {
+                    console.error('Unknown task:', type);
+                    document.getElementById('task').innerHTML = '<p>Error: Unknown task</p>';
+                    ;
+                }
+        }
+
+        // Function to get task attribute
+        function getTaskAttribute(attribute) {
+            // Check if the attribute exists
+            var taskData = ww.taskList[taskNumber-1]
+            if (!(attribute in taskData)) {
+                throw new Error(`Attribute '${attribute}' does not exist for the current task.`);
+            }
+            // Return the attribute value
+            return taskData[attribute];
+        }
+
+        // Check if page has been loaded before based on the cookie
+        window.onload = function() {
+            checkForPastLoad()
+        }
+        
+        function recordMistake(){
+            var taskData = ww.taskList[taskNumber-1]
+            let errorTaskType = getTaskAttribute('taskType')
+            console.log(errorTaskType)
+            console.log(mistakeList)
+            mistakeList.push(errorTaskType)
+            console.log(mistakeList)
+        }
+
+        function sendData() {
+            // i need you to make a loop where each variable in 'variableOfInterest' is set as an entry in data as totalTimeTaken = totalTimeTaken like in the example below within data
+            let data = {}
+            variablesOfInterest.forEach(variable => {
+                data[variable] = window[variable];
+                });
+            liveSend(data);
+            // console.log("Data being sent:") // debugging
+            // console.log(data)
+        }
+
+</script>
+
+<!-- {{form.errors}} -->
+{{ endblock }}

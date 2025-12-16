@@ -1,0 +1,126 @@
+{{block part1}}
+    <p>
+    <br><br>
+    Please do not communicate with other participants. If you have any questions, please raise your hand and an experimenter will come to you to answer your question in private.
+    <br><br>    
+    You will receive a guaranteed show-up fee of <strong>{{showup}}</strong>. On top of this, you can earn more money. This experiment has <strong>{{C.numBlocks}} blocks</strong>. Each block has <strong>{{C.numTaskRounds}} rounds</strong>. At the end of the experiment, {{roundreward}} of the {{runds}} rounds of the experiment will be randomly selected to determine your payment.
+    <br><br>    
+    We will now explain the instructions for the first block. Instructions for the other blocks will be provided at the start of each block.
+    </p>
+{{endblock}}
+ 
+{{block part2}}
+    <p>
+    <br><br>
+    You will be part of a team of three, consisting of one manager and two workers. <strong>You are a worker</strong>. You will keep this role throughout the entire experiment.
+    <br><br>
+    Each round each worker starts by working on a simple task. We will first describe the task, and then explain how you can earn money from working on the task. Managers do not do the tasks.
+    <br>
+    </p>
+    <div style="text-align: left;">
+        <h4>The Task</h4>
+    </div>
+
+        You will get 3 types of tasks: 
+        <ol style="list-style-type: none; padding-left: 20px; margin-left: 0;">
+            <li style="text-indent: -20px; margin-bottom: 10px;">
+                1. a simple addition task where you must sum 2 numbers between 1 and 10
+            </li>
+            <li style="text-indent: -20px; margin-bottom: 10px;">
+                2. a simple multiplication task where you must multiply 2 numbers between 1 and 10
+            </li>
+            <li style="text-indent: -20px; margin-bottom: 10px;">
+                3. a simple colour identification task
+            </li>
+        </ol>
+
+    In the colour identification task you a coloured word. Each word spells out a colour. Like in the picture below, the font colour can be different from what the word spells out. 
+    <div style="text-align: center;">
+        <img src="{% static 'global/images/Example1.png' %}" alt="Example Image" style="max-width: 100%; height: auto;">
+    </div>
+    The task is to click the coloured box on the bottom that corresponds to either the<strong> spelled-out colour</strong> (what the word means), or the<strong> font colour</strong> (the colour the word is written in).
+    <br><br> 
+    <p>
+        For example, in the screenprint above: <br>If the task is to click the <strong>font colour, you should click the red box</strong>.<br>If the task is to click the <strong>spelled-out colour, you should click the pink box</strong>. <br> Clicking the wrong coloured box is a mistake. 
+    </p>
+
+    In each task there are two sequential coloured words. Before each pair of words you will see an instruction screen, as in the example screen below. The first instruction refers to the first word in the sequence, and the second instruction refers to the second word in the sequence.
+    <div style="text-align: center;">
+        <img src="{% static 'global/images/pair_instructions.png' %}" alt="Instructions Image" style="max-width: 100%; height: auto;">
+    </div>
+
+    The colour options are:
+    <div id="color-boxes-container"></div>
+    <br><br>
+    <p>
+    There will be <strong>20 tasks</strong> per round. <strong> You should complete all 20 tasks before the countdown reaches 0 </strong>. The time limit varies by round between {{low}} to {{high}} seconds. It is displayed at the start of each round in the top right corner of the screen. It starts when you press Start on the first task and you are cut off when the countdown reaches 0. <strong> Any tasks you do not complete in the time count as a mistake. </strong> If you refresh the page this also counts as a mistake.
+    </p>
+    <p> You get one round of 20 practice tasks after the instructions.</p>
+
+    <p> In each round the managers see the solutions to the tasks. They do not see your answers.</p>
+ 
+{{endblock}}
+
+{{block part3}}
+    <p>
+    <br><br>
+    We now explain how you can earn money.
+    <br><br>
+    After the workers have each worked on their tasks, the manager chooses between two projects: an <strong>Ambitious Project</strong> and a <strong>Backup Project</strong>.
+    <br><br>
+    <strong>Ambitious Project</strong>: This project gives the highest possible earnings if it is successful. However, it gives the lowest payoff if it fails. Its success depends on whether mistakes were made and chance. Success is determined by the following two cases:
+    </p>
+    <ul class="listings">
+        <li style="margin-bottom: 20px;">
+            <strong>Case 1:</strong> One or both workers made a mistake on their tasks. In this case, the project fails and the team loses the option to get a high payoff. The Ambitious Project then always pays <strong>{{fail}}</strong> to each team member.
+        </li>
+        <li >
+            <strong>Case 2:</strong> None of the workers made a mistake on their tasks. In this case, the Ambitious Project is likely to be successful and result in a high payoff. Without mistakes the project is successful with 80 percent chance and the <strong>payoff is then {{x}} for each team member</strong>. With 20 percent chance it still fails and the payoff is {{fail}} for each team member.
+        </li>
+    </ul>
+    <p>
+    <strong>Backup Project</strong>: The payoff of this project is fixed and always <strong>{{y}}</strong> for each team member.
+    <br><br>
+    Before the manager decides between the two projects, you will <strong>privately learn whether or not you made a mistake</strong> on any of the tasks. Only you will know this. The other worker will also privately learn if they made a mistake.
+    <br><br>
+    <strong>You can choose to report your mistake</strong> to the manager and the other worker or keep it hidden. If you make a mistake and do not report it to the manager and the manager selects the Ambitious Project, the payoff will be {{fail}}, but the manager will not be able to tell whether you made a mistake or whether the low payoff occurred by chance.
+    <br><br>
+    After the manager selects the project, the payoffs are determined and shown to each team member. The manager then has the option to <strong>punish</strong> one or both of the workers by lowering their payoff. The manager can choose between the following options:
+    </p>
+    <ul class="listings">
+        <li>Not lower any worker's payoff</li>
+        <li>Lower the payoff of exactly one of the workers by up to <strong>{{highpunish}}</strong></li>
+        <li>Lower the payoffs of both workers, where both punishments together cannot exceed <strong>{{highpunish}}</strong></li>
+    </ul>
+    <p>
+    <strong>The manager's payoff is not affected by handing out punishment</strong>.
+    </p>
+    <p>
+        Your payoff per round is the project payoff minus any punishment. This means you can earn up to {{x}} per round.
+    </p>
+{{endblock}}
+
+{{block part4}}
+    <p>
+    <br><br>
+    To summarise, the timing per round is as follows:
+    <br><br>
+    </p>
+    <ol class="listings" type="i">
+        <li>Each worker works on their tasks and privately learns whether or not they individually made a mistake</li>
+        <li>Each worker decides whether or not to report their mistake to the manager</li>
+        <li>The manager selects a project</li>
+        <li>Payoffs are revealed and the manager decides on any punishment</li>
+    </ol>
+    <br>
+    <p>
+    The above describes the procedure of one round. In total, there will be {{C.numTaskRounds}} rounds in this block. 
+    </p>
+    <br>
+    {% if matched == 1 %}
+    <p> You remain with the <strong>same team for all {{C.numTaskRounds}} rounds</strong> this block. <br> For the second block you will be paired with a <strong> completely new team with a new worker and new manager</strong>.</p>
+    {% elif matched == 0 %}
+    <p> At the start of each round, you will be <strong>randomly paired with a worker and manager</strong>.</p>
+    {% endif %}
+
+{{endblock}}
