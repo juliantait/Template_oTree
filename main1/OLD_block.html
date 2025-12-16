@@ -1,0 +1,37 @@
+{{block content}}
+<link rel="stylesheet" href="{% static 'global/style.css' %}">
+
+<div style="text-align: center;">
+    <h2 style="margin-bottom: 20px;"> Block {{blockNow}}</h2>
+
+                {% if round_count != 1 %}
+                You have finished Block {{previousblock}}. These are the instructions for Block {{blockNow}}. 
+                <br><br>
+
+                <p> <b>The high payoff of the Ambitious Project has changed.</b> For the next {{C.numTaskRounds}} rounds it will be
+
+                <strong>
+                    {% if player.group.stakes_high == 1 %}
+                            {{ x_high }}</strong>
+                    {% elif player.group.stakes_high == 0 %}
+                            {{ x_low }}</strong>
+                    {% else %}
+                        <strong>ERROR 570</strong>
+                    {% endif %}
+                    if it is successful. If it fails it pays <strong> {{fail}}</strong> like last block.
+                </p>
+                {% endif %}
+                
+
+            {% if player.matched == 0%}
+                <p>You will be <strong>rematched with a new team</strong> for each of the next {{C.numTaskRounds}} rounds.</p>
+            {% elif player.matched == 1%}
+                <p>You will <strong>remain with the same team </strong> for the next {{C.numTaskRounds}} rounds.</p>
+            {% endif %}
+            {{ if round_count != 1 }}
+            <p> <b>Everything else remains the same as in Block {{previousblock}}. </b> </p>
+            {{endif}}
+                <div class="next">
+                    <input type="submit" value="Next" class="next-button">
+                </div>
+{{endblock}}

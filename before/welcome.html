@@ -1,0 +1,15 @@
+{{ block content }} 
+<link rel="stylesheet" href="{% static 'global/style.css' %}">
+<div class="instructions">
+<h2>Welcome</h2>
+
+
+You are taking part in an experiment at CREED. All recorded data will be stored anonymous and used solely for research purposes by researchers at the University of Amsterdam. Your IBAN will only be used to pay you and then deleted. If you have any questions at any time, please address the lab researcher. 
+<br><br>
+<b>By continuing to the next page you consent</b>  to recording your experimental data.
+
+</div>
+<div class="next">
+    <input type="submit" value="Next" class="next-button">
+</div>
+{{ endblock }}

@@ -1,0 +1,43 @@
+{{block content}}
+<link rel="stylesheet" href="{% static 'global/style.css' %}">
+
+<div style="text-align: center;">
+    <h2 style="margin-bottom: 20px;">Round {{ round_count }} Payoff </h2>
+    
+    {% if participant.manager == 1 %}
+        <p>You chose the <strong>{{if group.project == 'A' }} Ambitious Project {{else}} Backup Project {{endif}}</strong> and it paid you <strong>{{payoff}}</strong> each this round. <br><br> You punished <i>Worker 1</i> by <strong>{{b2}}</strong> and <i>Worker 2</i> by <strong>{{b3}}</strong>.</p>
+    {% elif participant.manager == 0 and player.id_in_group == 2 %}
+        <p>The manager chose the <strong>{{if group.project == 'A' }} Ambitious Project {{else}} Backup Project {{endif}}</strong> and it paid you <strong>{{payoff}}</strong> each this round. <br><br> Your manager punished you by <strong>{{b2}}</strong> and the other worker by <strong>{{b3}}</strong>.</p>
+    {% elif participant.manager == 0 and player.id_in_group == 3 %}
+        <p>The manager chose the <strong>{{if group.project == 'A' }}  Ambitious Project {{else}} Backup Project {{endif}}</strong> and it paid you <strong>{{payoff}}</strong> each this round. <br><br> Your manager punished you by <strong>{{b3}}</strong> and the other worker by <strong>{{b2}}</strong>.</p>
+    {% else %}
+        <p><strong>Something went wrong. Please contact the administrator.</strong></p>
+    {% endif %}
+    
+    <br><br>
+    
+    <input type="submit" value="Next" class="next-button">
+</div>
+
+<script>
+    function clearAllCookies() {
+        // Get all cookies
+        const cookies = document.cookie.split(";");
+
+        // Iterate over the cookies and set each one to expire
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i];
+            const equalPos = cookie.indexOf("=");
+            const name = equalPos > -1 ? cookie.substr(0, equalPos) : cookie;
+            // Set the cookie to expire in the past
+            document.cookie = name + "=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
+        }
+    }
+
+// Check if page has been loaded before based on the cookie
+    window.onload = function() {
+        clearAllCookies()
+        }
+</script>
+
+{{endblock}}

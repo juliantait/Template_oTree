@@ -1,0 +1,107 @@
+{{block content}}
+<link rel="stylesheet" href="{% static 'global/style.css' %}">
+
+<div style="text-align: center;">
+    <h2>You chose the <strong>{{if group.project == 'A' }} Ambitious Project {{else}} Backup Project {{endif}}</strong> and it paid <strong>{{payoff}}</strong>.</h2>
+    <p>You can now choose whether to punish either or both workers. The total <strong>punishment cannot exceed {{punishmax}}</strong>.</p>
+    <p>
+    {% if player.group.field_maybe_none('report_p2') == 1 and player.group.field_maybe_none('report_p3') == 1 %}
+        <i>Worker 1</i> and <i>Worker 2</i> both reported making a mistake.
+    {% elif player.group.field_maybe_none('report_p2') == 1 %}
+        <i>Worker 1</i> reported making a mistake.
+    {% elif player.group.field_maybe_none('report_p3') == 1 %}
+        <i>Worker 2</i> reported making a mistake.
+    {% else %}
+        Neither worker reported making a mistake.
+    {% endif %}
+    </p>
+
+    <form method="post" style="display: inline-block;">
+        <input type="hidden" name="bonus_p2" id="bonus_p2" value="0">
+        <input type="hidden" name="bonus_p3" id="bonus_p3" value="0">
+        
+        <div>
+            <p><strong>Worker 1</strong></p>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 20px 0;">
+                <input type="range" id="slider_p2" min="0" max="{{C.punish_max}}" step="0.5" value="0" style="width: 200px;" oninput="updateValue('slider_p2', 'bonus_p2')">
+                <div id="slider_p2_value">€0.00</div>
+            </div>
+        </div>
+    
+        <div>
+            <p></p><strong>Worker 2</strong></p>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 20px 0;">
+                <input type="range" id="slider_p3" min="0" max="{{C.punish_max}}" step="0.5" value="0" style="width: 200px;" oninput="updateValue('slider_p3', 'bonus_p3')">
+                <div id="slider_p3_value">€0.00</div>
+            </div>
+        </div>
+    
+        <input type="submit" value="Next" class="next-button">
+    </form>
+
+    <!-- OTHER FORM!!!
+    <form method="post">
+        <div class="form-group">
+            <label><strong>{{ form.bonus_p2.label }}</strong></label>
+            <div class="radio-inline-container">
+                {{ form.bonus_p2 }}
+            </div>
+        </div>
+        <br><br>
+        <div class="form-group">
+            <label><strong>{{ form.bonus_p3.label }}</strong></label>
+            <div class="radio-inline-container">
+                {{ form.bonus_p3 }}
+            </div>
+        </div>
+        <input type="submit" value="Next" class="next-button">
+
+    </form> -->
+
+</div>
+
+<script>
+//GLOBAL
+
+    //   SET HIDDEN VALUES
+    function setValue(s,val) {
+        document.getElementById(s).value = val;
+    }
+    // CAPTURE TIMESTAMP
+    function captureTimestamp(fieldName) {
+        // Capture the current timestamp
+        let timestamp = new Date().toISOString();
+
+        // Store the timestamp in the corresponding hidden input field
+        document.getElementById(fieldName).value = timestamp;
+    }
+    document.querySelectorAll('.split-button').forEach(button => {
+    button.addEventListener('click', function() {
+        // Remove 'active' class from all buttons
+        document.querySelectorAll('.split-button').forEach(btn => btn.classList.remove('active'));
+
+        // Add 'active' class to the clicked button
+        this.classList.add('active');
+    });
+    })
+function updateValue(sliderId, inputId) {
+    // Get the slider and input elements
+    const slider = document.getElementById(sliderId);
+    const input = document.getElementById(inputId);
+    const display = document.getElementById(sliderId + '_value');
+    
+    // Update the input field value
+    input.value = slider.value;
+
+    // Update the display value (currency format)
+    display.textContent = '€' + parseFloat(slider.value).toFixed(2);
+}
+</script>
+<style>
+    .radio-inline-container .form-check {
+        display: inline-block;
+        margin-right: 20px;
+    }
+</style>
+
+{{endblock}}

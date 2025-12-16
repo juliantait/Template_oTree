@@ -1,0 +1,112 @@
+{{block content}}
+<link rel="stylesheet" href="{% static 'global/style.css' %}">
+
+<style>
+    .solutions-container {
+        width: 100%;
+        margin: 0 auto;
+    }
+    .solutions-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0 10px;
+    }
+    .solutions-table td {
+        padding: 5px 10px;
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+    .task-type {
+        font-weight: bold;
+        color: #4a4a4a;
+        width: 70px;
+        text-align: center;
+    }
+    .solution {
+        color: #2c3e50;
+        width: 100%;
+    }
+    .color-box {
+        display: inline-block;
+        width: 25px;
+        height: 25px;
+        margin-left: 10px;
+        vertical-align: middle;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+    .word-display {
+        font-size: 22px;
+        margin: 5px 0;
+        display: inline-block;
+        width: 48%;
+        text-align: center;
+    }
+    .font-description {
+        font-size: 16px;
+        color: #666;
+        display: block;
+        margin-bottom: 2px;
+    }
+    .font-description span {
+        font-weight: bold;
+    }
+    .correct-answer {
+        font-weight: bold;
+    }
+    .colour-words {
+        display: flex;
+        justify-content: space-between;
+    }
+    .word-and-box {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+</style>
+
+<div style="text-align: center;"> <h1>Solutions</h1></div>
+<div id="tasking" style="text-align: center; display:block">
+    <div class="solutions-container">
+        <table class="solutions-table" id="solutionsTable">
+            <!-- Table rows for all tasks will be inserted here -->
+        </table>
+    </div>
+    <div class="next">
+        <input type="submit" value="Next" class="next-button">
+    </div>
+</div>
+
+<div id="timeup" style="display: none; text-align: center; align-items: center;">
+    <br><br><h1>Please click next to move on.</h1>
+    <br><br>
+    <div class="next">
+        <input type="submit" value="Next" id="" class="next-button" >
+    </div>
+</div>
+
+
+<input type="submit" value="Next" id="submitButton" class="next-button" style="display: none;">
+
+<script src="{% static 'global/js/solutions.js' %}"></script>
+<script src="{% static 'global/js/tasks.js' %}"></script>
+<script>
+    // Import variables
+
+    var ww = {
+            timerTime: '{{bigtime}}',
+            practice: 1,
+        };
+    var taskList = {{ taskList_json | safe }};
+    var colorNames = {{ colorNames_json | safe }};
+    var table = $('#solutionsTable');
+
+    // On load a) load table and b) startTimer & Countdown
+    $(document).ready(function() {
+        loadTable()
+        startSolutionCountdown()
+    })
+
+</script>
+
+{{endblock}}
