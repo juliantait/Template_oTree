@@ -56,3 +56,17 @@
           setCookie('loaded.' + roundCount, '1', 5); // Cookie lasts 5 minutes
       }
     }
+
+        function clearAllCookies() {
+        // Get all cookies
+        const cookies = document.cookie.split(";");
+
+        // Iterate over the cookies and set each one to expire
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i];
+            const equalPos = cookie.indexOf("=");
+            const name = equalPos > -1 ? cookie.substr(0, equalPos) : cookie;
+            // Set the cookie to expire in the past
+            document.cookie = name + "=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
+        }
+    }

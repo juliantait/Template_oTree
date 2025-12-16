@@ -2,11 +2,18 @@
 <link rel="stylesheet" href="{% static 'global/style.css' %}">
 
 <div class="instructions">
-    <h2>Practice Round</h2><br><br>
-    <p> On the next screen you will see a practice round with 20 tasks. You have {{bigtime}} seconds to complete the 20 tasks.</p>
+<h2>Instructions</h2>
+
+{% extends "intro/instructions.html" %} 
+
+{% block part1 %} 
+{% endblock %} 
+{% block part3 %} 
+{% endblock %} 
+{% block part4 %} 
+{% endblock %} 
 </div>
 
-<br><br>
 <div class="next">
     <input type="submit" value="Next" class="next-button">
 </div>

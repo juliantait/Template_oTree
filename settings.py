@@ -3,8 +3,8 @@ from os import environ
 SESSION_CONFIGS = [
     dict(
          name='test',
-         app_sequence=['before','intro','outro'],
-         num_demo_participants=18,
+         app_sequence=['before','intro','main','outro'],
+         num_demo_participants=10,
      ),
 ]
 
@@ -19,7 +19,12 @@ SESSION_CONFIG_DEFAULTS = dict(
     doc="",
     )
 
-PARTICIPANT_FIELDS = ['temp_data']
+PARTICIPANT_FIELDS = ['temp_data','payoff_vector','failed_attempts']
+# Description of PARTICIPANT_FIELDS:
+# - temp_data: Temporary storage for any participant-specific data during the session.
+# - payoff_vector: A list storing all payoff-relevant values across all rounds and apps for a participant.
+# - failed_attempts: Counts the number of times a participant answers the quiz incorrectly.
+
 SESSION_FIELDS = []
 
 # ISO-639 code
@@ -33,7 +38,7 @@ DEMO_PAGE_INTRO_HTML = """ """
 
 INSTALLED_APPS = ['otree']
 
-DEBUG = False
+DEBUG = True
 
 # This room exists on the computers in the CREED large lab as a desktop shortcut 'Chrome to 'experiment' Room' or 'Chrome to Large Lab experiment Server (Giorgia)'
 ROOMS = [
@@ -42,6 +47,7 @@ name='experiment',
 display_name='Experimental Session',
 ),
 ]
+
 # Admin credentials from environment
 import os
 ADMIN_USERNAME = os.environ.get('OTREE_ADMIN_USERNAME')

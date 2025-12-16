@@ -1,29 +1,17 @@
-# Models
 from otree.api import *
-import random
+import random, numbers, json
+
 doc = """
 Outro.
 """
 class C(BaseConstants):
     NAME_IN_URL = 'outro'
-    PLAYERS_PER_GROUP = 3
+    PLAYERS_PER_GROUP = None
     NUM_ROUNDS = 1
-    #TIMERS
-    timer = 1.5
-    #FINANCES
-    players = 100
-    prob = 0.8
-    x_low = 10
-    x_high = 20
-    y = 4
-    bonus = 1.00
-    showup = 5
-    punish_max = 2
-    fail = 2
-    numrewarded = 2
-    quizbonus = 1
-
-
+    showup = 2.5
+    bonus = 0
+    quiz_bonus = 5
+    Num_rewarded = 2 # number of rounds rewarded in the experiment
 
 class Subsession(BaseSubsession):
     pass
@@ -50,8 +38,9 @@ class Player(BasePlayer):
     pay2 = models.FloatField()
     selected_sum = models.FloatField()
     earned = models.FloatField()
-    other = models.StringField(blank=True)  # Field to store the custom input for 'Other'
-    completed = models.BooleanField(initial=False)
+    payouts = models.LongStringField(blank=True)
+    all_round_payoffs = models.LongStringField(blank=True)
+    quiz_bonus_awarded = models.FloatField(initial=0)
     sepa = models.IntegerField(initial=1)
 
 # FUNCTIONS
@@ -74,11 +63,58 @@ def check_sepa_code(self):
         self.sepa = 1  # Set sepa to 1 if in SEPA country list
 
 
+def _flatten_numbers(obj):
+    """Recursively collect numeric values from lists/tuples/dicts/strings."""
+    out = []
+    if isinstance(obj, numbers.Number):
+        out.append(obj)
+    elif isinstance(obj, str):
+        try:
+            out.append(float(obj))
+        except Exception:
+            pass
+    elif isinstance(obj, (list, tuple)):
+        for x in obj:
+            out.extend(_flatten_numbers(x))
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            out.extend(_flatten_numbers(v))
+    return out
+
+
+def extract_round_payoffs(payoffs_vector):
+    """Return ordered (round_number, payoff) tuples, skipping missing sentinels."""
+    missing = [-333, -111, -999]
+    if isinstance(payoffs_vector, (list, tuple)):
+        raw = list(payoffs_vector)
+    else:
+        raw = _flatten_numbers(payoffs_vector)
+
+    round_payoffs = []
+    for idx, value in enumerate(raw):
+        if isinstance(value, numbers.Number) and value not in missing:
+            round_payoffs.append((idx + 1, float(value)))
+    return round_payoffs
+
+
+def select_random_payouts(round_payoffs, num_rewarded):
+    """
+    Pick random rounds/payments from an ordered list of (round, payoff) tuples.
+    """
+    if not round_payoffs:
+        return []
+
+    count = min(len(round_payoffs), num_rewarded)
+    chosen_indices = random.sample(range(len(round_payoffs)), count)
+    payouts = [round_payoffs[idx] for idx in chosen_indices]
+    return payouts
+
 # PAGES
     
 class Demographics(Page):
     form_model = 'player'
-    form_fields = ['age', 'gender','bank','bank_confirmation', 'other','bic']
+    form_fields = ['age', 'gender','bank','bank_confirmation','bic']
+
     def error_message(player, values):
         missing_fields = []
         if not values['gender']:
@@ -89,69 +125,61 @@ class Demographics(Page):
             missing_fields.append('bank_confirmation')
         if not values['age']:
             missing_fields.append('age')
-        # If any fields are missing, return the custom error message
         if missing_fields:
             return "Please answer all questions with an asterix (*)."
         if values['bank'] != values['bank_confirmation']:
             return "Your bank numbers don't match. Please doublecheck them."
-            # Check if any of the required fields are missing or unanswered
 
-    def before_next_page(p,timeout_happened):        
-        # Get the value of the selected payoff attribute    
-        # Calculate the total earnings
-        payoff_vectors = [p.participant.payoff_r1,p.participant.payoff_r2, p.participant.payoff_r3,p.participant.payoff_r4]  # Add more vectors as needed
-        # Initialize an empty list to hold the extracted numeric values
-        extracted_values = []
-        # Iterate over each item in the payoff_vectors list
-        # Iterate over each item in the payoff_vectors list
-        for item in payoff_vectors:
-            if isinstance(item, list):
-                # If the item is a list, iterate through each element in the list
-                for sub_item in item:
-                    # If sub_item is a string with 'cu', remove 'cu' and convert to float
-                    if isinstance(sub_item, str) and 'cu' in sub_item:
-                        cleaned_value = float(sub_item.replace('cu', ''))
-                    else:
-                        # If sub_item is already a number, use it directly
-                        cleaned_value = float(sub_item)  # Convert to float to ensure consistency
-                    extracted_values.append(cleaned_value)
-            else:
-                # If the item is already a number, append it directly
-                extracted_values.append(float(item))  # Convert to float to ensure consistency
-        round1, round2 = random.sample(range(len(extracted_values)), 2)  # Select 2 random rounds
-        pay1 = extracted_values[round1]  # Pay from first selected round
-        pay2 = extracted_values[round2]  # Pay from second selected round
-        selected_sum = pay1 + pay2
-
-        # Update participant earnings
-        p.participant.earned = C.showup + selected_sum + p.participant.quiz_beast
-        p.earned = p.participant.earned
-        p.payoff = p.earned
-
-        # Store the values at the player level to use them later in the template
-        p.selected_round1 = round1 + 1  # Human-readable round number
-        p.selected_round2 = round2 + 1
-        p.pay1 = pay1
-        p.pay2 = pay2
-        p.selected_sum = selected_sum
-        p.completed = 1
+    def before_next_page(p, timeout_happened):
         check_sepa_code(p)
+
+        payoffs_vector = getattr(p.participant, 'payoff_vector', [])
+        round_payoffs = extract_round_payoffs(payoffs_vector)
+        payouts = select_random_payouts(round_payoffs, C.Num_rewarded)
+
+        # Quiz bonus awarded only if no failed attempts and quiz_bonus is positive
+        try:
+            participant_failed_attempts = p.participant.failed_attempts
+        except KeyError:
+            participant_failed_attempts = 0
+            p.participant.failed_attempts = 0
+        quiz_bonus_awarded = C.quiz_bonus if (participant_failed_attempts == 0 and C.quiz_bonus > 0) else 0
+
+        p.selected_sum = sum(float(pay) for _, pay in payouts)
+        p.quiz_bonus_awarded = quiz_bonus_awarded
+        p.earned = C.showup + p.selected_sum + p.quiz_bonus_awarded
+        p.payouts = json.dumps(payouts)
+        p.all_round_payoffs = json.dumps(round_payoffs)
+        p.participant.failed_attempts = participant_failed_attempts
 
 class Results(Page):
     def vars_for_template(self):
+        try:
+            payouts = json.loads(self.payouts) if self.payouts else []
+        except Exception:
+            payouts = []
+        try:
+            round_payoffs = json.loads(self.all_round_payoffs) if self.all_round_payoffs else []
+        except Exception:
+            round_payoffs = []
+        selected_round_numbers = {int(r) for r, _ in payouts}
+        payout_rows = [
+            {
+                'round': int(round_no),
+                'payoff': cu(payoff),
+                'selected': int(round_no) in selected_round_numbers,
+            }
+            for round_no, payoff in round_payoffs
+        ]
         return{
-            'bonus': cu(C.bonus),
-            'earned': cu(self.participant.earned),
-            'numrewarded': C.numrewarded,
+            'earned': cu(self.earned),
             'showup': cu(C.showup),
-            'pay1': cu(self.pay1),
-            'pay2': cu(self.pay2),
-            'selected_round2' :  self.selected_round2,
-            'selected_round1' :  self.selected_round1,
             'selected_sum': cu(self.selected_sum),
-            'quiz_beast': self.participant.quiz_beast,
-            'quizbonus': cu(C.quizbonus),
+            'quiz_bonus': cu(self.quiz_bonus_awarded),
+            'show_quiz_bonus': self.quiz_bonus_awarded > 0,
+            'sepa': self.sepa,
+            'payouts': payouts,
+            'payout_rows': payout_rows,
         }
-
 
 page_sequence = [Demographics, Results]
