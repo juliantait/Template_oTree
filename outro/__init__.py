@@ -8,10 +8,6 @@ class C(BaseConstants):
     NAME_IN_URL = 'outro'
     PLAYERS_PER_GROUP = None
     NUM_ROUNDS = 1
-    showup = 2.5
-    bonus = 0
-    quiz_bonus = 5
-    Num_rewarded = 2 # number of rounds rewarded in the experiment
 
 class Subsession(BaseSubsession):
     pass
@@ -62,7 +58,7 @@ def check_sepa_code(self):
     else:
         self.sepa = 1  # Set sepa to 1 if in SEPA country list
 
-
+# Function to flatten numbers from a list of payoffs
 def _flatten_numbers(obj):
     """Recursively collect numeric values from lists/tuples/dicts/strings."""
     out = []
@@ -81,7 +77,7 @@ def _flatten_numbers(obj):
             out.extend(_flatten_numbers(v))
     return out
 
-
+# Function to extract round payoffs from a list of payoffs as orderedtuples (round_number, payoff)
 def extract_round_payoffs(payoffs_vector):
     """Return ordered (round_number, payoff) tuples, skipping missing sentinels."""
     missing = [-333, -111, -999]
@@ -96,7 +92,7 @@ def extract_round_payoffs(payoffs_vector):
             round_payoffs.append((idx + 1, float(value)))
     return round_payoffs
 
-
+# Function to select random payouts from a list of round payoffs as ordered tuples (round_number, payoff)
 def select_random_payouts(round_payoffs, num_rewarded):
     """
     Pick random rounds/payments from an ordered list of (round, payoff) tuples.
@@ -132,28 +128,33 @@ class Demographics(Page):
 
     def before_next_page(p, timeout_happened):
         check_sepa_code(p)
-
+        # Extract RANDOM selected payoffs from the participant's payoff vector as ordered tuples (round_number, payoff)
         payoffs_vector = getattr(p.participant, 'payoff_vector', [])
         round_payoffs = extract_round_payoffs(payoffs_vector)
-        payouts = select_random_payouts(round_payoffs, C.Num_rewarded)
+        num_rewarded = p.session.config['num_rewarded']
+        payouts = select_random_payouts(round_payoffs, num_rewarded)
 
+
+        # Calculate the experiment payoff from i) the selected payoffs, ii) the quiz bonus and iii) the showup fee
+        p.selected_sum = sum(float(pay) for _, pay in payouts)
         # Quiz bonus awarded only if no failed attempts and quiz_bonus is positive
         try:
             participant_failed_attempts = p.participant.failed_attempts
         except KeyError:
             participant_failed_attempts = 0
             p.participant.failed_attempts = 0
-        quiz_bonus_awarded = C.quiz_bonus if (participant_failed_attempts == 0 and C.quiz_bonus > 0) else 0
-
-        p.selected_sum = sum(float(pay) for _, pay in payouts)
+        quiz_bonus = p.session.config['quiz_bonus']
+        quiz_bonus_awarded = quiz_bonus if (participant_failed_attempts == 0 and quiz_bonus > 0) else 0
         p.quiz_bonus_awarded = quiz_bonus_awarded
-        p.earned = C.showup + p.selected_sum + p.quiz_bonus_awarded
+        showup_fee = p.session.config['showup']
+        p.earned = showup_fee + p.selected_sum + p.quiz_bonus_awarded
         p.payouts = json.dumps(payouts)
         p.all_round_payoffs = json.dumps(round_payoffs)
         p.participant.failed_attempts = participant_failed_attempts
 
 class Results(Page):
     def vars_for_template(self):
+        # Convert the selected payoffs to a JSON string to view as table in Results.html
         try:
             payouts = json.loads(self.payouts) if self.payouts else []
         except Exception:
@@ -173,7 +174,7 @@ class Results(Page):
         ]
         return{
             'earned': cu(self.earned),
-            'showup': cu(C.showup),
+            'showup': cu(self.session.config['showup']),
             'selected_sum': cu(self.selected_sum),
             'quiz_bonus': cu(self.quiz_bonus_awarded),
             'show_quiz_bonus': self.quiz_bonus_awarded > 0,

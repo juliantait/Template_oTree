@@ -1,5 +1,6 @@
 {{ block content }} 
 <link rel="stylesheet" href="{% static 'global/style.css' %}">
+<script src="{% static 'global/js/global.js' %}"></script>
 
 <div class="instructions">
 <h2>Quiz</h2>
@@ -21,10 +22,4 @@ Would you like to reread the instructions first?
     <input type="hidden" id="redoinstructions" name="redoinstructions">
 </form>
 
-<script>
-    // SET HIDDEN VALUES
-    function setValue(s, val) {
-        document.getElementById(s).value = val;
-    }
-</script>
 {{ endblock }}

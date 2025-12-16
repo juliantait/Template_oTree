@@ -1,54 +1,66 @@
-/* General Styles (Applied across all screens) */
+:root {
+    --color-background: #ffffff;
+    --color-text: #555;
+    --color-heading: #333;
+    --color-accent: #4caf50;
+    --color-border: #ccc;
+    --color-muted: #9fa29f;
+    --color-muted-hover: #878987;
+    --color-primary: #008cba;
+    --color-primary-hover: #007bb5;
+    --color-disabled: #cccccc;
+    --color-table-header: #f5f5f5;
+    --color-table-selected: #e6f7ff;
+}
+
+/* General layout & typography */
 body {
     font-family: Arial, sans-serif;
-    background-color: white;
-    margin: 0;
-    padding: 0;
+    background-color: var(--color-background);
+    color: var(--color-text);
     font-size: 18px;
-    color: #555;
-    margin-bottom: 20px;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0 0 20px;
 }
-.titles{
+
+.titles {
     text-align: center;
 }
+
 h1, h2, h3 {
-    color: #333;
+    color: var(--color-heading);
 }
 
 p {
-    font-size: 18px;
-    color: #555;
-    margin-bottom: 20px;
+    margin: 0 0 20px;
 }
 
 strong {
-    color: #4CAF50; /* Green for emphasis */
+    color: var(--color-accent);
 }
 
+/* Form elements */
 form {
     display: flex;
     flex-direction: column;
     align-items: center;
 }
 
-.texting{
+.texting {
     width: 100%;
-
 }
 
 input[type="text"] {
     padding: 8px;
     margin-bottom: 20px;
     box-sizing: border-box;
-    border: 1px solid #ccc; /* Slightly lighter border */
-    border-radius: 4px; /* Rounded corners */
-    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1); /* Subtle shadow for depth */
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
-.bigting {
-    text-align: center;
-}
-
+.bigting,
 .next {
     text-align: center;
 }
@@ -56,7 +68,10 @@ input[type="text"] {
 .instructions {
     text-align: center;
     max-width: 800px;
-    align-items: center;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
 }
 
 .listings {
@@ -68,88 +83,75 @@ input[type="text"] {
     color: red;
     text-align: center;
     margin-top: 20px;
-}  
+}
 
+/* Buttons */
 button {
     cursor: pointer;
     transition: background-color 0.3s ease;
-    border-radius: 8px; /* Slightly rounded edges */
-
+    border-radius: 8px;
 }
 
-.next-button {
-    background-color: #008CBA; /* Blue */
+.next-button,
+.secondary-button,
+.theme-button,
+.split-button {
+    display: inline-block;
     border: none;
     color: white;
     padding: 15px 32px;
+    font-size: 16px;
     text-align: center;
     text-decoration: none;
-    display: inline-block;
-    font-size: 16px;
-    margin: 20px 0;
     cursor: pointer;
     transition: background-color 0.3s ease;
-    border-radius: 8px; /* Slightly rounded edges */
+    border-radius: 8px;
+}
+
+.next-button {
+    background-color: var(--color-primary);
+    margin: 20px 0;
 }
 
 .next-button:hover {
-    background-color: #007bb5;
+    background-color: var(--color-primary-hover);
 }
 
-.secondary-button {
-    background-color: #9fa29f;
+.secondary-button,
+.theme-button,
+.split-button {
+    background-color: var(--color-muted);
+}
+
+.secondary-button:hover,
+.theme-button:hover,
+.split-button:hover {
+    background-color: var(--color-muted-hover);
+}
+
+.split-button {
+    margin: 4px 2px;
+}
+
+.split-button.active {
+    background-color: var(--color-primary);
 }
 
 .next-button:disabled,
 .secondary-button.disabled {
-    background-color: #cccccc;
+    background-color: var(--color-disabled);
     cursor: not-allowed;
 }
 
-/* Buttons General Styles */
-.theme-button {
-    background-color: #9fa29f; /* Green */
-    border: none;
-    color: white;
-    padding: 15px 32px;
-    text-align: center;
-    text-decoration: none;
-    font-size: 16px;
-}
-
-.theme-button:hover {
-    background-color: #878987;
-}
-
-/* Bonus contents */
-.split-button {
-    background-color: #9fa29f; /* Green */
-    border: none;
-    color: white;
-    padding: 15px 32px;
-    text-align: center;
-    text-decoration: none;
-    display: inline-block;
-    font-size: 16px;
-    margin: 4px 2px;
-    cursor: pointer;
-    transition: background-color 0.3s ease;
-    border-radius: 8px; /* Slightly rounded edges */
-
-}
-
-.split-button:hover {
-    background-color: #878987;
-}
-
-.split-button.active {
-    background-color: #008CBA; /* Darker color */
-}
-
+/* Instruction pages */
 .instruction-wrapper {
     max-width: 900px;
     margin: 0 auto;
     text-align: left;
+    min-height: 320px; /* keep buttons aligned across slides */
+    max-height: 60vh;  /* allow scrolling when content exceeds viewport */
+    overflow-y: auto;
+    width: 100%;
 }
 
 .instruction-block {
@@ -172,7 +174,7 @@ button {
     align-items: center;
 }
 
-
+/* Modal popups */
 .popup {
     display: none;
     position: fixed;
@@ -181,27 +183,30 @@ button {
     transform: translate(-50%, -50%);
     background-color: #f1f1f1;
     padding: 20px;
-    border: 1px solid #ccc;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    border: 1px solid var(--color-border);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
 }
 
-/* Outro Results page */
+/* Outro results */
 .results-table {
     width: 100%;
     max-width: 700px;
     margin: 20px auto;
     border-collapse: collapse;
 }
+
 .results-table th,
 .results-table td {
     border: 1px solid #ddd;
     padding: 10px;
     text-align: center;
 }
+
 .results-table th {
-    background-color: #f5f5f5;
+    background-color: var(--color-table-header);
 }
+
 .results-table .selected-row {
-    background-color: #e6f7ff;
+    background-color: var(--color-table-selected);
     font-weight: 600;
 }

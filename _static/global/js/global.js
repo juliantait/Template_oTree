@@ -48,3 +48,11 @@
             document.cookie = name + "=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
         }
     }
+
+    // Helper to set hidden form values
+    function setValue(id, val) {
+        const el = document.getElementById(id);
+        if (el) {
+            el.value = val;
+        }
+    }
