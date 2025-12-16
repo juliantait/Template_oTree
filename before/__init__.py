@@ -12,7 +12,6 @@ class Group(BaseGroup):
 
 class Player(BasePlayer):
     participant_label = models.StringField()
-    redoinstructions = models.BooleanField()
 
     def set_participant_label(self):
         self.participant_label = self.participant.label
@@ -24,8 +23,12 @@ class startpage(Page):
     pass
 
 class welcome(Page):
+    # Initialise participant variables    
     def before_next_page(player, timeout_happened):
-        #initialize payoff vector
-        player.participant.payoff_vector = []
+        if player.round_number == 1:
+            player.participant.failed_attempts = 0
+            player.participant.payoff_vector = []
+        return
+
 
 page_sequence = [startpage,welcome]

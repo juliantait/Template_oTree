@@ -1,9 +1,14 @@
-# Exp_Hidden-Mistakes
- This is the oTree folder for Hidden Mistakes. It contains 3 apps. Before (welcome, consent) Intro (instructions, quiz), Main (actual game) and outro (demographics and results) are as the names suggest. *main* has all the code for the game (including round rematching and treatment allocation).
+# oTree-Template
+ This is a template for oTree experimental app useful for running experiments in the lab. 
 
 ## Timeline
+- before (welcome + consent)
+- intro (instrucitons)
+- main (expeirmental game)
+- outro (demographics + payment)
 
 ## Treatment Allocation
+None currently
 
 ## Participant Labels
 Add '?participant_label=Bob' to the end of the URL provided to join the session.
