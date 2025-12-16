@@ -103,9 +103,6 @@ class prequiz(Page):
     form_fields = ['redoinstructions']
     def is_displayed(player):
         return player.group.round_number == 1
-    def before_next_page(player, timeout_happened):
-        if player.round_number == 1:
-                player.participant.failed_attempts = 0
         
 class quiz(Page):
     form_model = 'player'

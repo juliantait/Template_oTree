@@ -1,14 +1,48 @@
 @echo off
 
-set DATABASE_URL=postgres://moi:ExperimentAllDay@localhost:5432/mistakesexperiment
-set ADMIN_USERNAME = "admin"
-set OTREE_ADMIN_PASSWORD="1234"
-set OTREE_PRODUCTION=1
+REM FYI: REM means that row is commented out
+
+REM === Database Setup (only needed if you want to set up your own DB; this requires the postgres password to be entered into the terminal) ===
+REM psql -U postgres
+REM CREATE DATABASE experimentname;
+REM CREATE USER moi WITH PASSWORD '1234';
+REM GRANT ALL PRIVILEGES ON DATABASE experimentname TO moi;
+
+REM === Database Management (at CREED, you can use DB 'experimenting' without issue) === 
+set DB_NAME=experimenting
+set DB_USER=moi
+set DB_PASSWORD=ExperimentAllDay
+set DB_HOST=localhost
+set DB_PORT=5432
+set DATABASE_URL=postgres://%DB_USER%:%DB_PASSWORD%@%DB_HOST%:%DB_PORT%/%DB_NAME%
+
+
+REM === OTree variables ===
+set OTREE_ADMIN_USERNAME=admin
+set OTREE_ADMIN_PASSWORD=1234
+set OTREE_PRODUCTION=1 
 set OTREE_AUTH_LEVEL=STUDY
 
-cd C:\Users\Admin\Desktop\TAIT\ExpMistakes Copy
+REM === Starting the OTree project up on the server ===
+
+REM === !!! ADOPT PATH TO YOUR OTREE PROJECT FOLDER!!! ===
+cd "C:\Users\Admin\Desktop\TAIT\my great experiment"
+echo Type 'y' to reset the database (advised)
 otree resetdb
-y
+
+REM Start the server in a new terminal
+start "oTree Server" cmd /k otree prodserver
+
+REM === Open oTree Monitoring Page === 
+
+REM === !!! SELECT LAB !!! ===
+REM SMALL LAB: 145.18.178.133
+REM LARGE LAB: 145.18.178.130
+
+REM Wait for prodserver to boot up & open oTree monitoring page
+timeout /t 5 >nul
 start http://145.18.178.130:8000/rooms
-otree prodserver
-echo Your postgres server is now up and running
+
+echo Your postgres server is up and running :)
+echo This terminal will close now
+timeout /t 10 >nul
