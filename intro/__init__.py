@@ -1,5 +1,6 @@
 from otree.api import *
 import json
+from .quiz_items import QUIZ_ITEMS
 
 doc = """
 Intro
@@ -17,40 +18,6 @@ class Subsession(BaseSubsession):
       
 class Group(BaseGroup):
     pass
-
-# --- Central quiz configuration: update this to change questions, choices, and solutions in one place ---
-QUIZ_ITEMS = [
-    dict(
-        field='quiz1',
-        prompt='Did you read and understand the instructions?',
-        choices=['YES', 'NO'],
-        answer='YES'
-    ),
-    # dict(
-    #     field='quiz2',
-    #     prompt='Quiz question 2 (placeholder)',
-    #     choices=['A', 'B', 'C'],
-    #     answer='B'
-    # ),
-    # dict(
-    #     field='quiz3',
-    #     prompt='Quiz question 3 (placeholder)',
-    #     choices=['A', 'B', 'C'],
-    #     answer='C'
-    # ),
-    # dict(
-    #     field='quiz4',
-    #     prompt='Quiz question 4 (placeholder)',
-    #     choices=['A', 'B', 'C'],
-    #     answer='A'
-    # ),
-    # dict(
-    #     field='quiz5',
-    #     prompt='Quiz question 5 (placeholder)',
-    #     choices=['A', 'B', 'C'],
-    #     answer='B'
-    # ),
-]
 
 # Dynamically generate Player fields from QUIZ_ITEMS
 def make_quiz_fields():

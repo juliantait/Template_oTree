@@ -17,7 +17,11 @@ SESSION_CONFIG_DEFAULTS = dict(
     real_world_currency_per_point=1.00,
     participation_fee=0.00,
     doc="",
-    )
+    quiz_bonus=5,
+    num_rewarded=2,
+    showup=2.5,
+    num_experimental_rounds=10,
+)
 
 PARTICIPANT_FIELDS = ['temp_data','payoff_vector','failed_attempts']
 # Description of PARTICIPANT_FIELDS:

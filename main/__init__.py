@@ -1,6 +1,9 @@
 from otree.api import *
 import random
-from . import treatment_assignment
+
+# Take NUM_ROUNDS from session defaults (static at import time for oTree).
+from settings import SESSION_CONFIG_DEFAULTS
+_DEFAULT_NUM_ROUNDS = SESSION_CONFIG_DEFAULTS['num_experimental_rounds']
 
 doc = """
 tasks
@@ -11,7 +14,7 @@ task_manager = None
 class C(BaseConstants):
     NAME_IN_URL = 'main'
     PLAYERS_PER_GROUP = None
-    NUM_ROUNDS = 4
+    NUM_ROUNDS = _DEFAULT_NUM_ROUNDS
 
 
 class Subsession(BaseSubsession):
@@ -24,10 +27,6 @@ class Player(BasePlayer):
     pass
 
 # FUNCTIONS 
-def creating_session(subsession: Subsession):
-    # Delegate to external treatment assignment module
-    return treatment_assignment.creating_session(subsession)
-
 
 # PAGES   
 # Group matching helpers (previously RoundStartWaitPage) are now located in main/group_matching.py.

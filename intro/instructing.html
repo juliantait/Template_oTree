@@ -1,10 +1,15 @@
 {{ block content }}
+
+<!--------- ONLY MODIFY instructions_text.html! --------->
+
+<!--------- This file dynamically updates to blocks in instructions_text.html. --------->
+
 <link rel="stylesheet" href="{% static 'global/style.css' %}">
 
 <div class="instructions">
     <h2>Instructions</h2>
     <div id="instruction-wrapper" class="instruction-wrapper">
-        {% include "intro/instructions.html" %}
+        {% include "intro/instructions_text.html" %}
     </div>
 
     <div class="instruction-progress">
@@ -12,7 +17,7 @@
     </div>
 
     <div class="instruction-controls">
-        <button type="button" id="prevBtn" class="next-button secondary-button">
+        <button type="button" id="prevBtn" class="next-button">
             Back
         </button>
         <button type="button" id="nextBtn" class="next-button">
