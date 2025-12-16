@@ -96,6 +96,16 @@ button {
     background-color: #007bb5;
 }
 
+.secondary-button {
+    background-color: #9fa29f;
+}
+
+.next-button:disabled,
+.secondary-button.disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
 /* Buttons General Styles */
 .theme-button {
     background-color: #9fa29f; /* Green */
@@ -134,6 +144,32 @@ button {
 
 .split-button.active {
     background-color: #008CBA; /* Darker color */
+}
+
+.instruction-wrapper {
+    max-width: 900px;
+    margin: 0 auto;
+    text-align: left;
+}
+
+.instruction-block {
+    display: none;
+}
+
+.instruction-block:first-of-type {
+    display: block;
+}
+
+.instruction-progress {
+    margin-top: 10px;
+    font-size: 16px;
+}
+
+.instruction-controls {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    align-items: center;
 }
 
 

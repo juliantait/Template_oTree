@@ -1,9 +1,5 @@
 //GLOBAL
-        //   SET HIDDEN VALUES
-    function setValue(s,val) {
-        document.getElementById(s).value = val;
-    }
-
+    // Function to log to console
     function cl(print) {
       console.log(print)
     }
@@ -37,27 +33,9 @@
         let cookies = document.cookie;
         console.log("Cookies: ", cookies); // Prints cookies in browser console
     }
-    // Function to check if the page was loaded before
-    function checkForPastLoad() {
-    //   printCookies(); // Call the function to print cookies when page loads // debugging cookies
 
-      let roundCount = ww.roundNumber; // Insert Python round_count value here
-      let loadedCookie = getCookie('loaded.'+ roundCount);
-      
-      if (loadedCookie === '1') {
-          // If the cookie is set to 1, show 'loaded' div and hide others
-          document.getElementById('loaded').style.display = 'block';
-          document.getElementById('content').style.display = 'none';
-          refresh = 1;
-      } else {
-          // If the cookie is not set or is 0, show normal content
-          document.getElementById('content').style.display = 'block';
-          // Set the cookie to indicate the page has been loaded
-          setCookie('loaded.' + roundCount, '1', 5); // Cookie lasts 5 minutes
-      }
-    }
-
-        function clearAllCookies() {
+    // Function to clear all cookies
+    function clearAllCookies() {
         // Get all cookies
         const cookies = document.cookie.split(";");
 
