@@ -1,21 +1,52 @@
-{{ block content }} 
+{% block content %}
 <link rel="stylesheet" href="{% static 'global/style.css' %}">
 
 <div style="text-align: center;">
-    <h2 style="margin-bottom: 20px;">Results</h2>
-    <p>Rounds <b>{{ selected_round1 }}</b> and <b>{{ selected_round2 }}</b> were randomly selected for your payoff.</p>
-    <p>You earned <b>{{ pay1 }}</b> in Round {{ selected_round1 }} and <b>{{ pay2 }}</b> in Round {{ selected_round2 }}.</p>
-    On top of this you receive a {{ showup }} showup-fee{{if player.participant.quiz_beast == 1}} and the {{quizbonus}} bonus for the quiz{{endif}}.</p>
-    <p>Your total earnings are: <strong>{{ earned }}</strong></p>
-    <br><br>
-    <p> Please leave 2 weeks for the payment to be processed. </p>
-    <br><br>
-    {% if player.sepa == 0 %}
-    Your bank account is not in SEPA.<br> <strong>Speak to the experimenter before leaving </strong>to confirm payment will be successful!<br><br>
-    {% endif %}   
-    <b>Thank you for taking part!</b>  
+    <h2 style="margin-bottom: 16px;">Results</h2>
+    <p style="margin-bottom: 12px;">
+        Your payoff from each round is displayed below. The rounds selected for payment are highlighted.
+    </p>
+    <p style="margin-bottom: 16px;">
+        The selected rounds sum to <strong>{{ selected_sum }}</strong>.
+        Including the
+        {% if show_quiz_bonus %}
+            quiz bonus of <strong>{{ quiz_bonus }}</strong> and the
+        {% endif %}
+        showup fee {{ showup }}, your total earnings are <strong>{{ earned }}</strong>.
+    </p>
+    <br>
+    <p>Please leave 2 weeks for the payment to be processed.</p>
+    {% if sepa == 0 %}
+        <div style="margin: 10px 0;">
+            Your bank account is not in SEPA.<br>
+            <strong>Speak to the experimenter before leaving</strong> to confirm payment will be successful!
+        </div>
+    {% endif %}
+    <br>
+    <b>Thank you for taking part!</b>
     <br><br>
 </div>
+
+<table class="results-table">
+    <thead>
+        <tr>
+            <th>Round</th>
+            <th>Payoff</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in payout_rows %}
+        <tr class="{% if row.selected %}selected-row{% endif %}">
+            <td>Round {{ row.round }}</td>
+            <td>{{ row.payoff }}</td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="2">No payoffs recorded.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
 
 <script src="{% static 'global/js/global.js' %}"></script>
 
@@ -25,4 +56,4 @@
         }
 </script>
 
-{{ endblock }}
+{% endblock %}

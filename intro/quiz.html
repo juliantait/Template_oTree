@@ -20,49 +20,28 @@ Answer the questions below before continuing.
 {{endif}}
 </div>
 <br>
-    <div>
-        <p>What is the largest punishment the manager can hand out to one worker at the end of each round?</p>
-        {{ form.quiz1 }}
-        <br>
-        <p>How much does the Backup Project pay?</p>
-        {{ form.quiz2 }}
-        <br>
-        <p>What is the maximum amount that the Ambitious project pays to each team member when none of the workers made a mistake?</p>
-        {{ form.quiz3 }}
-        <br>
-        <p>What is the maximum amount that the Ambitious project pays to each team member when one or both workers made a mistake?</p>
-        {{ form.quiz4 }}
-        <br>
-        <p>True or false: If one or more workers report a mistake, then the Backup project is guaranteed to pay more than the Ambituous project.</p>
-        {{ form.quiz5 }}
-        <br>
-        <p>If a worker made a mistake:</p>
-        {{ form.quiz6 }}
-        <br>
-        <p>If a worker made one or more mistakes:</p>
-        {{ form.quiz7 }}
-        <br>
-        <p>If none of the workers made any mistakes:</p>
-        {{ form.quiz8 }}
-        <br>
-        <form method="post">
-            <input type="hidden" name="redoinstructions" id="redoinstructions">
-        </form>
-    </div>
+<div>
+    {% for field in form %}
+        {% if field.name != 'redoinstructions' %}
+            <p>{{ field.label }}</p>
+            {{ field }}
+            <br>
+        {% endif %}
+    {% endfor %}
+
+    <form method="post">
+        <input type="hidden" name="redoinstructions" id="redoinstructions">
+    </form>
+</div>
 
 <div class="next">
     <input type="submit" value="Next" class="next-button" onclick="setValue('redoinstructions',0)">
 </div>
 
+<script id="quiz-solutions-data" type="application/json">
+    {{ quiz_solutions_json|safe }}
+</script>
 <script src="{% static 'global/js/quiz.js' %}"></script>
 <script src="{% static 'global/js/global.js' %}"></script>
-
-<script>
-    var stakesHigh = {{stakes_high}};  // Get the stakes_high value from Python
-    var manager = {{manager}};
-    var roundNumber = {{player.round_number}};
-    var maxRounds = {{C.NUM_ROUNDS}}
-    
-</script>
 
 {{ endblock }}

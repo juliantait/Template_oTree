@@ -148,3 +148,24 @@ button {
     border: 1px solid #ccc;
     box-shadow: 0 2px 10px rgba(0,0,0,0.2);
 }
+
+/* Outro Results page */
+.results-table {
+    width: 100%;
+    max-width: 700px;
+    margin: 20px auto;
+    border-collapse: collapse;
+}
+.results-table th,
+.results-table td {
+    border: 1px solid #ddd;
+    padding: 10px;
+    text-align: center;
+}
+.results-table th {
+    background-color: #f5f5f5;
+}
+.results-table .selected-row {
+    background-color: #e6f7ff;
+    font-weight: 600;
+}
