@@ -1,15 +1,19 @@
 {{block content}}
 <link rel="stylesheet" href="{% static 'global/style.css' %}">
 
-<div style="text-align: center;">
-    <h2 style="margin-bottom: 20px;">Round {{ round_count }}</h2>
-    
-    <p>Here's your game. Press Next to generate your payoff!</p>
-
-    <br><br>
-
-    <input type="submit" value="Next" class="next-button">
+<div class="experimental-screen">
+    <div class="screen-card">
+        <div class="experimental-header">
+            <h2 class="header-title">Round {{ round_count }}</h2>
+            <p class="header-text">Here's your game. Press Next to generate your payoff!</p>
+        </div>
+        <div class="experimental-content"></div>
+        <div class="button-row">
+            <input type="submit" value="Next" class="next-button">
+        </div>
+    </div>
 </div>
 
-{{endblock}}
+<script src="{% static 'global/js/global.js' %}"></script>
 
+{{endblock}}

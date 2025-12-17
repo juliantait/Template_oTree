@@ -9,7 +9,6 @@ class C(BaseConstants):
     NAME_IN_URL = 'Introduction'
     PLAYERS_PER_GROUP = None
     NUM_ROUNDS = 2
-    verify_quiz = True # set to True to verify quiz answers, False to skip verification during testing
 
 
 
@@ -49,14 +48,15 @@ def common_template_vars(session, group):
 # PAGES    
 class instructing(Page):
     template_name = 'intro/templates/instructing.html'
-
-class prequiz(Page):
-    template_name = 'intro/templates/prequiz.html'
     form_model = 'player'
     form_fields = ['redoinstructions']
-    def is_displayed(player):
-        return player.group.round_number == 1
-        
+
+    def vars_for_template(player):
+        # Surface quiz bonus so it can be shown on the final instruction page
+        return {
+            'quiz_bonus': player.session.config.get('quiz_bonus')
+        }
+
 class quiz(Page):
     template_name = 'intro/templates/quiz.html'
     form_model = 'player'
@@ -74,7 +74,7 @@ class quiz(Page):
 
     def error_message(player, values):
         # Skip validation entirely when quiz verification is disabled
-        if not C.verify_quiz:
+        if not player.session.config.get('verify_quiz', True):
             return
         # Define mapping of quiz fields to their correct answers
         solutions = dict(zip(quiz.quiz_field_names, quiz.quiz_solutions))
@@ -104,5 +104,5 @@ class quiz(Page):
         if player.redoinstructions ==0:
             return app_sequence[0]
         
-page_sequence = [instructing, prequiz, quiz]
+page_sequence = [instructing, quiz]
 

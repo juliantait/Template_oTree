@@ -56,3 +56,28 @@
             el.value = val;
         }
     }
+
+    // Allow Enter key to activate the primary forward action (Next/Submit).
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') {
+            return;
+        }
+
+        const targetTag = (event.target.tagName || '').toLowerCase();
+        if (targetTag === 'textarea') {
+            return; // keep multiline entry unaffected
+        }
+
+        // Prefer explicit next button if present (e.g., instructions flow).
+        const nextButton =
+            document.getElementById('nextBtn') ||
+            document.querySelector('button.next-button:not([disabled])') ||
+            document.querySelector('input.next-button[type="submit"]:not([disabled])') ||
+            document.querySelector('.next-button:not([disabled])') ||
+            document.querySelector('input[type="submit"]:not([disabled])');
+
+        if (nextButton) {
+            event.preventDefault();
+            nextButton.click();
+        }
+    });

@@ -4,6 +4,7 @@
 
 from main import *
 from . import treatment_assignment
+
 class C(BaseConstants):
     NAME_IN_URL = 'before'
     PLAYERS_PER_GROUP = None

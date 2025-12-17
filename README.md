@@ -21,7 +21,7 @@
 - intro
   - `intro/instructions_text.html`: only file to edit for instructions; each `<div class="instruction-block">` you add here is displayed as its own page automatically.
   - `intro/quiz_items.py`: edit questions, choices, and correct answers; updates flow into the quiz automatically.
-  - `intro/templates/` (`instructing.html`, `prequiz.html`, `quiz.html`): template shells; typically do not edit.
+  - `intro/templates/` (`instructing.html`, `quiz.html`): template shells; typically do not edit.
 - main
   - `main/`: This folder contains the core logic and code for your experimental task. Place the main game code, task logic, and any files that control the experiment's core flow here.
 - outro

@@ -22,11 +22,23 @@ QUIZ_ITEMS = [
         ],
         answer='You are asked to reread the instructions',
     ),
-    dict(
-        field='quiz3',
-        prompt='How many rounds are in the main task?',
-        choices=['1', '2', '4'],
-        answer='4',
-    ),
+    # dict(
+    #     field='quiz3',
+    #     prompt='How many rounds are in the main task?',
+    #     choices=['1', '2', '4'],
+    #     answer='4',
+    # ),
+    #     dict(
+    #     field='quiz4',
+    #     prompt='How many rounds are in the main task?',
+    #     choices=['1', '2', '4'],
+    #     answer='4',
+    # ),
+    #     dict(
+    #     field='quiz5',
+    #     prompt='How many rounds are in the main task?',
+    #     choices=['1', '2', '4'],
+    #     answer='4',
+    # ),
 ]
 
