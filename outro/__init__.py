@@ -1,5 +1,6 @@
 from otree.api import *
-import random, numbers, json
+import numbers, json
+from .payment_rule import select_random_payouts
 
 doc = """
 Outro.
@@ -58,52 +59,34 @@ def check_sepa_code(self):
     else:
         self.sepa = 1  # Set sepa to 1 if in SEPA country list
 
-# Function to flatten numbers from a list of payoffs
-def _flatten_numbers(obj):
-    """Recursively collect numeric values from lists/tuples/dicts/strings."""
-    out = []
-    if isinstance(obj, numbers.Number):
-        out.append(obj)
-    elif isinstance(obj, str):
-        try:
-            out.append(float(obj))
-        except Exception:
-            pass
-    elif isinstance(obj, (list, tuple)):
-        for x in obj:
-            out.extend(_flatten_numbers(x))
-    elif isinstance(obj, dict):
-        for v in obj.values():
-            out.extend(_flatten_numbers(v))
-    return out
-
-# Function to extract round payoffs from a list of payoffs as orderedtuples (round_number, payoff)
-def extract_round_payoffs(payoffs_vector):
+# Function to extract round payoffs from a list of payoffs as ordered tuples (round_number, payoff)
+def extract_round_payoffs(payoffs_vector, missing_values):
     """Return ordered (round_number, payoff) tuples, skipping missing sentinels."""
-    missing = [-333, -111, -999]
     if isinstance(payoffs_vector, (list, tuple)):
         raw = list(payoffs_vector)
     else:
-        raw = _flatten_numbers(payoffs_vector)
+        # attempt to flatten arbitrarily nested structures into numbers
+        raw = []
+        stack = [payoffs_vector]
+        while stack:
+            current = stack.pop()
+            if isinstance(current, numbers.Number):
+                raw.append(current)
+            elif isinstance(current, str):
+                try:
+                    raw.append(float(current))
+                except Exception:
+                    pass
+            elif isinstance(current, (list, tuple)):
+                stack.extend(current)
+            elif isinstance(current, dict):
+                stack.extend(current.values())
 
     round_payoffs = []
     for idx, value in enumerate(raw):
-        if isinstance(value, numbers.Number) and value not in missing:
+        if isinstance(value, numbers.Number) and value not in missing_values:
             round_payoffs.append((idx + 1, float(value)))
     return round_payoffs
-
-# Function to select random payouts from a list of round payoffs as ordered tuples (round_number, payoff)
-def select_random_payouts(round_payoffs, num_rewarded):
-    """
-    Pick random rounds/payments from an ordered list of (round, payoff) tuples.
-    """
-    if not round_payoffs:
-        return []
-
-    count = min(len(round_payoffs), num_rewarded)
-    chosen_indices = random.sample(range(len(round_payoffs)), count)
-    payouts = [round_payoffs[idx] for idx in chosen_indices]
-    return payouts
 
 # PAGES
     
@@ -127,13 +110,20 @@ class Demographics(Page):
             return "Your bank numbers don't match. Please doublecheck them."
 
     def before_next_page(p, timeout_happened):
+        # CHECK IF THE PARTICIPANT'S BANK ACCOUNT IS IN SEPA ======================================
         check_sepa_code(p)
+
+        # DETERMINE EXPERIMENTAL PAYOFF ========================================================
+        # List of values that indicate missing payoff values in the participant's payoff vector. Edit this list if you are using different codes for "no payoff" in your data.
+        missing_payoff_values = [
+            -333, 
+            -111, 
+            -999]
         # Extract RANDOM selected payoffs from the participant's payoff vector as ordered tuples (round_number, payoff)
         payoffs_vector = getattr(p.participant, 'payoff_vector', [])
-        round_payoffs = extract_round_payoffs(payoffs_vector)
+        round_payoffs = extract_round_payoffs(payoffs_vector, missing_payoff_values)
         num_rewarded = p.session.config['num_rewarded']
         payouts = select_random_payouts(round_payoffs, num_rewarded)
-
 
         # Calculate the experiment payoff from i) the selected payoffs, ii) the quiz bonus and iii) the showup fee
         p.selected_sum = sum(float(pay) for _, pay in payouts)
@@ -142,7 +132,6 @@ class Demographics(Page):
             participant_failed_attempts = p.participant.failed_attempts
         except KeyError:
             participant_failed_attempts = 0
-            p.participant.failed_attempts = 0
         quiz_bonus = p.session.config['quiz_bonus']
         quiz_bonus_awarded = quiz_bonus if (participant_failed_attempts == 0 and quiz_bonus > 0) else 0
         p.quiz_bonus_awarded = quiz_bonus_awarded
@@ -150,7 +139,6 @@ class Demographics(Page):
         p.earned = showup_fee + p.selected_sum + p.quiz_bonus_awarded
         p.payouts = json.dumps(payouts)
         p.all_round_payoffs = json.dumps(round_payoffs)
-        p.participant.failed_attempts = participant_failed_attempts
 
 class Results(Page):
     def vars_for_template(self):
