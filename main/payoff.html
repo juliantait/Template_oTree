@@ -1,36 +1,22 @@
 {{block content}}
 <link rel="stylesheet" href="{% static 'global/style.css' %}">
 
-<div style="text-align: center;">
-    <h2 style="margin-bottom: 20px;">Round {{ round_count }} Payoff </h2>
-    
-    You were paid <strong>{{payoff}}</strong> in this round. 
-    
-    <br><br>
-
-
-    <input type="submit" value="Next" class="next-button">
+<div class="experimental-screen">
+    <div class="screen-card">
+        <div class="experimental-header">
+            <h2 class="header-title">Round {{ round_count }} Payoff</h2>
+            <p class="header-text">You were paid <strong>{{ payoff }}</strong> in this round.</p>
+        </div>
+        <div class="experimental-content"></div>
+        <div class="button-row">
+            <input type="submit" value="Next" class="next-button">
+        </div>
+    </div>
 </div>
 
+<script src="{% static 'global/js/global.js' %}"></script>
 <script>
-    function clearAllCookies() {
-        // Get all cookies
-        const cookies = document.cookie.split(";");
-
-        // Iterate over the cookies and set each one to expire
-        for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i];
-            const equalPos = cookie.indexOf("=");
-            const name = equalPos > -1 ? cookie.substr(0, equalPos) : cookie;
-            // Set the cookie to expire in the past
-            document.cookie = name + "=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
-        }
-    }
-
-// Check if page has been loaded before based on the cookie
-    window.onload = function() {
-        clearAllCookies()
-        }
+    window.addEventListener('load', clearAllCookies);
 </script>
 
 {{endblock}}

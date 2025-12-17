@@ -1,0 +1,43 @@
+/* Instruction pages */
+.instructions {
+    text-align: center;
+    max-width: 800px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.instruction-wrapper {
+    display: flex;
+    flex-direction: column;
+    max-width: 900px;
+    margin: 0 auto;
+    text-align: left;
+    min-height: 320px; /* keep buttons aligned across slides */
+    width: 100%;
+}
+
+.instruction-block {
+    display: none;
+}
+
+.instruction-block:first-of-type {
+    display: block;
+}
+
+.instruction-progress {
+    margin-top: auto;
+    padding: 12px 0 4px;
+    font-size: 16px;
+    text-align: center;
+    width: 100%;
+}
+
+.instruction-controls {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    align-items: center;
+}
+

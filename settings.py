@@ -21,6 +21,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     num_rewarded=2,
     showup=2.5,
     num_experimental_rounds=10,
+    verify_quiz=True,  # when False, quiz answers are not validated (useful for testing)
 )
 
 PARTICIPANT_FIELDS = ['temp_data','payoff_vector','failed_attempts']

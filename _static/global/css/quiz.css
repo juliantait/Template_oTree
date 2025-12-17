@@ -1,0 +1,65 @@
+.quiz-block {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-block: 12px 8px;
+}
+
+.quiz-block .stacked-form {
+    width: 100%;
+    max-width: 560px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+}
+
+.quiz-block .stacked-form > p {
+    margin: 0 0 6px; /* small gap between question text and its answers */
+    text-align: center;
+}
+
+/* each question block (the div after the <p>) */
+.quiz-block .stacked-form > div {
+    display: flex;
+    flex-direction: column;
+    gap: 8px; /* tighter spacing between answers */
+    align-items: center;
+    width: 100%;
+}
+
+.quiz-block .stacked-form > div:not(:last-child) {
+    position: relative;
+    padding-bottom: 14px;  /* gap between answers and line */
+    margin-bottom: 14px;   /* equal gap to next question */
+}
+
+.quiz-block .stacked-form > div:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    left: 25%;
+    right: 25%;
+    bottom: 0;
+    height: 1px;
+    background: var(--color-border);
+    opacity: 0.8;
+    width: 50%;
+    margin: 0 auto;
+}
+
+/* individual options (form-check) */
+.quiz-block .stacked-form .form-check {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px; /* space between control and text */
+    width: 100%;
+}
+
+.quiz-block .stacked-form .form-check input[type="radio"] {
+    margin: 0;
+    align-self: center;
+    vertical-align: middle; /* avoid baseline drop below the label text */
+}
+

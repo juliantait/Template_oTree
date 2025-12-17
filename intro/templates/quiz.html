@@ -1,44 +1,45 @@
-{{ block content }} 
+{{ block content }}
 
 <!-- ONLY MODIFY QUESTIONS IN __init__.py -->
-
 <link rel="stylesheet" href="{% static 'global/style.css' %}">
 
-<div class="instructions">
-<h2>Quiz</h2>
+<div class="experimental-screen">
+    <div class="screen-card">
+        <div class="experimental-header">
+            <h2 class="header-title">Quiz</h2>
+            <p class="header-text">Answer the questions below before starting the experiment.</p>
+        </div>
 
-Answer the questions below before continuing.
-<br><br>
+        <div class="experimental-content">
+            <div class="quiz-block">
+                {{ if player.num_failed_attempts >= 2 }}
+                <div class="errors">
+                    {{ if player.round_number < C.NUM_ROUNDS }}
+                    <input type="submit" value="Re-read Instruction" class="next-button" onclick="redoInstructions()">
+                    {{ else }}
+                    <div id="instructionsReminder" style="font-weight: bold;">
+                        If you are unsure, please raise your hand and speak to the experimenter.
+                    </div>
+                    {{ endif }}
+                </div>
+                {{ endif }}
 
-{{if player.num_failed_attempts >= 2}}
-<div style="text-align: center;">
-    {{ if player.round_number < C.NUM_ROUNDS}}
-    <input type="submit" value="Re-read Instruction" class="next-button" onclick="redoInstructions()">
-    {{ else }}
-    <div id="instructionsReminder" style="color: red; font-weight: bold;" >
-        If you are unsure, please raise your hand and speak to the experimenter.
+                <div class="stacked-form">
+                    {% for field in form %}
+                        {% if field.name != 'redoinstructions' %}
+                            <p>{{ field.label }}</p>
+                            {{ field }}
+                        {% endif %}
+                    {% endfor %}
+                    <input type="hidden" name="redoinstructions" id="redoinstructions">
+                </div>
+            </div>
+        </div>
+
+        <div class="button-row">
+            <input type="submit" value="Next" class="next-button" onclick="setValue('redoinstructions',0)">
+        </div>
     </div>
-    {{ endif }}
-</div>
-{{endif}}
-</div>
-<br>
-<div>
-    {% for field in form %}
-        {% if field.name != 'redoinstructions' %}
-            <p>{{ field.label }}</p>
-            {{ field }}
-            <br>
-        {% endif %}
-    {% endfor %}
-
-    <form method="post">
-        <input type="hidden" name="redoinstructions" id="redoinstructions">
-    </form>
-</div>
-
-<div class="next">
-    <input type="submit" value="Next" class="next-button" onclick="setValue('redoinstructions',0)">
 </div>
 
 <script id="quiz-solutions-data" type="application/json">

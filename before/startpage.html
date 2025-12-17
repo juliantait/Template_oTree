@@ -1,10 +1,23 @@
 {{ block content }} 
 <link rel="stylesheet" href="{% static 'global/style.css' %}">
 
-<div class="instructions">
-    <h2>Welcome to CREED</h2>
-    <p>The experiment will start when everyone has taken their places and is ready.</p>
+<div class="experimental-screen">
+    <div class="screen-card">
+        <div class="experimental-header">
+            <h2 class="header-title">Welcome to CREED</h2>
+            <p class="header-text"></p>
+        </div>
+        <div class="experimental-content"></div>
+        <div class="section-body">
+            The experiment will start when everyone has taken their places and is ready.
+        </div>
+        <div class="button-row">
+            <input type="submit" value="Next" class="next-button">
+        </div>
+    </div>
 </div>
+
+<script src="{% static 'global/js/global.js' %}"></script>
 
 {{ endblock }}
 
