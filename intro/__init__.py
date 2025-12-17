@@ -48,15 +48,17 @@ def common_template_vars(session, group):
 
 # PAGES    
 class instructing(Page):
-    pass
+    template_name = 'intro/templates/instructing.html'
 
 class prequiz(Page):
+    template_name = 'intro/templates/prequiz.html'
     form_model = 'player'
     form_fields = ['redoinstructions']
     def is_displayed(player):
         return player.group.round_number == 1
         
 class quiz(Page):
+    template_name = 'intro/templates/quiz.html'
     form_model = 'player'
     # Dynamically include only the quiz items that have corresponding Player fields
     quiz_items = [item for item in QUIZ_ITEMS if hasattr(Player, item['field'])]
