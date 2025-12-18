@@ -21,6 +21,7 @@ class Player(BasePlayer):
     treatment_group = models.StringField(blank=True)
 
 
+
 def creating_session(subsession: Subsession):
     # Delegate to the treatment assignment helper in this app
     return treatment_assignment.assign_treatments(subsession)
@@ -32,6 +33,9 @@ def set_participant_label(self):
 # FUNCTIONS 
 
 # PAGES
+class example_screen(Page):
+    template_name = '_static/global/html/template.html'
+    
 class startpage(Page):
     pass
 
@@ -46,5 +50,6 @@ class welcome(Page):
             player.treatment_group = getattr(player.participant, 'treatment_group', '')
         return
 
-
-page_sequence = [startpage,welcome]
+page_sequence = [example_screen, startpage, welcome]
+# To hide the example screen, uncomment the line below and comment the line above.
+# page_sequence = [startpage, welcome]

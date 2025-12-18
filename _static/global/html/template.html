@@ -1,0 +1,36 @@
+{{ block content }}
+<link rel="stylesheet" href="{% static 'global/style.css' %}">
+<script src="{% static 'global/js/global.js' %}"></script>
+
+<div class="experimental-screen">
+    <div class="screen-card">
+
+        <!-- Experimental header with logo, title, and header text -->
+        <div class="experimental-header">
+            <h2 class="header-title" style="margin: 0;">Experimental Screen - Title</h2>
+            <p class="header-text">Header text for subtitles aligned just below the title.</p>
+        </div>
+
+        <!-- Main content preview -->
+        <div class="experimental-content">
+            <!-- Anything in this section is vertically and horizontally centered within the card -->
+            <h3 class="section-title">Section Header</h3>
+            <div class="section-text">
+                 Use this area for any paragraph text content. Any content in this section will be vertically and horizontally centered within the card.
+            </div>
+        </div>
+
+        <!-- Navigation buttons -->
+        <div class="button-row">
+            <button type="button" class="next-button" onclick="window.history.back();">Back</button>
+            <input type="submit" value="Next" class="next-button">
+        </div>
+
+        <!-- Logos at the bottom -->
+        {% include '_static/global/html/logo_section.html' %}
+
+    </div>
+</div>
+
+{{ endblock }}
+

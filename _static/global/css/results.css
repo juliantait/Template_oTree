@@ -9,7 +9,7 @@
 .results-table th,
 .results-table td {
     border: 1px solid #ddd;
-    padding: 10px;
+    padding: 12px 20px; /* add horizontal breathing room */
     text-align: center;
 }
 
@@ -20,5 +20,44 @@
 .results-table .selected-row {
     background-color: var(--color-table-selected);
     font-weight: 600;
+}
+
+.results-section {
+    width: 100%;
+    max-width: 700px;
+    margin: 0 auto;
+    text-align: center;
+}
+
+.results-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: var(--color-heading);
+    cursor: pointer;
+    padding: 4px 8px;
+    font-weight: 700;
+}
+
+.results-arrow {
+    display: inline-block;
+    transition: transform 0.2s ease;
+    font-size: 22px;
+    line-height: 1;
+}
+
+.results-arrow.open {
+    transform: rotate(90deg);
+}
+
+.results-collapsible {
+    margin-top: 8px;
+}
+
+.results-collapsible.is-hidden {
+    display: none;
 }
 

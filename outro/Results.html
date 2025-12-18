@@ -1,67 +1,103 @@
 {% block content %}
 <link rel="stylesheet" href="{% static 'global/style.css' %}">
+<script src="{% static 'global/js/global.js' %}"></script>
+
 
 <div class="experimental-screen">
     <div class="screen-card">
         <div class="experimental-header">
             <h2 class="header-title">Results</h2>
-            <p class="header-text">
-                Your payoff from each round is displayed below. The rounds selected for payment are highlighted.
-            </p>
+            <p class="header-text"></p>
         </div>
         <div class="experimental-content">
-            <div class="section-body">
+            <div class="section-text">
                 <p>
+                    <strong>{{ num_rewarded }}</strong> rounds were randomly selected for payment.
                     The selected rounds sum to <strong>{{ selected_sum }}</strong>.
-                    Including the
                     {% if show_quiz_bonus %}
-                        quiz bonus of <strong>{{ quiz_bonus }}</strong> and the
+                        Including the quiz bonus of <strong>{{ quiz_bonus }}</strong>
+                        and the show-up fee <strong>{{ showup }}</strong>,
+                    {% else %}
+                        Including the show-up fee of <strong>{{ showup }}</strong>,
                     {% endif %}
-                    showup fee {{ showup }}, your total earnings are <strong>{{ earned }}</strong>.
-                </p>
-                <p>Please leave 2 weeks for the payment to be processed.</p>
+                    your total earnings are <strong>{{ earned }}</strong>.
+                <p>Please leave up to 2 weeks for the payment to be processed.</p>
                 {% if sepa == 0 %}
                     <div style="margin: 10px 0;">
                         Your bank account is not in SEPA.<br>
-                        <strong>Speak to the experimenter before leaving</strong> to confirm payment will be successful!
+                        <strong>Speak to the experimenter before leaving</strong> to ensure payment will be successful!
                     </div>
                 {% endif %}
-                <p><strong>Thank you for taking part!</strong></p>
+                <b>Thank you for taking part!</b>
             </div>
 
-            <h3 class="section-header">Payoff by round</h3>
-            <div class="section-body">
-                <table class="results-table">
-                    <thead>
-                        <tr>
-                            <th>Round</th>
-                            <th>Payoff</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in payout_rows %}
-                        <tr class="{% if row.selected %}selected-row{% endif %}">
-                            <td>Round {{ row.round }}</td>
-                            <td>{{ row.payoff }}</td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="2">No payoffs recorded.</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <div class="results-section">
+                <button
+                    type="button"
+                    id="results-toggle"
+                    class="section-header results-toggle"
+                    aria-expanded="false"
+                    aria-controls="results-table-wrapper"
+                >
+                    <span id="results-arrow" class="results-arrow" aria-hidden="true">▸</span>
+                    <span>See Payoff by Round</span>
+                </button>
+                <div id="results-table-wrapper" class="results-collapsible is-hidden">
+                    <div class="section-text">
+                        <table class="results-table">
+                            <thead>
+                                <tr>
+                                    <th>Round</th>
+                                    <th>Payoff</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in payout_rows %}
+                                <tr class="{% if row.selected %}selected-row{% endif %}">
+                                    <td>Round {{ row.round }}</td>
+                                    <td>{{ row.payoff }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="2">No payoffs recorded.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
+        {% include '_static/global/html/logo_section.html' %}
     </div>
 </div>
-
-<script src="{% static 'global/js/global.js' %}"></script>
 
 <script>
     window.onload = function() {
         clearAllCookies()
+
+        const toggle = document.getElementById('results-toggle')
+        const wrapper = document.getElementById('results-table-wrapper')
+        const arrow = document.getElementById('results-arrow')
+
+        if (toggle && wrapper) {
+            const handleToggle = () => {
+                const nowHidden = wrapper.classList.toggle('is-hidden')
+                toggle.setAttribute('aria-expanded', (!nowHidden).toString())
+                if (arrow) {
+                    arrow.classList.toggle('open', !nowHidden)
+                }
+            }
+
+            toggle.addEventListener('click', handleToggle)
+            toggle.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    handleToggle()
+                }
+            })
         }
+    }
 </script>
 
 {% endblock %}

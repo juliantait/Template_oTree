@@ -169,6 +169,7 @@ class Results(Page):
             'sepa': self.sepa,
             'payouts': payouts,
             'payout_rows': payout_rows,
+            'num_rewarded': self.session.config['num_rewarded'],
         }
 
 page_sequence = [Demographics, Results]

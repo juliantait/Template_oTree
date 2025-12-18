@@ -2,6 +2,7 @@
     width: 100%;
     display: flex;
     flex-direction: column;
+    align-items: center; /* center quiz content horizontally */
     gap: 16px;
     margin-block: 12px 8px;
 }
@@ -9,6 +10,7 @@
 .quiz-block .stacked-form {
     width: 100%;
     max-width: 560px;
+    margin: 0 auto;
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -27,25 +29,33 @@
     gap: 8px; /* tighter spacing between answers */
     align-items: center;
     width: 100%;
+    position: relative;
+    padding: 14px 0;
 }
 
 .quiz-block .stacked-form > div:not(:last-child) {
-    position: relative;
-    padding-bottom: 14px;  /* gap between answers and line */
     margin-bottom: 14px;   /* equal gap to next question */
 }
 
+.quiz-block .stacked-form > div:first-child::before,
 .quiz-block .stacked-form > div:not(:last-child)::after {
     content: "";
     position: absolute;
-    left: 25%;
-    right: 25%;
-    bottom: 0;
+    left: 50%;
+    width: 70%;
+    max-width: 420px; /* keep consistent width independent of answer length */
+    transform: translateX(-50%);
     height: 1px;
     background: var(--color-border);
     opacity: 0.8;
-    width: 50%;
-    margin: 0 auto;
+}
+
+.quiz-block .stacked-form > div:first-child::before {
+    top: 0; /* line at very top of first question */
+}
+
+.quiz-block .stacked-form > div:not(:last-child)::after {
+    bottom: 0; /* separator between questions */
 }
 
 /* individual options (form-check) */
@@ -54,8 +64,9 @@
     align-items: center;
     justify-content: center;
     gap: 10px; /* space between control and text */
-    width: 100%;
+    width: auto;
 }
+
 
 .quiz-block .stacked-form .form-check input[type="radio"] {
     margin: 0;

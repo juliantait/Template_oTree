@@ -8,11 +8,10 @@
             <p class="header-text">Please fill out the information below. Once you press next you'll see your payment.</p>
         </div>
         <div class="experimental-content">
-            <div class="section-body">
-                <h3 class="section-header">Demographics</h3>
+            <div class="section-text demographics-section">
                 <div class="stacked-form">
                     <label for="age">Age*</label>
-                    <input type="text" id="age" name="age">
+                    <input type="text" id="age" name="age" maxlength="2" inputmode="numeric">
 
                     <h3 class="section-header">Gender*</h3>
                     <div class="radio-group">
@@ -22,24 +21,23 @@
                         <label>
                             <input type="radio" name="gender" value="Female"> Female
                         </label>
-                        <label style="display: flex; align-items: center; gap: 10px;">
+                        <label class="other-option">
                             <input type="radio" name="gender" value="Other"> Other:
-                            <input type="text" id="other_input" name="other" placeholder="Please specify" style="height: 28px; width: 150px;">
+                            <input type="text" id="other_input" name="other" placeholder="Please specify">
                         </label>
                         <label>
                             <input type="radio" name="gender" value="Prefer not to say"> Prefer not to say
                         </label>
                     </div>
 
-                    <h3 class="section-header">Payment details</h3>
-                    <label for="bank">Bank Account Number*</label>
-                    <input type="text" id="bank" name="bank">
+                    <label for="bank">IBAN Number*</label>
+                    <input type="text" id="bank" name="bank" placeholder="Enter IBAN number">
 
-                    <label for="bank_confirmation">Bank Account Number Confirmation*</label>
-                    <input type="text" id="bank_confirmation" name="bank_confirmation" placeholder="Re-enter account number">
+                    <label for="bank_confirmation">IBAN Number Confirmation*</label>
+                    <input type="text" id="bank_confirmation" name="bank_confirmation" placeholder="Re-enter IBAN number">
 
-                    <label for="bic">BIC (if international)</label>
-                    <input type="text" id="bic" name="bic" placeholder="">
+                    <label for="bic">BIC (if not NL-)</label>
+                    <input type="text" id="bic" name="bic" placeholder="Enter BIC if IBAN is not Dutch">
                 </div>
             </div>
         </div>
