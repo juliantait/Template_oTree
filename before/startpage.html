@@ -4,16 +4,21 @@
 <div class="experimental-screen">
     <div class="screen-card">
         <div class="experimental-header">
-            <h2 class="header-title">Welcome to CREED</h2>
-            <p class="header-text"></p>
+            {% include '_static/global/html/welcome_header.html' %}
         </div>
-        <div class="experimental-content"></div>
-        <div class="section-body">
-            The experiment will start when everyone has taken their places and is ready.
+        <div class="experimental-content">
+            <div class="section-text">
+                The experiment will start when everyone has taken their places.
+            </div>
         </div>
-        <div class="button-row">
+
+        <!-- OPTIONAL NEXT BUTTON   -->
+        <!-- <div class="button-row">
             <input type="submit" value="Next" class="next-button">
-        </div>
+        </div> -->
+        
+        {% include '_static/global/html/logo_section.html' %}
+
     </div>
 </div>
 

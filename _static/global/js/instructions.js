@@ -27,20 +27,8 @@ document.addEventListener('DOMContentLoaded', () => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
-    // Fix container height so controls don't jump when the pre-quiz block shows.
-    if (wrapper && blocks.length) {
-        let maxHeight = 0;
-        blocks.forEach((block) => {
-            const previousDisplay = block.style.display;
-            block.style.display = 'block';
-            const h = block.scrollHeight;
-            maxHeight = Math.max(maxHeight, h);
-            block.style.display = previousDisplay;
-        });
-        const min33vh = Math.floor(window.innerHeight * 0.33);
-        const targetHeight = Math.max(maxHeight, min33vh);
-        wrapper.style.minHeight = `${targetHeight}px`;
-    }
+    // Base minimum height to keep controls from collapsing on very short slides.
+    const baseMinHeight = Math.max(Math.floor(window.innerHeight * 0.33), 320);
 
     const setPrevDisabled = (shouldDisable) => {
         prevBtn.disabled = shouldDisable;
@@ -89,6 +77,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         prevBtn.style.display = 'inline-block';
         nextBtn.style.display = 'inline-block';
+
+        if (wrapper && blocks[current]) {
+            const currentHeight = blocks[current].scrollHeight;
+            wrapper.style.minHeight = `${Math.max(currentHeight, baseMinHeight)}px`;
+        }
 
         if (atPrequiz) {
             prevBtn.textContent = 'Re-read instructions';

@@ -1,0 +1,67 @@
+/* Scoped styling for demographics page */
+.demographics-section {
+    width: 100%;
+    max-width: 100%;
+    text-align: left;
+    margin: 0;
+}
+
+.demographics-section .stacked-form,
+.demographics-section .stacked-form * {
+    text-align: left;
+}
+
+.demographics-section .stacked-form {
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.demographics-section h3.section-header {
+    margin: 8px 0 4px; /* tighten space above and below the Gender heading */
+}
+
+.demographics-section .radio-group {
+    align-items: flex-start;
+    gap: 10px;
+    padding-left: 16px; /* indent options relative to the question */
+}
+
+.demographics-section .radio-group label {
+    display: flex;
+    gap: 10px;
+    line-height: 1.4;
+    font-weight: 400;
+    font-size: 20px;
+    align-items: center; /* vertically center text with radios */
+}
+
+.demographics-section .radio-group input[type="radio"] {
+    width: 18px;
+    height: 18px;
+}
+
+.demographics-section .radio-group .other-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.demographics-section .radio-group .other-option input[type="text"] {
+    height: 28px;
+    width: 150px;
+    padding: 4px 8px;
+    align-self: center;
+}
+
+.demographics-section #age {
+    max-width: 70px;
+    width: 100%;
+}
+
+.demographics-section label {
+    font-weight: 500;
+    color: var(--color-heading);
+    font-size: 20px;
+}
+
+

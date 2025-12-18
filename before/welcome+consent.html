@@ -4,21 +4,24 @@
 <div class="experimental-screen">
     <div class="screen-card">
         <div class="experimental-header">
-            <h2 class="header-title">Welcome</h2>
-            <p class="header-text"></p>
+            {% include '_static/global/html/welcome_header.html' %}
         </div>
         <div class="experimental-content">
-            <div class="section-body">
+            <div class="section-text">
                 You are taking part in an experiment at CREED.
                 <br><br>
                 All recorded data will be stored anonymous and used solely for research purposes by researchers at the University of Amsterdam. Your IBAN will only be used to pay you and then deleted. If you have any questions at any time, please address the lab researcher.
-                <br><br>
+                <br>
                 <strong>By continuing to the next page you consent</strong> to recording your experimental data.
             </div>
         </div>
+        
         <div class="button-row">
             <input type="submit" value="Next" class="next-button">
         </div>
+
+        {% include '_static/global/html/logo_section.html' %}
+        
     </div>
 </div>
 
