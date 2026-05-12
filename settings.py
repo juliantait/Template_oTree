@@ -68,4 +68,4 @@ DATABASES = {
 }
 }
 
-SECRET_KEY = 'REDACTED_SECRET_KEY'
+SECRET_KEY = os.environ.get("OTREE_SECRET_KEY", "")

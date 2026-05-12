@@ -29,7 +29,7 @@
 
 ## Other Files 
 - set_up_otree.bat : program to start oTree on the experimenter's PC in the lab
-- format_session_data.py : program to turn raw SENSITIVE data into i) csv for payment, ii) csv with anonymised experiment data, and iii) send that file to REDACTED_EMAIL
+- format_session_data.py : program to turn raw SENSITIVE data into i) csv for payment, ii) csv with anonymised experiment data, and iii) optionally draft an email with the anonymised file attached (recipient configurable via `--email` or `$SESSION_DATA_EMAIL`)
 
 ## Template HTML Layout
 The file [`_static/global/html/template.html`](./_static/global/html/template.html) serves as the core visual template for most experimental pages. It is located in the `_static/global/html/` directory of your project. This template demonstrates and defines how all of the pre-defined CSS sections will look and behave, providing a live preview of your main screen layout.
