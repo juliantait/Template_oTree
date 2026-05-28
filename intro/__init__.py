@@ -7,8 +7,13 @@ Intro
 """
 class C(BaseConstants):
     NAME_IN_URL = 'Introduction'
-    PLAYERS_PER_GROUP = None
+    # Stag Hunt example is a 2-player game.
+    PLAYERS_PER_GROUP = 2
     NUM_ROUNDS = 2
+    # Fixed Stag Hunt payoffs (constants, not treatment-varied).
+    STAG_PAYOFF = 4
+    HARE_PAYOFF = 2
+    STAG_ALONE = 0
 
 
 
@@ -52,9 +57,19 @@ class instructing(Page):
     form_fields = ['redoinstructions']
 
     def vars_for_template(player):
-        # Surface quiz bonus so it can be shown on the final instruction page
+        # Stag Hunt example: surface every variable referenced in
+        # intro/instructions_text.html so the template ships as a working
+        # demonstration of variable substitution and treatment-conditional
+        # content. Replace this when you swap in your own instructions.
+        cfg = player.session.config
         return {
-            'quiz_bonus': player.session.config.get('quiz_bonus')
+            'showup': cfg.get('showup'),
+            'quiz_bonus': cfg.get('quiz_bonus'),
+            'num_experimental_rounds': cfg.get('num_experimental_rounds'),
+            'treatment': getattr(player.participant, 'treatment_group', ''),
+            'stag_payoff': C.STAG_PAYOFF,
+            'hare_payoff': C.HARE_PAYOFF,
+            'stag_alone': C.STAG_ALONE,
         }
 
 class quiz(Page):
