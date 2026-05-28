@@ -12,7 +12,7 @@ def assign_treatments(subsession: BaseSubsession):
     if subsession.round_number != 1:
         return
 
-    possible_treatments = ['random_low', 'random_high', 'matched_low', 'matched_high']
+    possible_treatments = ['row', 'column']
     treatment_cycle = itertools.cycle(possible_treatments)
 
     for group in subsession.get_groups():

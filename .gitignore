@@ -7,3 +7,9 @@ __pycache__/
 .venv/
 *.bak
 *.log
+
+# Instructions preview generator: runtime state and generated outputs
+.preview_state.json
+.preview_config.json
+previews/*.html
+previews/*.pdf

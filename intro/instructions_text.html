@@ -1,8 +1,8 @@
 <!--------- PARTICIPANT INSTRUCTIONS --------->
-<!----- 
+<!-----
 
     ONLY MODIFY THIS FILE!
-    
+
     Each instruction block will be shown to participants one at a time on separate pages.
 
     Instructions for editing:
@@ -12,72 +12,190 @@
     - Ensure any additional content is clear and concise so participants can follow along easily.
     - Save your changes before previewing to ensure all new blocks appear as intended.
 
+---------><!---------
+    MARKUP CONVENTIONS (recognised by both oTree and generate_instructions_preview.py):
+
+    - Variable substitution:
+        {{ var }}            inserts the value of `var` from vars_for_template
+        {{ C.numTaskRounds }} inserts a constant from class C
+        (works natively in oTree templates and is replaced in the preview by the
+        currently selected treatment column)
+
+    - Treatment-conditional content:
+        {% if treatment == "row" %}
+            text shown to row players
+        {% elif treatment == "column" %}
+            text shown to column players
+        {% endif %}
+        Renders natively in oTree templates AND in the preview generator.
+
+    - Page splitting (each "page" is shown one at a time to participants):
+        Preferred:  wrap each page in <div class="instruction-block"> ... </div>
+        Legacy:     {{block partN}} ... {{endblock}}
+        If both styles appear in this file, the preview generator prefers the
+        instruction-block divs.
 --------->
 
+<style>
+    .payoff-matrix {
+        margin: 12px auto;
+        border-collapse: collapse;
+        font-size: 18px;
+    }
+    .payoff-matrix th,
+    .payoff-matrix td {
+        border: 1px solid #bbb;
+        padding: 10px 16px;
+        text-align: center;
+        min-width: 92px;
+    }
+    .payoff-matrix thead th,
+    .payoff-matrix tbody th {
+        background: #f5f7fa;
+        font-weight: 600;
+        color: #333;
+    }
+    .payoff-matrix td {
+        font-feature-settings: "tnum";
+        font-variant-numeric: tabular-nums;
+    }
+    .payoff-matrix .axis {
+        font-style: italic;
+        color: #555;
+    }
+    .your-payoff {
+        font-weight: 700;
+        color: #008cba;
+    }
+</style>
+
 <div class="instruction-block">
-    <h3>Block 1</h3>
-    <p>
-        Welcome to the study. The following passage is intentionally verbose
-        placeholder text arranged to look orderly and important. It contains
-        sweeping statements about orderly processes, seasonal rhythms, and
-        shimmering pathways that guide your focus without conveying any real
-        substance.
+    <h3>Welcome</h3>
+    <p style="font-size: 14px; color: #777; font-style: italic;">
+        Template note: this oTree starter ships with a worked Stag Hunt
+        example to demonstrate variable substitution and treatment-conditional
+        content — replace this file (and the matching wiring in
+        <code>intro/__init__.py</code>) with your own experiment.
     </p>
     <p>
-        In this imagined sequence, gentle clockwork murmurs hum behind the
-        scenes while decorative headings promise clarity. Spacious margins
-        cradle each sentence as though they carried weighty secrets about
-        numbered steps, cascading ribbons of procedure, and invisible arrows
-        pointing toward calm horizons. None of it matters, yet it feels neatly
-        aligned.
+        Welcome. In this study you will play a simple two-person game
+        called the <strong>Stag Hunt</strong> with another participant in
+        this room. You will play {{ num_experimental_rounds }} rounds in total.
     </p>
     <p>
-        Here is a fictitious checklist that pretends to organize the experience:
+        Your final payment will be the sum of your earnings from the rounds,
+        plus a show-up fee of {{ showup }} EUR and a bonus of {{ quiz_bonus }} EUR
+        if you answer every quiz question correctly on your first attempt.
     </p>
+</div>
+
+<div class="instruction-block">
+    <h3>The game</h3>
+    <p>
+        In each round you and your partner independently choose one of two
+        actions: <strong>Stag</strong> or <strong>Hare</strong>. You make
+        your choice without knowing what your partner picked.
+    </p>
+    <p>
+        Hunting a stag is only successful if <em>both</em> of you go for it.
+        Hunting a hare always succeeds on your own, but the catch is smaller.
+    </p>
+</div>
+
+<div class="instruction-block">
+    <h3>Your role</h3>
+    {% if treatment == "row" %}
+    <p>
+        You have been assigned the role of <strong>row player</strong> for
+        the entire experiment. On the payoff matrix on the next page, your
+        choice selects the <strong>row</strong>, and your partner's choice
+        selects the <strong>column</strong>.
+    </p>
+    <p>
+        In each cell of the matrix the two numbers are written as
+        (<span class="your-payoff">your payoff</span>, partner's payoff).
+        Your earnings are always the <strong>first</strong> number in the cell.
+    </p>
+    {% elif treatment == "column" %}
+    <p>
+        You have been assigned the role of <strong>column player</strong> for
+        the entire experiment. On the payoff matrix on the next page, your
+        choice selects the <strong>column</strong>, and your partner's choice
+        selects the <strong>row</strong>.
+    </p>
+    <p>
+        In each cell of the matrix the two numbers are written as
+        (partner's payoff, <span class="your-payoff">your payoff</span>).
+        Your earnings are always the <strong>second</strong> number in the cell.
+    </p>
+    {% endif %}
+</div>
+
+<div class="instruction-block">
+    <h3>The payoff matrix</h3>
+    <p>The table below shows the points each player earns for every combination of choices.</p>
+    <table class="payoff-matrix">
+        <thead>
+            <tr>
+                <th></th>
+                <th></th>
+                <th colspan="2" class="axis">Column player chooses</th>
+            </tr>
+            <tr>
+                <th></th>
+                <th></th>
+                <th>Stag</th>
+                <th>Hare</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <th rowspan="2" class="axis">Row player<br>chooses</th>
+                <th>Stag</th>
+                <td>({{ stag_payoff }}, {{ stag_payoff }})</td>
+                <td>({{ stag_alone }}, {{ hare_payoff }})</td>
+            </tr>
+            <tr>
+                <th>Hare</th>
+                <td>({{ hare_payoff }}, {{ stag_alone }})</td>
+                <td>({{ hare_payoff }}, {{ hare_payoff }})</td>
+            </tr>
+        </tbody>
+    </table>
+    {% if treatment == "row" %}
+    <p>
+        Reminder: you are the row player. Your payoff is the
+        <strong>first</strong> number in the cell selected by your row and
+        your partner's column.
+    </p>
+    {% elif treatment == "column" %}
+    <p>
+        Reminder: you are the column player. Your payoff is the
+        <strong>second</strong> number in the cell selected by your partner's
+        row and your column.
+    </p>
+    {% endif %}
+</div>
+
+<div class="instruction-block">
+    <h3>What this means in practice</h3>
     <ul>
-        <li>Phase Alpha: admire the symmetry of bullet points and breathe.</li>
-        <li>Phase Beta: notice how every clause wanders but lands softly.</li>
-        <li>Phase Gamma: imagine progress bars gliding toward completion.</li>
-        <li>Phase Delta: celebrate balance, cadence, and ornamental phrasing.</li>
+        <li>If <strong>both</strong> of you choose Stag, you each earn {{ stag_payoff }} points.</li>
+        <li>If <strong>both</strong> of you choose Hare, you each earn {{ hare_payoff }} points.</li>
+        <li>If you choose Stag but your partner chooses Hare, the Stag-chooser earns {{ stag_alone }} and the Hare-chooser earns {{ hare_payoff }}.</li>
     </ul>
     <p>
-        As this lyrical placeholder continues, translucent guidelines ripple
-        across the page, suggesting order where none is required. Words drift
-        like patterned wallpaper—pleasant, repetitive, and entirely without
-        consequence. By the time you reach the end, nothing has changed except
-        that the layout looks deliberate and the page feels ready for whatever
-        comes next.
+        So Stag pays more <em>if</em> you coordinate, but Hare is a safer choice
+        that pays the same regardless of what your partner does.
     </p>
 </div>
 
 <div class="instruction-block">
-    <h3>Block 2</h3>
+    <h3>Rounds and pairing</h3>
     <p>
-        The experiment consists of multiple rounds. Follow the on-screen
-        prompts and submit each decision before moving on.
-    </p>
-</div>
-
-<div class="instruction-block">
-    <h3>Block 3</h3>
-    <p>
-        Your choices may affect your earnings. Please read each question
-        carefully and avoid random answers.
-    </p>
-</div>
-
-<div class="instruction-block">
-    <h3>Block 4</h3>
-    <p>
-        If you have a question, raise your hand. An experimenter will assist
-        you individually without interrupting others.
-    </p>
-</div>
-
-<div class="instruction-block">
-    <h3>Block 5</h3>
-    <p>
-        After finishing the instructions, you will proceed to a short quiz to
-        check your understanding. Good luck!
+        You will play {{ num_experimental_rounds }} rounds. Your role
+        ({% if treatment == "row" %}row player{% elif treatment == "column" %}column player{% endif %})
+        stays the same throughout the experiment. After each round you will
+        see your choice, your partner's choice, and your earnings for that round.
     </p>
 </div>
