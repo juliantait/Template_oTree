@@ -38,13 +38,23 @@
 
         <div class="button-row">
             <input type="submit" value="Next" class="next-button" onclick="setValue('redoinstructions',0)">
+            {{ if is_debug }}
+            <!-- Testing only: rendered only when settings.DEBUG
+                 (OTREE_PRODUCTION unset). Auto-fills the correct answers
+                 and submits. -->
+            <input type="submit" value="Skip quiz (testing)" class="skip-button" onclick="skipQuiz()">
+            {{ endif }}
         </div>
     </div>
 </div>
 
+{{ if is_debug }}
+<!-- Solutions are emitted only under DEBUG; in production the correct
+     answers never reach the browser. -->
 <script id="quiz-solutions-data" type="application/json">
     {{ quiz_solutions_json|safe }}
 </script>
+{{ endif }}
 <script src="{% static 'global/js/quiz.js' %}"></script>
 <script src="{% static 'global/js/global.js' %}"></script>
 

@@ -7,12 +7,12 @@
 <link rel="stylesheet" href="{% static 'global/style.css' %}">
 <script src="{% static 'global/js/global.js' %}"></script>
 
+<!--------- Each step's title is the <h2> inside its instruction block in
+            instructions_text.html — single source of truth, no fixed page
+            title here. --------->
+
 <div class="experimental-screen">
     <div class="screen-card">
-        <div class="experimental-header">
-            <h2 class="header-title">Instructions</h2>
-            <p class="header-text"></p>
-        </div>
         <div class="experimental-content">
             <form method="post">
                 <div class="instructions">
@@ -32,6 +32,16 @@
                             Next
                         </button>
                     </div>
+
+                    {{ if is_debug }}
+                    <!-- Testing only: rendered only when settings.DEBUG
+                         (OTREE_PRODUCTION unset). -->
+                    <div class="debug-tools">
+                        <button type="button" class="skip-button" onclick="this.form.submit()">
+                            Skip instructions (testing)
+                        </button>
+                    </div>
+                    {{ endif }}
                 </div>
             </form>
         </div>

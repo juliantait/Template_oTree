@@ -43,7 +43,10 @@ DEMO_PAGE_INTRO_HTML = """ """
 
 INSTALLED_APPS = ['otree']
 
-DEBUG = True
+# Do NOT set DEBUG here: oTree derives it from the OTREE_PRODUCTION env var
+# (unset -> DEBUG on), and a hardcoded value here would override that even in
+# production. Debug-only features (testing skip buttons, quiz solutions in the
+# browser) are gated on settings.DEBUG.
 
 # This room exists on the computers in the CREED large lab as a desktop shortcut 'Chrome to 'experiment' Room' or 'Chrome to Large Lab experiment Server (Giorgia)'
 ROOMS = [

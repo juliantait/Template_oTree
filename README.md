@@ -34,6 +34,16 @@ You can share the instructions with coauthors who don't have the codebase instal
 - set_up_otree.bat : program to start oTree on the experimenter's PC in the lab
 - format_session_data.py : program to turn raw SENSITIVE data into i) csv for payment, ii) csv with anonymised experiment data, and iii) optionally draft an email with the anonymised file attached (recipient configurable via `--email` or `$SESSION_DATA_EMAIL`)
 
+## Running online on Prolific
+All Prolific / online-deployment material lives in the `prolific/` folder.
+- `prolific/Prolific_running.md`: the full implementation guide for converting this lab template to run online on Prolific. It covers the different finish screens (routing participants to the correct ending and completion code) and the tab-switch / AI-safety monitor.
+- `prolific/tab-switch monitor.txt`: the client-side tab-switch monitor source referenced by that guide.
+
+## Hosting an oTree experiment online (Mac mini)
+See `MACMINI_HOSTING.md` for the full self-contained guide: how the Mac mini serves an oTree experiment (Docker container + Cloudflare Tunnel subdomain), the problems we hit and how we solved them, and a step-by-step recipe to deploy a brand-new experiment. That file is gitignored (it holds private infra details) so it stays local only.
+
+**Test oTree hosting convention:** every test oTree on the Mac mini runs as a Docker container on the fixed **port 8101** (env `FORWARDED_ALLOW_IPS=*`), exposed on the tailnet via `tailscale serve --bg --https=8443 http://localhost:8101`. To put a new experiment on the test server, stop/remove the old container and `docker run` the new image on the same port 8101. Reusing 8101 keeps the tailscale serve mapping and the Dock apps working untouched. See the "Test oTree hosting convention" section in `MACMINI_HOSTING.md` for the full standing convention every future test oTree must follow.
+
 ## Template HTML Layout
 The file [`_static/global/html/template.html`](./_static/global/html/template.html) serves as the core visual template for most experimental pages. It is located in the `_static/global/html/` directory of your project. This template demonstrates and defines how all of the pre-defined CSS sections will look and behave, providing a live preview of your main screen layout.
 

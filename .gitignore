@@ -13,3 +13,8 @@ __pycache__/
 .preview_config.json
 previews/*.html
 previews/*.pdf
+
+TODO.md
+
+# Private Mac mini hosting runbook (tunnel IDs, ports, credential env names) — keep local
+MACMINI_HOSTING.md
