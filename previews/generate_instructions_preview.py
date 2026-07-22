@@ -961,7 +961,7 @@ def matrix_table_html(state: dict, table_id: str = "preview-matrix-table") -> st
 
 def wrap_card(
     inner_html: str,
-    header: str = "Instructions",
+    header: str | None = "Instructions",
     *,
     show_controls: bool = True,
     extra_class: str = "",
@@ -976,14 +976,21 @@ def wrap_card(
             '<button type="button" class="next-button preview-nav-next">Next</button>'
             "</div>"
         )
+    # header=None mirrors the live instructing.html: no fixed page title —
+    # each instruction block's own <h2> is the step title.
+    header_html = ""
+    if header is not None:
+        header_html = (
+            '<div class="experimental-header">'
+            f'<h2 class="header-title">{html_module.escape(header)}</h2>'
+            f'<p class="header-text">{header_text}</p>'
+            '</div>'
+        )
     cls = "experimental-screen preview-screen " + extra_class
     return (
         f'<section class="{cls.strip()}" {extra_attrs}>'
         '<div class="screen-card">'
-        '<div class="experimental-header">'
-        f'<h2 class="header-title">{html_module.escape(header)}</h2>'
-        f'<p class="header-text">{header_text}</p>'
-        '</div>'
+        f'{header_html}'
         '<div class="experimental-content">'
         '<div class="instructions">'
         '<div class="instruction-wrapper">'
@@ -1465,9 +1472,8 @@ def build_long_html(
         inner = transform_for_client(b["inner"])
         cls = b.get("classes", "instruction-block")
         block_html = f'<div class="{cls}">{inner}</div>'
-        header_text = "Pre-quiz" if b.get("is_prequiz") else "Instructions"
         transformed.append(
-            wrap_card(block_html, header=header_text, show_controls=True)
+            wrap_card(block_html, header=None, show_controls=True)
         )
 
     transformed.append(
@@ -1553,9 +1559,8 @@ def build_interactive_html(
         inner = transform_for_client(b["inner"])
         cls = b.get("classes", "instruction-block")
         block_html = f'<div class="{cls}">{inner}</div>'
-        header_text = "Pre-quiz" if b.get("is_prequiz") else "Instructions"
         transformed_cards.append(
-            wrap_card(block_html, header=header_text, show_controls=True)
+            wrap_card(block_html, header=None, show_controls=True)
         )
 
     transformed_cards.append(
@@ -1627,9 +1632,8 @@ def build_pdf_html(
         rendered_inner = render_for_pdf(b["inner"], ctx)
         cls = b.get("classes", "instruction-block")
         block_html = f'<div class="{cls}">{rendered_inner}</div>'
-        header_text = "Pre-quiz" if b.get("is_prequiz") else "Instructions"
         rendered_cards.append(
-            wrap_card(block_html, header=header_text, show_controls=True)
+            wrap_card(block_html, header=None, show_controls=True)
         )
 
     rendered_cards.append(

@@ -13,6 +13,15 @@
     }
 })();
 
+// Testing-only helper: the button that calls this is only rendered under
+// settings.DEBUG, and window.quizSolutions is only populated then.
+function skipQuiz() {
+    if (Array.isArray(window.quizSolutions)) {
+        setFormValues(window.quizSolutions);
+    }
+    setValue('redoinstructions', 0);
+}
+
 function redoInstructions() {
     if (Array.isArray(window.quizSolutions)) {
         setFormValues(window.quizSolutions);

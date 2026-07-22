@@ -1,4 +1,5 @@
 from otree.api import *
+from otree import settings as otree_settings
 import json
 from .quiz_items import QUIZ_ITEMS
 
@@ -70,6 +71,8 @@ class instructing(Page):
             'stag_payoff': C.STAG_PAYOFF,
             'hare_payoff': C.HARE_PAYOFF,
             'stag_alone': C.STAG_ALONE,
+            # Testing-only skip button; False whenever OTREE_PRODUCTION is set.
+            'is_debug': otree_settings.DEBUG,
         }
 
 class quiz(Page):
@@ -91,6 +94,11 @@ class quiz(Page):
         # Skip validation entirely when quiz verification is disabled
         if not player.session.config.get('verify_quiz', True):
             return
+        # A participant asking to re-read the instructions is not submitting
+        # answers, so don't validate them (the solutions are not available in
+        # the browser outside DEBUG, so they cannot be auto-filled there).
+        if values.get('redoinstructions'):
+            return
         # Define mapping of quiz fields to their correct answers
         solutions = dict(zip(quiz.quiz_field_names, quiz.quiz_solutions))
         # Check answers
@@ -107,13 +115,20 @@ class quiz(Page):
                 return "One or more quiz answers are wrong."
 
     def vars_for_template(self):
-        solution_pairs = [
-            dict(name=field, value=solution)
-            for field, solution in zip(quiz.quiz_field_names, quiz.quiz_solutions)
-        ]
+        # Solutions reach the browser only under settings.DEBUG (i.e. when
+        # OTREE_PRODUCTION is unset), where they power the testing skip
+        # button. In production nothing is sent.
+        is_debug = otree_settings.DEBUG
+        solution_pairs = []
+        if is_debug:
+            solution_pairs = [
+                dict(name=field, value=solution)
+                for field, solution in zip(quiz.quiz_field_names, quiz.quiz_solutions)
+            ]
         return {
-            'quiz_solutions_json': json.dumps(solution_pairs)
-        }  
+            'quiz_solutions_json': json.dumps(solution_pairs),
+            'is_debug': is_debug,
+        }
 
     def app_after_this_page(player, app_sequence):
         if player.redoinstructions ==0:

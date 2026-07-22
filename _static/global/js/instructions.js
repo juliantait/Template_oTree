@@ -100,7 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (counter) {
                 const total = instructionBlocks.length || 1;
                 const currentNumber = Math.min(current + 1, total);
-                counter.textContent = `Instruction ${currentNumber} of ${total}`;
+                counter.textContent = `Page ${currentNumber} of ${total}`;
                 counter.style.visibility = 'visible';
             }
         }

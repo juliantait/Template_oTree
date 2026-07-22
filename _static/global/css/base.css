@@ -208,3 +208,26 @@ button {
     cursor: not-allowed;
 }
 
+/* Testing-only skip buttons (rendered only when settings.DEBUG). Deliberately
+   muted/dashed so they read as tooling, not part of the experiment UI. */
+.debug-tools {
+    text-align: center;
+}
+
+.skip-button {
+    display: inline-block;
+    border: 1px dashed var(--color-muted);
+    background: transparent;
+    color: var(--color-muted);
+    padding: 8px 16px;
+    font-size: 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: color 0.3s ease, border-color 0.3s ease;
+}
+
+.skip-button:hover {
+    color: var(--color-muted-hover);
+    border-color: var(--color-muted-hover);
+}
+
