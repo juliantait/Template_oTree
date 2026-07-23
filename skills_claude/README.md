@@ -18,3 +18,4 @@ checklists, and short examples.
 
 - [`writing_instructions.md`](./writing_instructions.md) — how to write participant instructions (edit `intro/instructions_text.html`): lead with intuition, no formulas, one vocabulary, frequency framing, factual payment description, DEBUG-gated skips.
 - [`writing_quiz.md`](./writing_quiz.md) — how to write the comprehension quiz (edit `intro/quiz_items.py`): test, never teach; **never quiz on the effect the study measures**; minimal item set; honest distractors.
+- [`writing_welcome_consent.md`](./writing_welcome_consent.md) — how to write the welcome + consent page(s) (edit `before/welcome+consent.html` and `before/__init__.py`): welcome says little; consent is the deliberate exception to "when in doubt, cut" (simplify language, never drop a required element); explicit affirmative consent and a graceful no-consent path back to Prolific; final wording must be checked against the institution's ethics/IRB requirements.
