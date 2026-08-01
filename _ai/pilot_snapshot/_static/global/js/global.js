@@ -1,0 +1,103 @@
+//GLOBAL
+    // Function to log to console
+    function cl(print) {
+      console.log(print)
+    }
+
+    // COOKIES
+      // Function to get the value of a cookie by name
+    function getCookie(name) {
+      let cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+          let cookie = cookies[i].trim();
+          if (cookie.indexOf(name + '=') === 0) {
+              return cookie.substring(name.length + 1);
+          }
+      }
+      return null;
+    }
+
+    // Function to set a cookie
+    function setCookie(name, value, minutes) {
+        let expires = "";
+        if (minutes) {
+            let date = new Date();
+            date.setTime(date.getTime() + (minutes * 60 * 1000));
+            expires = "; expires=" + date.toUTCString();
+        }
+        document.cookie = name + "=" + value + expires + "; path=/";
+    }
+
+    // Function to get the value of all cookies
+    function printCookies() {
+        let cookies = document.cookie;
+        console.log("Cookies: ", cookies); // Prints cookies in browser console
+    }
+
+    // Function to clear all cookies
+    function clearAllCookies() {
+        // Get all cookies
+        const cookies = document.cookie.split(";");
+
+        // Iterate over the cookies and set each one to expire
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i];
+            const equalPos = cookie.indexOf("=");
+            const name = equalPos > -1 ? cookie.substr(0, equalPos) : cookie;
+            // Set the cookie to expire in the past
+            document.cookie = name + "=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
+        }
+    }
+
+    // Helper to set hidden form values
+    function setValue(id, val) {
+        const el = document.getElementById(id);
+        if (el) {
+            el.value = val;
+        }
+    }
+
+    // Submit a form that a script has to auto-fill first (e.g. the skip-quiz
+    // button, or any reread/route-back that must satisfy validation) WITHOUT the
+    // participant ever seeing controls being set. An opaque veil is painted in
+    // front of the whole page in the SAME synchronous task as the fill + submit,
+    // so no intermediate frame is ever rendered: the browser keeps the current
+    // page visible during the navigation round-trip, and by then the veil (added
+    // on top) is all that shows. Use this instead of touching controls then
+    // calling form.submit() directly.
+    function submitFormBehindVeil(form, fill) {
+        if (!form) { return; }
+        if (!document.querySelector('.submit-veil')) {
+            const veil = document.createElement('div');
+            veil.className = 'submit-veil';
+            veil.textContent = 'One moment…';
+            document.body.appendChild(veil);
+        }
+        if (typeof fill === 'function') { fill(); }
+        form.submit();
+    }
+
+    // Allow Enter key to activate the primary forward action (Next/Submit).
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') {
+            return;
+        }
+
+        const targetTag = (event.target.tagName || '').toLowerCase();
+        if (targetTag === 'textarea') {
+            return; // keep multiline entry unaffected
+        }
+
+        // Prefer explicit next button if present (e.g., instructions flow).
+        const nextButton =
+            document.getElementById('nextBtn') ||
+            document.querySelector('button.next-button:not([disabled])') ||
+            document.querySelector('input.next-button[type="submit"]:not([disabled])') ||
+            document.querySelector('.next-button:not([disabled])') ||
+            document.querySelector('input[type="submit"]:not([disabled])');
+
+        if (nextButton) {
+            event.preventDefault();
+            nextButton.click();
+        }
+    });

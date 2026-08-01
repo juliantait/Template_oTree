@@ -12,7 +12,17 @@
     --color-disabled: #cccccc;
     --color-table-header: #f5f5f5;
     --color-table-selected: #e6f7ff;
+    /* focus ring: always visible, tinted to the primary action colour */
+    --color-focus-ring: rgba(0, 140, 186, 0.4);
+
+    /* The reading measure: the width running prose is held to for legibility.
+       Titles and body copy share this measure; controls, tables and widgets
+       are deliberately NOT clamped to it (see notes below). */
+    --reading-measure: 62ch;
 }
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
 
 /* General layout & typography */
 body {
@@ -22,7 +32,7 @@ body {
     font-size: 22px;
     line-height: 1.6;
     margin: 0;
-    padding: 0 0 20px;
+    padding: 0;
 }
 
 .titles {
@@ -44,36 +54,58 @@ strong {
     color: var(--color-accent);
 }
 
-.experimental-screen {
-    padding: 12px 10px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background: var(--color-page-bg);
-    text-align: center;
+/* --- neutralise oTree's page chrome ------------------------------------------
+   oTree wraps every page in <div class="otree-body container">: its theme CSS
+   gives .otree-body a max-width and a top margin, and Bootstrap's .container
+   adds its own width caps and gutters. Together they cap the card width and add
+   a grey band above it. Zero all of it so .experimental-screen below is the only
+   shell that sets widths and gutters. (.otree-body.container out-ranks both
+   single-class originals on specificity, so load order cannot matter.) */
+.otree-body.container {
+    max-width: none;
+    width: 100%;
+    margin-top: 0;
+    padding-left: 0;
+    padding-right: 0;
 }
+.otree-content { margin-top: 0; }
+.otree-title.page-header { margin: 0; }
 
-/* Default-center all text inside experimental screen */
-.experimental-screen,
-.experimental-screen * {
-    text-align: center;
+/* --- page shell -------------------------------------------------------------
+   Fill the viewport so a card that does not need to scroll sits centred BOTH
+   ways, with a comfortable margin around it. min-height (not height) means a
+   card TALLER than the viewport simply grows the page and scrolls downward,
+   fully reachable, never clipped. Roomier top/bottom padding gives the card
+   air. */
+.experimental-screen {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;   /* horizontal centring */
+    align-items: center;       /* vertical centring of a short card */
+    padding: clamp(28px, 4.5vw, 64px) clamp(16px, 3vw, 32px);
+    background: var(--color-page-bg);
 }
 
 .screen-card {
-    width: 75vw;
-    max-width: 1200px;
+    width: 100%;
+    /* Wide card; thin grey side margins on any monitor. Long-form text stays
+       readable because it carries its own reading measure (below). */
+    max-width: min(94vw, 1200px);
+    /* viewport floor so short pages never look stubby; content taller than this
+       simply expands the card and the page scrolls (oTree-template convention) */
     min-height: 75vh;
-    min-width: 320px;
-    margin-inline: auto; /* keep card horizontally centered */
+    margin-inline: auto;
     background: #fff;
     border: 1px solid #e5e7eb;
     border-radius: 12px;
     box-shadow: 0 12px 24px rgba(0, 0, 0, 0.06);
-    padding: 32px 36px;
-    text-align: center;
+    padding: clamp(24px, 3vw, 40px) clamp(20px, 4.5vw, 48px);
     display: flex;
     flex-direction: column;
     gap: 16px;
+    /* Flush-left is the default: running prose narrows to the reading measure
+       and is justified below; the card itself is not centre-aligned. */
+    text-align: left;
 }
 
 .experimental-content {
@@ -82,65 +114,141 @@ strong {
     flex-direction: column;
     gap: 16px;
     flex: 1 1 auto;
-    justify-content: center;
-    align-items: center;
-    margin-block: auto; /* center vertically between header and buttons */
+    justify-content: center;   /* centre the content block vertically in the card */
+    margin-block: auto;
 }
 
 .experimental-header {
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    align-items: center;
+    gap: 12px;
+}
+
+/* --- reading measure --------------------------------------------------------
+   Running prose (titles + body copy) narrows to the reading measure and centres
+   as a column inside the wider card, so titles sit flush-left with the body's
+   left edge. Body copy is justified. Controls, forms, tables and widgets are
+   NOT in these selectors, so they keep the full card (band) width — never
+   clamp a control to the reading measure. */
+.header-title,
+.header-text,
+.section-title,
+.section-header,
+.section-text {
+    width: 100%;
+    max-width: var(--reading-measure);
+    margin-inline: auto;
 }
 
 .header-title {
-    margin: 0 0 12px;
+    margin-block: 0 12px;
     font-size: 35px;
     color: var(--color-heading);
     font-weight: 700;
+    text-align: left;
 }
 
 .header-text {
-    margin: 0;
+    margin-block: 0;
     color: var(--color-text);
 }
 
 .section-header {
-    margin: 24px 0 12px;
+    margin-block: 24px 12px;
     font-size: 20px;
     color: var(--color-heading);
 }
 
 .section-title {
-    margin: 24px 0 12px;
+    margin-block: 24px 12px;
     font-size: 26px;
     font-weight: 700;
     color: var(--color-heading);
+    text-align: left;
 }
 
 .section-text {
-    text-align: center;
-    max-width: 75%;
-    margin: 0 auto;
+    margin-block: 0;
+    text-align: justify;
 }
 
+/* --- reserved height (no-jump pattern) --------------------------------------
+   For anything that appears or disappears while a page is on screen, reserve
+   its box permanently and toggle .is-visible, so nothing below it shifts when
+   it clears. Hide with `visibility` (space kept), NOT `display`/`hidden` (space
+   collapses). Used live by the instructions Page counter (instructions.js
+   toggles the counter's visibility rather than removing it). */
+.reserve-height { visibility: hidden; }
+.reserve-height.is-visible { visibility: visible; }
+
+/* --- submit veil ------------------------------------------------------------
+   Opaque full-page cover dropped the instant a script auto-fills a form and
+   submits it (e.g. the DEBUG skip-quiz control), so the participant never sees
+   controls being set before navigation completes. Matches the page background
+   so it reads as a plain loading frame. quiz.js paints an equivalent overlay
+   inline for the same reason. */
+.submit-veil {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: var(--color-page-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-muted);
+}
+
+/* --- buttons ----------------------------------------------------------------
+   The primary forward button is horizontally centred and pushed to the FOOT of
+   the card (margin-top: auto), so the card's default height is filled: content
+   sits up top, the action near the bottom. */
 .button-row {
     margin-top: auto;
     padding-top: 24px;
     display: flex;
     justify-content: center;
+    align-items: center;
     gap: 12px;
+    flex-wrap: wrap;
 }
 
-/* Form elements */
+button {
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    border-radius: 8px;
+}
+
+.next-button {
+    display: inline-block;
+    border: none;
+    color: white;
+    padding: 15px 32px;
+    font-size: 16px;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    border-radius: 8px;
+    background-color: var(--color-primary);
+    margin: 0;
+}
+
+.next-button:hover {
+    background-color: var(--color-primary-hover);
+}
+
+.next-button:disabled {
+    background-color: var(--color-disabled);
+    cursor: not-allowed;
+}
+
+/* --- forms ------------------------------------------------------------------ */
 form {
     display: flex;
     flex-direction: column;
     align-items: center;
 }
 
-.stacked-form,
 .stacked-form {
     width: 100%;
     max-width: 560px;
@@ -153,7 +261,6 @@ form {
 .stacked-form input[type="text"] {
     width: 100%;
 }
-
 
 .radio-group {
     display: flex;
@@ -177,35 +284,57 @@ input[type="text"] {
     margin-top: 20px;
 }
 
-/* Buttons */
-button {
-    cursor: pointer;
-    transition: background-color 0.3s ease;
-    border-radius: 8px;
+/* --- range sliders: touch-sized, one consistent look ------------------------
+   Generous 30px thumb so the control is comfortably draggable with a thumb on a
+   phone. Hand-rolled so it looks the same on every browser. */
+input[type="range"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 100%;
+    margin: 0;
+    background: transparent;
+    cursor: grab;
+    touch-action: pan-y;
 }
-
-.next-button {
-    display: inline-block;
-    border: none;
-    color: white;
-    padding: 15px 32px;
-    font-size: 16px;
-    text-align: center;
-    text-decoration: none;
-    cursor: pointer;
-    transition: background-color 0.3s ease;
-    border-radius: 8px;
-    background-color: var(--color-primary);
-    margin: 20px 0;
+input[type="range"]:active { cursor: grabbing; }
+input[type="range"]::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--color-border);
 }
-
-.next-button:hover {
-    background-color: var(--color-primary-hover);
+input[type="range"]::-moz-range-track {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--color-border);
 }
+input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 30px;
+    height: 30px;
+    margin-top: -12px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid var(--color-primary);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+input[type="range"]::-moz-range-thumb {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid var(--color-primary);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+}
+input[type="range"]:hover::-webkit-slider-thumb { transform: scale(1.06); }
+input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
 
-.next-button:disabled {
-    background-color: var(--color-disabled);
-    cursor: not-allowed;
+/* --- focus: always visible, never removed (accessibility) ------------------- */
+:focus-visible {
+    outline: 3px solid var(--color-focus-ring);
+    outline-offset: 2px;
+    border-radius: 4px;
 }
 
 /* Testing-only skip buttons (rendered only when settings.DEBUG). Deliberately
@@ -231,3 +360,13 @@ button {
     border-color: var(--color-muted-hover);
 }
 
+/* --- responsive: phone breakpoint ------------------------------------------- */
+@media (max-width: 520px) {
+    .button-row { justify-content: stretch; }
+    .button-row .next-button { flex: 1; text-align: center; }
+}
+
+/* --- respect reduced-motion preference -------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+}

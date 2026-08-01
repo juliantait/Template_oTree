@@ -1,11 +1,21 @@
-/* Instruction pages */
+/* Instruction pager. Class names are load-bearing: _static/global/js/instructions.js
+   pages through .instruction-block and writes #instruction-counter. */
+
+/* The instruction column is a comfortable centred content band — wide enough for
+   worked-example tables/figures to breathe, NOT squeezed to the reading measure.
+   The RUNNING TEXT inside it (heading, paragraphs, lists) then narrows further to
+   the reading measure and centres, so the step title and body copy share one
+   column with a common left edge (title flush-left with that edge, not centred).
+   CENTERING CAVEAT: only running text narrows — the payoff-matrix table and any
+   figures keep their full band width (they are not in the reading-measure
+   selector below). Only this page uses .instructions. */
 .instructions {
-    text-align: center;
     max-width: 800px;
     margin: 0 auto;
     display: flex;
     flex-direction: column;
     gap: 16px;
+    text-align: left;
 }
 
 .instruction-wrapper {
@@ -22,18 +32,37 @@
     display: none;
 }
 
+.instruction-block:first-of-type {
+    display: block;
+}
+
+/* The reading measure: direct-child running text of each block, centred as a
+   column in the band. The table/figures are not direct text children, so they
+   stay full width. */
+.instruction-block > h2,
+.instruction-block > p,
+.instruction-block > ul,
+.instruction-block > ol {
+    max-width: 62ch;
+    margin-inline: auto;
+}
+
+/* Body copy is justified; direct children only. */
+.instruction-block > p,
+.instruction-block > ul,
+.instruction-block > ol {
+    text-align: justify;
+}
+
 /* Each block's own <h2> is the step title (single source of truth in
-   instructions_text.html) — style it like a page title. */
-.instruction-block h2 {
-    margin: 0 0 20px;
+   instructions_text.html). Styled like a page title, left-aligned flush with the
+   text block's left edge (inline margin auto preserves the centred measure). */
+.instruction-block > h2 {
+    margin: 0 auto 20px;
     font-size: 35px;
     font-weight: 700;
     color: var(--color-heading);
-    text-align: center;
-}
-
-.instruction-block:first-of-type {
-    display: block;
+    text-align: left;
 }
 
 .instruction-progress {
@@ -50,4 +79,3 @@
     justify-content: center;
     align-items: center;
 }
-

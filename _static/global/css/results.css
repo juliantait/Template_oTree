@@ -1,4 +1,13 @@
 /* Outro results */
+
+/* Wide tables scroll inside their own container rather than being clamped to the
+   reading measure or forcing the page to scroll sideways (house convention). */
+.table-scroll {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
 .results-table {
     width: 100%;
     max-width: 700px;
