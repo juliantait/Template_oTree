@@ -1,5 +1,5 @@
 {{ block content }}
-<link rel="stylesheet" href="{% static 'global/style.css' %}">
+<link rel="stylesheet" href="{% static 'global/style.css' %}?v={{ session.config.static_version }}">
 
 <div class="experimental-screen">
     <div class="screen-card">
@@ -30,6 +30,7 @@
                         </label>
                     </div>
 
+                    {% if collect_bank_details %}
                     <label for="bank">IBAN Number*</label>
                     <input type="text" id="bank" name="bank" placeholder="Enter IBAN number">
 
@@ -38,6 +39,7 @@
 
                     <label for="bic">BIC (if not NL-)</label>
                     <input type="text" id="bic" name="bic" placeholder="Enter BIC if IBAN is not Dutch">
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -48,19 +50,20 @@
     </div>
 </div>
 
-<script src="{% static 'global/js/global.js' %}"></script>
+<script src="{% static 'global/js/global.js' %}?v={{ session.config.static_version }}"></script>
 
+{% if collect_bank_details %}
 <script>
-    // Disable copy, cut, and paste events on sensitive fields
-    bank.oncopy = function(e) {
-        e.preventDefault();
-    };
-    bank.oncut = function(e) {
-        e.preventDefault();
-    };
-    bank_confirmation.onpaste = function(e) {
-        e.preventDefault();
-    };
+    // Disable copy, cut, and paste events on sensitive fields (guarded: these
+    // inputs only exist when bank details are collected).
+    if (typeof bank !== 'undefined') {
+        bank.oncopy = function(e) { e.preventDefault(); };
+        bank.oncut = function(e) { e.preventDefault(); };
+    }
+    if (typeof bank_confirmation !== 'undefined') {
+        bank_confirmation.onpaste = function(e) { e.preventDefault(); };
+    }
 </script>
+{% endif %}
 
 {{endblock}}

@@ -1,6 +1,6 @@
 {{ block content }}
-<link rel="stylesheet" href="{% static 'global/style.css' %}">
-<script src="{% static 'global/js/global.js' %}"></script>
+<link rel="stylesheet" href="{% static 'global/style.css' %}?v={{ session.config.static_version }}">
+<script src="{% static 'global/js/global.js' %}?v={{ session.config.static_version }}"></script>
 
 <div class="experimental-screen">
     <div class="screen-card">
@@ -14,9 +14,25 @@
         <!-- Main content preview -->
         <div class="experimental-content">
             <!-- Anything in this section is vertically and horizontally centered within the card -->
-            <h3 class="section-title">Section Header</h3>
+            <h3 class="section-title">Section Header
+                <span class="popover-anchor" tabindex="0">?<span class="popover-panel" role="tooltip">This is the anchored popover component — hover or focus the "?" to reveal help without shifting the page.</span></span>
+            </h3>
             <div class="section-text">
                  Use this area for any paragraph text content. Any content in this section will be vertically and horizontally centered within the card.
+            </div>
+
+            <!-- mc-option component: full-card-clickable choice cards. Clicking
+                 anywhere on a card selects it (fixes phone mis-taps); selected
+                 state is pure CSS via :has(:checked). -->
+            <div class="mc-options">
+                <label class="mc-option">
+                    <input type="radio" name="demo_choice" value="a">
+                    <span class="mc-option-body">Option A — tap anywhere on this card</span>
+                </label>
+                <label class="mc-option">
+                    <input type="radio" name="demo_choice" value="b">
+                    <span class="mc-option-body">Option B — the whole card is the hit area</span>
+                </label>
             </div>
         </div>
 

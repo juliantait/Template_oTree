@@ -1,0 +1,36 @@
+{{ block content }}
+<link rel="stylesheet" href="{% static 'global/style.css' %}?v={{ session.config.static_version }}">
+
+<div class="experimental-screen">
+    <div class="screen-card welcome-card">
+        <div class="experimental-header">
+            <h2 class="header-title">Before you begin</h2>
+        </div>
+        <div class="experimental-content">
+            <div class="section-text">
+                The next part measures your own judgement. Please keep this study
+                tab active and in focus for the whole task. Do <strong>not</strong>
+                switch to other tabs, windows, or apps (including AI assistants).
+            </div>
+            <div class="section-text">
+                If the study tab becomes inactive, you will see a warning. Repeated
+                inactivity will end your participation. By continuing you agree to
+                keep the study tab in focus until the task is complete.
+            </div>
+        </div>
+
+        <div class="button-row">
+            <input type="submit" value="I agree — begin" class="next-button">
+        </div>
+    </div>
+</div>
+
+<script src="{% static 'global/js/global.js' %}?v={{ session.config.static_version }}"></script>
+<script>
+    // Arm the monitor on agreement (see ai_safety_monitor.js).
+    document.querySelector('input[type="submit"]').addEventListener('click', function () {
+        try { sessionStorage.setItem('aiSafetyAgreed', '1'); } catch (e) {}
+    });
+</script>
+
+{{ endblock }}

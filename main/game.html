@@ -1,5 +1,5 @@
-{{block content}}
-<link rel="stylesheet" href="{% static 'global/style.css' %}">
+{{ block content }}
+<link rel="stylesheet" href="{% static 'global/style.css' %}?v={{ session.config.static_version }}">
 
 <div class="experimental-screen">
     <div class="screen-card">
@@ -11,12 +11,37 @@
                 Here's your game. Press Next to generate your payoff!
             </div>
         </div>
+
+        {% if passive_capture %}
+        <!-- Passive measurement rides on THIS page's own form (no side request).
+             Empty if JS is disabled/blocked — the server tolerates that. -->
+        <input type="hidden" name="client_ms" id="client_ms" value="">
+        {% endif %}
+
         <div class="button-row">
             <input type="submit" value="Next" class="next-button">
         </div>
     </div>
 </div>
 
-<script src="{% static 'global/js/global.js' %}"></script>
+<script src="{% static 'global/js/global.js' %}?v={{ session.config.static_version }}"></script>
 
-{{endblock}}
+{% if passive_capture %}
+<script>
+    // Time on page, in ms, written into the hidden field just before submit.
+    (function () {
+        var t0 = Date.now();
+        var el = document.getElementById('client_ms');
+        document.addEventListener('submit', function () {
+            if (el) el.value = String(Date.now() - t0);
+        }, true);
+    })();
+</script>
+{% endif %}
+
+{% if tab_monitor %}
+<script>window.AI_SAFETY_CONFIG = js_vars.AI_SAFETY_CONFIG;</script>
+<script src="{% static 'global/js/ai_safety_monitor.js' %}?v={{ session.config.static_version }}"></script>
+{% endif %}
+
+{{ endblock }}

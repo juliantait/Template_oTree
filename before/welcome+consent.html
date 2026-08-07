@@ -1,8 +1,8 @@
-{{ block content }} 
-<link rel="stylesheet" href="{% static 'global/style.css' %}">
+{{ block content }}
+<link rel="stylesheet" href="{% static 'global/style.css' %}?v={{ session.config.static_version }}">
 
 <div class="experimental-screen">
-    <div class="screen-card">
+    <div class="screen-card welcome-card">
         <div class="experimental-header">
             {% include '_static/global/html/welcome_header.html' %}
         </div>
@@ -10,21 +10,53 @@
             <div class="section-text">
                 You are taking part in an experiment at CREED.
                 <br><br>
-                All recorded data will be stored anonymous and used solely for research purposes by researchers at the University of Amsterdam. Your IBAN will only be used to pay you and then deleted. If you have any questions at any time, please address the lab researcher.
-                <br>
-                <strong>By continuing to the next page you consent</strong> to recording your experimental data.
+                All recorded data will be stored anonymously and used solely for
+                research purposes by researchers at the University of Amsterdam.
+                Your bank details, if collected, are only used to pay you and are
+                then deleted. If you have any questions at any time, please
+                address the researcher.
             </div>
+
+            {% if capture_participant_id %}
+            <div class="section-text">
+                {% formfield player.participant_id_external %}
+            </div>
+            {% endif %}
+
+            {% if completion_redirects %}
+            <!-- Explicit consent + no-consent routing (online). -->
+            <div class="section-text">
+                {% formfield player.consent %}
+            </div>
+            {% else %}
+            <div class="section-text">
+                <strong>By continuing to the next page you consent</strong> to
+                recording your experimental data.
+            </div>
+            {% endif %}
         </div>
-        
+
         <div class="button-row">
             <input type="submit" value="Next" class="next-button">
         </div>
 
         {% include '_static/global/html/logo_section.html' %}
-        
     </div>
 </div>
 
-<script src="{% static 'global/js/global.js' %}"></script>
+<!-- is_mobile / device_info_json are hidden fields filled by JS below; they are
+     only in the form when the capture modules are enabled, so these inputs are
+     rendered only then. -->
+{% if capture_participant_id or device_capture %}
+<input type="hidden" name="is_mobile" id="is_mobile" value="False">
+{% endif %}
+{% if device_capture %}
+<input type="hidden" name="device_info_json" id="device_info_json" value="">
+{% endif %}
+
+<script src="{% static 'global/js/global.js' %}?v={{ session.config.static_version }}"></script>
+{% if capture_participant_id or device_capture %}
+<script src="{% static 'global/js/device_capture.js' %}?v={{ session.config.static_version }}"></script>
+{% endif %}
 
 {{ endblock }}

@@ -370,3 +370,159 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
 @media (prefers-reduced-motion: reduce) {
     * { transition: none !important; animation: none !important; }
 }
+
+/* ============================================================================
+   DESIGN SYSTEM — shared components
+   ----------------------------------------------------------------------------
+   CASCADE PRINCIPLE: the rules that make screens consistent live HERE, centrally.
+   A page may override them, but only as a deliberate rule in that page's own CSS
+   carrying an "EXCEPTION:" comment that says why (e.g. an EXCEPTION comment on the
+   task screen that lifts the chart cap), never by quietly duplicating a value. If
+   you find yourself copying a rule, move it here instead. Read this file
+   top-to-bottom before adding a page override.
+   ============================================================================ */
+
+/* --- remove the "powered by oTree" badge ------------------------------------
+   The oTree licence (AGPL) is satisfied by CITING THE OTREE PAPER
+   (Chen, Schonger & Wickens, 2016, J. Behav. Exp. Finance) in any write-up,
+   NOT by displaying the badge. We cite the paper (see README) and hide the
+   badge so it never appears to participants. */
+.powered-by-otree { display: none !important; }
+
+/* --- three-section card anatomy ---------------------------------------------
+   Every screen card is one of three stacked regions, in this order:
+     .experimental-header  — title + intro line (top)
+     .experimental-content — the substance, vertically centred, grows to fill
+     .button-row           — the single forward action, centred at the FOOT
+   These already exist above; the aliases below let a card name its regions
+   explicitly when the semantic classes don't fit. Same flex behaviour. */
+.card-top    { display: flex; flex-direction: column; gap: 12px; }
+.card-body   { flex: 1 1 auto; display: flex; flex-direction: column;
+               gap: 16px; justify-content: center; }
+.card-foot   { margin-top: auto; padding-top: 24px; }
+
+/* --- mc-option: a full-card-clickable multiple-choice option ----------------
+   A radio/checkbox option whose ENTIRE card is a tap target. On phones a bare
+   radio is a tiny hit area and mis-taps are common; here the wrapping <label>
+   fills the card, and a stretched ::after overlay guarantees a tap anywhere on
+   the card toggles the control. The visible selected state uses :has(:checked),
+   so no JS is needed.
+
+   Markup:
+     <label class="mc-option">
+       <input type="radio" name="q1" value="a">
+       <span class="mc-option-body">Option A text</span>
+     </label>
+*/
+.mc-options {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    max-width: 560px;   /* a control band, NOT the reading measure */
+    margin-inline: auto;
+}
+.mc-option {
+    position: relative;          /* anchor for the full-card overlay */
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px 18px;
+    border: 2px solid var(--color-border);
+    border-radius: 10px;
+    background: var(--color-background);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+.mc-option:hover { border-color: var(--color-primary); }
+.mc-option input[type="radio"],
+.mc-option input[type="checkbox"] {
+    margin-top: 4px;
+    width: 20px;
+    height: 20px;
+    flex: 0 0 auto;
+    accent-color: var(--color-primary);
+}
+.mc-option-body { flex: 1 1 auto; }
+/* Full-card click overlay: stretches the label's clickable area across the whole
+   card so a tap anywhere selects the control (fixes phone mis-taps). It sits
+   above the card background but below the actual input, so the native control
+   still works and keyboard focus is unaffected. */
+.mc-option::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+}
+.mc-option input { position: relative; z-index: 1; }
+/* Selected state (no JS): tint and accent-border the chosen card. */
+.mc-option:has(input:checked) {
+    border-color: var(--color-primary);
+    background: var(--color-table-selected);
+    box-shadow: 0 0 0 1px var(--color-primary) inset;
+}
+/* Keyboard focus lands on the input; lift the focus ring to the whole card. */
+.mc-option:has(input:focus-visible) {
+    outline: 3px solid var(--color-focus-ring);
+    outline-offset: 2px;
+}
+
+/* --- anchored popover -------------------------------------------------------
+   A small help panel anchored to a trigger (e.g. a "?"), shown on hover/focus.
+   CSS-only; the panel is positioned relative to .popover-anchor and reserves no
+   layout space (absolute), so it never shifts the page.
+
+   Markup:
+     <span class="popover-anchor" tabindex="0">?
+       <span class="popover-panel" role="tooltip">Explanatory text…</span>
+     </span>
+*/
+.popover-anchor {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.4em;
+    height: 1.4em;
+    border-radius: 50%;
+    border: 1px solid var(--color-border);
+    color: var(--color-primary);
+    font-size: 0.8em;
+    cursor: help;
+    user-select: none;
+}
+.popover-panel {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: 280px;
+    padding: 10px 12px;
+    background: var(--color-heading);
+    color: #fff;
+    font-size: 14px;
+    line-height: 1.4;
+    border-radius: 8px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+    text-align: left;
+    opacity: 0;
+    visibility: hidden;             /* reserve nothing; no page shift */
+    transition: opacity 0.12s ease;
+    z-index: 50;
+}
+.popover-panel::after {            /* little arrow */
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: var(--color-heading);
+}
+.popover-anchor:hover .popover-panel,
+.popover-anchor:focus .popover-panel,
+.popover-anchor:focus-within .popover-panel {
+    opacity: 1;
+    visibility: visible;
+}
