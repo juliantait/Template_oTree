@@ -1,6 +1,6 @@
 {% block content %}
-<link rel="stylesheet" href="{% static 'global/style.css' %}">
-<script src="{% static 'global/js/global.js' %}"></script>
+<link rel="stylesheet" href="{% static 'global/style.css' %}?v={{ session.config.static_version }}">
+<script src="{% static 'global/js/global.js' %}?v={{ session.config.static_version }}"></script>
 
 
 <div class="experimental-screen">
@@ -30,6 +30,17 @@
                 {% endif %}
                 <b>Thank you for taking part!</b>
             </div>
+
+            {% if completion_redirects %}
+            <div class="section-text">
+                Please click the button below to complete the study and return to Prolific.
+            </div>
+            <div class="button-row">
+                <button type="button" class="next-button" onclick="backToProlific()">
+                    Back to Prolific
+                </button>
+            </div>
+            {% endif %}
 
             <div class="results-section">
                 <button
@@ -73,6 +84,9 @@
 </div>
 
 <script>
+    function backToProlific() {
+        window.location.href = js_vars.completionlink;
+    }
     window.onload = function() {
         clearAllCookies()
 

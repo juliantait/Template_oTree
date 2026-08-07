@@ -1,6 +1,40 @@
 from otree.api import *
 import numbers, json
+import common
 from .payment_rule import select_random_payouts
+
+PROLIFIC_COMPLETE_URL = "https://app.prolific.com/submissions/complete?cc="
+
+
+def _flag(player, name):
+    return bool(player.session.config.get(name))
+
+
+def is_disqualified(player) -> bool:
+    """True if the participant was removed by an integrity module."""
+    v = player.participant.vars
+    return bool(v.get('comprehension_disqualified') or v.get('ai_safety_disqualified'))
+
+
+def declined_consent(player) -> bool:
+    return player.participant.vars.get('exit_code') == common.EXIT_CODES['no_consent']
+
+
+def is_completer(player) -> bool:
+    """A participant who should walk the normal ending (task + payment)."""
+    return not (is_disqualified(player) or declined_consent(player))
+
+
+def completion_link(player) -> str:
+    """Build the Prolific completion URL for this participant's outcome."""
+    cfg = player.session.config
+    if is_disqualified(player):
+        code = cfg.get('dq_code')
+    elif declined_consent(player):
+        code = cfg.get('noconsent_code')
+    else:
+        code = cfg.get('cc_code')
+    return PROLIFIC_COMPLETE_URL + str(code)
 
 doc = """
 Outro.
@@ -39,6 +73,9 @@ class Player(BasePlayer):
     all_round_payoffs = models.LongStringField(blank=True)
     quiz_bonus_awarded = models.FloatField(initial=0)
     sepa = models.IntegerField(initial=1)
+    # Spare columns (future-proofing) — never rename in place; see CODEBOOK.md.
+    spare_str_1 = models.LongStringField(blank=True)
+    spare_str_2 = models.LongStringField(blank=True)
 
 # FUNCTIONS
 # Function to check SEPA code
@@ -89,29 +126,74 @@ def extract_round_payoffs(payoffs_vector, missing_values):
     return round_payoffs
 
 # PAGES
-    
+
+class Ended(Page):
+    """Finish screen for participants who did NOT complete normally.
+
+    Shown only to disqualified or non-consenting participants. When completion
+    redirects are on it sends them back to Prolific with the matching code.
+    """
+    template_name = 'outro/Ended.html'
+
+    @staticmethod
+    def is_displayed(player):
+        return not is_completer(player)
+
+    @staticmethod
+    def js_vars(player):
+        return dict(completionlink=completion_link(player))
+
+    @staticmethod
+    def vars_for_template(player):
+        return dict(
+            reason=('disqualified' if is_disqualified(player)
+                    else 'no_consent' if declined_consent(player) else 'other'),
+            completion_redirects=_flag(player, 'completion_redirects'),
+        )
+
+
 class Demographics(Page):
     form_model = 'player'
-    form_fields = ['age', 'gender','bank','bank_confirmation','bic']
+
+    @staticmethod
+    def is_displayed(player):
+        return is_completer(player)
+
+    @staticmethod
+    def get_form_fields(player):
+        fields = ['age', 'gender']
+        # Bank / SEPA collection is the lab payment model; Prolific pays through
+        # the platform, so these fields only appear when collect_bank_details is on.
+        if _flag(player, 'collect_bank_details'):
+            fields += ['bank', 'bank_confirmation', 'bic']
+        return fields
+
+    @staticmethod
+    def vars_for_template(player):
+        return dict(collect_bank_details=_flag(player, 'collect_bank_details'))
 
     def error_message(player, values):
         missing_fields = []
-        if not values['gender']:
+        if not values.get('gender'):
             missing_fields.append('gender')
-        if not values['bank']:
-            missing_fields.append('bank')
-        if not values['bank_confirmation']:
-            missing_fields.append('bank_confirmation')
-        if not values['age']:
+        if not values.get('age'):
             missing_fields.append('age')
+        if player.session.config.get('collect_bank_details'):
+            if not values.get('bank'):
+                missing_fields.append('bank')
+            if not values.get('bank_confirmation'):
+                missing_fields.append('bank_confirmation')
+            if missing_fields:
+                return "Please answer all questions with an asterisk (*)."
+            if values['bank'] != values['bank_confirmation']:
+                return "Your bank numbers don't match. Please doublecheck them."
         if missing_fields:
-            return "Please answer all questions with an asterix (*)."
-        if values['bank'] != values['bank_confirmation']:
-            return "Your bank numbers don't match. Please doublecheck them."
+            return "Please answer all questions with an asterisk (*)."
 
     def before_next_page(p, timeout_happened):
-        # CHECK IF THE PARTICIPANT'S BANK ACCOUNT IS IN SEPA ======================================
-        check_sepa_code(p)
+        # CHECK IF THE PARTICIPANT'S BANK ACCOUNT IS IN SEPA (lab payment only) ===
+        if p.session.config.get('collect_bank_details') and p.bank:
+            check_sepa_code(p)
 
         # DETERMINE EXPERIMENTAL PAYOFF ========================================================
         # List of values that indicate missing payoff values in the participant's payoff vector. Edit this list if you are using different codes for "no payoff" in your data.
@@ -120,7 +202,8 @@ class Demographics(Page):
             -111, 
             -999]
         # Extract RANDOM selected payoffs from the participant's payoff vector as ordered tuples (round_number, payoff)
-        payoffs_vector = getattr(p.participant, 'payoff_vector', [])
+        # Read participant vars with .vars.get(), never getattr() (KeyError trap; see conventions.md).
+        payoffs_vector = p.participant.vars.get('payoff_vector', []) or []
         round_payoffs = extract_round_payoffs(payoffs_vector, missing_payoff_values)
         num_rewarded = p.session.config['num_rewarded']
         payouts = select_random_payouts(round_payoffs, num_rewarded)
@@ -128,10 +211,8 @@ class Demographics(Page):
         # Calculate the experiment payoff from i) the selected payoffs, ii) the quiz bonus and iii) the showup fee
         p.selected_sum = sum(float(pay) for _, pay in payouts)
         # Quiz bonus awarded only if no failed attempts and quiz_bonus is positive
-        try:
-            participant_failed_attempts = p.participant.failed_attempts
-        except KeyError:
-            participant_failed_attempts = 0
+        # (.vars.get() rather than getattr()/attribute access — KeyError trap.)
+        participant_failed_attempts = p.participant.vars.get('failed_attempts', 0) or 0
         quiz_bonus = p.session.config['quiz_bonus']
         quiz_bonus_awarded = quiz_bonus if (participant_failed_attempts == 0 and quiz_bonus > 0) else 0
         p.quiz_bonus_awarded = quiz_bonus_awarded
@@ -141,7 +222,22 @@ class Demographics(Page):
         p.all_round_payoffs = json.dumps(round_payoffs)
 
 class Results(Page):
+
+    @staticmethod
+    def is_displayed(player):
+        return is_completer(player)
+
+    @staticmethod
+    def js_vars(player):
+        # Completion redirect (Prolific): the participant clicks a button that
+        # sends them to this URL. Built server-side so the code is authoritative.
+        return dict(completionlink=completion_link(player))
+
     def vars_for_template(self):
+        # Reaching this page IS completion: record the clean outcome. Idempotent,
+        # so re-rendering never corrupts it.
+        common.set_exit_code(self.participant, common.EXIT_CODES['finished'])
+        common.stamp_stage(self.participant, 'finished')
         # Convert the selected payoffs to a JSON string to view as table in Results.html
         try:
             payouts = json.loads(self.payouts) if self.payouts else []
@@ -170,6 +266,7 @@ class Results(Page):
             'payouts': payouts,
             'payout_rows': payout_rows,
             'num_rewarded': self.session.config['num_rewarded'],
+            'completion_redirects': bool(self.session.config.get('completion_redirects')),
         }
 
-page_sequence = [Demographics, Results]
+page_sequence = [Ended, Demographics, Results]

@@ -1,5 +1,5 @@
-{{block content}}
-<link rel="stylesheet" href="{% static 'global/style.css' %}">
+{{ block content }}
+<link rel="stylesheet" href="{% static 'global/style.css' %}?v={{ session.config.static_version }}">
 
 <div class="experimental-screen">
     <div class="screen-card">
@@ -17,9 +17,14 @@
     </div>
 </div>
 
-<script src="{% static 'global/js/global.js' %}"></script>
+<script src="{% static 'global/js/global.js' %}?v={{ session.config.static_version }}"></script>
 <script>
     window.addEventListener('load', clearAllCookies);
 </script>
 
-{{endblock}}
+{% if tab_monitor %}
+<script>window.AI_SAFETY_CONFIG = js_vars.AI_SAFETY_CONFIG;</script>
+<script src="{% static 'global/js/ai_safety_monitor.js' %}?v={{ session.config.static_version }}"></script>
+{% endif %}
+
+{{ endblock }}

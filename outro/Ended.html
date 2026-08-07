@@ -1,0 +1,45 @@
+{% block content %}
+<link rel="stylesheet" href="{% static 'global/style.css' %}?v={{ session.config.static_version }}">
+<script src="{% static 'global/js/global.js' %}?v={{ session.config.static_version }}"></script>
+
+<div class="experimental-screen">
+    <div class="screen-card welcome-card">
+        <div class="experimental-header">
+            <h2 class="header-title">Your participation has ended</h2>
+        </div>
+        <div class="experimental-content">
+            <div class="section-text">
+                {% if reason == 'no_consent' %}
+                    You chose not to take part. Thank you for your time.
+                {% elif reason == 'disqualified' %}
+                    Unfortunately your participation cannot continue, so the study
+                    has ended for you. Thank you for your time.
+                {% else %}
+                    The study has ended for you. Thank you for your time.
+                {% endif %}
+            </div>
+
+            {% if completion_redirects %}
+            <div class="section-text">
+                Please click the button below to return to Prolific.
+            </div>
+            <div class="button-row">
+                <button type="button" class="next-button" onclick="backToProlific()">
+                    Back to Prolific
+                </button>
+            </div>
+            {% endif %}
+        </div>
+
+        {% include '_static/global/html/logo_section.html' %}
+    </div>
+</div>
+
+<script>
+    function backToProlific() {
+        window.location.href = js_vars.completionlink;
+    }
+    window.addEventListener('load', clearAllCookies);
+</script>
+
+{% endblock %}

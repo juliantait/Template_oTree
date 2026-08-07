@@ -1,7 +1,7 @@
 {{ block content }}
 
 <!-- ONLY MODIFY QUESTIONS IN __init__.py -->
-<link rel="stylesheet" href="{% static 'global/style.css' %}">
+<link rel="stylesheet" href="{% static 'global/style.css' %}?v={{ session.config.static_version }}">
 
 <div class="experimental-screen">
     <div class="screen-card">
@@ -55,7 +55,7 @@
     {{ quiz_solutions_json|safe }}
 </script>
 {{ endif }}
-<script src="{% static 'global/js/quiz.js' %}"></script>
-<script src="{% static 'global/js/global.js' %}"></script>
+<script src="{% static 'global/js/quiz.js' %}?v={{ session.config.static_version }}"></script>
+<script src="{% static 'global/js/global.js' %}?v={{ session.config.static_version }}"></script>
 
 {{ endblock }}

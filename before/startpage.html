@@ -1,5 +1,5 @@
 {{ block content }} 
-<link rel="stylesheet" href="{% static 'global/style.css' %}">
+<link rel="stylesheet" href="{% static 'global/style.css' %}?v={{ session.config.static_version }}">
 
 <div class="experimental-screen">
     <div class="screen-card">
@@ -22,7 +22,7 @@
     </div>
 </div>
 
-<script src="{% static 'global/js/global.js' %}"></script>
+<script src="{% static 'global/js/global.js' %}?v={{ session.config.static_version }}"></script>
 
 {{ endblock }}
 
