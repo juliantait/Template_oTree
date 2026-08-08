@@ -6,15 +6,18 @@ generate_instructions_preview.py
 Generate self-contained preview outputs for the Instructions section of this
 oTree experiment template.
 
-Outputs (in previews/):
+This script lives in intro/ because it previews the intro app's instructions.
+It locates the project root via __file__ (parent.parent), so it can be run from
+anywhere. Outputs are written to a gitignored previews/ dir at the project root,
+recreated on demand:
     - instructions_preview_long.html         all blocks stacked vertically
     - instructions_preview_interactive.html  one block at a time with nav
     - instructions_preview.pdf               long view, variables as literals
 
-Usage:
-    python3 generate_instructions_preview.py                    # opens tkinter popup
-    python3 generate_instructions_preview.py --no-popup         # write template JSON
-    python3 generate_instructions_preview.py --config FILE.json # read values from JSON
+Usage (from the project root):
+    python3 intro/generate_instructions_preview.py                    # opens tkinter popup
+    python3 intro/generate_instructions_preview.py --no-popup         # write template JSON
+    python3 intro/generate_instructions_preview.py --config FILE.json # read values from JSON
 
 Fallback behaviour: if tkinter cannot be imported, --no-popup is passed, or DISPLAY
 is empty, the script either (a) reuses .preview_state.json if it already contains

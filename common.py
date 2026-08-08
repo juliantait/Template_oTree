@@ -2,6 +2,10 @@
 
 Import as ``import common``. Keeping these here (not inside any one app) means
 every app reads participant state and records outcomes the same way.
+
+This file MUST stay at the project root. All four apps do a top-level
+``import common``, and oTree puts the project root on ``sys.path``; moving it into
+a subfolder (e.g. scripts/) would break that import for every app.
 """
 import time
 

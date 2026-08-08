@@ -9,11 +9,15 @@ __pycache__/
 *.bak
 *.log
 
-# Instructions preview generator: runtime state and generated outputs
+# Instructions preview generator (intro/generate_instructions_preview.py):
+# runtime state and generated outputs — regenerable, never tracked. Running the
+# generator recreates a gitignored previews/ output dir for its HTML/PDF/SUMMARY.
 .preview_state.json
 .preview_config.json
-previews/*.html
-previews/*.pdf
+/previews/
+
+# Agent scaffolding (pilot snapshots, performance reviews) — never synced
+_ai/
 
 TODO.md
 

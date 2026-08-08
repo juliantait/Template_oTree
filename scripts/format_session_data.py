@@ -12,7 +12,7 @@ Paths and the optional email recipient are configurable via CLI args or
 environment variables. Nothing personal is hardcoded.
 
 Usage:
-    format_session_data.py <input.csv> <session_number> [--out <dir>]
+    scripts/format_session_data.py <input.csv> <session_number> [--out <dir>]
 
 Environment variables (optional):
     SESSION_DATA_OUT     base output directory (default: ./session_data)
