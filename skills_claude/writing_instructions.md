@@ -29,7 +29,7 @@ sentence survives only because it "might help someone", delete it.
   work in this file and in the preview generator. See the comment header of
   `instructions_text.html` for the markup conventions. Beware: oTree parses template tags
   **even inside HTML comments** — write `{ {` with a space in comments.
-- `previews/generate_instructions_preview.py` — regenerate previews after editing so
+- `intro/generate_instructions_preview.py` — regenerate previews after editing so
   coauthors can review.
 - DEBUG-gated skip: `intro/templates/instructing.html` already renders a
   "Skip instructions (testing)" button only when `settings.DEBUG` is on
@@ -131,4 +131,4 @@ example to be rendered from live randomness.
 - [ ] Bold used only on load-bearing phrases.
 - [ ] Real interactive controls available to try pre-task.
 - [ ] DEBUG-gated skip present and hidden in production (`OTREE_PRODUCTION` set → no skip button).
-- [ ] Previews regenerated via `previews/generate_instructions_preview.py`.
+- [ ] Previews regenerated via `intro/generate_instructions_preview.py`.

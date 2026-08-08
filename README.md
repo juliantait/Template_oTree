@@ -7,6 +7,25 @@
 - main (experimental game; optional tab monitor + passive capture)
 - outro (endings: normal / disqualified / no-consent; demographics + payment)
 
+## Repository layout
+The project root holds the four oTree apps plus a small set of top-level items:
+
+| Item | What it's for |
+| --- | --- |
+| `before/` `intro/` `main/` `outro/` | the four oTree apps, run in this order (see App Timeline). `intro/` also holds `generate_instructions_preview.py`. |
+| `_static/` | shared CSS/JS/HTML/images (the design system and `template.html`). |
+| `scripts/` | operational scripts: `start.sh`, `prelaunch_check.py`, `export_data.py`, `format_session_data.py`, `set_up_otree.bat`. |
+| `tests/` | HTTP-driven flow tests (see "Testing"). |
+| `prolific/` | Prolific operational guide (`Prolific_running.md`). |
+| `skills_claude/` | authoring playbooks (e.g. writing instructions). |
+| `settings.py` | oTree settings: session configs, recruitment profiles, feature flags, completion codes. |
+| `common.py` | shared, oTree-free helpers — **must stay at the project root** (every app does `import common`). |
+| `README.md` `conventions.md` `CODEBOOK.md` `TODO.md` | project docs: overview, design principles, field/exit-code reference, and pending work. |
+| `MACMINI_HOSTING.md` | private Mac mini hosting runbook (gitignored — kept local). |
+| dotfiles | `.gitignore`, `.gitattributes`, etc. |
+
+Not tracked in git: `_ai/` (agent scaffolding — pilot snapshots, performance reviews), `previews/` (regenerable instruction previews), the SQLite DB, `__pycache__`, and OS cruft.
+
 ## Running the template
 It runs out of the box with no setup: `otree devserver` uses a local SQLite file
 (no Postgres needed unless you set `DB_NAME`), and dev admin credentials default
@@ -46,7 +65,7 @@ column is documented in **`CODEBOOK.md`** (including the repurpose convention fo
 spares: never rename in place).
 
 ## Collaborating on the instructions flow with others?
-You can share the instructions with coauthors who don't have the codebase installed. Run `previews/generate_instructions_preview.py` to produce three self-contained files in `previews/`: a long stacked HTML (every block on one page), an interactive single-page HTML (one block at a time, with a floating treatment switcher), and a PDF rendition. All three are fully self-contained — no external dependencies, no internet — so you can email them or drop them into a doc and they'll render the same anywhere. The interactive HTML lets coauthors click through the instructions exactly as participants would and flip between treatments live via the corner buttons; the PDF is good for printing or marking up on paper.
+You can share the instructions with coauthors who don't have the codebase installed. The generator lives in the intro app it previews: run `python3 intro/generate_instructions_preview.py` (from the project root) to produce three self-contained files in a gitignored `previews/` output dir it creates on demand: a long stacked HTML (every block on one page), an interactive single-page HTML (one block at a time, with a floating treatment switcher), and a PDF rendition. All three are fully self-contained — no external dependencies, no internet — so you can email them or drop them into a doc and they'll render the same anywhere. The interactive HTML lets coauthors click through the instructions exactly as participants would and flip between treatments live via the corner buttons; the PDF is good for printing or marking up on paper. The generated files are regenerable and never tracked in git.
 
 ## Pages by app (edit guidance)
 - before
@@ -75,11 +94,17 @@ You can share the instructions with coauthors who don't have the codebase instal
   an authenticated admin HTTP session. NB: exporting against a database whose
   schema predates the running code returns HTTP 500 — the script says so
   explicitly instead of writing a truncated file.
+- `scripts/format_session_data.py` : turns raw SENSITIVE data into i) csv for
+  payment, ii) csv with anonymised experiment data, and iii) optionally a draft
+  email with the anonymised file attached (recipient configurable via `--email`
+  or `$SESSION_DATA_EMAIL`).
+- `scripts/set_up_otree.bat` : starts oTree on the experimenter's Windows PC in
+  the lab.
 - `tests/` : HTTP-driven flow tests (see "Testing" below).
 
-## Other Files
-- set_up_otree.bat : program to start oTree on the experimenter's PC in the lab
-- format_session_data.py : program to turn raw SENSITIVE data into i) csv for payment, ii) csv with anonymised experiment data, and iii) optionally draft an email with the anonymised file attached (recipient configurable via `--email` or `$SESSION_DATA_EMAIL`)
+> **`common.py` stays at the project root** — it is *not* in `scripts/`. All four
+> apps do a top-level `import common`, and oTree puts the project root (not
+> `scripts/`) on `sys.path`, so moving it would break every app's import.
 
 ## Testing
 Bots alone are not sufficient here: several pages rely on JavaScript-produced
@@ -97,9 +122,29 @@ open-source platform for laboratory, online, and field experiments. *Journal of
 Behavioral and Experimental Finance*, 9, 88–97.
 
 ## Running online on Prolific
-All Prolific / online-deployment material lives in the `prolific/` folder.
-- `prolific/Prolific_running.md`: the full implementation guide for converting this lab template to run online on Prolific. It covers the different finish screens (routing participants to the correct ending and completion code) and the tab-switch / AI-safety monitor.
-- `prolific/tab-switch monitor.txt`: the client-side tab-switch monitor source referenced by that guide.
+Prolific support is **built in** — there is no manual wiring to do. Select the
+`prolific` recruitment profile (set `recruitment='prolific'` on your session
+config, as the shipped `prolific` config does) and the profile resolves the
+relevant feature flags into explicit config keys at import (see the "Parameter
+scheme" section and `settings.py`). That bundle turns on:
+
+- **`capture_participant_id`** — captures the external Prolific participant ID at
+  entry (stored in the `participant_id_external` field).
+- **`completion_redirects`** — routes each ending to Prolific with the matching
+  completion code: normal completion, declined consent (no-consent), and
+  disqualification (comprehension / tab monitor), plus screen-out / inactivity.
+- the **integrity modules** — `tab_monitor`, `comprehension_dq`, plus
+  `passive_capture` and `device_capture`.
+
+**Completion codes** are config values, set in `settings.py`: the
+`SESSION_CONFIG_DEFAULTS` placeholders `cc_code` (normal), `noconsent_code`
+(declined consent), `dq_code` (disqualified) and `error_code` (screen-out /
+inactivity) — replace the `REPLACE_*` values, or override them per-config on your
+`prolific` session config. The prelaunch check refuses to run online while any
+code is still a `REPLACE_*` placeholder.
+
+For the operational walkthrough — creating the Prolific study, wiring the URLs,
+and the finish-screen routing in practice — see **`prolific/Prolific_running.md`**.
 
 ## Hosting an oTree experiment online (Mac mini)
 See `MACMINI_HOSTING.md` for the full self-contained guide: how the Mac mini serves an oTree experiment (Docker container + Cloudflare Tunnel subdomain), the problems we hit and how we solved them, and a step-by-step recipe to deploy a brand-new experiment. That file is gitignored (it holds private infra details) so it stays local only.
