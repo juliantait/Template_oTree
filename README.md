@@ -14,6 +14,12 @@ to `admin`/`admin`. Set real values via env in production (`OTREE_ADMIN_USERNAME
 `OTREE_ADMIN_PASSWORD`, `OTREE_SECRET_KEY`, `DB_*`). `DEBUG` is derived by oTree
 from `OTREE_PRODUCTION` — never hardcode it.
 
+## How to use and edit this template
+- Instructions content: edit `intro/instructions_text.html`. Each `<div class="instruction-block">` is shown as one page to participants. Add, edit, or reorder blocks there to change the instruction pages.
+- Quiz questions: edit `intro/quiz_items.py`. Define `QUIZ_ITEMS` entries with `field`, `prompt`, `choices`, and `answer`. The intro quiz reads directly from this file.
+- Treatment assignment: edit `before/treatment_assignment.py`. Treatments are assigned when the session is created (via `creating_session` in the `before` app). Adjust `assign_treatments` to set the treatment groups you need.
+- Experimental Payoff: edit `outro/payment_rule.py` to determine how participants are actually paid. The logic inside this file controls which rounds and payoffs are selected for payment at the end.
+
 ## Parameter scheme (read `conventions.md` and `settings.py` first)
 Everything optional is one **feature flag** in `SESSION_CONFIG_DEFAULTS`, shipped
 **OFF**. A `recruitment` profile (`prolific` | `lab` | `testing`) is a named
@@ -38,12 +44,6 @@ run fewer rounds, never more.
 Every participant field, exit code, stage timestamp and future-proofing spare
 column is documented in **`CODEBOOK.md`** (including the repurpose convention for
 spares: never rename in place).
-
-## How to use and edit this template
-- Instructions content: edit `intro/instructions_text.html`. Each `<div class="instruction-block">` is shown as one page to participants. Add, edit, or reorder blocks there to change the instruction pages.
-- Quiz questions: edit `intro/quiz_items.py`. Define `QUIZ_ITEMS` entries with `field`, `prompt`, `choices`, and `answer`. The intro quiz reads directly from this file.
-- Treatment assignment: edit `before/treatment_assignment.py`. Treatments are assigned when the session is created (via `creating_session` in the `before` app). Adjust `assign_treatments` to set the treatment groups you need.
-- Experimental Payoff: edit `outro/payment_rule.py` to determine how participants are actually paid. The logic inside this file controls which rounds and payoffs are selected for payment at the end.
 
 ## Collaborating on the instructions flow with others?
 You can share the instructions with coauthors who don't have the codebase installed. Run `previews/generate_instructions_preview.py` to produce three self-contained files in `previews/`: a long stacked HTML (every block on one page), an interactive single-page HTML (one block at a time, with a floating treatment switcher), and a PDF rendition. All three are fully self-contained — no external dependencies, no internet — so you can email them or drop them into a doc and they'll render the same anywhere. The interactive HTML lets coauthors click through the instructions exactly as participants would and flip between treatments live via the corner buttons; the PDF is good for printing or marking up on paper.
