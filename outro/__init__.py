@@ -73,6 +73,8 @@ class Player(BasePlayer):
     all_round_payoffs = models.LongStringField(blank=True)
     quiz_bonus_awarded = models.FloatField(initial=0)
     sepa = models.IntegerField(initial=1)
+    # Free-text pilot feedback; collected only when pilot_feedback is on.
+    feedback = models.LongStringField(blank=True)
     # Spare columns (future-proofing) — never rename in place; see CODEBOOK.md.
     spare_str_1 = models.LongStringField(blank=True)
     spare_str_2 = models.LongStringField(blank=True)
@@ -157,11 +159,17 @@ class Demographics(Page):
 
     @staticmethod
     def is_displayed(player):
-        return is_completer(player)
+        # Lab collects demographics and bank details here; Prolific collects
+        # neither (Prolific supplies demographics with its own export), so with
+        # both flags off the page is skipped entirely.
+        return is_completer(player) and (
+            _flag(player, 'collect_demographics') or _flag(player, 'collect_bank_details'))
 
     @staticmethod
     def get_form_fields(player):
-        fields = ['age', 'gender']
+        fields = []
+        if _flag(player, 'collect_demographics'):
+            fields += ['age', 'gender']
         # Bank / SEPA collection is the lab payment model; Prolific pays through
         # the platform, so these fields only appear when collect_bank_details is on.
         if _flag(player, 'collect_bank_details'):
@@ -170,14 +178,18 @@ class Demographics(Page):
 
     @staticmethod
     def vars_for_template(player):
-        return dict(collect_bank_details=_flag(player, 'collect_bank_details'))
+        return dict(
+            collect_demographics=_flag(player, 'collect_demographics'),
+            collect_bank_details=_flag(player, 'collect_bank_details'),
+        )
 
     def error_message(player, values):
         missing_fields = []
-        if not values.get('gender'):
-            missing_fields.append('gender')
-        if not values.get('age'):
-            missing_fields.append('age')
+        if player.session.config.get('collect_demographics'):
+            if not values.get('gender'):
+                missing_fields.append('gender')
+            if not values.get('age'):
+                missing_fields.append('age')
         if player.session.config.get('collect_bank_details'):
             if not values.get('bank'):
                 missing_fields.append('bank')
@@ -195,31 +207,57 @@ class Demographics(Page):
         if p.session.config.get('collect_bank_details') and p.bank:
             check_sepa_code(p)
 
-        # DETERMINE EXPERIMENTAL PAYOFF ========================================================
-        # List of values that indicate missing payoff values in the participant's payoff vector. Edit this list if you are using different codes for "no payoff" in your data.
-        missing_payoff_values = [
-            -333, 
-            -111, 
-            -999]
-        # Extract RANDOM selected payoffs from the participant's payoff vector as ordered tuples (round_number, payoff)
-        # Read participant vars with .vars.get(), never getattr() (KeyError trap; see conventions.md).
-        payoffs_vector = p.participant.vars.get('payoff_vector', []) or []
-        round_payoffs = extract_round_payoffs(payoffs_vector, missing_payoff_values)
-        num_rewarded = p.session.config['num_rewarded']
-        payouts = select_random_payouts(round_payoffs, num_rewarded)
 
-        # Calculate the experiment payoff from i) the selected payoffs, ii) the quiz bonus and iii) the showup fee
-        p.selected_sum = sum(float(pay) for _, pay in payouts)
-        # Quiz bonus awarded only if no failed attempts and quiz_bonus is positive
-        # (.vars.get() rather than getattr()/attribute access — KeyError trap.)
-        participant_failed_attempts = p.participant.vars.get('failed_attempts', 0) or 0
-        quiz_bonus = p.session.config['quiz_bonus']
-        quiz_bonus_awarded = quiz_bonus if (participant_failed_attempts == 0 and quiz_bonus > 0) else 0
-        p.quiz_bonus_awarded = quiz_bonus_awarded
-        showup_fee = p.session.config['showup']
-        p.earned = showup_fee + p.selected_sum + p.quiz_bonus_awarded
-        p.payouts = json.dumps(payouts)
-        p.all_round_payoffs = json.dumps(round_payoffs)
+def compute_final_payoff(p):
+    """Determine the experimental payoff. Idempotent, and independent of the
+    demographics/bank page (which is skipped entirely for Prolific), so it runs
+    when the participant reaches Results — the one page every completer sees.
+    """
+    if p.field_maybe_none('earned') is not None:
+        return  # already computed (e.g. Results re-rendered)
+
+    # List of values that indicate missing payoff values in the participant's payoff vector. Edit this list if you are using different codes for "no payoff" in your data.
+    missing_payoff_values = [
+        -333,
+        -111,
+        -999]
+    # Extract RANDOM selected payoffs from the participant's payoff vector as ordered tuples (round_number, payoff)
+    # Read participant vars with .vars.get(), never getattr() (KeyError trap; see conventions.md).
+    payoffs_vector = p.participant.vars.get('payoff_vector', []) or []
+    round_payoffs = extract_round_payoffs(payoffs_vector, missing_payoff_values)
+    num_rewarded = p.session.config['num_rewarded']
+    payouts = select_random_payouts(round_payoffs, num_rewarded)
+
+    # Calculate the experiment payoff from i) the selected payoffs, ii) the quiz bonus and iii) the showup fee
+    p.selected_sum = sum(float(pay) for _, pay in payouts)
+    # Quiz bonus awarded only if no failed attempts and quiz_bonus is positive
+    # (.vars.get() rather than getattr()/attribute access — KeyError trap.)
+    participant_failed_attempts = p.participant.vars.get('failed_attempts', 0) or 0
+    quiz_bonus = p.session.config['quiz_bonus']
+    quiz_bonus_awarded = quiz_bonus if (participant_failed_attempts == 0 and quiz_bonus > 0) else 0
+    p.quiz_bonus_awarded = quiz_bonus_awarded
+    showup_fee = p.session.config['showup']
+    p.earned = showup_fee + p.selected_sum + p.quiz_bonus_awarded
+    p.payouts = json.dumps(payouts)
+    p.all_round_payoffs = json.dumps(round_payoffs)
+
+
+class Feedback(Page):
+    """Free-text pilot feedback (pilot_feedback axis).
+
+    Shown to completers when the pilot_feedback flag is on — a pilot or friend
+    test — regardless of study type or DEBUG. Placed BEFORE Results so Prolific
+    completers see it before the completion redirect. The answer is optional
+    (blank=True) and is never re-rendered to any participant.
+    """
+    template_name = 'outro/Feedback.html'
+    form_model = 'player'
+    form_fields = ['feedback']
+
+    @staticmethod
+    def is_displayed(player):
+        return is_completer(player) and _flag(player, 'pilot_feedback')
+
 
 class Results(Page):
 
@@ -236,6 +274,7 @@ class Results(Page):
     def vars_for_template(self):
         # Reaching this page IS completion: record the clean outcome. Idempotent,
         # so re-rendering never corrupts it.
+        compute_final_payoff(self)
         common.set_exit_code(self.participant, common.EXIT_CODES['finished'])
         common.stamp_stage(self.participant, 'finished')
         # Convert the selected payoffs to a JSON string to view as table in Results.html
@@ -269,4 +308,4 @@ class Results(Page):
             'completion_redirects': bool(self.session.config.get('completion_redirects')),
         }
 
-page_sequence = [Ended, Demographics, Results]
+page_sequence = [Ended, Demographics, Feedback, Results]

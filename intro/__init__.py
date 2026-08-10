@@ -9,9 +9,13 @@ Intro
 """
 class C(BaseConstants):
     NAME_IN_URL = 'Introduction'
-    # Instructions + quiz are individual and shown once; no grouping.
+    # Instructions + quiz are individual; no grouping.
     PLAYERS_PER_GROUP = None
-    NUM_ROUNDS = 1
+    # Round 1 is the normal instructions + quiz pass. Round 2 is the lab
+    # re-read pass (quiz_reread module): reachable only after a participant
+    # takes the one-time re-read offer, so for everyone else every round-2
+    # page returns is_displayed False (empty export rows, by design).
+    NUM_ROUNDS = 2
     # Example figures referenced by intro/instructions_text.html to demonstrate
     # variable substitution. Replace with your own study's numbers.
     STAG_PAYOFF = 4
@@ -50,17 +54,51 @@ class Player(BasePlayer):
     locals().update(make_quiz_fields())
 
 
-# FUNCTIONS 
+# FUNCTIONS
 def common_template_vars(session, group):
     return {
-        
-    }  
+
+    }
+
+
+def reread_available(player) -> bool:
+    """True while the one-time lab re-read offer is open to this participant.
+
+    Open means: the quiz_reread module is on, the participant has crossed the
+    comprehension failure threshold, there is still a re-read round left, and
+    the offer has not been consumed yet. Consumption happens the moment the
+    participant enters the second pass (quiz.before_next_page), NOT when the
+    offer modal is shown — dismissing the modal keeps the offer open.
+    """
+    cfg = player.session.config
+    if not cfg.get('quiz_reread'):
+        return False
+    if player.round_number >= C.NUM_ROUNDS:
+        return False  # no re-read round left to enter
+    # Participant fields via .vars.get(), never getattr() (KeyError trap).
+    if player.participant.vars.get('instructions_reread_used'):
+        return False
+    threshold = int(cfg.get('comprehension_max_failures', 2))
+    failed = player.participant.vars.get('failed_attempts', 0) or 0
+    return failed >= threshold
+
+
+def in_reread_pass(player) -> bool:
+    """True on round-2 pages, which only the lab re-read pass reaches."""
+    if player.round_number == 1:
+        return False
+    return bool(player.participant.vars.get('instructions_reread_used'))
 
 # PAGES    
 class instructing(Page):
     template_name = 'intro/templates/instructing.html'
     form_model = 'player'
     form_fields = ['redoinstructions']
+
+    def is_displayed(player):
+        # Round 1: everyone. Round 2: only a lab participant who took the
+        # one-time re-read offer (Prolific never reaches it).
+        return player.round_number == 1 or in_reread_pass(player)
 
     def vars_for_template(player):
         # Stag Hunt example: surface every variable referenced in
@@ -82,7 +120,8 @@ class instructing(Page):
         }
 
     def before_next_page(player, timeout_happened):
-        common.stamp_stage(player.participant, 'instructions_done')
+        stage = 'instructions_done' if player.round_number == 1 else 'instructions_reread_done'
+        common.stamp_stage(player.participant, stage)
 
 class quiz(Page):
     template_name = 'intro/templates/quiz.html'
@@ -97,16 +136,20 @@ class quiz(Page):
         return quiz.quiz_field_names + ['redoinstructions']
 
     def is_displayed(player):
-        return player.redoinstructions == 0
+        # Round 1: everyone. Round 2: only the lab re-read pass.
+        return player.round_number == 1 or in_reread_pass(player)
 
     def error_message(player, values):
-        # Skip validation entirely when quiz verification is disabled
-        if not player.session.config.get('verify_quiz', True):
+        # verify_quiz=False is a DEBUG loosening (clickthrough), honoured only
+        # while DEBUG is on — in production validation always runs, whatever
+        # the config says.
+        if otree_settings.DEBUG and not player.session.config.get('verify_quiz', True):
             return
-        # A participant asking to re-read the instructions is not submitting
-        # answers, so don't validate them (the solutions are not available in
-        # the browser outside DEBUG, so they cannot be auto-filled there).
-        if values.get('redoinstructions'):
+        # A participant taking the re-read offer is not submitting answers, so
+        # don't validate them. Honoured ONLY while the offer is actually open
+        # (lab flow, threshold crossed, not yet consumed) — a hand-crafted POST
+        # of redoinstructions=1 cannot bypass validation in any other state.
+        if values.get('redoinstructions') and reread_available(player):
             return
         # Define mapping of quiz fields to their correct answers
         solutions = dict(zip(quiz.quiz_field_names, quiz.quiz_solutions))
@@ -130,10 +173,7 @@ class quiz(Page):
                     common.set_exit_code(
                         player.participant, common.EXIT_CODES['comprehension'])
                     return  # no error -> the page advances to the ending
-            if player.num_failed_attempts >= 2:
-                return "One or more quiz answers are wrong. Try re-reading the instructions."
-            else:
-                return "One or more quiz answers are wrong."
+            return "One or more quiz answers are wrong."
 
     def vars_for_template(self):
         # Solutions reach the browser only under settings.DEBUG (i.e. when
@@ -146,13 +186,35 @@ class quiz(Page):
                 dict(name=field, value=solution)
                 for field, solution in zip(quiz.quiz_field_names, quiz.quiz_solutions)
             ]
+        # Lab quiz-failure modals. Both are computed server-side and rendered
+        # only on a re-render that follows a wrong submission IN THIS ROUND
+        # (num_failed_attempts is a per-round player field, so entering round 2
+        # never pops a stale modal). offer_reread: the one-time re-read offer
+        # is open. show_experimenter: the offer is spent — a dismissible
+        # "raise your hand" notice; the participant may keep trying, nothing is
+        # recorded for it (failed_attempts is the experimenter's record).
+        failed_this_round = self.num_failed_attempts >= 1
+        offer_reread = failed_this_round and reread_available(self)
+        show_experimenter = (
+            failed_this_round
+            and bool(self.session.config.get('quiz_reread'))
+            and bool(self.participant.vars.get('instructions_reread_used'))
+        )
         return {
             'quiz_solutions_json': json.dumps(solution_pairs),
             'is_debug': is_debug,
+            'offer_reread': offer_reread,
+            'show_experimenter': show_experimenter,
         }
 
     def before_next_page(player, timeout_happened):
         common.stamp_stage(player.participant, 'quiz_done')
+        # Taking the re-read offer: consume it HERE — the moment the
+        # participant leaves for the second pass — not when the modal opened.
+        # (field_maybe_none: redoinstructions is blank=True and may arrive empty.)
+        if player.field_maybe_none('redoinstructions') and reread_available(player):
+            player.participant.instructions_reread_used = True
+            common.stamp_stage(player.participant, 'reread_taken')
 
     def app_after_this_page(player, upcoming_apps):
         # Route a comprehension-disqualified participant straight to the ending
@@ -172,7 +234,8 @@ class AISafetyAgree(Page):
 
     @staticmethod
     def is_displayed(player):
-        return bool(player.session.config.get('tab_monitor'))
+        # Arm once, after the round-1 quiz; never in the re-read round.
+        return player.round_number == 1 and bool(player.session.config.get('tab_monitor'))
 
 
 page_sequence = [instructing, quiz, AISafetyAgree]

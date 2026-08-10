@@ -38,6 +38,27 @@ function skipQuiz() {
     setValue('redoinstructions', 0);
 }
 
+// Quiz-failure modal (lab re-read / experimenter notice). The server decides
+// WHICH modal is in the page (or none); this only reveals and dismisses it.
+// Wrapped so a JS failure can never break the page — the quiz itself works
+// without the modal.
+(function initQuizModal() {
+    try {
+        var backdrop = document.getElementById('quiz-modal-backdrop');
+        if (!backdrop) return;
+        backdrop.hidden = false;
+        var primary = backdrop.querySelector('.modal-actions .next-button');
+        if (primary) primary.focus();
+    } catch (e) { /* never block the quiz */ }
+})();
+
+function dismissQuizModal() {
+    try {
+        var backdrop = document.getElementById('quiz-modal-backdrop');
+        if (backdrop) backdrop.hidden = true;
+    } catch (e) { /* never block the quiz */ }
+}
+
 function redoInstructions() {
     showTransitionOverlay();
     if (Array.isArray(window.quizSolutions)) {

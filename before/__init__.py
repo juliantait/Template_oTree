@@ -85,10 +85,15 @@ class welcome(Page):
 
     @staticmethod
     def vars_for_template(player):
+        cfg = player.session.config
         return dict(
             capture_participant_id=_flag(player, 'capture_participant_id'),
             device_capture=_flag(player, 'device_capture'),
             completion_redirects=_flag(player, 'completion_redirects'),
+            # Consent quotes duration and payment from config, so a lab session
+            # can state its own show-up fee (safe reads: defaults if unset).
+            expected_duration_minutes=cfg.get('expected_duration_minutes', 30),
+            showup_fee=cu(cfg.get('showup', 0) or 0),
         )
 
     @staticmethod

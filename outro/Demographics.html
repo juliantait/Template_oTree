@@ -10,6 +10,7 @@
         <div class="experimental-content">
             <div class="section-text demographics-section">
                 <div class="stacked-form">
+                    {% if collect_demographics %}
                     <label for="age">Age*</label>
                     <input type="text" id="age" name="age" maxlength="2" inputmode="numeric">
 
@@ -29,6 +30,7 @@
                             <input type="radio" name="gender" value="Prefer not to say"> Prefer not to say
                         </label>
                     </div>
+                    {% endif %}
 
                     {% if collect_bank_details %}
                     <label for="bank">IBAN Number*</label>

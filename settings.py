@@ -2,15 +2,47 @@ import os
 from os import environ
 
 # =============================================================================
-# PARAMETER SCHEME  (read this first — everything else hangs off it)
+# THE THREE AXES  (read this first — between them they determine everything a
+# participant experiences, and they are INDEPENDENT of each other)
+# =============================================================================
+# 1. STUDY TYPE (`recruitment`: 'prolific' | 'lab') — the recruitment plumbing,
+#    decided once per study and rarely changed. Prolific: participant-ID
+#    capture, completion-code redirects, the integrity modules. Lab: bank
+#    details, demographics, the supervised quiz re-read. Resolved into explicit
+#    flags at import (see RECRUITMENT_PROFILES below).
+# 2. DEBUG (from the environment; never set per config) — dev-only affordances:
+#    skip controls, quiz solutions in the browser, the loosened quiz validation
+#    (verify_quiz=False is honoured ONLY under DEBUG), the prelaunch banner's
+#    DEBUG warning. Driven by OTREE_PRODUCTION: unset -> DEBUG on; set ->
+#    DEBUG off and every debug affordance is dead, so production cannot
+#    accidentally ship them. Orthogonal to study type: a prolific-configured
+#    study under DEBUG runs with ALL its integrity modules on.
+# 3. PILOT FEEDBACK FORM (`pilot_feedback`) — whether the free-text feedback
+#    page is shown at the end. On for a pilot or a friend test, off for the
+#    real run, regardless of study type or debug.
+
+# STUDY TYPE default when a session config names none.
+DEFAULT_RECRUITMENT = 'lab'
+
+# DEBUG — mirror of oTree's own derivation (OTREE_PRODUCTION unset -> True).
+# Do NOT hardcode a value: oTree computes its DEBUG from the env var before
+# reading this file, and a hardcoded value here would silently override it
+# even in production (see the credentials section note).
+DEBUG = 'OTREE_PRODUCTION' not in os.environ
+
+# PILOT FEEDBACK FORM default; a session config may override `pilot_feedback`.
+PILOT_FEEDBACK = False
+
+# =============================================================================
+# PARAMETER SCHEME  (everything else hangs off the axes above)
 # =============================================================================
 # Every optional module in this template is controlled by ONE feature flag in
 # SESSION_CONFIG_DEFAULTS, and every flag ships OFF by default. A new project
 # therefore starts with a bare, correct baseline and opts in to each module
 # deliberately.
 #
-# On top of the flags sits a single `recruitment` profile (prolific | lab |
-# testing). A profile is a NAMED BUNDLE of flag/threshold values. At import time
+# On top of the flags sits the STUDY TYPE: a single `recruitment` profile
+# (prolific | lab). A profile is a NAMED BUNDLE of flag/threshold values. At import time
 # `resolve_recruitment_profile()` copies the bundle's values into each session
 # config as EXPLICIT keys, so the admin "session configuration" view shows
 # exactly what the session actually ran with. A profile therefore never changes
@@ -45,11 +77,12 @@ EXIT_CODES = dict(
     timed_out=-5,        # inactivity / never matched in time
 )
 
-# --- recruitment profiles ----------------------------------------------------
+# --- recruitment profiles (STUDY TYPE axis) ----------------------------------
 # Each profile is a bundle of explicit values resolved into the config at import
 # (see resolve_recruitment_profile). Add keys here to have a profile govern
 # them; anything not listed falls through to the SESSION_CONFIG_DEFAULTS baseline
-# and can still be overridden per config.
+# and can still be overridden per config. Debug loosenings (e.g.
+# verify_quiz=False) do NOT belong here — they live on the DEBUG axis.
 RECRUITMENT_PROFILES = {
     # Physical lab (CREED): experimenter-run, paid by bank transfer. No Prolific
     # plumbing, no tab monitor.
@@ -61,7 +94,8 @@ RECRUITMENT_PROFILES = {
         passive_capture=False,
         device_capture=False,
         collect_bank_details=True,   # lab pays by bank transfer
-        verify_quiz=True,
+        collect_demographics=True,   # lab asks demographics itself (no platform export)
+        quiz_reread=True,            # one supervised re-read pass instead of DQ
     ),
     # Online via Prolific: self-serve entry, paid through the platform. Turns on
     # participant-ID capture, completion-code redirects and the integrity
@@ -74,23 +108,14 @@ RECRUITMENT_PROFILES = {
         passive_capture=True,
         device_capture=True,
         collect_bank_details=False,  # Prolific pays through the platform
-        verify_quiz=True,
+        collect_demographics=False,  # Prolific supplies demographics in its own export
+        quiz_reread=False,           # no re-read pass online; comprehension_dq instead
     ),
-    # Local development / clickthrough: everything off and thresholds loosened
-    # so you can walk the whole flow without being blocked.
-    'testing': dict(
-        capture_participant_id=False,
-        completion_redirects=False,
-        tab_monitor=False,
-        comprehension_dq=False,
-        passive_capture=False,
-        device_capture=False,
-        collect_bank_details=False,
-        verify_quiz=False,           # loosened: click straight through the quiz
-    ),
+    # There is deliberately NO 'testing' profile: clickthrough loosenings are
+    # the DEBUG axis (env-driven), not a study type. For a clickthrough config,
+    # pick a real study type and set the loosenings explicitly (see the 'test'
+    # session config below).
 }
-
-DEFAULT_RECRUITMENT = 'lab'
 
 # Placeholder Prolific completion codes. Real codes are created in the Prolific
 # study UI and pasted per config; the prelaunch banner flags any REPLACE_*
@@ -98,47 +123,123 @@ DEFAULT_RECRUITMENT = 'lab'
 PROLIFIC_CODE_PLACEHOLDERS = ('REPLACE_CC', 'REPLACE_NC', 'REPLACE_DQ', 'REPLACE_ERR')
 
 SESSION_CONFIG_DEFAULTS = dict(
-    real_world_currency_per_point=1.00,
-    participation_fee=0.00,
+    # oTree's built-in per-config description (shown on the demo page).
     doc="",
 
-    # --- recruitment profile (resolved into explicit flags at import) --------
+    # =========================================================================
+    # RECRUITMENT
+    # =========================================================================
+    # Which recruitment profile this session runs under. The profile is a named
+    # bundle of the module flags below (see RECRUITMENT_PROFILES); at import it
+    # is resolved into explicit per-config keys, so every flag a profile
+    # governs ends up visible on the session config itself.
     recruitment=DEFAULT_RECRUITMENT,
 
-    # --- study/design quantities --------------------------------------------
-    quiz_bonus=5,
-    num_rewarded=2,
-    showup=2.5,
+    # =========================================================================
+    # PILOT FEEDBACK  (axis 3 — independent of study type and DEBUG)
+    # =========================================================================
+    # Show the free-text feedback page at the end of the study. On for a pilot
+    # or a friend test, off for the real run.
+    pilot_feedback=PILOT_FEEDBACK,
+
+    # =========================================================================
+    # PAYMENT AND INCENTIVES
+    # =========================================================================
+    # Everything money: base/show-up pay, bonuses, how many rounds are paid,
+    # currency conversion, and whether we collect bank details to pay out.
+    real_world_currency_per_point=1.00,  # oTree currency conversion rate
+    participation_fee=0.00,      # oTree's built-in participation fee (admin report)
+    showup=2.5,                  # show-up fee quoted on consent and paid at the end
+    expected_duration_minutes=30,  # session length quoted on the consent page
+    quiz_bonus=5,                # bonus for passing the quiz on the first attempt
+    num_rewarded=2,              # how many rounds are randomly selected for payment
+    collect_bank_details=False,  # lab-style IBAN/BIC/SEPA payment collection
+
+    # =========================================================================
+    # GAME AND DESIGN
+    # =========================================================================
+    # Structural quantities of the experiment itself: round counts and any
+    # stimulus/treatment quantities a study adds.
     # NUM_ROUNDS is fixed at import from this value (the MAX). A config may set
     # it LOWER to run fewer rounds, never higher.
     num_experimental_rounds=10,
 
-    # --- module feature flags (ALL OFF by default) --------------------------
-    # A recruitment profile or an explicit per-config value turns these on.
-    verify_quiz=True,            # validate quiz answers before proceeding
-    capture_participant_id=False,   # capture an external (e.g. Prolific) ID at entry
-    completion_redirects=False,     # send participants back to Prolific with a code
-    tab_monitor=False,              # tab-switch / AI-safety monitor
-    comprehension_dq=False,         # disqualify on repeated comprehension failure
-    passive_capture=False,          # passive hidden-field measurement on the page form
-    device_capture=False,           # capture device / screen info at entry
-    collect_bank_details=False,     # lab-style IBAN/BIC/SEPA payment collection
+    # =========================================================================
+    # COMPREHENSION
+    # =========================================================================
+    # Quiz behaviour: how many wrong attempts count as "failed" (the threshold
+    # the integrity and re-read machinery reacts to). Whether answers are
+    # validated at all is verify_quiz, under TESTING AND DEV — turning it off
+    # is a debug loosening, honoured only under DEBUG.
+    comprehension_max_failures=2,   # wrong attempts that count as failing the quiz
+    # Lab re-read pass: on first crossing the failure threshold, offer ONE
+    # return through the instructions (intro round 2). After it is used, further
+    # failures show a dismissible "raise your hand" notice — no disqualification.
+    # Mutually exclusive in practice with comprehension_dq (the online rule).
+    quiz_reread=False,              # offer a one-time instructions re-read on failure
 
-    # --- integrity thresholds (used only when the module is on) -------------
-    comprehension_max_failures=2,   # disqualify after this many wrong quiz attempts
+    # =========================================================================
+    # INTEGRITY MODULES
+    # =========================================================================
+    # Enforcement: the tab-switch monitor and comprehension disqualification,
+    # plus their thresholds (thresholds only matter when the module is on).
+    #
+    # KNOWN ANNOYANCE (candidate future option — documented, deliberately not
+    # solved): when TESTING a prolific-configured study these modules, plus
+    # device capture, can get in the way — the tab monitor will disqualify YOU
+    # for tabbing away to inspect the app, and comprehension disqualification
+    # blocks a clickthrough after two wrong quiz submissions. If that bites
+    # often, a later testing switch could relax tab_monitor, device_capture
+    # and comprehension_dq as well — as a DEBUG-gated read-time override like
+    # verify_quiz, NEVER by editing the resolved study values (see the
+    # guarantee on resolve_recruitment_profile).
+    tab_monitor=False,              # tab-switch / AI-safety monitor
+    comprehension_dq=False,         # disqualify past comprehension_max_failures
     tab_monitor_max_violations=2,   # disqualify on the Nth recorded tab-away
     tab_monitor_threshold_ms=4000,  # continuous away-time that counts as a violation
     tab_monitor_overlay_delay_ms=400,  # grace before the warning overlay appears
 
-    # --- Prolific completion codes (placeholders; flagged by prelaunch) -----
+    # =========================================================================
+    # MEASUREMENT
+    # =========================================================================
+    # Data captured about the participant/session beyond the task responses:
+    # passive time-on-page and device/screen capture. (No error capture module
+    # exists yet; it would belong here.)
+    passive_capture=False,          # passive hidden-field measurement on the page form
+    device_capture=False,           # capture device / screen info at entry
+    collect_demographics=False,     # explicit demographics questionnaire (outro)
+
+    # =========================================================================
+    # TIMING
+    # =========================================================================
+    # View locks and forced-wait values. None exist yet — when a study adds a
+    # timed page or a minimum reading time, its parameter belongs here.
+
+    # =========================================================================
+    # PROLIFIC
+    # =========================================================================
+    # Every Prolific-specific parameter lives here. The study's ENTRY URL is
+    # configured on Prolific's side (see prolific/Prolific_running.md); the
+    # completion codes below are created in the Prolific study UI and pasted
+    # per config — the prelaunch banner flags any REPLACE_* placeholder that
+    # survives to launch.
+    capture_participant_id=False,   # capture an external (Prolific) ID at entry
+    completion_redirects=False,     # send participants back to Prolific with a code
     cc_code='REPLACE_CC',        # normal completion
     noconsent_code='REPLACE_NC', # declined consent
     dq_code='REPLACE_DQ',        # disqualified (comprehension / tab monitor)
     error_code='REPLACE_ERR',    # screen-out / inactivity
 
-    # --- static asset cache-busting -----------------------------------------
-    # Appended as ?v=... to CSS/JS hrefs so a redeploy is never served a stale
-    # cached asset. Bump on every static change.
+    # =========================================================================
+    # TESTING AND DEV  (the DEBUG axis' config-side values)
+    # =========================================================================
+    # verify_quiz=False lets you click straight through the quiz without
+    # answering. It is a DEBUG loosening: honoured ONLY while DEBUG is on
+    # (OTREE_PRODUCTION unset) — in production validation always runs, so a
+    # leftover False cannot weaken a real launch (prelaunch flags it too).
+    verify_quiz=True,
+    # static_version is appended as ?v=... to CSS/JS hrefs so a redeploy is
+    # never served a stale cached asset. Bump on every static change.
     static_version='1',
 )
 
@@ -151,13 +252,29 @@ def resolve_recruitment_profile(config):
     key explicitly (an explicit per-config value always wins). The result is a
     config dict that states, in full, exactly what the session will run with —
     which is what the admin session-configuration view displays.
+
+    GUARANTEE — testing never mutates the real study parameters. This
+    resolution writes STUDY-TYPE values only. Debug/testing loosenings are a
+    SEPARATE OVERRIDE LAYER that sits on top: they are consulted at the point
+    of use (settings.DEBUG from the environment, plus DEBUG-gated keys like
+    verify_quiz) and never rewrite the resolved lab/prolific values here or
+    anywhere else. Turning the testing switch off — setting OTREE_PRODUCTION=1,
+    or verify_quiz back to True — therefore returns every gate to exactly the
+    real study behaviour, with nothing left changed behind it. Keep it that
+    way: a future testing switch must also override at read time, never edit
+    the resolved config.
     """
     profile_name = config.get('recruitment', DEFAULT_RECRUITMENT)
     bundle = RECRUITMENT_PROFILES.get(profile_name)
     if bundle is None:
+        hint = (
+            " The 'testing' profile was removed: clickthrough loosenings are "
+            "the DEBUG axis (OTREE_PRODUCTION unset + verify_quiz=False), not "
+            "a study type." if profile_name == 'testing' else ""
+        )
         raise ValueError(
             f"Unknown recruitment profile {profile_name!r}. "
-            f"Choose one of: {', '.join(sorted(RECRUITMENT_PROFILES))}."
+            f"Choose one of: {', '.join(sorted(RECRUITMENT_PROFILES))}.{hint}"
         )
     config.setdefault('recruitment', profile_name)
     for key, value in bundle.items():
@@ -170,12 +287,19 @@ def resolve_recruitment_profile(config):
 # Example session configs. Each names its recruitment profile explicitly; the
 # resolution pass below turns that into a full, visible set of flags.
 SESSION_CONFIGS = [
+    # Clickthrough config: a real study type (lab) with the loosenings set
+    # EXPLICITLY per config — there is no 'testing' study type. verify_quiz
+    # is honoured only under DEBUG, so this config cannot weaken production.
     dict(
         name='test',
-        display_name="Test (clickthrough)",
+        display_name="Test (clickthrough; loosenings live under DEBUG)",
         app_sequence=['before', 'intro', 'main', 'outro'],
         num_demo_participants=10,
-        recruitment='testing',
+        recruitment='lab',
+        verify_quiz=False,           # DEBUG-only loosening: click through the quiz
+        collect_bank_details=False,  # skip payment/demographics forms when clicking through
+        collect_demographics=False,
+        pilot_feedback=True,         # exercise the pilot feedback page too
         num_experimental_rounds=3,   # short for quick testing
     ),
     dict(
@@ -217,6 +341,7 @@ PARTICIPANT_FIELDS = [
     'focus_loss_count',     # tab-monitor authoritative violation count
     'focus_event_ids',      # tab-monitor seen event ids (server-side dedup)
     'comprehension_disqualified',  # comprehension-DQ authoritative flag
+    'instructions_reread_used',    # lab: the one-time re-read pass was taken
     'device_info',          # dict of captured device/screen info, if enabled
 ]
 # Description of PARTICIPANT_FIELDS:
@@ -232,6 +357,8 @@ PARTICIPANT_FIELDS = [
 #   convention in CODEBOOK.md — never rename in place).
 # - ai_safety_disqualified / focus_loss_count / focus_event_ids: tab monitor state.
 # - comprehension_disqualified: set when a participant fails the quiz too often.
+# - instructions_reread_used: True once a lab participant enters the second
+#   instructions pass (quiz_reread module). Consumed on entry, not on offer.
 # - device_info: captured device/screen dict when device_capture is on.
 
 SESSION_FIELDS = []
@@ -299,7 +426,8 @@ SECRET_KEY = os.environ.get('OTREE_SECRET_KEY', 'dev-secret-key-change-me')
 # Printed on every start. Compares the live config against what a real launch
 # requires and prints a loud banner if anything is still a testing/placeholder
 # value. It is advisory (it never blocks a dev session) but impossible to miss.
-DEBUG = 'OTREE_PRODUCTION' not in os.environ  # mirror of oTree's own derivation
+# (DEBUG itself is defined at the top of this file — it is one of the three
+# axes; the env derivation must never be overridden with a hardcoded value.)
 
 
 def _prelaunch_problems():
@@ -312,11 +440,13 @@ def _prelaunch_problems():
         # Check the EFFECTIVE config (defaults + entry), since keys like cc_code
         # live in SESSION_CONFIG_DEFAULTS and are merged by oTree at runtime.
         eff = {**SESSION_CONFIG_DEFAULTS, **cfg}
-        if eff.get('recruitment') == 'testing':
-            # A testing config is fine locally; only warn about it under production.
-            if not DEBUG:
-                problems.append(
-                    (f"config {cfg['name']!r} recruitment", 'testing', 'lab or prolific'))
+        # verify_quiz=False is a DEBUG loosening; it is IGNORED in production,
+        # but a config still carrying it at launch is a testing config that
+        # should not ship — flag it.
+        if not DEBUG and not eff.get('verify_quiz', True):
+            problems.append(
+                (f"config {cfg['name']!r} verify_quiz", False,
+                 'True (False is a DEBUG-only loosening and is ignored in production)'))
         # Placeholder completion codes only matter when the config actually
         # redirects to Prolific.
         if eff.get('completion_redirects'):
@@ -330,9 +460,11 @@ def _prelaunch_problems():
 
 
 def _check_prelaunch():
-    profile_line = ', '.join(
-        f"{c['name']}={c.get('recruitment')}" for c in SESSION_CONFIGS)
-    print(f"[prelaunch] DEBUG={DEBUG}  recruitment: {profile_line}")
+    def _axes(c):
+        eff = {**SESSION_CONFIG_DEFAULTS, **c}
+        return f"{c['name']}={c.get('recruitment')}{'+feedback' if eff.get('pilot_feedback') else ''}"
+    profile_line = ', '.join(_axes(c) for c in SESSION_CONFIGS)
+    print(f"[prelaunch] DEBUG={DEBUG}  study type/feedback: {profile_line}")
     problems = _prelaunch_problems()
     if not problems:
         print("[prelaunch] CLEAN — no testing/placeholder values detected.")
