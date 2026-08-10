@@ -41,6 +41,7 @@ def init_participant(participant):
     participant.focus_loss_count = 0
     participant.focus_event_ids = []
     participant.comprehension_disqualified = False
+    participant.instructions_reread_used = False
     participant.device_info = {}
 
 

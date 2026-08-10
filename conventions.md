@@ -76,8 +76,14 @@ session creation (`common.init_participant`) or read defensively with `.vars.get
 
 ## Feature flags and recruitment profiles — resolved once, visible, never silent
 
+Three independent axes (top of `settings.py`) determine what a participant
+experiences: **study type** (`recruitment`: `prolific` | `lab`), **DEBUG**
+(env-driven; all dev loosenings, including `verify_quiz=False`, are honoured
+only under DEBUG), and the **pilot feedback form** (`pilot_feedback`). None of
+them implies another; there is no `testing` study type.
+
 Every optional module is one feature flag in `SESSION_CONFIG_DEFAULTS`, shipped
-**OFF**. A single `recruitment` profile (`prolific` | `lab` | `testing`) is a
+**OFF**. The `recruitment` profile is a
 named bundle of flag values; at import `resolve_recruitment_profile()` writes the
 bundle's values into each session config as **explicit keys**, so the admin
 session-configuration view shows exactly what the session ran with. A profile
@@ -117,7 +123,16 @@ and the CODEBOOK.md exit-code table.
   (`common.focus_live_method`) bound to the task pages, and a disqualified
   ending. Thresholds are config values; the client JS reads them via `js_vars`.
 - **comprehension_dq** — disqualify after `comprehension_max_failures` wrong quiz
-  attempts, routing to the ending (`intro`).
+  attempts, routing to the ending (`intro`). The online (Prolific) rule.
+- **quiz_reread** — the lab rule for the same threshold: offer ONE re-read pass
+  through the instructions (intro round 2, consumed on entry, not on offer);
+  once spent, further failures show a dismissible "raise your hand" notice and
+  the participant may keep trying — no disqualification (`intro`).
 - **passive_capture** — hidden-field time-on-page on the task form (`main`).
 - **device_capture** — device/screen JSON + mobile screen-out at entry (`before`).
 - **collect_bank_details** — lab IBAN/BIC/SEPA payment collection (`outro`).
+- **collect_demographics** — explicit demographics questionnaire (`outro`); off
+  for Prolific, which supplies demographics in its own export.
+- **pilot_feedback** — free-text feedback page before the results (`outro`);
+  its own axis: on for pilots/friend tests, off for the real run, independent
+  of study type and DEBUG.

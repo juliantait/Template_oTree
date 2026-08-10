@@ -35,8 +35,10 @@ A dict `{stage_name: epoch_seconds}` filled as the participant clears each stage
 | Stage | Set when |
 |-------|----------|
 | `consent` | Leaving the welcome/consent page. |
-| `instructions_done` | Leaving the instructions page. |
-| `quiz_done` | Leaving the quiz page. |
+| `instructions_done` | Leaving the instructions page (round 1). |
+| `quiz_done` | Leaving the quiz page (overwritten by the re-read pass, if any). |
+| `reread_taken` | Lab only: taking the one-time re-read offer (entering intro round 2). |
+| `instructions_reread_done` | Lab only: leaving the re-read instructions page (intro round 2). |
 | `task_done` | Completing the last displayed round of `main`. |
 | `finished` | Reaching the final results page. |
 
@@ -85,7 +87,13 @@ Fill in per-study fields as you build the task. The template ships with:
 - `before.Player`: `participant_label`, `treatment_group`, `consent`,
   `participant_id_external`, `is_mobile`, `device_info_json`.
 - `intro.Player`: the quiz fields from `intro/quiz_items.py`,
-  `num_failed_attempts`.
+  `num_failed_attempts`. Two rounds: round 2 is the lab re-read pass, so for
+  every participant who never takes the re-read offer (all Prolific and most
+  lab participants) the round-2 row is empty — expected, not data loss.
+  `participant.instructions_reread_used` records whether the pass was taken;
+  `failed_attempts` is the experimenter's record of quiz trouble (no flag is
+  recorded for the "raise your hand" notice).
 - `outro.Player`: demographics + payment fields (`age`, `gender`, `bank`,
-  `bic`, `sepa`, `earned`, `payouts`, …).
+  `bic`, `sepa`, `earned`, `payouts`, …), and `feedback` (free text, collected
+  only when the `pilot_feedback` flag is on).
 - `participant`: see `PARTICIPANT_FIELDS` in `settings.py`.

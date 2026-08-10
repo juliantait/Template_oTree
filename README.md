@@ -5,7 +5,7 @@
 - before (welcome + consent; online: external-ID + device capture)
 - intro (instructions + quiz; optional AI-safety arming page)
 - main (experimental game; optional tab monitor + passive capture)
-- outro (endings: normal / disqualified / no-consent; demographics + payment)
+- outro (endings: normal / disqualified / no-consent; demographics + payment; optional pilot feedback)
 
 ## Repository layout
 The project root holds the four oTree apps plus a small set of top-level items:
@@ -40,21 +40,36 @@ from `OTREE_PRODUCTION` — never hardcode it.
 - Experimental Payoff: edit `outro/payment_rule.py` to determine how participants are actually paid. The logic inside this file controls which rounds and payoffs are selected for payment at the end.
 
 ## Parameter scheme (read `conventions.md` and `settings.py` first)
-Everything optional is one **feature flag** in `SESSION_CONFIG_DEFAULTS`, shipped
-**OFF**. A `recruitment` profile (`prolific` | `lab` | `testing`) is a named
-bundle of flag values that is **resolved into explicit config keys at import**,
-so the admin session-config view shows exactly what a session will run with. An
-explicit per-config flag always overrides the profile.
+Three **independent axes** at the top of `settings.py` determine everything a
+participant experiences:
 
-- `prolific` — external-ID capture, completion-code redirects, tab monitor,
-  comprehension disqualification, passive + device capture. Paid on-platform.
-- `lab` — no Prolific plumbing, no tab monitor; collects bank details for
-  transfer.
-- `testing` — everything off, quiz validation loosened for quick clickthrough.
+1. **Study type** — `recruitment`: `prolific` | `lab`. The recruitment
+   plumbing, decided once per study:
+   - `prolific` — external-ID capture, completion-code redirects, tab monitor,
+     comprehension disqualification, passive + device capture. Paid on-platform.
+   - `lab` — no Prolific plumbing, no tab monitor; collects bank details and
+     demographics; supervised one-time quiz re-read instead of disqualification.
+2. **DEBUG** — from the environment (`OTREE_PRODUCTION` unset → DEBUG on).
+   Drives every dev affordance: skip controls, quiz solutions in the browser,
+   and the `verify_quiz=False` clickthrough loosening (honoured **only** under
+   DEBUG). Orthogonal to study type: a prolific-configured session under DEBUG
+   still runs all its integrity modules.
+3. **Pilot feedback form** — `pilot_feedback`: shows a free-text feedback page
+   at the end. On for pilots/friend tests, off for the real run, regardless of
+   the other two axes.
+
+Everything optional is one **feature flag** in `SESSION_CONFIG_DEFAULTS`, shipped
+**OFF**. The study-type profile is a named bundle of flag values that is
+**resolved into explicit config keys at import**, so the admin session-config
+view shows exactly what a session will run with. An explicit per-config flag
+always overrides the profile. (There is no `testing` study type — clickthrough
+loosenings belong to the DEBUG axis; see the `test` session config for the
+pattern.)
 
 Modules (all off by default): `capture_participant_id`, `completion_redirects`,
-`tab_monitor`, `comprehension_dq`, `passive_capture`, `device_capture`,
-`collect_bank_details`. Thresholds (`comprehension_max_failures`,
+`tab_monitor`, `comprehension_dq`, `quiz_reread`, `passive_capture`,
+`device_capture`, `collect_bank_details`, `collect_demographics`,
+`pilot_feedback`. Thresholds (`comprehension_max_failures`,
 `tab_monitor_*`) and Prolific codes (`cc_code`, `noconsent_code`, `dq_code`,
 `error_code`) are config values too. Each participant records a numeric
 `exit_code` (see `CODEBOOK.md`). `C.NUM_ROUNDS` is fixed at import — a config may
@@ -63,6 +78,140 @@ run fewer rounds, never more.
 Every participant field, exit code, stage timestamp and future-proofing spare
 column is documented in **`CODEBOOK.md`** (including the repurpose convention for
 spares: never rename in place).
+
+## Participant flow by study type
+
+The two charts below are derived from the actual page sequences and
+`is_displayed` gates (`before`, `intro`, `main`, `outro`) and the
+`settings.EXIT_CODES` table. Dashed nodes/edges are **flag-dependent** (the
+pilot feedback page appears only when `pilot_feedback` is on); everything else
+is always part of that study type. The charts are laid out identically so the
+lab/prolific differences stand out: entry (hold screen vs consent question),
+the quiz-failure rule (supervised re-read vs disqualification), the tab
+monitor, and the ending (bank details + demographics vs completion codes).
+
+### Prolific
+
+```mermaid
+flowchart TD
+    classDef terminal fill:#fdecea,stroke:#c0392b
+    classDef success fill:#eaf7ea,stroke:#2e7d32
+    classDef flagdep stroke-dasharray:6 4
+
+    Start(["Opens the Prolific study link"]) --> Welcome
+    subgraph BEFORE ["before — entry"]
+        Welcome["welcome + consent<br>explicit consent question,<br>Prolific ID + device capture"]
+        Welcome -- "mobile device: blocked with an error,<br>may retry on desktop (no exit code set)" --> Welcome
+    end
+    Welcome -- "does not consent" --> EndedNC
+    Welcome -- "consents" --> Instr1
+
+    subgraph INTRO ["intro — instructions + quiz (round 2 exists but is never shown online)"]
+        Instr1["instructing — instructions (round 1)"] --> Quiz1["quiz (round 1)"]
+        Quiz1 -- "wrong answers, failures below<br>the cap: error, try again" --> Quiz1
+        Quiz1 -- "all correct" --> Arm["AISafetyAgree — arms the tab monitor"]
+    end
+    Quiz1 -- "failures reach comprehension_max_failures" --> EndedDQ
+
+    Arm --> Game
+    subgraph MAIN ["main — task rounds 1..num_experimental_rounds (tab monitor live)"]
+        Game["GameStart — task page"] --> Payoff["payoff — round result"]
+        Payoff -- "next round" --> Game
+    end
+    Game -. "tab-away violations reach<br>tab_monitor_max_violations<br>(counted on any task page)" .-> EndedTM
+    Payoff -- "after the last round" --> FbGate
+
+    subgraph OUTRO ["outro — ending (Demographics page skipped: Prolific exports demographics itself)"]
+        FbGate{"pilot_feedback<br>flag on?"}
+        FbGate -. "yes (pilots only)" .-> Fb["Feedback — free-text pilot feedback"]
+        Fb -.-> Results
+        FbGate -- "no (real run)" --> Results
+        Results["Results — payment summary"]
+    end
+
+    Results --> Done["FINISHED — exit code 1<br>'Back to Prolific' button with cc_code"]
+    EndedNC["outro Ended — exit code -1 (no_consent)<br>'Back to Prolific' with noconsent_code"]
+    EndedDQ["outro Ended — exit code -2 (comprehension)<br>'Back to Prolific' with dq_code"]
+    EndedTM["outro Ended — exit code -3 (tab_monitor)<br>'Back to Prolific' with dq_code"]
+    Abandon["Closes the tab at any point —<br>no ending page, exit code stays 0 (abandoned)"]
+
+    class Done success
+    class EndedNC,EndedDQ,EndedTM,Abandon terminal
+    class Fb,FbGate flagdep
+```
+
+| Exit code | Terminal state | Ending the participant sees | Completion code |
+|----------:|----------------|-----------------------------|-----------------|
+| `1` finished | Completed the study | `outro` Results → "Back to Prolific" | `cc_code` |
+| `0` abandoned | Closed the tab, never reached the end | none (handled by Prolific as timed-out/returned) | none |
+| `-1` no_consent | Declined consent at entry | `outro` Ended → "Back to Prolific" | `noconsent_code` |
+| `-2` comprehension | Failed the quiz `comprehension_max_failures` times | `outro` Ended → "Back to Prolific" | `dq_code` |
+| `-3` tab_monitor | Tab-away violations reached the cap | `outro` Ended → "Back to Prolific" | `dq_code` |
+
+> **Code ≠ docs, flagged deliberately:** `EXIT_CODES` also defines `-4`
+> (screened_out) and `-5` (timed_out), and the configs carry an `error_code`,
+> but **no code path currently sets those codes or issues that completion
+> code** — the mobile screen-out blocks on the entry page with a validation
+> error instead of recording `-4`, and nothing implements an inactivity
+> timeout. They are reserved, not wired up, so they appear in no chart.
+
+### Lab
+
+```mermaid
+flowchart TD
+    classDef terminal fill:#fdecea,stroke:#c0392b
+    classDef success fill:#eaf7ea,stroke:#2e7d32
+    classDef flagdep stroke-dasharray:6 4
+
+    Start(["Seated at a lab computer"]) --> Hold
+    subgraph BEFORE ["before — entry"]
+        Hold["startpage — hold screen,<br>experimenter starts the session"] --> Welcome
+        Welcome["welcome + consent<br>implicit consent: continuing = consenting<br>(no ID or device capture, no mobile check)"]
+    end
+    Welcome --> Instr1
+
+    subgraph INTRO ["intro — instructions + quiz (round 2 = the single supervised re-read pass)"]
+        Instr1["instructing — instructions (round 1)"] --> Quiz1["quiz (round 1)"]
+        Quiz1 -- "wrong answers, failures below<br>the threshold: error, try again" --> Quiz1
+        Quiz1 -- "failures reach comprehension_max_failures<br>while the re-read is unused" --> Offer{"modal: re-read the<br>instructions? (available once)"}
+        Offer -- "dismiss — keep trying,<br>offer stays open" --> Quiz1
+        Offer -- "take it — consumed on entering<br>the second pass, not when offered" --> Instr2["instructing (round 2) —<br>instructions again from the start"]
+        Instr2 --> Quiz2["quiz (round 2)"]
+        Quiz2 -- "wrong answers: dismissible modal<br>'raise your hand and speak to the experimenter'<br>— keep trying, no disqualification,<br>nothing recorded beyond failed_attempts" --> Quiz2
+    end
+    Quiz1 -- "all correct" --> Game
+    Quiz2 -- "all correct" --> Game
+
+    subgraph MAIN ["main — task rounds 1..num_experimental_rounds (no tab monitor)"]
+        Game["GameStart — task page"] --> Payoff["payoff — round result"]
+        Payoff -- "next round" --> Game
+    end
+    Payoff -- "after the last round" --> Demo
+
+    subgraph OUTRO ["outro — ending (Ended page unreachable: lab has no disqualification or consent-decline path)"]
+        Demo["Demographics — age + gender,<br>IBAN/BIC bank details"] --> FbGate{"pilot_feedback<br>flag on?"}
+        FbGate -. "yes (pilots only)" .-> Fb["Feedback — free-text pilot feedback"]
+        Fb -.-> Results
+        FbGate -- "no (real run)" --> Results
+        Results["Results — payment summary"]
+    end
+
+    Results --> Done["FINISHED — exit code 1<br>paid by bank transfer"]
+    Abandon["Leaves at any point —<br>no ending page, exit code stays 0 (abandoned)"]
+
+    class Done success
+    class Abandon terminal
+    class Fb,FbGate flagdep
+```
+
+| Exit code | Terminal state | Ending the participant sees | Completion code |
+|----------:|----------------|-----------------------------|-----------------|
+| `1` finished | Completed the study | `outro` Results (payment summary; paid by bank transfer) | n/a (no redirects in lab) |
+| `0` abandoned | Left the session | none — `failed_attempts` and the stage timestamps are the experimenter's record | n/a |
+
+`-1`/`-2`/`-3` cannot occur in lab: consent is implicit, `comprehension_dq` is
+off (the re-read + experimenter message replace it) and the tab monitor is off.
+
 
 ## Collaborating on the instructions flow with others?
 You can share the instructions with coauthors who don't have the codebase installed. The generator lives in the intro app it previews: run `python3 intro/generate_instructions_preview.py` (from the project root) to produce three self-contained files in a gitignored `previews/` output dir it creates on demand: a long stacked HTML (every block on one page), an interactive single-page HTML (one block at a time, with a floating treatment switcher), and a PDF rendition. All three are fully self-contained — no external dependencies, no internet — so you can email them or drop them into a doc and they'll render the same anywhere. The interactive HTML lets coauthors click through the instructions exactly as participants would and flip between treatments live via the corner buttons; the PDF is good for printing or marking up on paper. The generated files are regenerable and never tracked in git.

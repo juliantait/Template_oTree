@@ -8,13 +8,22 @@
         </div>
         <div class="experimental-content">
             <div class="section-text">
-                You are taking part in an experiment at CREED.
+                You are taking part in an experiment at CREED. The session takes
+                about {{ expected_duration_minutes }} minutes, and you will
+                receive a payment of {{ showup_fee }} for completing it, plus
+                any additional earnings from the experiment.
                 <br><br>
                 All recorded data will be stored anonymously and used solely for
                 research purposes by researchers at the University of Amsterdam.
-                Your bank details, if collected, are only used to pay you and are
-                then deleted. If you have any questions at any time, please
-                address the researcher.
+                {% if capture_participant_id %}
+                Your Prolific ID is used solely to handle your payment and is
+                never linked to the published data.
+                {% else %}
+                Your contact and bank details are used only to arrange your
+                payment and are never linked to the published data.
+                {% endif %}
+                If you have any questions at any time, please address the
+                researcher.
             </div>
 
             {% if capture_participant_id %}

@@ -12,18 +12,6 @@
 
         <div class="experimental-content">
             <div class="quiz-block">
-                {{ if player.num_failed_attempts >= 2 }}
-                <div class="errors">
-                    {{ if player.round_number < C.NUM_ROUNDS }}
-                    <input type="submit" value="Re-read Instruction" class="next-button" onclick="redoInstructions()">
-                    {{ else }}
-                    <div id="instructionsReminder" style="font-weight: bold;">
-                        If you are unsure, please raise your hand and speak to the experimenter.
-                    </div>
-                    {{ endif }}
-                </div>
-                {{ endif }}
-
                 <div class="stacked-form">
                     {% for field in form %}
                         {% if field.name != 'redoinstructions' %}
@@ -47,6 +35,40 @@
         </div>
     </div>
 </div>
+
+<!-- Lab quiz-failure modals (quiz_reread module). Rendered only on the
+     re-render after a wrong submission; quiz.js reveals whichever one the
+     server put here. Both stay inside the page's own form so the re-read
+     button submits through normal validation (redoinstructions=1). -->
+{{ if offer_reread }}
+<div id="quiz-modal-backdrop" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="quiz-modal-title">
+        <h3 id="quiz-modal-title" class="modal-title">Having trouble with the quiz?</h3>
+        <p class="modal-text">
+            You can go back and re-read the instructions from the start, then
+            take the quiz again. This is possible <strong>once</strong>.
+        </p>
+        <div class="modal-actions">
+            <input type="submit" value="Re-read the instructions" class="next-button" onclick="redoInstructions()">
+            <button type="button" class="modal-dismiss-button" onclick="dismissQuizModal()">Keep trying</button>
+        </div>
+    </div>
+</div>
+{{ endif }}
+{{ if show_experimenter }}
+<div id="quiz-modal-backdrop" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="quiz-modal-title">
+        <h3 id="quiz-modal-title" class="modal-title">Still having trouble?</h3>
+        <p class="modal-text">
+            Please raise your hand and speak to the experimenter. You can keep
+            trying in the meantime.
+        </p>
+        <div class="modal-actions">
+            <button type="button" class="next-button" onclick="dismissQuizModal()">OK</button>
+        </div>
+    </div>
+</div>
+{{ endif }}
 
 {{ if is_debug }}
 <!-- Solutions are emitted only under DEBUG; in production the correct

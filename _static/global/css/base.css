@@ -526,3 +526,16 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
     opacity: 1;
     visibility: visible;
 }
+
+/* Pilot feedback textarea: a control, so it keeps the full card width (never
+   clamped to the reading measure). */
+.feedback-textarea {
+    width: 100%;
+    font: inherit;
+    color: var(--color-text);
+    background: var(--color-background);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    resize: vertical;
+}
