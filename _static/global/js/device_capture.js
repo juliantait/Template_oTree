@@ -1,7 +1,11 @@
 // Device / screen capture module.
 //
 // Fills two hidden fields on the entry page's OWN form (no side requests):
-//   - #is_mobile           : "True"/"False" — used to screen out phones
+//   - #is_mobile           : "True"/"False" — MEASUREMENT ONLY; it never blocks
+//                            anyone. Screening phones out is the server-side
+//                            `mobile_screenout` gate's job (before/__init__.py),
+//                            because it must decide before consent is rendered,
+//                            i.e. before this script has ever run.
 //   - #device_info_json    : a JSON blob of screen/browser facts
 // Both submit with the page, so the values land in the same POST as consent.
 //

@@ -109,9 +109,11 @@ submission must be stored, never 500. There is a test for exactly this.
 
 Every participant carries `exit_code`, set to 0 (abandoned) at session creation
 and raised to 1 on a clean finish or a negative reason on early exit. The
-integrity modules and the no-consent short-circuit set the reason; the ending
-screen reads it to pick the Prolific completion code. See `settings.EXIT_CODES`
-and the CODEBOOK.md exit-code table.
+integrity modules, the no-consent short-circuit and the entry screen-out gate
+set the reason; the ending screen reads it to pick the Prolific completion code.
+Every code in the table must be **set by real code** — a code that nothing
+records is a lie in the export, so a reserved-but-unwired code gets deleted, not
+documented. See `settings.EXIT_CODES` and the CODEBOOK.md exit-code table.
 
 ## Modules (all OFF by default)
 
@@ -129,7 +131,14 @@ and the CODEBOOK.md exit-code table.
   once spent, further failures show a dismissible "raise your hand" notice and
   the participant may keep trying — no disqualification (`intro`).
 - **passive_capture** — hidden-field time-on-page on the task form (`main`).
-- **device_capture** — device/screen JSON + mobile screen-out at entry (`before`).
+- **device_capture** — device/screen JSON at entry, measurement only (`before`);
+  the `is_mobile` field it fills blocks nobody.
+- **mobile_screenout** — `0`/`1` option (not part of any recruitment profile, so
+  choosing `prolific` never turns it on). At `1`, the entry request's User-Agent
+  is checked server-side BEFORE the consent page renders (`before.welcome.get`);
+  a phone never sees consent, records exit code `-4` and is walked straight to
+  the outro ending (`error_code` on Prolific). At `0` the check does nothing —
+  no participant-visible effect of any kind.
 - **collect_bank_details** — lab IBAN/BIC/SEPA payment collection (`outro`).
 - **collect_demographics** — explicit demographics questionnaire (`outro`); off
   for Prolific, which supplies demographics in its own export.

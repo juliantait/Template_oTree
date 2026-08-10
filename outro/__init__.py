@@ -20,9 +20,15 @@ def declined_consent(player) -> bool:
     return player.participant.vars.get('exit_code') == common.EXIT_CODES['no_consent']
 
 
+def was_screened_out(player) -> bool:
+    """True for a participant the entry mobile screen-out removed (exit code -4)."""
+    return common.is_screened_out(player.participant)
+
+
 def is_completer(player) -> bool:
     """A participant who should walk the normal ending (task + payment)."""
-    return not (is_disqualified(player) or declined_consent(player))
+    return not (is_disqualified(player) or declined_consent(player)
+                or was_screened_out(player))
 
 
 def completion_link(player) -> str:
@@ -32,6 +38,8 @@ def completion_link(player) -> str:
         code = cfg.get('dq_code')
     elif declined_consent(player):
         code = cfg.get('noconsent_code')
+    elif was_screened_out(player):
+        code = cfg.get('error_code')
     else:
         code = cfg.get('cc_code')
     return PROLIFIC_COMPLETE_URL + str(code)
@@ -132,8 +140,10 @@ def extract_round_payoffs(payoffs_vector, missing_values):
 class Ended(Page):
     """Finish screen for participants who did NOT complete normally.
 
-    Shown only to disqualified or non-consenting participants. When completion
-    redirects are on it sends them back to Prolific with the matching code.
+    Shown to disqualified, non-consenting and screened-out participants (a phone
+    stopped by the mobile_screenout gate lands here as its FIRST page — it never
+    saw consent). When completion redirects are on it sends them back to
+    Prolific with the matching code.
     """
     template_name = 'outro/Ended.html'
 
@@ -149,7 +159,8 @@ class Ended(Page):
     def vars_for_template(player):
         return dict(
             reason=('disqualified' if is_disqualified(player)
-                    else 'no_consent' if declined_consent(player) else 'other'),
+                    else 'no_consent' if declined_consent(player)
+                    else 'screened_out' if was_screened_out(player) else 'other'),
             completion_redirects=_flag(player, 'completion_redirects'),
         )
 

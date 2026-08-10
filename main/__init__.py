@@ -66,12 +66,15 @@ def is_active_round(player) -> bool:
 
 
 def task_page_visible(player) -> bool:
-    """Visibility for a monitored task page: active round AND not disqualified.
+    """Visibility for a task page: active round AND still in the study.
 
-    Once the tab monitor disqualifies a participant (ai_safety_disqualified),
-    every task page returns False, so a page reload lands them on the ending.
+    Once the tab monitor disqualifies a participant (ai_safety_disqualified), or
+    the entry mobile screen-out removed them (screened_out), every task page
+    returns False, so a page reload lands them on the ending.
     """
     if player.participant.vars.get('ai_safety_disqualified'):
+        return False
+    if common.is_screened_out(player.participant):
         return False
     return is_active_round(player)
 

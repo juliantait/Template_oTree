@@ -3,7 +3,10 @@
 # - startpage: lab hold screen shown only for experimenter-run (lab) sessions.
 # - welcome: welcome + consent; captures the external participant id and device
 #   info when those modules are enabled. Non-consenters are routed straight to
-#   the outro (they never see the task).
+#   the outro (they never see the task). When the `mobile_screenout` option is
+#   on, a server-side User-Agent gate runs before this page renders and sends a
+#   phone straight to the outro ending with exit code -4 (see
+#   _apply_mobile_screenout) — with the option off it does nothing at all.
 
 from main import *
 import common
@@ -52,6 +55,37 @@ def _flag(player, name):
     return bool(player.session.config.get(name))
 
 
+def _apply_mobile_screenout(player, user_agent):
+    """MOBILE SCREEN-OUT GATE — decided BEFORE the consent page is rendered.
+
+    No-op unless the `mobile_screenout` config option is 1: with the option off
+    (the default, in every recruitment profile) this function returns before
+    touching anything, so the phone check has no participant-visible effect at
+    all and every device proceeds normally.
+
+    With the option on, a phone User-Agent is recorded as screened out
+    (`participant.screened_out` + exit code -4) and never sees consent: the
+    caller runs this on the consent page's own GET, before any HTML is
+    produced, and `welcome.is_displayed` then returns False, so oTree redirects
+    the participant onward. Every page in between is gated on the same flag, so
+    they land on the outro ending.
+
+    Idempotent — a refresh re-decides identically and never re-stamps.
+    """
+    participant = player.participant
+    if not _flag(player, 'mobile_screenout'):
+        return
+    if common.is_screened_out(participant):
+        return  # already decided (page reload)
+    if not common.is_mobile_user_agent(user_agent):
+        return
+    participant.screened_out = True
+    common.set_exit_code(participant, common.EXIT_CODES['screened_out'])
+    common.stamp_stage(participant, 'screened_out')
+    # Keep the evidence for the decision (export only — never rendered).
+    common.extra_set(participant, 'screenout_user_agent', (user_agent or '')[:300])
+
+
 # PAGES
 # NB: _static/global/html/template.html is a DESIGN REFERENCE (open it directly
 # in a browser to preview the shell). It is intentionally NOT a flow page — it
@@ -67,6 +101,32 @@ class startpage(Page):
 class welcome(Page):
     template_name = 'before/welcome+consent.html'
     form_model = 'player'
+
+    def get(self):
+        """Run the mobile screen-out gate before this page renders.
+
+        This override is the ONE place the entry request is reachable
+        server-side (oTree's page hooks receive the player, not the request), and
+        it runs before a single byte of the consent page exists. `Page.get`
+        re-checks `is_displayed` immediately below, so a participant screened out
+        here is redirected onward instead of being shown consent — nothing is
+        rendered to them here, not even briefly.
+
+        Instrumentation must never break a page (conventions.md): if anything in
+        the gate raises, the participant simply proceeds to consent.
+        """
+        try:
+            _apply_mobile_screenout(
+                self.player, self.request.headers.get('user-agent', ''))
+        except Exception:
+            pass
+        return super().get()
+
+    @staticmethod
+    def is_displayed(player):
+        # A screened-out participant (see _apply_mobile_screenout) never sees
+        # the consent page; oTree walks them forward to the outro ending.
+        return not common.is_screened_out(player.participant)
 
     @staticmethod
     def get_form_fields(player):
@@ -96,13 +156,12 @@ class welcome(Page):
             showup_fee=cu(cfg.get('showup', 0) or 0),
         )
 
-    @staticmethod
-    def error_message(player, values):
-        # Block mobile devices (desktop-only tasks); show a link back to Prolific.
-        if values.get('is_mobile'):
-            return ("Sorry, this study cannot be completed on a mobile device. "
-                    "Please return the submission on Prolific and open the study "
-                    "on a desktop or laptop computer.")
+    # NB: there is deliberately no error_message here blocking `is_mobile`.
+    # The client-side `is_mobile` field is MEASUREMENT (device_capture) and
+    # never blocks anyone; screening phones out is the `mobile_screenout`
+    # option's job alone, and it happens before this page (see
+    # _apply_mobile_screenout). Blocking here as well would give the phone check
+    # a participant-visible effect even with that option off.
 
     @staticmethod
     def before_next_page(player, timeout_happened):

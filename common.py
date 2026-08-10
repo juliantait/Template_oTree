@@ -7,9 +7,21 @@ This file MUST stay at the project root. All four apps do a top-level
 ``import common``, and oTree puts the project root on ``sys.path``; moving it into
 a subfolder (e.g. scripts/) would break that import for every app.
 """
+import re
 import time
 
 from settings import EXIT_CODES  # re-exported for convenience
+
+# Phone/tablet markers in a User-Agent string. Server-side twin of the UA test in
+# _static/global/js/device_capture.js — which also requires a small viewport,
+# because it runs in a real browser. The gate below runs on the FIRST request,
+# before any page is rendered, so the User-Agent is all there is; that is also
+# exactly why it is the only check that can happen BEFORE the consent page.
+MOBILE_UA_RE = re.compile(
+    r'Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini'
+    r'|Windows Phone|Mobile Safari|Mobile/\d',
+    re.IGNORECASE,
+)
 
 
 def pvar(participant, name, default=None):
@@ -43,6 +55,7 @@ def init_participant(participant):
     participant.comprehension_disqualified = False
     participant.instructions_reread_used = False
     participant.device_info = {}
+    participant.screened_out = False
 
 
 def stamp_stage(participant, stage):
@@ -55,6 +68,22 @@ def stamp_stage(participant, stage):
 def set_exit_code(participant, code):
     """Record the numeric outcome for this participant (see settings.EXIT_CODES)."""
     participant.exit_code = code
+
+
+def is_mobile_user_agent(user_agent) -> bool:
+    """True when an entry request's User-Agent looks like a phone/tablet."""
+    return bool(MOBILE_UA_RE.search(user_agent or ''))
+
+
+def is_screened_out(participant) -> bool:
+    """True once the mobile screen-out gate has removed this participant.
+
+    Every page between entry and the ending consults this (like the tab
+    monitor's ``ai_safety_disqualified``), so a screened-out participant is
+    walked straight past consent, the instructions, the quiz and the task to the
+    outro ending. Reads participant vars with .vars.get() — never getattr().
+    """
+    return bool(participant.vars.get('screened_out'))
 
 
 def extra_set(participant, key, value):
