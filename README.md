@@ -14,7 +14,7 @@ The project root holds the four oTree apps plus a small set of top-level items:
 | --- | --- |
 | `before/` `intro/` `main/` `outro/` | the four oTree apps, run in this order (see App Timeline). `intro/` also holds `generate_instructions_preview.py`. |
 | `_static/` | shared CSS/JS/HTML/images (the design system and `template.html`). |
-| `scripts/` | operational scripts: `start.sh`, `prelaunch_check.py`, `export_data.py`, `format_session_data.py`, `set_up_otree.bat`. |
+| `scripts/` | operational scripts: `start.sh`, `prelaunch_check.py` (config guard), `predeploy_check.sh`/`.py` (upgrade gate), `export_data.py`, `format_session_data.py`, `set_up_otree.bat`. |
 | `tests/` | HTTP-driven flow tests (see "Testing"). |
 | `prolific/` | Prolific operational guide (`Prolific_running.md`). |
 | `skills_claude/` | authoring playbooks (e.g. writing instructions). |
@@ -250,9 +250,12 @@ You can share the instructions with coauthors who don't have the codebase instal
   strand in-progress participants). Authenticates REST calls with
   `OTREE_REST_KEY` when `OTREE_AUTH_LEVEL=STUDY`; fails loudly rather than
   leaving the room unbound.
-- `scripts/prelaunch_check.py` : the machine-checked pre-launch guard as a
+- `scripts/prelaunch_check.py` : the machine-checked **pre-launch** guard as a
   standalone command (non-zero exit on any testing/placeholder value). Run it in
   the target environment, e.g. `OTREE_PRODUCTION=1 python scripts/prelaunch_check.py`.
+- `scripts/predeploy_check.sh` (+ `predeploy_check.py`) : the **pre-deploy
+  upgrade** gate. Boots the candidate build against a *copy* of the live database
+  and drives real participants over real HTTP. See "Before a deploy" below.
 - `scripts/export_data.py` : downloads `/ExportWide` and `/ExportPageTimes` over
   an authenticated admin HTTP session. NB: exporting against a database whose
   schema predates the running code returns HTTP 500 — the script says so
@@ -284,6 +287,70 @@ asserts no 500s. See the header of that file for usage.
   the decision is server-side on the entry request, before consent, so no bot
   and no client-side check can exercise it). Asserts what each of the four
   combinations sees and the exit code recorded.
+
+### Two gates: pre-launch and pre-deploy (they check different things)
+
+|  | `scripts/prelaunch_check.py` | `scripts/predeploy_check.sh` |
+|---|---|---|
+| **Asks** | is this *configuration* safe to launch? | will the *running study* survive being upgraded to this code? |
+| **Kind** | static, config only, no server, instant | dynamic: boots a real `otree prodserver` and drives real HTTP |
+| **Catches** | `REPLACE_*` completion codes, `DEBUG` still on, `verify_quiz=False` left in | a page that 500s for a participant whose state predates the new code; a missing DB column; a page that 500s with JS-produced hidden fields empty |
+| **Run it** | in the target environment, before opening a study to participants | before every deploy that lands on a database with participants in it |
+
+Neither replaces the other: pre-launch cannot detect a broken upgrade path, and
+pre-deploy cannot tell you the completion codes are still placeholders.
+
+### Before a deploy: `scripts/predeploy_check.sh`
+
+It tests the **upgrade**, not the install. Two live outages in the pilot study
+this template was distilled from had the same root cause: the new code was only
+ever tested against a **fresh** database, but both failures could only happen to
+a participant whose state **predated** the change —
+
+- a **participant-vars key** old participants never had (and note
+  `getattr(participant, 'k', default)` does *not* save you: oTree's vars
+  descriptor raises `KeyError`, which the getattr default does not catch), and
+- a **session config frozen** before a parameter existed, so
+  `session.config['new_param']` raises `KeyError` for every already-running
+  session.
+
+A fresh session cannot reproduce either, so bots and fresh-DB HTTP tests are
+structurally blind to the whole class. This script boots the candidate build
+against a copy of the live database and drives, over real HTTP: an **existing
+mid-flow participant** several pages forward, a **fresh participant** entry to
+end for a lab-configured *and* a prolific-configured session, and a **no-JS
+participant** whose JS-produced hidden fields all post empty — then greps the
+server log for 5xx, tracebacks, `KeyError` and `TypeError`. Non-zero exit on any
+failure, so it can gate a deploy.
+
+```bash
+# with live data (what you run before a real deploy):
+docker cp <container>:/app/data/db.sqlite3 /tmp/db_live_copy.sqlite3
+scripts/predeploy_check.sh /tmp/db_live_copy.sqlite3
+
+# no live data yet (this template, or a study before its first session):
+scripts/predeploy_check.sh                 # DEGRADED: fresh-install checks only
+scripts/predeploy_check.sh --require-db    # ... and fail rather than pass degraded
+
+scripts/predeploy_check.sh /tmp/db_live_copy.sqlite3 /path/to/candidate-build
+```
+
+**Degraded mode.** With no database copy there is nothing to upgrade *from*, so
+the upgrade-path checks report **NOT TESTED** (never PASS) and the summary says
+`THE UPGRADE PATH WAS NOT TESTED` in a banner you cannot miss. Use
+`--require-db` (or `PREDEPLOY_REQUIRE_DB=1`) in a pipeline for a study that has
+live sessions, so a missing database copy fails the deploy instead of quietly
+passing.
+
+**The live database is never touched.** The script refuses live-looking paths
+outright, then works on its own private temp copy of whatever file it is given,
+so even the snapshot you hand it is never modified. Name your study's live
+volume or host path in `PREDEPLOY_LIVE_MARKERS` (comma-separated substrings) to
+extend that refusal. Other knobs: `PREDEPLOY_PYTHON` (interpreter that has oTree
+installed), `--configs a,b` (which session configs to drive), `--debug` (drive
+with DEBUG on; the default is the production shape), `--keep` (keep the temp
+workdir on success), `PREDEPLOY_END_PAGES` / `PREDEPLOY_RESUME_PAGES` (teach it
+about end pages and resume-preference pages a study adds).
 
 ## Attribution (oTree)
 The "powered by oTree" badge is hidden (see `_static/global/css/base.css`). The

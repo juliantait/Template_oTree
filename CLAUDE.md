@@ -53,3 +53,10 @@ dropped participant label that server-side testing missed.
 database**, drives an existing mid-flow participant plus a fresh one plus a no-JS
 submit, and fails on any 5xx. Run it before every deploy: a fresh install cannot
 detect a broken upgrade path.
+
+Run with no database argument (the template's own case — there is no live data
+yet) it runs the fresh-install checks only and reports the upgrade path **NOT
+TESTED**; that is never a pass for a study that has live sessions, and
+`--require-db` turns it into a failure. It does not replace
+`scripts/prelaunch_check.py`, which is the static config guard (placeholder
+completion codes, DEBUG still on, testing loosenings) — run both.
