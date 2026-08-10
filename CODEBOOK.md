@@ -13,17 +13,20 @@ creation** (`common.init_participant`) so no export row is ever blank. It is
 raised to `1` only on a clean finish, or set to a negative reason when the
 participant leaves early. Defined in `settings.EXIT_CODES`.
 
-| Code | Name | Meaning |
-|-----:|------|---------|
-| `1` | finished | Completed the study normally. |
-| `0` | abandoned | Created but never reached the end (the default). |
-| `-1` | no_consent | Declined consent on the entry page. |
-| `-2` | comprehension | Disqualified: failed the comprehension check too many times. |
-| `-3` | tab_monitor | Disqualified: AI-safety / tab-switch monitor. |
-| `-4` | screened_out | Screened out at entry (e.g. mobile device). |
-| `-5` | timed_out | Inactivity / never matched in time. |
+| Code | Name | Meaning | Set where |
+|-----:|------|---------|-----------|
+| `1` | finished | Completed the study normally. | `outro.Results.vars_for_template` |
+| `0` | abandoned | Created but never reached the end (the default). | `common.init_participant` |
+| `-1` | no_consent | Declined consent on the entry page. | `before.welcome.before_next_page` |
+| `-2` | comprehension | Disqualified: failed the comprehension check too many times. | `intro.quiz.error_message` |
+| `-3` | tab_monitor | Disqualified: AI-safety / tab-switch monitor. | `common.focus_live_method` |
+| `-4` | screened_out | Phone screened out before the consent page (`mobile_screenout` option on; server-side User-Agent check). | `before._apply_mobile_screenout` |
 
-When you add an outcome, add it to `settings.EXIT_CODES` **and** this table.
+When you add an outcome, add it to `settings.EXIT_CODES` **and** this table —
+with the place that sets it. Every code in the table must be set by real code:
+a code that nothing records is a lie in the export, so a reserved-but-unwired
+code gets deleted, not documented. (One such code, `-5`, has already been
+removed on those grounds; `-4` was wired up instead of removed.)
 
 ---
 
@@ -34,6 +37,7 @@ A dict `{stage_name: epoch_seconds}` filled as the participant clears each stage
 
 | Stage | Set when |
 |-------|----------|
+| `screened_out` | The mobile screen-out gate removed the participant at entry (`mobile_screenout` on). |
 | `consent` | Leaving the welcome/consent page. |
 | `instructions_done` | Leaving the instructions page (round 1). |
 | `quiz_done` | Leaving the quiz page (overwritten by the re-read pass, if any). |
@@ -85,7 +89,10 @@ Spare inventory:
 Fill in per-study fields as you build the task. The template ships with:
 
 - `before.Player`: `participant_label`, `treatment_group`, `consent`,
-  `participant_id_external`, `is_mobile`, `device_info_json`.
+  `participant_id_external`, `is_mobile`, `device_info_json`. `is_mobile` is the
+  client-side device measurement only — it blocks nobody; the screen-out is the
+  server-side `mobile_screenout` gate, whose User-Agent evidence is stored in
+  `participant_extra['screenout_user_agent']`.
 - `intro.Player`: the quiz fields from `intro/quiz_items.py`,
   `num_failed_attempts`. Two rounds: round 2 is the lab re-read pass, so for
   every participant who never takes the re-read offer (all Prolific and most

@@ -68,12 +68,22 @@ pattern.)
 
 Modules (all off by default): `capture_participant_id`, `completion_redirects`,
 `tab_monitor`, `comprehension_dq`, `quiz_reread`, `passive_capture`,
-`device_capture`, `collect_bank_details`, `collect_demographics`,
-`pilot_feedback`. Thresholds (`comprehension_max_failures`,
+`device_capture`, `mobile_screenout`, `collect_bank_details`,
+`collect_demographics`, `pilot_feedback`. Thresholds (`comprehension_max_failures`,
 `tab_monitor_*`) and Prolific codes (`cc_code`, `noconsent_code`, `dq_code`,
 `error_code`) are config values too. Each participant records a numeric
 `exit_code` (see `CODEBOOK.md`). `C.NUM_ROUNDS` is fixed at import — a config may
 run fewer rounds, never more.
+
+**`mobile_screenout` (0/1, default 0)** lives in the Prolific block but is
+*not* in the prolific profile bundle: selecting the prolific study type does
+**not** turn it on. At `0` the phone check has no participant-visible effect at
+all and every device proceeds normally. At `1`, the entry request's User-Agent
+is checked **server-side, before the consent page is rendered**: a phone never
+sees consent, is recorded with exit code `-4` (`screened_out`) and is sent
+straight to the outro ending (back to Prolific with `error_code`); a
+desktop/laptop sees consent as usual. The client-side `is_mobile` field that
+`device_capture` fills is measurement only and blocks nobody.
 
 Every participant field, exit code, stage timestamp and future-proofing spare
 column is documented in **`CODEBOOK.md`** (including the repurpose convention for
@@ -98,11 +108,13 @@ flowchart TD
     classDef success fill:#eaf7ea,stroke:#2e7d32
     classDef flagdep stroke-dasharray:6 4
 
-    Start(["Opens the Prolific study link"]) --> Welcome
+    Start(["Opens the Prolific study link"]) --> Gate
     subgraph BEFORE ["before — entry"]
+        Gate{"mobile_screenout = 1?<br>server-side User-Agent check,<br>runs before consent is rendered"}
+        Gate -- "option 0 (default), or a desktop/laptop" --> Welcome
         Welcome["welcome + consent<br>explicit consent question,<br>Prolific ID + device capture"]
-        Welcome -- "mobile device: blocked with an error,<br>may retry on desktop (no exit code set)" --> Welcome
     end
+    Gate -. "option 1 AND a phone:<br>consent is never shown" .-> EndedSO
     Welcome -- "does not consent" --> EndedNC
     Welcome -- "consents" --> Instr1
 
@@ -133,11 +145,12 @@ flowchart TD
     EndedNC["outro Ended — exit code -1 (no_consent)<br>'Back to Prolific' with noconsent_code"]
     EndedDQ["outro Ended — exit code -2 (comprehension)<br>'Back to Prolific' with dq_code"]
     EndedTM["outro Ended — exit code -3 (tab_monitor)<br>'Back to Prolific' with dq_code"]
+    EndedSO["outro Ended — exit code -4 (screened_out)<br>'Back to Prolific' with error_code"]
     Abandon["Closes the tab at any point —<br>no ending page, exit code stays 0 (abandoned)"]
 
     class Done success
-    class EndedNC,EndedDQ,EndedTM,Abandon terminal
-    class Fb,FbGate flagdep
+    class EndedNC,EndedDQ,EndedTM,EndedSO,Abandon terminal
+    class Fb,FbGate,Gate,EndedSO flagdep
 ```
 
 | Exit code | Terminal state | Ending the participant sees | Completion code |
@@ -147,13 +160,12 @@ flowchart TD
 | `-1` no_consent | Declined consent at entry | `outro` Ended → "Back to Prolific" | `noconsent_code` |
 | `-2` comprehension | Failed the quiz `comprehension_max_failures` times | `outro` Ended → "Back to Prolific" | `dq_code` |
 | `-3` tab_monitor | Tab-away violations reached the cap | `outro` Ended → "Back to Prolific" | `dq_code` |
+| `-4` screened_out | Phone stopped by the entry gate (only when `mobile_screenout=1`) | `outro` Ended → "Back to Prolific" (their FIRST page — consent is never shown) | `error_code` |
 
-> **Code ≠ docs, flagged deliberately:** `EXIT_CODES` also defines `-4`
-> (screened_out) and `-5` (timed_out), and the configs carry an `error_code`,
-> but **no code path currently sets those codes or issues that completion
-> code** — the mobile screen-out blocks on the entry page with a validation
-> error instead of recording `-4`, and nothing implements an inactivity
-> timeout. They are reserved, not wired up, so they appear in no chart.
+> **The table above is the whole table:** every code in `settings.EXIT_CODES` is
+> set by real code and appears here (`CODEBOOK.md` names the line that sets
+> each). A reserved-but-unwired code is a lie in the export, so it gets deleted
+> rather than documented — one such code, `-5`, was removed on those grounds.
 
 ### Lab
 
@@ -166,7 +178,7 @@ flowchart TD
     Start(["Seated at a lab computer"]) --> Hold
     subgraph BEFORE ["before — entry"]
         Hold["startpage — hold screen,<br>experimenter starts the session"] --> Welcome
-        Welcome["welcome + consent<br>implicit consent: continuing = consenting<br>(no ID or device capture, no mobile check)"]
+        Welcome["welcome + consent<br>implicit consent: continuing = consenting<br>(no ID or device capture; mobile_screenout off)"]
     end
     Welcome --> Instr1
 
@@ -211,6 +223,8 @@ flowchart TD
 
 `-1`/`-2`/`-3` cannot occur in lab: consent is implicit, `comprehension_dq` is
 off (the re-read + experimenter message replace it) and the tab monitor is off.
+`-4` cannot occur either unless you set `mobile_screenout=1` on the config — it
+is off by default in every profile, and a lab session has no phones to screen.
 
 
 ## Collaborating on the instructions flow with others?
@@ -263,6 +277,14 @@ running server on a throwaway database and it drives each config's form pages
 over real HTTP, including a POST with the hidden fields deliberately empty, and
 asserts no 500s. See the header of that file for usage.
 
+- `tests/gated_flow_test.py` — the lab-vs-Prolific gated flow (re-read offer,
+  comprehension DQ, pilot feedback).
+- `tests/mobile_screenout_test.py` — the `mobile_screenout` gate at **both**
+  settings, with a phone and a desktop **User-Agent** (the only way to test it:
+  the decision is server-side on the entry request, before consent, so no bot
+  and no client-side check can exercise it). Asserts what each of the four
+  combinations sees and the exit code recorded.
+
 ## Attribution (oTree)
 The "powered by oTree" badge is hidden (see `_static/global/css/base.css`). The
 oTree licence is satisfied by **citing the oTree paper** in any write-up, not by
@@ -280,15 +302,19 @@ scheme" section and `settings.py`). That bundle turns on:
 - **`capture_participant_id`** — captures the external Prolific participant ID at
   entry (stored in the `participant_id_external` field).
 - **`completion_redirects`** — routes each ending to Prolific with the matching
-  completion code: normal completion, declined consent (no-consent), and
-  disqualification (comprehension / tab monitor), plus screen-out / inactivity.
+  completion code: normal completion, declined consent (no-consent),
+  disqualification (comprehension / tab monitor), and the entry screen-out.
 - the **integrity modules** — `tab_monitor`, `comprehension_dq`, plus
   `passive_capture` and `device_capture`.
 
+The profile deliberately does **not** turn on `mobile_screenout` (see the
+parameter scheme above): screening phones out is a separate, explicit decision,
+so set `mobile_screenout=1` on the config if you want it.
+
 **Completion codes** are config values, set in `settings.py`: the
 `SESSION_CONFIG_DEFAULTS` placeholders `cc_code` (normal), `noconsent_code`
-(declined consent), `dq_code` (disqualified) and `error_code` (screen-out /
-inactivity) — replace the `REPLACE_*` values, or override them per-config on your
+(declined consent), `dq_code` (disqualified) and `error_code` (screened out at
+entry) — replace the `REPLACE_*` values, or override them per-config on your
 `prolific` session config. The prelaunch check refuses to run online while any
 code is still a `REPLACE_*` placeholder.
 

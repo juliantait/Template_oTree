@@ -67,14 +67,16 @@ PILOT_FEEDBACK = False
 # Initialised to 0 ("abandoned") at session creation, set to 1 on a clean
 # finish, or to a negative reason code when a participant leaves early. Keep in
 # sync with the CODEBOOK.md exit-code table.
+# EVERY code here must be set by some code path, and CODEBOOK.md names the line
+# that sets it. A reserved code that nothing records is a lie in the export:
+# delete it rather than document it (one such code has already been removed).
 EXIT_CODES = dict(
     finished=1,          # completed the study normally
     abandoned=0,         # default: created but never reached the end
     no_consent=-1,       # declined consent
     comprehension=-2,    # disqualified: failed the comprehension check
     tab_monitor=-3,      # disqualified: AI-safety / tab-switch monitor
-    screened_out=-4,     # screened out at entry (e.g. mobile device)
-    timed_out=-5,        # inactivity / never matched in time
+    screened_out=-4,     # phone screened out before consent (mobile_screenout)
 )
 
 # --- recruitment profiles (STUDY TYPE axis) ----------------------------------
@@ -110,6 +112,11 @@ RECRUITMENT_PROFILES = {
         collect_bank_details=False,  # Prolific pays through the platform
         collect_demographics=False,  # Prolific supplies demographics in its own export
         quiz_reread=False,           # no re-read pass online; comprehension_dq instead
+        # NB: `mobile_screenout` is deliberately NOT listed here. It is a
+        # Prolific-block option but its own decision: selecting the prolific
+        # study type must never start screening phones out on its own. It falls
+        # through to the SESSION_CONFIG_DEFAULTS baseline (0 = off) and is
+        # turned on by setting it explicitly on a config.
     ),
     # There is deliberately NO 'testing' profile: clickthrough loosenings are
     # the DEBUG axis (env-driven), not a study type. For a clickthrough config,
@@ -225,10 +232,23 @@ SESSION_CONFIG_DEFAULTS = dict(
     # survives to launch.
     capture_participant_id=False,   # capture an external (Prolific) ID at entry
     completion_redirects=False,     # send participants back to Prolific with a code
+    # MOBILE SCREEN-OUT — 0 = OFF (default), 1 = ON. Its own switch, and
+    # deliberately NOT part of the prolific profile bundle: choosing the
+    # prolific study type must NOT turn it on. Someone screening out phones is
+    # making a design decision, so they say so explicitly on the config.
+    #   0: the phone check has NO participant-visible effect whatsoever — every
+    #      device proceeds normally (device_capture still RECORDS is_mobile as
+    #      measurement; it never blocks anyone).
+    #   1: the entry request's User-Agent is checked SERVER-SIDE before the
+    #      consent page is rendered (before.welcome.get -> _apply_mobile_screenout).
+    #      A phone never sees consent: it is recorded with
+    #      EXIT_CODES['screened_out'] (-4) and redirected straight to the outro
+    #      ending, which returns it to Prolific with error_code.
+    mobile_screenout=0,
     cc_code='REPLACE_CC',        # normal completion
     noconsent_code='REPLACE_NC', # declined consent
     dq_code='REPLACE_DQ',        # disqualified (comprehension / tab monitor)
-    error_code='REPLACE_ERR',    # screen-out / inactivity
+    error_code='REPLACE_ERR',    # screened out at entry (mobile_screenout)
 
     # =========================================================================
     # TESTING AND DEV  (the DEBUG axis' config-side values)
@@ -343,6 +363,7 @@ PARTICIPANT_FIELDS = [
     'comprehension_disqualified',  # comprehension-DQ authoritative flag
     'instructions_reread_used',    # lab: the one-time re-read pass was taken
     'device_info',          # dict of captured device/screen info, if enabled
+    'screened_out',         # mobile screen-out gate removed them before consent
 ]
 # Description of PARTICIPANT_FIELDS:
 # - temp_data: Temporary storage for any participant-specific data during the session.
@@ -360,6 +381,9 @@ PARTICIPANT_FIELDS = [
 # - instructions_reread_used: True once a lab participant enters the second
 #   instructions pass (quiz_reread module). Consumed on entry, not on offer.
 # - device_info: captured device/screen dict when device_capture is on.
+# - screened_out: True when the mobile_screenout gate removed the participant
+#   before the consent page (exit_code -4). Authoritative flag: every page
+#   between entry and the ending checks it, exactly like the tab monitor's.
 
 SESSION_FIELDS = []
 

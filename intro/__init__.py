@@ -98,6 +98,8 @@ class instructing(Page):
     def is_displayed(player):
         # Round 1: everyone. Round 2: only a lab participant who took the
         # one-time re-read offer (Prolific never reaches it).
+        if common.is_screened_out(player.participant):
+            return False  # mobile screen-out: walked straight to the ending
         return player.round_number == 1 or in_reread_pass(player)
 
     def vars_for_template(player):
@@ -137,6 +139,8 @@ class quiz(Page):
 
     def is_displayed(player):
         # Round 1: everyone. Round 2: only the lab re-read pass.
+        if common.is_screened_out(player.participant):
+            return False  # mobile screen-out: walked straight to the ending
         return player.round_number == 1 or in_reread_pass(player)
 
     def error_message(player, values):
@@ -234,7 +238,10 @@ class AISafetyAgree(Page):
 
     @staticmethod
     def is_displayed(player):
-        # Arm once, after the round-1 quiz; never in the re-read round.
+        # Arm once, after the round-1 quiz; never in the re-read round, and
+        # never for a participant the mobile screen-out already removed.
+        if common.is_screened_out(player.participant):
+            return False
         return player.round_number == 1 and bool(player.session.config.get('tab_monitor'))
 
 
