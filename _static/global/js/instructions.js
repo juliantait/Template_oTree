@@ -23,12 +23,17 @@ document.addEventListener('DOMContentLoaded', () => {
         current: 'instructions',
     };
 
+    // Return to the top of the slide when the step changes. The card is height-
+    // capped and .instruction-wrapper is the element that scrolls (see
+    // instructions.css), so scroll THAT — the window itself usually has nothing
+    // to scroll now. The window call is kept as a harmless fallback for any page
+    // that is taller than the viewport anyway.
     const scrollToTop = () => {
+        if (wrapper) {
+            wrapper.scrollTo({ top: 0, behavior: 'smooth' });
+        }
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
-
-    // Base minimum height to keep controls from collapsing on very short slides.
-    const baseMinHeight = Math.max(Math.floor(window.innerHeight * 0.33), 320);
 
     const setPrevDisabled = (shouldDisable) => {
         prevBtn.disabled = shouldDisable;
@@ -78,10 +83,13 @@ document.addEventListener('DOMContentLoaded', () => {
         prevBtn.style.display = 'inline-block';
         nextBtn.style.display = 'inline-block';
 
-        if (wrapper && blocks[current]) {
-            const currentHeight = blocks[current].scrollHeight;
-            wrapper.style.minHeight = `${Math.max(currentHeight, baseMinHeight)}px`;
-        }
+        // NB: this used to set wrapper.style.minHeight to the current slide's
+        // scrollHeight, to stop the controls jumping between slides. Do NOT put
+        // that back. The wrapper is now the card's scroll region, and an inline
+        // min-height equal to the content height makes it impossible for the
+        // region to shrink — it would never scroll and the card would overflow
+        // its max-height instead. Constant control position is handled in CSS by
+        // the flex fill (see .instruction-wrapper in instructions.css).
 
         if (atPrequiz) {
             prevBtn.textContent = 'Re-read instructions';

@@ -1,58 +1,106 @@
+/* ===========================================================================
+   Participant-facing design system.
+
+   One shared shell for every screen (welcome, consent, instructions, quiz,
+   task, results) so the study reads as a single designed product.
+
+   Constraints: plain CSS only. No external fonts, no CDN, no network calls of
+   any kind (a study may run on Prolific, where an outbound request is both a
+   privacy leak and a point of failure). System font stack, hand-rolled
+   controls. Everything is fluid and legible down to a 320px phone.
+   =========================================================================== */
+
 :root {
-    --color-background: #ffffff;
-    --color-page-bg: #f5f7fa;
-    --color-text: #555;
-    --color-heading: #333;
-    --color-accent: #4caf50;
-    --color-border: #ccc;
-    --color-muted: #9fa29f;
-    --color-muted-hover: #878987;
-    --color-primary: #008cba;
-    --color-primary-hover: #007bb5;
-    --color-disabled: #cccccc;
-    --color-table-header: #f5f5f5;
-    --color-table-selected: #e6f7ff;
-    /* focus ring: always visible, tinted to the primary action colour */
-    --color-focus-ring: rgba(0, 140, 186, 0.4);
+    /* --- surfaces --------------------------------------------------------- */
+    --page-bg: #eef1f6;
+    --card-bg: #ffffff;
+    --sunken: #f4f6fa;
+    --line: #e3e8ef;
+    --line-strong: #cbd5e1;
+
+    /* --- ink -------------------------------------------------------------- */
+    --ink: #16202c;
+    --ink-soft: #4a5766;
+    --ink-mute: #71808f;
+
+    /* --- accent (actions only; used sparingly and on purpose) ------------- */
+    --accent: #2f6feb;
+    --accent-hover: #1f57c9;
+    --accent-soft: #e8effd;
+    --accent-ring: rgba(47, 111, 235, 0.32);
+
+    --danger: #c2384a;
+    --ok: #1f9254;
+
+    /* --- shape ------------------------------------------------------------ */
+    --r-sm: 8px;
+    --r-md: 12px;
+    --r-lg: 18px;
+    --shadow: 0 1px 2px rgba(16, 32, 52, .04), 0 8px 28px rgba(16, 32, 52, .07);
+    --shadow-lift: 0 2px 4px rgba(16, 32, 52, .06), 0 14px 38px rgba(16, 32, 52, .12);
 
     /* The reading measure: the width running prose is held to for legibility.
-       Titles and body copy share this measure; controls, tables and widgets
-       are deliberately NOT clamped to it (see notes below). */
-    --reading-measure: 62ch;
+       Lives in ONE place, so every text family (narrative, instructions, quiz)
+       narrows running text to the SAME width. Controls, tables and widgets are
+       deliberately NOT clamped to it (see notes below). */
+    --read-measure: 68ch;
+
+    /* Gap between stacked options in one multiple-choice group (see the
+       mc-option component). */
+    --mc-gap: 10px;
+
+    /* --- COMPATIBILITY ALIASES -------------------------------------------
+       The tokens above are the design system. These older `--color-*` names
+       are kept as aliases ONLY so page-scoped stylesheets that predate the
+       rename (results.css, demographics.css, quiz.css) keep working untouched.
+       DO NOT use them in new rules — reach for the real token instead. A new
+       study is free to delete this block once nothing references it. */
+    --color-background: var(--card-bg);
+    --color-page-bg: var(--page-bg);
+    --color-text: var(--ink-soft);
+    --color-heading: var(--ink);
+    --color-accent: var(--accent);
+    --color-border: var(--line-strong);
+    --color-muted: var(--ink-mute);
+    --color-muted-hover: var(--ink-soft);
+    --color-primary: var(--accent);
+    --color-primary-hover: var(--accent-hover);
+    --color-disabled: var(--line-strong);
+    --color-table-header: var(--sunken);
+    --color-table-selected: var(--accent-soft);
+    --color-focus-ring: var(--accent-ring);
+    --reading-measure: var(--read-measure);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 
-/* General layout & typography */
+/* General layout & typography.
+   System font stack only — no webfont is bundled and none may be fetched (see
+   the no-network constraint above). Fluid base size: comfortable on a phone,
+   generous on a desktop. */
 body {
-    font-family: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
-    background-color: var(--color-page-bg);
-    color: var(--color-text);
-    font-size: 22px;
-    line-height: 1.6;
     margin: 0;
     padding: 0;
+    background: var(--page-bg);
+    color: var(--ink-soft);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+    font-size: clamp(16px, 0.55vw + 14.6px, 19px);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
 }
 
-.titles {
-    text-align: center;
-    font-family: 'Lato', 'Arial', sans-serif;
-    font-weight: bold;
-    color: #4caf50;
-}
+h1, h2, h3 { color: var(--ink); font-weight: 650; letter-spacing: -0.011em; }
 
-h1, h2, h3 {
-    color: var(--color-heading);
-}
+p { margin: 0 0 1em; }
+p:last-child { margin-bottom: 0; }
 
-p {
-    margin: 0 0 20px;
-}
+/* Bold text is the SAME ink as body copy, just heavier — emphasis must not
+   shout in a second colour. */
+strong { color: var(--ink); font-weight: 650; }
 
-strong {
-    color: var(--color-accent);
-}
+a { color: var(--accent); }
 
 /* --- neutralise oTree's page chrome ------------------------------------------
    oTree wraps every page in <div class="otree-body container">: its theme CSS
@@ -71,51 +119,133 @@ strong {
 .otree-content { margin-top: 0; }
 .otree-title.page-header { margin: 0; }
 
-/* --- page shell -------------------------------------------------------------
-   Fill the viewport so a card that does not need to scroll sits centred BOTH
-   ways, with a comfortable margin around it. min-height (not height) means a
-   card TALLER than the viewport simply grows the page and scrolls downward,
-   fully reachable, never clipped. Roomier top/bottom padding gives the card
-   air. */
+/* --- remove oTree's "powered by oTree" line + trailing spacer ----------------
+   oTree's Page.html injects a `.powered-by-otree` line and a trailing <br/>
+   after the content, both OUTSIDE our .experimental-screen. Both add stray
+   whitespace below the card that made the bottom gutter deeper than the sides.
+   (On the licence: the AGPL is satisfied by CITING THE OTREE PAPER — Chen,
+   Schonger & Wickens, 2016 — not by displaying the badge. We cite it; see the
+   README.) */
+.powered-by-otree { display: none; }
+.otree-body.container > br { display: none; }
+
+/* COMPONENT — page shell. INTENTION: centre one card in the viewport with an
+   equal grey gutter on every side (see EQUAL MARGINS below). Every participant
+   page is one .experimental-screen wrapping one .screen-card. */
 .experimental-screen {
-    min-height: 100vh;
     display: flex;
     justify-content: center;   /* horizontal centring */
     align-items: center;       /* vertical centring of a short card */
-    padding: clamp(28px, 4.5vw, 64px) clamp(16px, 3vw, 32px);
-    background: var(--color-page-bg);
+    /* Fill the viewport so a card that does not need to scroll sits centred both
+       ways. min-height (not height) means a card TALLER than the viewport simply
+       grows the page: it stays fully reachable and scrolls downward, rather than
+       being clipped. */
+    min-height: 100vh;
+    /* EQUAL MARGINS. One symmetric gutter on all four sides, so the grey band
+       above the card matches the band beside it. The middle term is 3vw — the
+       SAME as the card's own 94vw side gutter ((100 − 94)/2 = 3vw) — so when the
+       card is width-limited the top gap equals each side gap exactly. Vertical
+       centring then keeps top = bottom on a short card. */
+    padding: clamp(16px, 3vw, 40px);
+    background: var(--page-bg);
 }
 
+/* COMPONENT — card frame. INTENTION: the single white card every page sits in.
+   ONE card width for EVERY page; only its height responds to content. Long-form
+   text stays readable because running text carries its own reading band;
+   functional components (tables, widgets) span the card's inner width.
+
+   HEIGHT: A FLOOR *AND* A CEILING. The card is never shorter than --card-min
+   (so a one-line page does not look stubby) and never taller than --card-max
+   (so the page background always frames it — the white edge must never touch the
+   top or bottom of the screen). Between the two it sizes to its content. Past
+   the ceiling the card does NOT grow: the middle region scrolls inside it (see
+   .experimental-content), which is why this element is a flex column.
+
+   dvh with a vh fallback: on mobile `vh` ignores the retracting URL bar, so a
+   88vh card can still overflow the visible area on a phone. Browsers that do not
+   know `dvh` drop the second declaration and keep the first. */
+:root {
+    --card-min: 75vh;
+    --card-max: 88vh;
+}
 .screen-card {
     width: 100%;
-    /* Wide card; thin grey side margins on any monitor. Long-form text stays
-       readable because it carries its own reading measure (below). */
     max-width: min(94vw, 1200px);
-    /* viewport floor so short pages never look stubby; content taller than this
-       simply expands the card and the page scrolls (oTree-template convention) */
-    min-height: 75vh;
+    min-height: var(--card-min);
+    max-height: var(--card-max);
     margin-inline: auto;
-    background: #fff;
-    border: 1px solid #e5e7eb;
-    border-radius: 12px;
-    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.06);
-    padding: clamp(24px, 3vw, 40px) clamp(20px, 4.5vw, 48px);
+    background: var(--card-bg);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow);
+    padding: clamp(18px, 3vw, 32px) clamp(18px, 4.5vw, 48px);
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    /* Flush-left is the default: running prose narrows to the reading measure
-       and is justified below; the card itself is not centre-aligned. */
+    gap: clamp(16px, 2.6vw, 26px);
+    /* Flush-left is the default; the narrative family (below) opts into
+       centring, and the card itself is never centre-aligned by default. */
     text-align: left;
+    /* DO NOT add transform / filter / backdrop-filter / contain to this rule.
+       Any of them makes the card a containing block for position:fixed, which
+       would trap the tab-monitor's full-screen overlay inside the card. */
+}
+@supports (height: 1dvh) {
+    :root { --card-max: 88dvh; }
 }
 
+/* THE SCROLL REGION. The header strip and the button row are PINNED (they are
+   flex:0 0 auto siblings); only this middle region scrolls, so the forward
+   action is always on screen and nobody has to scroll to find Next.
+
+   `min-height: 0` IS LOAD-BEARING. A flex child's default min-height is `auto`,
+   which refuses to shrink below its content — without this line the region
+   silently never scrolls and the card grows past its max-height instead. This is
+   the single most common way this pattern fails; do not remove it.
+
+   `safe center` keeps the short-page vertical centring while guaranteeing that
+   overflowing content is never cut off at the TOP (plain `center` makes the
+   overflow above the box unreachable). Browsers without `safe` keep plain
+   `center`, which is correct for them because they only reach this rule when the
+   content is short enough not to overflow anyway.
+
+   The padding is not decoration: `overflow-y: auto` also clips horizontally, and
+   a :focus-visible ring is 3px + 2px offset. Without room the focus outline on
+   the first/last option card would be sliced off by the scroll edge. */
 .experimental-content {
     width: 100%;
     display: flex;
     flex-direction: column;
     gap: 16px;
     flex: 1 1 auto;
-    justify-content: center;   /* centre the content block vertically in the card */
-    margin-block: auto;
+    min-height: 0;
+    overflow-y: auto;
+    justify-content: center;
+    justify-content: safe center;
+    padding: 8px;
+    margin: -8px;           /* cancel the focus-ring gutter so nothing shifts */
+    scroll-padding-block: 8px;
+
+    /* SCROLL AFFORDANCE (pure CSS, self-hiding). Two pairs of gradients: the
+       `local` ones scroll WITH the content and are painted in the card colour,
+       the `scroll` ones are fixed shadows at the edges. At the top of the scroll
+       the local gradient sits over the top shadow and hides it; scroll down and
+       it moves away, revealing the shadow. So each shadow appears only while
+       there is more content in that direction, and the bottom one disappears
+       exactly when you reach the end. Explicit rgba(255,255,255,0) rather than
+       `transparent`, which some engines interpolate through black. */
+    background:
+        linear-gradient(var(--card-bg) 30%, rgba(255, 255, 255, 0)) top / 100% 26px no-repeat local,
+        linear-gradient(rgba(255, 255, 255, 0), var(--card-bg) 70%) bottom / 100% 26px no-repeat local,
+        radial-gradient(farthest-side at 50% 0, rgba(16, 32, 52, .13), rgba(255, 255, 255, 0)) top / 100% 11px no-repeat scroll,
+        radial-gradient(farthest-side at 50% 100%, rgba(16, 32, 52, .13), rgba(255, 255, 255, 0)) bottom / 100% 11px no-repeat scroll;
+}
+
+/* Pinned regions: never shrink, never scroll away. */
+.experimental-header,
+.screen-card > .button-row,
+.screen-card > .logo-section {
+    flex: 0 0 auto;
 }
 
 .experimental-header {
@@ -126,8 +256,7 @@ strong {
 
 /* --- reading measure --------------------------------------------------------
    Running prose (titles + body copy) narrows to the reading measure and centres
-   as a column inside the wider card, so titles sit flush-left with the body's
-   left edge. Body copy is justified. Controls, forms, tables and widgets are
+   as a column inside the wider card. Controls, forms, tables and widgets are
    NOT in these selectors, so they keep the full card (band) width — never
    clamp a control to the reading measure. */
 .header-title,
@@ -136,41 +265,99 @@ strong {
 .section-header,
 .section-text {
     width: 100%;
-    max-width: var(--reading-measure);
+    max-width: var(--read-measure);
     margin-inline: auto;
 }
 
+/* COMPONENT — reading band. INTENTION: narrow running text to a centred measure
+   inside the wide card, so lines stay legible while functional components still
+   span the card. This component only sets the measure + centres the block; the
+   opting-in FAMILY chooses the alignment (narrative centres, instructions
+   justify). Apply with class="read-band". */
+.read-band { width: 100%; max-width: var(--read-measure); margin-inline: auto; }
+
+/* SINGLE SOURCE OF TRUTH for the page-title look. INTENTION: the narrative /
+   welcome / consent page title (.header-title) and the instructions section
+   title (.instruction-block > h2) are the SAME visual element, so both draw
+   their type from this ONE rule — edit the title look here and nowhere else.
+   (Both are <h2>, so colour and letter-spacing come from the shared h1,h2,h3
+   rule above; this rule only sets the size/line-height/weight.)
+   ALIGNMENT DELIBERATELY LIVES ELSEWHERE: no text-align here, so a family class
+   (.narrative-card) can centre the title. Putting text-align on this rule would
+   out-rank the family at equal specificity and lock every title flush-left. */
 .header-title {
-    margin-block: 0 12px;
-    font-size: 35px;
-    color: var(--color-heading);
-    font-weight: 700;
-    text-align: left;
+    margin: 0;
+    font-size: clamp(23px, 2.4vw, 31px);
+    line-height: 1.22;
+    font-weight: 680;
 }
 
 .header-text {
     margin-block: 0;
-    color: var(--color-text);
+    color: var(--ink-mute);
+    font-size: 0.94em;
 }
 
 .section-header {
     margin-block: 24px 12px;
-    font-size: 20px;
-    color: var(--color-heading);
+    font-size: clamp(18px, 1.5vw, 21px);
+    color: var(--ink);
 }
 
 .section-title {
     margin-block: 24px 12px;
-    font-size: 26px;
-    font-weight: 700;
-    color: var(--color-heading);
-    text-align: left;
+    font-size: clamp(18px, 1.5vw, 21px);
+    font-weight: 650;
+    color: var(--ink);
 }
 
 .section-text {
     margin-block: 0;
     text-align: justify;
 }
+
+/* An "eyebrow": small, quiet, uppercase context line above a title. It lives
+   inside .experimental-header, which always spans the card and stays top-LEFT —
+   families may re-align the title below it, never the eyebrow itself. */
+.eyebrow {
+    font-size: 0.74em;
+    font-weight: 650;
+    letter-spacing: .085em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+}
+
+/* COMPONENT — panel. INTENTION: a quiet grey card for secondary information
+   (privacy statements, callouts, reminders), full width of its column by
+   default. */
+.panel {
+    background: var(--sunken);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    padding: clamp(14px, 2.4vw, 20px);
+}
+
+/* COMPONENT — hug panel (variant of .panel). INTENTION: a highlight panel that
+   SHRINKS to fit its content and sits centred, instead of stretching to the band
+   (a full-width grey block looks heavy behind a one-line reminder).
+   `display:table` shrink-wraps the content; `margin-inline:auto` centres it
+   regardless of the parent's text-align. Opt in with class="panel panel--hug". */
+.panel--hug { display: table; max-width: var(--read-measure); margin-inline: auto; }
+
+.hint { color: var(--ink-mute); font-size: 0.86em; }
+
+/* FAMILY — narrative card. INTENTION: narrative screens (welcome, consent, the
+   agreement and part/block-start screens) CENTRE their script — the page title,
+   the sentences and the panels are centred and held to the reading band — while
+   the header strip stays full-width top-LEFT. Instructions are the JUSTIFIED
+   family; quiz is the LEFT-aligned form family; task/results are unchanged.
+   Opt in with class="screen-card narrative-card". */
+.narrative-card .experimental-content { text-align: center; }
+.narrative-card .header-title { text-align: center; }   /* title centred; the eyebrow above it stays left */
+.narrative-card .section-text { max-width: var(--read-measure); margin-inline: auto; text-align: center; }
+/* Option groups keep the uniform band width (see the mc-option component) and
+   centre as a block; each option row stays left-aligned inside. */
+.narrative-card .stacked-form { width: 100%; max-width: var(--read-measure); margin-inline: auto; text-align: left; }
 
 /* --- reserved height (no-jump pattern) --------------------------------------
    For anything that appears or disappears while a page is on screen, reserve
@@ -185,62 +372,76 @@ strong {
    Opaque full-page cover dropped the instant a script auto-fills a form and
    submits it (e.g. the DEBUG skip-quiz control), so the participant never sees
    controls being set before navigation completes. Matches the page background
-   so it reads as a plain loading frame. quiz.js paints an equivalent overlay
-   inline for the same reason. */
+   so it reads as a plain loading frame.
+   Painted ONLY by global.js's submitFormBehindVeil() — the single shared
+   implementation. Do not hand-roll another overlay in a page script; route the
+   auto-fill through that helper instead. */
 .submit-veil {
     position: fixed;
     inset: 0;
     z-index: 9999;
-    background: var(--color-page-bg);
+    background: var(--page-bg);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--color-muted);
+    color: var(--ink-mute);
+    font-size: .95em;
 }
 
 /* --- buttons ----------------------------------------------------------------
    The primary forward button is horizontally centred and pushed to the FOOT of
    the card (margin-top: auto), so the card's default height is filled: content
-   sits up top, the action near the bottom. */
+   sits up top, the action near the bottom. Scoped to the card's OWN row, so a
+   button-row nested inside a widget keeps its tight rhythm. */
 .button-row {
-    margin-top: auto;
-    padding-top: 24px;
     display: flex;
     justify-content: center;
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
+    padding-top: 4px;
 }
 
-button {
+.screen-card > .button-row { margin-top: auto; padding-top: 24px; }
+
+.next-button,
+button.next-button,
+input.next-button {
+    appearance: none;
+    -webkit-appearance: none;
+    font: inherit;
+    font-weight: 620;
+    font-size: 1em;
+    line-height: 1;
+    color: #fff;
+    background: var(--accent);
+    border: 1px solid transparent;
+    border-radius: 999px;
+    padding: 0.85em 2em;
     cursor: pointer;
-    transition: background-color 0.3s ease;
-    border-radius: 8px;
-}
-
-.next-button {
-    display: inline-block;
-    border: none;
-    color: white;
-    padding: 15px 32px;
-    font-size: 16px;
+    margin: 0;
     text-align: center;
     text-decoration: none;
-    cursor: pointer;
-    transition: background-color 0.3s ease;
-    border-radius: 8px;
-    background-color: var(--color-primary);
-    margin: 0;
+    transition: background-color .16s ease, transform .12s ease, box-shadow .16s ease;
+    box-shadow: 0 1px 2px rgba(16, 32, 52, .12);
 }
 
-.next-button:hover {
-    background-color: var(--color-primary-hover);
-}
+.next-button:hover { background: var(--accent-hover); box-shadow: var(--shadow-lift); }
+.next-button:active { transform: translateY(1px); }
 
-.next-button:disabled {
-    background-color: var(--color-disabled);
-    cursor: not-allowed;
+/* Secondary action (e.g. "Back" on the instruction pager). Same geometry as the
+   primary so the pair sits evenly; quieter so the forward action leads. */
+.next-button.ghost {
+    background: transparent;
+    color: var(--ink-soft);
+    border-color: var(--line-strong);
+    box-shadow: none;
 }
+.next-button.ghost:hover { background: var(--sunken); color: var(--ink); box-shadow: none; }
+
+.next-button:disabled { opacity: .42; cursor: default; }
+.next-button:disabled:hover { background: var(--accent); box-shadow: none; }
+.next-button.ghost:disabled:hover { background: transparent; }
 
 /* --- forms ------------------------------------------------------------------ */
 form {
@@ -269,19 +470,32 @@ form {
     align-items: flex-start;
 }
 
-input[type="text"] {
-    padding: 8px;
-    margin-bottom: 20px;
+input[type="text"], input[type="number"], select, textarea {
+    font: inherit;
+    padding: .7em .85em;
     box-sizing: border-box;
-    border: 1px solid var(--color-border);
-    border-radius: 4px;
-    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+    color: var(--ink);
+    background: var(--card-bg);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-sm);
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-ring);
+    outline: none;
 }
 
-.errors {
-    color: red;
-    text-align: center;
-    margin-top: 20px;
+/* Validation errors. .otree-form-errors is oTree's own banner — style it too, or
+   an unstyled framework box drops into an otherwise designed page. */
+.errors, .otree-form-errors {
+    color: var(--danger);
+    background: #fdeff1;
+    border: 1px solid #f3c6cd;
+    border-radius: var(--r-md);
+    padding: .8em 1em;
+    margin: 0;
+    font-size: .94em;
 }
 
 /* --- range sliders: touch-sized, one consistent look ------------------------
@@ -300,12 +514,12 @@ input[type="range"]:active { cursor: grabbing; }
 input[type="range"]::-webkit-slider-runnable-track {
     height: 6px;
     border-radius: 999px;
-    background: var(--color-border);
+    background: var(--line-strong);
 }
 input[type="range"]::-moz-range-track {
     height: 6px;
     border-radius: 999px;
-    background: var(--color-border);
+    background: var(--line-strong);
 }
 input[type="range"]::-webkit-slider-thumb {
     appearance: none;
@@ -315,8 +529,8 @@ input[type="range"]::-webkit-slider-thumb {
     margin-top: -12px;
     border-radius: 50%;
     background: #fff;
-    border: 2px solid var(--color-primary);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+    border: 2px solid var(--accent);
+    box-shadow: 0 2px 6px rgba(16, 32, 52, 0.22);
     transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 input[type="range"]::-moz-range-thumb {
@@ -324,15 +538,15 @@ input[type="range"]::-moz-range-thumb {
     height: 30px;
     border-radius: 50%;
     background: #fff;
-    border: 2px solid var(--color-primary);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+    border: 2px solid var(--accent);
+    box-shadow: 0 2px 6px rgba(16, 32, 52, 0.22);
 }
 input[type="range"]:hover::-webkit-slider-thumb { transform: scale(1.06); }
 input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
 
 /* --- focus: always visible, never removed (accessibility) ------------------- */
 :focus-visible {
-    outline: 3px solid var(--color-focus-ring);
+    outline: 3px solid var(--accent-ring);
     outline-offset: 2px;
     border-radius: 4px;
 }
@@ -345,9 +559,9 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
 
 .skip-button {
     display: inline-block;
-    border: 1px dashed var(--color-muted);
+    border: 1px dashed var(--ink-mute);
     background: transparent;
-    color: var(--color-muted);
+    color: var(--ink-mute);
     padding: 8px 16px;
     font-size: 14px;
     border-radius: 8px;
@@ -356,14 +570,28 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
 }
 
 .skip-button:hover {
-    color: var(--color-muted-hover);
-    border-color: var(--color-muted-hover);
+    color: var(--ink-soft);
+    border-color: var(--ink-soft);
 }
+
+/* --- logos: quiet, at the foot of the card ----------------------------------
+   Sizing lives HERE, not as inline height attributes on the <img> tags in
+   logo_section.html — an inline style beats any stylesheet rule, so a logo sized
+   in the markup cannot be re-tuned from the design system. */
+.logo-section { margin-top: 4px; padding-top: 18px; border-top: 1px solid var(--line); }
+.logo-row { display: flex; align-items: center; justify-content: center; gap: 26px; }
+.logo-row img { height: 40px; width: auto; opacity: .62; }
+
+/* The welcome header's inline CREED logo (lab gate page). */
+.welcome-header-row { display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
+.welcome-header-row img { height: 44px; width: auto; }
 
 /* --- responsive: phone breakpoint ------------------------------------------- */
 @media (max-width: 520px) {
     .button-row { justify-content: stretch; }
     .button-row .next-button { flex: 1; text-align: center; }
+    .logo-row img { height: 32px; }
+    .logo-row { gap: 18px; }
 }
 
 /* --- respect reduced-motion preference -------------------------------------- */
@@ -382,13 +610,6 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
    top-to-bottom before adding a page override.
    ============================================================================ */
 
-/* --- remove the "powered by oTree" badge ------------------------------------
-   The oTree licence (AGPL) is satisfied by CITING THE OTREE PAPER
-   (Chen, Schonger & Wickens, 2016, J. Behav. Exp. Finance) in any write-up,
-   NOT by displaying the badge. We cite the paper (see README) and hide the
-   badge so it never appears to participants. */
-.powered-by-otree { display: none !important; }
-
 /* --- three-section card anatomy ---------------------------------------------
    Every screen card is one of three stacked regions, in this order:
      .experimental-header  — title + intro line (top)
@@ -401,71 +622,168 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
                gap: 16px; justify-content: center; }
 .card-foot   { margin-top: auto; padding-top: 24px; }
 
-/* --- mc-option: a full-card-clickable multiple-choice option ----------------
-   A radio/checkbox option whose ENTIRE card is a tap target. On phones a bare
-   radio is a tiny hit area and mis-taps are common; here the wrapping <label>
-   fills the card, and a stretched ::after overlay guarantees a tap anywhere on
-   the card toggles the control. The visible selected state uses :has(:checked),
-   so no JS is needed.
+/* --- mc-option: the shared multiple-choice option card ----------------------
+   ONE component for every single-choice answer in the study — the comprehension
+   quiz answers AND the welcome-page consent options both render as these, so
+   they look and behave identically. A full-width selectable card wrapping one
+   radio/checkbox.
 
-   Markup:
-     <label class="mc-option">
-       <input type="radio" name="q1" value="a">
-       <span class="mc-option-body">Option A text</span>
-     </label>
-*/
+   NAMING. `.mc-option` is the canonical class; use it in any hand-authored
+   choice markup. oTree's formfield helper emits Bootstrap `.form-check` markup
+   that we CANNOT add a class to, so `.form-check` is aliased to the same rules
+   here — treat the two as the same component. Without this alias every
+   oTree-rendered radio in the study (consent, quiz, agreement) falls back to a
+   bare unstyled Bootstrap control.
+
+   GAP. Options in a group are separated by --mc-gap via an adjacent-sibling
+   margin, so adjacent cards never touch WHATEVER container oTree wraps them in.
+   Reuse this component for future MC questions and the gap comes for free.
+
+   Markup (hand-authored):
+     <div class="mc-options">
+       <label class="mc-option">
+         <input type="radio" name="q1" value="a">
+         <span class="mc-option-body">Option A text</span>
+       </label>
+     </div>
+   Markup (oTree): {{ formfield 'field' }} with widget=widgets.RadioSelect —
+   nothing to do, the alias picks it up. */
 .mc-options {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--mc-gap);
     width: 100%;
     max-width: 560px;   /* a control band, NOT the reading measure */
     margin-inline: auto;
 }
-.mc-option {
-    position: relative;          /* anchor for the full-card overlay */
+
+.mc-option, .form-check {
     display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    padding: 16px 18px;
-    border: 2px solid var(--color-border);
-    border-radius: 10px;
-    background: var(--color-background);
+    align-items: center;
+    gap: .7em;
+    margin: 0;
+    /* symmetric internal padding: top/bottom equal to the sides */
+    padding: .85em;
+    /* comfortable touch target: guarantee >=44px tall even at small font scales
+       (Apple/WCAG minimum). Content stays vertically centred via align-items. */
+    min-height: 44px;
+    /* positioning context for the label hit-area overlay (see below) */
+    position: relative;
+    background: var(--card-bg);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-md);
     cursor: pointer;
-    transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+    transition: border-color .14s ease, background-color .14s ease, box-shadow .14s ease;
 }
-.mc-option:hover { border-color: var(--color-primary); }
+/* separate stacked options in the same group (works in any oTree wrapper) */
+.mc-option + .mc-option, .form-check + .form-check { margin-top: var(--mc-gap); }
+
+.mc-option:hover, .form-check:hover { border-color: var(--accent); background: var(--accent-soft); }
+
+/* Selected state (no JS). */
+.mc-option--selected,
+.mc-option:has(input:checked),
+.form-check:has(input:checked) {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* Hand-rolled radio/checkbox, so the control looks the same on every browser. */
 .mc-option input[type="radio"],
-.mc-option input[type="checkbox"] {
-    margin-top: 4px;
-    width: 20px;
-    height: 20px;
+.mc-option input[type="checkbox"],
+.form-check input[type="radio"],
+.form-check input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
     flex: 0 0 auto;
-    accent-color: var(--color-primary);
+    width: 1.15em;
+    height: 1.15em;
+    margin: 0;
+    border: 2px solid var(--line-strong);
+    border-radius: 50%;
+    background: var(--card-bg);
+    cursor: pointer;
+    transition: border-color .14s ease, box-shadow .14s ease;
 }
-.mc-option-body { flex: 1 1 auto; }
-/* Full-card click overlay: stretches the label's clickable area across the whole
-   card so a tap anywhere selects the control (fixes phone mis-taps). It sits
-   above the card background but below the actual input, so the native control
-   still works and keyboard focus is unaffected. */
-.mc-option::after {
+.mc-option input[type="checkbox"], .form-check input[type="checkbox"] { border-radius: 5px; }
+.mc-option input:checked, .form-check input:checked {
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 4px var(--accent);
+}
+
+.mc-option label, .mc-option .form-check-label, .mc-option-body,
+.form-check label, .form-check .form-check-label {
+    margin: 0;
+    cursor: pointer;
+    flex: 1;
+    color: var(--ink);
+}
+
+/* FULL-CARD HIT AREA. INTENTION: oTree emits each option as a .form-check DIV
+   holding an <input> and a bound <label>, and we style that DIV as a padded,
+   pointer-cursor card — so it LOOKS entirely clickable, but only the input and
+   the label element actually toggle the choice; the padding and card edges are
+   dead space. On touch that reads as lag (the first tap misses). We cannot add
+   JS or change the emitted markup, so the BOUND LABEL grows a transparent
+   pseudo-element covering the whole card (inset:0): a tap ANYWHERE on the card —
+   padding, far edge, corner — now lands on the label and selects the option.
+   The overlay MUST sit on the label, not on the card: a ::after on the card
+   itself intercepts the click instead of forwarding it. The input is lifted
+   above the overlay so the radio dot stays directly clickable and keyboard
+   tab/space are unaffected. */
+.mc-option label::after,
+.mc-option .form-check-label::after,
+.mc-option .mc-option-body::after,
+.form-check label::after,
+.form-check .form-check-label::after {
     content: "";
     position: absolute;
     inset: 0;
-    border-radius: inherit;
+    cursor: pointer;
 }
-.mc-option input { position: relative; z-index: 1; }
-/* Selected state (no JS): tint and accent-border the chosen card. */
-.mc-option:has(input:checked) {
-    border-color: var(--color-primary);
-    background: var(--color-table-selected);
-    box-shadow: 0 0 0 1px var(--color-primary) inset;
+.mc-option input, .form-check input { position: relative; z-index: 1; }
+
+/* Keyboard focus: a visible ring on the whole card when the control is focused,
+   so tab focus is obvious. Sits after :has(input:checked) so a focused option
+   reads clearly. */
+.mc-option:focus-within, .form-check:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-ring);
 }
-/* Keyboard focus lands on the input; lift the focus ring to the whole card. */
-.mc-option:has(input:focus-visible) {
-    outline: 3px solid var(--color-focus-ring);
-    outline-offset: 2px;
+
+/* --- mc-scale: the horizontal variant --------------------------------------
+   ESCAPE HATCH for a many-point rating scale (a 0–10 Likert / Dohmen risk item).
+   Because .form-check above is a full-width card, an 11-point
+   RadioSelectHorizontal would otherwise render as ELEVEN stacked giant cards.
+   Wrap such a field in .mc-scale and the options become compact side-by-side
+   cells instead. oTree emits .form-check.form-check-inline for horizontal
+   widgets, so both selectors are covered.
+
+   Markup:
+     <div class="mc-scale">{{ formfield 'risk_item' }}</div> */
+.mc-scale .controls,
+.mc-scale > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-start;
 }
+.mc-scale .form-check,
+.mc-scale .form-check-inline {
+    flex: 1 1 auto;
+    min-width: 2.6em;
+    flex-direction: column;
+    align-items: center;
+    gap: .35em;
+    padding: .5em .35em;
+    min-height: 0;
+    text-align: center;
+}
+/* the stacked-card gap rule above must not apply to a horizontal row */
+.mc-scale .form-check + .form-check { margin-top: 0; }
+.mc-scale .form-check label,
+.mc-scale .form-check .form-check-label { flex: 0 0 auto; text-align: center; }
 
 /* --- anchored popover -------------------------------------------------------
    A small help panel anchored to a trigger (e.g. a "?"), shown on hover/focus.

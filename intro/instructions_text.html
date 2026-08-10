@@ -43,35 +43,39 @@
 --------->
 
 <style>
+    /* Worked-example table. Colours come from the design tokens (base.css), not
+       hardcoded hex — a table that hardcodes its greys drifts away from the rest
+       of the study the first time the palette is touched. */
     .payoff-matrix {
         margin: 12px auto;
         border-collapse: collapse;
-        font-size: 18px;
+        font-size: .92em;
     }
     .payoff-matrix th,
     .payoff-matrix td {
-        border: 1px solid #bbb;
+        border: 1px solid var(--line-strong);
         padding: 10px 16px;
         text-align: center;
         min-width: 92px;
     }
     .payoff-matrix thead th,
     .payoff-matrix tbody th {
-        background: #f5f7fa;
+        background: var(--sunken);
         font-weight: 600;
-        color: #333;
+        color: var(--ink);
     }
     .payoff-matrix td {
         font-feature-settings: "tnum";
         font-variant-numeric: tabular-nums;
+        color: var(--ink-soft);
     }
     .payoff-matrix .axis {
         font-style: italic;
-        color: #555;
+        color: var(--ink-mute);
     }
     .your-payoff {
         font-weight: 700;
-        color: #008cba;
+        color: var(--accent);
     }
 </style>
 
@@ -194,6 +198,12 @@
         So Stag pays more <em>if</em> you coordinate, but Hare is a safer choice
         that pays the same regardless of what your partner does.
     </p>
+    <!-- .panel — the shared callout component (base.css). Use it for the key
+         numbers or rules a participant must carry forward into the task. -->
+    <div class="panel">
+        <strong>Remember:</strong> Stag pays {{ stag_payoff }} points only when
+        <em>both</em> of you choose it. Hare always pays {{ hare_payoff }}.
+    </div>
 </div>
 
 <div class="instruction-block">

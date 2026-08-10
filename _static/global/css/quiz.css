@@ -1,77 +1,75 @@
+/* Comprehension quiz. oTree renders each field as a <p> label followed by a div
+   of .form-check options; base.css styles those options as the shared mc-option
+   card, so this file only handles the per-question grouping. */
+
+/* FAMILY — quiz (LEFT-aligned form in a CENTRED column). INTENTION: hold the
+   whole quiz to the shared reading measure (--read-measure, base.css) and centre
+   that column in the wide card, but keep the questions and their band-width
+   options LEFT-aligned. Centring question text over radio rows reads oddly and
+   leaves the option rows ragged on both edges, so the quiz is neither the
+   narrative family (centred) nor the instructions family (justified) — that left
+   bias is its one page-specific behaviour. Only the quiz page carries
+   .quiz-card. */
+.quiz-card > .experimental-header,
+.quiz-card > .experimental-content,
+.quiz-card > .button-row {
+    width: 100%;
+    max-width: var(--read-measure);
+    margin-inline: auto;
+}
+
 .quiz-block {
     width: 100%;
     display: flex;
     flex-direction: column;
-    align-items: center; /* center quiz content horizontally */
-    gap: 16px;
-    margin-block: 12px 8px;
+    gap: clamp(18px, 3vw, 28px);
 }
 
 .quiz-block .stacked-form {
     width: 100%;
-    max-width: 560px;
-    margin: 0 auto;
+    max-width: none;
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    align-items: center;
+    gap: clamp(18px, 3vw, 28px);
+    align-items: stretch;
 }
 
+/* the question text */
 .quiz-block .stacked-form > p {
-    margin: 0 0 6px; /* small gap between question text and its answers */
-    text-align: center;
+    margin: 0 0 10px;
+    font-weight: 620;
+    color: var(--ink);
+    max-width: var(--read-measure);
+    text-align: left;
 }
 
-/* each question block (the div after the <p>) */
+/* each question's options (the div oTree emits after the <p>) */
 .quiz-block .stacked-form > div {
     display: flex;
     flex-direction: column;
-    gap: 8px; /* tighter spacing between answers */
-    align-items: center;
+    gap: 8px;
+    align-items: stretch;
     width: 100%;
-    position: relative;
-    padding: 14px 0;
 }
 
-.quiz-block .stacked-form > div:not(:last-child) {
-    margin-bottom: 14px;   /* equal gap to next question */
-}
-
-.quiz-block .stacked-form > div:first-child::before,
-.quiz-block .stacked-form > div:not(:last-child)::after {
-    content: "";
-    position: absolute;
-    left: 50%;
-    width: 70%;
-    max-width: 420px; /* keep consistent width independent of answer length */
-    transform: translateX(-50%);
-    height: 1px;
-    background: var(--color-border);
-    opacity: 0.8;
-}
-
-.quiz-block .stacked-form > div:first-child::before {
-    top: 0; /* line at very top of first question */
-}
-
-.quiz-block .stacked-form > div:not(:last-child)::after {
-    bottom: 0; /* separator between questions */
-}
-
-/* individual options (form-check) */
-.quiz-block .stacked-form .form-check {
-    display: flex;
+/* Number the questions without needing any markup change: oTree emits the label
+   as a bare <p>, so the counter rides on that. */
+.quiz-block .stacked-form { counter-reset: q; }
+.quiz-block .stacked-form > p { counter-increment: q; }
+.quiz-block .stacked-form > p::before {
+    content: counter(q);
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 10px; /* space between control and text */
-    width: auto;
-}
-
-
-.quiz-block .stacked-form .form-check input[type="radio"] {
-    margin: 0;
-    align-self: center;
-    vertical-align: middle; /* avoid baseline drop below the label text */
+    width: 1.6em;
+    height: 1.6em;
+    margin-right: .6em;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: .78em;
+    font-weight: 700;
+    vertical-align: 2px;
 }
 
 
@@ -83,7 +81,7 @@
     position: fixed;
     inset: 0;
     z-index: 1000;
-    background: rgba(51, 51, 51, 0.55);
+    background: rgba(16, 32, 52, 0.55);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -95,9 +93,10 @@
 }
 
 .modal-card {
-    background: var(--color-background);
-    border-radius: 12px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+    background: var(--card-bg);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-lift);
     max-width: 34rem;
     width: 100%;
     padding: 28px 32px;
@@ -105,12 +104,16 @@
 }
 
 .modal-title {
-    color: var(--color-heading);
+    color: var(--ink);
     margin: 0 0 12px;
+    font-size: 1.15em;
+    font-weight: 680;
 }
 
 .modal-text {
     margin: 0 0 20px;
+    color: var(--ink-soft);
+    line-height: 1.5;
 }
 
 .modal-actions {
@@ -122,20 +125,29 @@
 }
 
 /* Secondary (dismiss) action: quieter than the primary, but clearly a real
-   control — not the dashed debug styling. */
+   control — not the dashed debug styling. Matches the shared .ghost button so
+   the modal's two actions read as one pair.
+   NB: deliberately NOT .next-button — global.js's Enter handler targets the
+   first .next-button, and dismissing must never steal Enter from the quiz's own
+   submit while the modal is closed. */
 .modal-dismiss-button {
+    appearance: none;
+    -webkit-appearance: none;
     display: inline-block;
-    border: 1px solid var(--color-border);
+    font: inherit;
+    font-weight: 620;
+    line-height: 1;
+    border: 1px solid var(--line-strong);
     background: transparent;
-    color: var(--color-text);
-    padding: 10px 20px;
-    font-size: 18px;
-    border-radius: 8px;
+    color: var(--ink-soft);
+    padding: 0.85em 2em;
+    border-radius: 999px;
     cursor: pointer;
-    transition: border-color 0.3s ease, color 0.3s ease;
+    transition: background-color .16s ease, border-color .16s ease, color .16s ease;
 }
 
 .modal-dismiss-button:hover {
-    border-color: var(--color-muted-hover);
-    color: var(--color-heading);
+    background: var(--sunken);
+    border-color: var(--line-strong);
+    color: var(--ink);
 }

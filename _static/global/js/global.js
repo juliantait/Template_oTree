@@ -57,6 +57,39 @@
         }
     }
 
+    // Paint the shared `.submit-veil` (base.css) over the whole page. Used
+    // whenever a script has to TOUCH FORM CONTROLS before submitting — the
+    // DEBUG skip-quiz fill, the re-read route-back, and anything similar added
+    // later.
+    //
+    // WHY: the browser keeps the CURRENT page visible for the whole navigation
+    // round-trip, so controls set just before submit are on screen for a
+    // moment — the participant sees radios flicking to the answers. Painting the
+    // veil in the SAME synchronous task as the fill means no intermediate frame
+    // is ever rendered: the veil is all that shows.
+    //
+    // Use `submitFormBehindVeil` below rather than calling this directly.
+    function showSubmitVeil(label) {
+        if (document.querySelector('.submit-veil')) { return; }
+        const veil = document.createElement('div');
+        veil.className = 'submit-veil';
+        veil.textContent = label || 'One moment…';
+        document.body.appendChild(veil);
+    }
+
+    // Fill a form and submit it without the participant seeing the controls
+    // change. `fill` runs behind the veil, in the same task, then the form is
+    // submitted.
+    //
+    // Pass a form to have it submitted here. Omit it when the caller is already
+    // a submit control (an onclick on <input type="submit">, which submits
+    // natively straight after the handler) — the veil still goes up first.
+    function submitFormBehindVeil(form, fill) {
+        showSubmitVeil();
+        if (typeof fill === 'function') { fill(); }
+        if (form) { form.submit(); }
+    }
+
     // Allow Enter key to activate the primary forward action (Next/Submit).
     document.addEventListener('keydown', (event) => {
         if (event.key !== 'Enter') {

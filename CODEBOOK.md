@@ -20,13 +20,38 @@ participant leaves early. Defined in `settings.EXIT_CODES`.
 | `-1` | no_consent | Declined consent on the entry page. | `before.welcome.before_next_page` |
 | `-2` | comprehension | Disqualified: failed the comprehension check too many times. | `intro.quiz.error_message` |
 | `-3` | tab_monitor | Disqualified: AI-safety / tab-switch monitor. | `common.focus_live_method` |
-| `-4` | screened_out | Phone screened out before the consent page (`mobile_screenout` option on; server-side User-Agent check). | `before._apply_mobile_screenout` |
+| `-4` | screened_out | **General** "removed at entry, before the consent page" bucket. Which gate fired is in `participant_extra['screenout_cause']` — see below. | `common.set_screened_out`, called by `before._apply_mobile_screenout` |
 
 When you add an outcome, add it to `settings.EXIT_CODES` **and** this table —
 with the place that sets it. Every code in the table must be set by real code:
 a code that nothing records is a lie in the export, so a reserved-but-unwired
 code gets deleted, not documented. (One such code, `-5`, has already been
 removed on those grounds; `-4` was wired up instead of removed.)
+
+### Screen-out causes (`participant_extra['screenout_cause']`)
+
+`-4` is deliberately **generic**. A study that screens participants out at entry
+for a second reason adds a **cause**, not a new exit code — so analysis keeps one
+clean "screened out at entry" bucket and splits by this column, and the exit-code
+table stays a short list where every entry is genuinely wired up.
+
+| Cause | Meaning | Set where |
+|-------|---------|-----------|
+| `mobile` | Entry User-Agent looked like a phone/tablet (`mobile_screenout` option on; server-side check). | `before._apply_mobile_screenout` |
+| *(empty)* | `-4` recorded without a cause. Valid but discouraged — the ending falls back to a neutral "not eligible" sentence. | — |
+
+**Adding a cause** — all three steps, or a participant reads the wrong thing:
+
+1. add it to `common.SCREENOUT_CAUSES` (the registry + its export meaning);
+2. set it at your gate via `common.set_screened_out(participant, '<cause>')`,
+   which records the flag, the `-4` code and the cause together;
+3. add an `{% elif %}` branch with its own sentence in `outro/Ended.html`.
+
+The ending picks its copy from the **cause**, never from the bare exit code.
+`mobile` currently says "This study needs a computer" — if a new gate were to
+reuse `-4` without a cause and the template keyed off the code, that participant
+would be told they need a computer. The neutral fallback exists so that failure
+mode degrades to a correct generic sentence instead.
 
 ---
 
@@ -39,6 +64,7 @@ A dict `{stage_name: epoch_seconds}` filled as the participant clears each stage
 |-------|----------|
 | `screened_out` | The mobile screen-out gate removed the participant at entry (`mobile_screenout` on). |
 | `consent` | Leaving the welcome/consent page. |
+| `confirm_id` | Prolific only: leaving the Prolific-ID confirmation page (`capture_participant_id` on). |
 | `instructions_done` | Leaving the instructions page (round 1). |
 | `quiz_done` | Leaving the quiz page (overwritten by the re-read pass, if any). |
 | `reread_taken` | Lab only: taking the one-time re-read offer (entering intro round 2). |
@@ -89,10 +115,20 @@ Spare inventory:
 Fill in per-study fields as you build the task. The template ships with:
 
 - `before.Player`: `participant_label`, `treatment_group`, `consent`,
-  `participant_id_external`, `is_mobile`, `device_info_json`. `is_mobile` is the
-  client-side device measurement only — it blocks nobody; the screen-out is the
-  server-side `mobile_screenout` gate, whose User-Agent evidence is stored in
-  `participant_extra['screenout_user_agent']`.
+  `participant_id_url`, `participant_id_external`, `is_mobile`,
+  `device_info_json`.
+  - **The two id columns are a matched pair, recorded separately on purpose.**
+    `participant_id_url` is the id as it ARRIVED (oTree's `?participant_label=`,
+    or the consent page's hidden `?PROLIFIC_PID=` capture) and is never edited;
+    `participant_id_external` is what the participant CONFIRMED or corrected on
+    `before.ConfirmProlificID`, and is the value payment should use. A row where
+    the two differ is a participant who edited their id — which is exactly what
+    settles a later payment dispute. Both are empty in a lab session, which has
+    no ConfirmProlificID page.
+  - `is_mobile` is the client-side device measurement only — it blocks nobody;
+    the screen-out is the server-side `mobile_screenout` gate, whose User-Agent
+    evidence is in `participant_extra['screenout_user_agent']` and whose reason
+    is in `participant_extra['screenout_cause']`.
 - `intro.Player`: the quiz fields from `intro/quiz_items.py`,
   `num_failed_attempts`. Two rounds: round 2 is the lab re-read pass, so for
   every participant who never takes the re-read offer (all Prolific and most

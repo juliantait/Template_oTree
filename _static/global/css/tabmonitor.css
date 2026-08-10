@@ -1,0 +1,121 @@
+/* Tab-switch / AI-safety monitor — overlay + warning modal.
+
+   FAMILY: standalone. INTENTION: the two full-screen chrome pieces the monitor
+   injects (see _static/global/js/ai_safety_monitor.js). Token-driven so it
+   matches the rest of the study; both pieces are hidden until the JS adds
+   `.is-visible`, so this file is inert on its own.
+
+   LINKED PER PAGE, NOT BUNDLED. Only the monitored pages pull this in
+   (main/game.html, main/payoff.html — the pages that bind
+   common.focus_live_method). It is deliberately NOT part of the shared CSS
+   include, so it never ships to the entry, instructions, quiz or outro pages,
+   where the monitor does not run.
+
+   FALLBACK VALUES on every token: this file is linked after the shared bundle,
+   so the tokens are defined — but a page that ever links it alone must still
+   render a correct red overlay rather than a transparent box.
+
+   ── POSITIONING CONTRACT (do not break) ──────────────────────────────────────
+   Both pieces are appended to <body> by the JS and are `position: fixed`, so
+   they cover the WHOLE VIEWPORT — not the card. That only holds while no
+   ancestor of <body> creates a containing block for fixed descendants, i.e.
+   while nothing sets transform / filter / backdrop-filter / perspective /
+   contain / will-change on html, body, .otree-body, .experimental-screen or
+   .screen-card. base.css carries an explicit warning on .screen-card for this
+   reason: the card is height-capped with a scrolling middle region, and if the
+   card ever became a containing block the monitor's overlay would be trapped
+   inside that scroll box instead of covering the screen.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* --- red away-overlay: shown while the tab is inactive, with a countdown ---- */
+.tabmon-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    background: var(--danger, #c2384a);
+    color: #fff;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    backdrop-filter: blur(2px);
+    cursor: pointer;
+}
+.tabmon-overlay.is-visible { display: flex; }
+
+.tabmon-overlay__box {
+    background: rgba(255, 255, 255, 0.10);
+    border: 2px solid #fff;
+    border-radius: var(--r-md, 12px);
+    padding: 28px 36px;
+    max-width: 520px;
+}
+.tabmon-overlay__title {
+    font-size: 1.5em;
+    font-weight: 700;
+    margin: 0 0 10px;
+    color: #fff;
+}
+.tabmon-overlay__msg {
+    font-size: 0.95em;
+    line-height: 1.5;
+    margin: 0 0 14px;
+}
+.tabmon-countdown {
+    font-size: 3.2em;
+    font-weight: 700;
+    line-height: 1;
+}
+
+/* --- warning modal: shown after a recorded (non-final) violation ------------ */
+.tabmon-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(16, 32, 52, 0.72);
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+.tabmon-modal.is-visible { display: flex; }
+
+.tabmon-modal__box {
+    background: var(--card-bg, #fff);
+    color: var(--ink, #16202c);
+    padding: 28px 32px;
+    border-radius: var(--r-lg, 18px);
+    max-width: 480px;
+    text-align: center;
+    box-shadow: var(--shadow-lift, 0 14px 38px rgba(16, 32, 52, .12));
+}
+.tabmon-modal__text {
+    font-size: 0.98em;
+    line-height: 1.55;
+    margin: 0 0 18px;
+    color: var(--ink-soft, #4a5766);
+}
+
+/* Same pill as the shared primary button, but its own class: global.js's Enter
+   handler targets .next-button, and dismissing this warning must never become
+   the thing Enter does on a task page. */
+.tabmon-modal__btn {
+    appearance: none;
+    -webkit-appearance: none;
+    font: inherit;
+    font-weight: 620;
+    line-height: 1;
+    color: #fff;
+    background: var(--accent, #2f6feb);
+    border: 1px solid transparent;
+    border-radius: 999px;
+    padding: 0.7em 1.6em;
+    cursor: pointer;
+}
+.tabmon-modal__btn:hover { background: var(--accent-hover, #1f57c9); }
+
+@media (prefers-reduced-motion: reduce) {
+    .tabmon-overlay { backdrop-filter: none; }
+}

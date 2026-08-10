@@ -30,50 +30,45 @@
         catch (e) { return false; }
     }
 
+    // Build the two full-screen pieces. APPENDED TO <body> ON PURPOSE: they are
+    // position:fixed and must cover the whole viewport, not the card. The card is
+    // height-capped with a scrolling middle region, so anything appended inside
+    // it would be clipped by that scroll box.
+    //
+    // ALL STYLING LIVES IN _static/global/css/tabmonitor.css — do not reintroduce
+    // inline style strings here. They cannot follow the design tokens, they
+    // hardcoded colours that were in neither palette, and they made the monitor's
+    // chrome unreachable from CSS. Visibility is a CLASS (.is-visible), so the
+    // stylesheet owns the display value too.
     function buildTabMonitorDom() {
         if (document.getElementById('tabmon-overlay')) return;
         var thresholdSec = Math.ceil(AI_SAFETY.THRESHOLD_MS / 1000);
 
         var overlay = document.createElement('div');
         overlay.id = 'tabmon-overlay';
-        overlay.style.cssText = [
-            'display:none', 'position:fixed', 'inset:0', 'z-index:9000',
-            'background:rgba(198,40,40,0.92)', 'color:white',
-            'flex-direction:column', 'align-items:center', 'justify-content:center',
-            'text-align:center', 'padding:24px',
-            'font-family:Arial, Helvetica, sans-serif',
-            'backdrop-filter:blur(2px)', 'cursor:pointer',
-        ].join(';');
+        overlay.className = 'tabmon-overlay';
         overlay.innerHTML = ''
-          + '<div style="background:rgba(255,255,255,0.08); border:2px solid white;'
-          + ' border-radius:12px; padding:28px 36px; max-width:520px;">'
-          +   '<p style="font-size:24px; font-weight:bold; margin:0 0 10px 0;">Return to the study</p>'
-          +   '<p style="font-size:15px; margin:0 0 14px 0;">The study page is no longer active.<br>'
+          + '<div class="tabmon-overlay__box">'
+          +   '<p class="tabmon-overlay__title">Return to the study</p>'
+          +   '<p class="tabmon-overlay__msg">The study page is no longer active.<br>'
           +     'Return within <strong>' + thresholdSec + '&nbsp;seconds</strong> to avoid a recorded violation.</p>'
-          +   '<div id="tabmon-countdown" style="font-size:52px; font-weight:bold; line-height:1;">' + thresholdSec + '</div>'
+          +   '<div id="tabmon-countdown" class="tabmon-countdown">' + thresholdSec + '</div>'
           + '</div>';
         document.body.appendChild(overlay);
 
         var modal = document.createElement('div');
         modal.id = 'tabmon-modal';
-        modal.style.cssText = [
-            'display:none', 'position:fixed', 'inset:0', 'z-index:9999',
-            'background:rgba(0,0,0,0.75)',
-            'align-items:center', 'justify-content:center', 'padding:20px',
-            'font-family:Arial, Helvetica, sans-serif',
-        ].join(';');
+        modal.className = 'tabmon-modal';
         modal.innerHTML = ''
-          + '<div style="background:white; color:#1a1a2e; padding:28px 32px;'
-          + ' border-radius:10px; max-width:480px; text-align:center;">'
-          +   '<p id="tabmon-modal-text" style="font-size:15px; line-height:1.55; margin:0 0 18px 0;"></p>'
-          +   '<button id="tabmon-modal-btn" style="padding:10px 26px; background:#1a1a2e;'
-          +     ' color:white; border:none; border-radius:4px; font-size:15px; cursor:pointer;">'
+          + '<div class="tabmon-modal__box">'
+          +   '<p id="tabmon-modal-text" class="tabmon-modal__text"></p>'
+          +   '<button type="button" id="tabmon-modal-btn" class="tabmon-modal__btn">'
           +     'Understood — continue</button>'
           + '</div>';
         document.body.appendChild(modal);
 
         document.getElementById('tabmon-modal-btn').addEventListener('click', function () {
-            modal.style.display = 'none';
+            modal.classList.remove('is-visible');
             window._tabmonModalOpen = false;
         });
     }
@@ -104,7 +99,7 @@
         function showOverlay() {
             if (overlayVisible || isNavigatingAway) return;
             overlayVisible = true;
-            overlay.style.display = 'flex';
+            overlay.classList.add('is-visible');
             var remaining = Math.ceil(
                 (AI_SAFETY.THRESHOLD_MS - AI_SAFETY.OVERLAY_DELAY_MS) / 1000
             );
@@ -119,14 +114,14 @@
         function hideOverlay() {
             if (!overlayVisible) return;
             overlayVisible = false;
-            overlay.style.display = 'none';
+            overlay.classList.remove('is-visible');
             if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
         }
 
         function showModal(text) {
             window._tabmonModalOpen = true;
             modalText.textContent = text;
-            modal.style.display = 'flex';
+            modal.classList.add('is-visible');
         }
 
         function recordViolation() {

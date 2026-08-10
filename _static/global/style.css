@@ -1,6 +1,0 @@
-/* Core bundle: import scoped styles so templates only link this file */
-@import url('css/base.css');
-@import url('css/instructions.css');
-@import url('css/results.css');
-@import url('css/quiz.css');
-@import url('css/demographics.css');

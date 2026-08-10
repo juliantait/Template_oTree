@@ -69,6 +69,36 @@ def submit(s, r, overrides=None, answers=None):
     return s.post(r.url, data=payload, allow_redirects=True)
 
 
+def visible_text(html):
+    """The participant-visible text of a page: no scripts, styles, tags or
+    comments, with whitespace collapsed.
+
+    The two-variant copy rule ("a page either mentions Prolific or it does not")
+    is about what a participant READS, so it must be asserted against this rather
+    than the raw HTML. Two reasons the raw source is the wrong target:
+      * the capture script legitimately contains the literal parameter name
+        PROLIFIC_PID — that is functional code, not prose;
+      * body copy wraps across source lines, so a sentence assertion against raw
+        HTML fails on the newline rather than on the wording.
+    """
+    html = re.sub(r'<!--.*?-->', ' ', html, flags=re.S)
+    html = re.sub(r'<(script|style)\b.*?</\1>', ' ', html, flags=re.S | re.I)
+    return re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', ' ', html)).strip()
+
+
+def page_index(url):
+    """The trailing page index in an oTree participant URL (/App/Page/<i>).
+
+    Used to tell intro ROUND 1 from ROUND 2, which share a page name and differ
+    only by index. Compared RELATIVELY (round 2 > round 1) rather than against
+    hardcoded numbers: the index is a position in the whole page sequence, so
+    adding a page to an earlier app (e.g. before.ConfirmProlificID) shifts every
+    later index and would silently break a hardcoded assertion.
+    """
+    m = re.search(r'/(\d+)/?$', url)
+    return int(m.group(1)) if m else -1
+
+
 def advance_until(s, r, name_fragment, limit=40, overrides=None, answers=None):
     """Submit pages generically until the URL contains name_fragment."""
     for _ in range(limit):
@@ -83,15 +113,25 @@ def scenario_lab_reread(base):
     print("[lab-reread]")
     s, r = new_participant(base, 'lab', modified={'showup': 7.5, 'expected_duration_minutes': 45})
     r = advance_until(s, r, '/welcome/')
-    check('contact and bank details are used only to arrange your' in r.text,
-          'consent shows the LAB data sentence')
-    check('Prolific ID is used solely' not in r.text,
-          'consent does NOT show the Prolific sentence')
+    check('contact and bank details are used only to arrange your payment'
+          in visible_text(r.text), 'consent shows the LAB payment sentence')
     check('45' in r.text and '7.50' in r.text,
           'consent quotes config duration (45 min) and show-up fee (7.50)')
-    r = advance_until(s, r, '/instructing/3')  # page index 3 = instructing round 1
+    # THE TWO-VARIANT RULE: a page either mentions Prolific or it does not, and
+    # never CREED plus Prolific. The consent page is SHARED, so it must carry
+    # neither the lab's CREED header nor anything platform-specific — in EITHER
+    # variant. The CREED header lives only on before/startpage.html, the lab gate.
+    check('Prolific' not in visible_text(r.text),
+          'lab consent: participant never reads the word Prolific')
+    check('Welcome to' not in visible_text(r.text),
+          'lab consent: no CREED welcome header')
+    check('name="participant_id_external"' not in r.text,
+          'lab consent: no participant-ID field')
+    r = advance_until(s, r, '/instructing/')           # instructing, round 1
+    i_instr1 = page_index(r.url)
     r = submit(s, r)                                   # leave instructions r1
-    check('/quiz/4' in r.url, 'quiz round 1 reached')
+    check('/quiz/' in r.url, 'quiz round 1 reached')
+    i_quiz1 = page_index(r.url)
 
     r = submit(s, r, answers=WRONG, overrides={'redoinstructions': '0'})
     check('/quiz/' in r.url and MODAL_MARKER not in r.text,
@@ -107,19 +147,21 @@ def scenario_lab_reread(base):
     check(REREAD_MARKER in r.text, 'failure 3 without taking it: offer still open')
 
     r = submit(s, r, answers=WRONG, overrides={'redoinstructions': '1'})  # take it
-    check('/instructing/6' in r.url,  # page index 6 = instructing round 2
+    check('/instructing/' in r.url and page_index(r.url) > i_instr1,
           f'taking the offer returns to the instructions (round 2) [{page_name(r.url)}]')
     r = submit(s, r)                                   # leave instructions r2
-    check('/quiz/7' in r.url, 'then back to the quiz (round 2)')
+    check('/quiz/' in r.url and page_index(r.url) > i_quiz1,
+          'then back to the quiz (round 2)')
+    i_quiz2 = page_index(r.url)
 
     r = submit(s, r, answers=WRONG, overrides={'redoinstructions': '0'})
-    check('/quiz/7' in r.url, 'round-2 failure: still on the quiz (no DQ, no block)')
+    check(page_index(r.url) == i_quiz2, 'round-2 failure: still on the quiz (no DQ, no block)')
     check(EXPERIMENTER_MARKER in r.text and DISMISS_MARKER in r.text,
           'round-2 failure: dismissible experimenter notice shown')
     check(REREAD_MARKER not in r.text, 'round-2 failure: re-read no longer offered')
     # Hand-crafted redo POST after the offer is spent must NOT bypass validation.
     r = submit(s, r, answers=WRONG, overrides={'redoinstructions': '1'})
-    check('/quiz/7' in r.url, 'spent offer: redoinstructions=1 POST does not advance')
+    check(page_index(r.url) == i_quiz2, 'spent offer: redoinstructions=1 POST does not advance')
 
     r = submit(s, r, answers=RIGHT, overrides={'redoinstructions': '0'})
     check('/main/' in r.url, 'correct answers after all that: participant continues to the task')
@@ -137,17 +179,35 @@ def scenario_prolific_dq(base):
     print("[prolific-dq]")
     s, r = new_participant(base, 'prolific')
     r = advance_until(s, r, '/welcome/')
-    check('Prolific ID is used solely to handle your payment' in r.text,
-          'consent shows the PROLIFIC data sentence')
+    check('kept separate from your responses' in visible_text(r.text),
+          'consent shows the NON-LAB payment sentence')
     check('contact and bank details' not in r.text,
           'consent does NOT show the lab sentence')
-    r = advance_until(s, r, '/instructing/3',
+    # Same rule from the other side: the SHARED consent page must be free of
+    # Prolific wording and of the ID field on the Prolific variant too. Both
+    # belong on before/ConfirmProlificID, the only page that mentions Prolific.
+    check('Prolific' not in visible_text(r.text),
+          'prolific consent: participant never reads the word Prolific')
+    check('Welcome to' not in visible_text(r.text),
+          'prolific consent: no CREED welcome header')
+    check('name="participant_id_external"' not in r.text,
+          'prolific consent: ID field is NOT on the consent page')
+    # The ID page itself: next, and it IS allowed to say Prolific.
+    r = submit(s, r, overrides={'consent': 'True', 'is_mobile': 'False'})
+    check('/confirm_prolific_id/' in r.url.lower() or '/ConfirmProlificID/' in r.url,
+          f'consent is followed by the Prolific-ID page [{page_name(r.url)}]')
+    check('name="participant_id_external"' in r.text,
+          'ID page carries the participant-ID field')
+    check('Prolific ID' in visible_text(r.text),
+          'ID page names Prolific (the one page that may)')
+    r = advance_until(s, r, '/instructing/',
                       overrides={'consent': 'True', 'is_mobile': 'False',
                                  'participant_id_external': 'PROLIFIC_TEST_1'})
     r = submit(s, r)
-    check('/quiz/4' in r.url, 'quiz round 1 reached')
+    check('/quiz/' in r.url, 'quiz round 1 reached')
+    i_quiz1 = page_index(r.url)
     r = submit(s, r, answers=WRONG, overrides={'redoinstructions': '0'})
-    check('/quiz/4' in r.url and MODAL_MARKER not in r.text,
+    check(page_index(r.url) == i_quiz1 and MODAL_MARKER not in r.text,
           'failure 1: no modal, no re-read offer online')
     # Hand-crafted redo POST must not bypass validation for Prolific.
     r = submit(s, r, answers=WRONG, overrides={'redoinstructions': '1'})
@@ -161,7 +221,7 @@ def scenario_prolific_dq(base):
 def scenario_prolific_pass(base):
     print("[prolific-pass]")
     s, r = new_participant(base, 'prolific')
-    r = advance_until(s, r, '/quiz/4',
+    r = advance_until(s, r, '/quiz/',
                       overrides={'consent': 'True', 'is_mobile': 'False',
                                  'participant_id_external': 'PROLIFIC_TEST_2'})
     r = submit(s, r, answers=RIGHT, overrides={'redoinstructions': '0'})
@@ -190,7 +250,7 @@ def scenario_pilot_feedback(base):
     they do not. The lab walk (flag off) likewise never sees it."""
     print("[pilot-feedback]")
     s, r = new_participant(base, 'prolific', modified={'pilot_feedback': True})
-    r = advance_until(s, r, '/quiz/4',
+    r = advance_until(s, r, '/quiz/',
                       overrides={'consent': 'True', 'is_mobile': 'False',
                                  'participant_id_external': 'PROLIFIC_TEST_3'})
     r = submit(s, r, answers=RIGHT, overrides={'redoinstructions': '0'})

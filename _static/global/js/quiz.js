@@ -13,29 +13,25 @@
     }
 })();
 
-// Paint an opaque full-page overlay so the participant never sees the radio
-// buttons being programmatically checked before the form submits and
-// navigates away. The overlay covers the same synchronous frame in which the
-// inputs are filled, so the checked state never becomes visible.
-function showTransitionOverlay() {
-    if (document.getElementById('quiz-transition-overlay')) return;
-    var overlay = document.createElement('div');
-    overlay.id = 'quiz-transition-overlay';
-    overlay.style.position = 'fixed';
-    overlay.style.inset = '0';
-    overlay.style.zIndex = '2147483647';
-    overlay.style.background = '#ffffff';
-    document.body.appendChild(overlay);
-}
+// Both auto-fill paths below go through global.js's submitFormBehindVeil, which
+// paints the shared `.submit-veil` in the SAME synchronous task as the fill, so
+// the participant never sees radios flicking to the answers during navigation.
+// There is deliberately no second implementation of that trick here — a local
+// copy is how the flash bug came back last time.
+//
+// Both callers are onclick handlers on <input type="submit">, so the form
+// submits natively straight after the handler returns; the helper is called
+// WITHOUT a form argument so it does not also submit (which would double-submit).
 
 // Testing-only helper: the button that calls this is only rendered under
 // settings.DEBUG, and window.quizSolutions is only populated then.
 function skipQuiz() {
-    showTransitionOverlay();
-    if (Array.isArray(window.quizSolutions)) {
-        setFormValues(window.quizSolutions);
-    }
-    setValue('redoinstructions', 0);
+    submitFormBehindVeil(null, function () {
+        if (Array.isArray(window.quizSolutions)) {
+            setFormValues(window.quizSolutions);
+        }
+        setValue('redoinstructions', 0);
+    });
 }
 
 // Quiz-failure modal (lab re-read / experimenter notice). The server decides
@@ -60,11 +56,12 @@ function dismissQuizModal() {
 }
 
 function redoInstructions() {
-    showTransitionOverlay();
-    if (Array.isArray(window.quizSolutions)) {
-        setFormValues(window.quizSolutions);
-    }
-    setValue('redoinstructions', 1);
+    submitFormBehindVeil(null, function () {
+        if (Array.isArray(window.quizSolutions)) {
+            setFormValues(window.quizSolutions);
+        }
+        setValue('redoinstructions', 1);
+    });
 }
 
 function setFormValues(solutions) {

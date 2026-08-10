@@ -4,7 +4,7 @@
 
 <!--------- This file dynamically updates to blocks in instructions_text.html. --------->
 
-<link rel="stylesheet" href="{% static 'global/style.css' %}?v={{ session.config.static_version }}">
+{% include '_static/global/html/css_bundle.html' %}
 <script src="{% static 'global/js/global.js' %}?v={{ session.config.static_version }}"></script>
 
 <!--------- Each step's title is the <h2> inside its instruction block in
@@ -13,19 +13,27 @@
 
 <div class="experimental-screen">
     <div class="screen-card">
+        <div class="experimental-header">
+            <div class="eyebrow">Please read carefully</div>
+        </div>
         <div class="experimental-content">
             <form method="post">
                 <div class="instructions">
+                    <!-- The slide body is the scroll region on this page (see the
+                         scroll-chain note in instructions.css). The step counter
+                         and the pager below sit OUTSIDE it, so they stay pinned
+                         and Next is reachable without scrolling. -->
                     <div id="instruction-wrapper" class="instruction-wrapper">
                         {% include "intro/instructions_text.html" %}
                         {% include "intro/prequiz_text.html" %}
-                        <div class="instruction-progress">
-                            <span id="instruction-counter"></span>
-                        </div>
+                    </div>
+
+                    <div class="instruction-progress">
+                        <span id="instruction-counter"></span>
                     </div>
 
                     <div class="instruction-controls">
-                        <button type="button" id="prevBtn" class="next-button">
+                        <button type="button" id="prevBtn" class="next-button ghost">
                             Back
                         </button>
                         <button type="button" id="nextBtn" class="next-button">
