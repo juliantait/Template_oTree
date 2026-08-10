@@ -1,7 +1,11 @@
-<div class="logo-section" style="margin-top: 1.5rem;">
-    <div class="logo-row" style="display: flex; align-items: center; justify-content: center; gap: 1.5rem;">
-        <img src="{% static 'global/images/Uva_logo_regular.jpg' %}" alt="University of Amsterdam logo" style="height: 60px; width: auto;">
-        <img src="{% static 'global/images/Creed_logo_subtitle.jpg' %}" alt="CREED logo with subtitle" style="height: 60px; width: auto;">
+<!-- Institutional logos at the foot of the card.
+     Sizing and opacity come from .logo-section / .logo-row in base.css — do NOT
+     put inline height/style attributes back on these tags. An inline style beats
+     any stylesheet rule, so the design system could no longer re-tune them (and
+     the phone breakpoint that shrinks them would silently stop working). -->
+<div class="logo-section">
+    <div class="logo-row">
+        <img src="{% static 'global/images/Uva_logo_regular.jpg' %}" alt="University of Amsterdam logo">
+        <img src="{% static 'global/images/Creed_logo_subtitle.jpg' %}" alt="CREED logo with subtitle">
     </div>
 </div>
-

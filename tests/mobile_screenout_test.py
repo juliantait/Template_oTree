@@ -17,7 +17,11 @@ block), with `mobile_screenout` flipped per session via the REST API:
   2. option 0 + desktop — reaches consent and completes (exit code 1).
   3. option 1 + phone   — NEVER sees consent; the first page it is given is the
                           outro ending, carrying error_code, and exit code -4
-                          (screened_out) is recorded.
+                          (screened_out) is recorded. Also asserts the gate
+                          recorded screenout_cause='mobile' and that the ending's
+                          wording was selected BY THAT CAUSE (-4 alone is the
+                          general entry screen-out bucket, so the phone copy must
+                          not be reachable without the cause).
   4. option 1 + desktop — unaffected: consent as usual, completes (exit code 1).
 
 Exits non-zero on any failed check or any 5xx.
@@ -74,6 +78,21 @@ def exit_code_of(base, session_code, p_code):
     return None
 
 
+def screenout_cause_of(base, session_code, p_code):
+    """Read participant_extra['screenout_cause'] back over the REST API.
+
+    Exit code -4 is the GENERAL entry screen-out bucket; this is the field that
+    says which gate fired and therefore which sentence the ending shows.
+    """
+    r = requests.post(base + f'/api/get_session/{session_code}',
+                      json={'participant_vars': ['participant_extra']})
+    r.raise_for_status()
+    for p in r.json()['participants']:
+        if p['code'] == p_code:
+            return (p.get('participant_extra') or {}).get('screenout_cause')
+    return None
+
+
 def run(base, label, user_agent, screenout):
     """Walk one participant through the whole flow with the given User-Agent."""
     print(f"[{label}]  mobile_screenout={screenout}  UA={user_agent[:38]}...")
@@ -92,7 +111,7 @@ def run(base, label, user_agent, screenout):
     for _ in range(80):
         if r.status_code >= 500:
             check(False, f"HTTP {r.status_code} at {page_name(r.url)}")
-            return None, None, pages, r
+            return None, None, pages, r, session_code
         pages.append(page_name(r.url))
         saw_consent = saw_consent or CONSENT_MARKER in r.text
         if any(m in r.text for m in END_MARKERS):
@@ -100,7 +119,7 @@ def run(base, label, user_agent, screenout):
         fp = FormParser(); fp.feed(r.text)
         if not fp.found_form:
             check(False, f"dead-end (no form, no end marker) at {page_name(r.url)}")
-            return None, None, pages, r
+            return None, None, pages, r, session_code
         if fp.solutions_json.strip():          # DEBUG-only quiz solutions
             import json
             for item in json.loads(fp.solutions_json):
@@ -113,26 +132,26 @@ def run(base, label, user_agent, screenout):
     code = exit_code_of(base, session_code, participant_code(r.url))
     print(f"       pages: {' -> '.join(pages)}")
     print(f"       exit_code={code}")
-    return code, saw_consent, pages, r
+    return code, saw_consent, pages, r, session_code
 
 
 def main():
     base = (sys.argv[1] if len(sys.argv) > 1 else 'http://localhost:8000').rstrip('/')
 
     # --- 1. option OFF + phone: the check must have no effect at all ---------
-    code, saw_consent, pages, r = run(base, 'off+phone', PHONE_UA, 0)
+    code, saw_consent, pages, r, session_code = run(base, 'off+phone', PHONE_UA, 0)
     check(saw_consent, 'off+phone: phone still reaches the consent page')
     check(any('welcome' in p for p in pages), 'off+phone: before.welcome was rendered')
     check(code == 1, f'off+phone: completes with exit code 1 (got {code})')
     check(not any('Ended' in p for p in pages), 'off+phone: never sent to the Ended screen')
 
     # --- 2. option OFF + desktop: baseline ----------------------------------
-    code, saw_consent, pages, r = run(base, 'off+desktop', DESKTOP_UA, 0)
+    code, saw_consent, pages, r, session_code = run(base, 'off+desktop', DESKTOP_UA, 0)
     check(saw_consent, 'off+desktop: reaches the consent page')
     check(code == 1, f'off+desktop: completes with exit code 1 (got {code})')
 
     # --- 3. option ON + phone: screened out before consent -------------------
-    code, saw_consent, pages, r = run(base, 'on+phone', PHONE_UA, 1)
+    code, saw_consent, pages, r, session_code = run(base, 'on+phone', PHONE_UA, 1)
     check(not saw_consent, 'on+phone: consent page NEVER rendered')
     check(not any('welcome' in p for p in pages), 'on+phone: before.welcome never shown')
     check(pages and pages[0] == 'outro.Ended',
@@ -143,8 +162,20 @@ def main():
     check('REPLACE_ERR' in r.text, 'on+phone: ending carries the error_code completion code')
     check('desktop or laptop' in r.text, 'on+phone: ending explains the desktop-only rule')
 
+    # The ending's wording is chosen by the CAUSE, not by the bare -4 code (-4 is
+    # the general "screened out at entry" bucket). Assert the cause was recorded
+    # AND that it is the cause that selected the phone branch: the neutral
+    # fallback sentence must NOT be on the page.
+    cause = screenout_cause_of(base, session_code, participant_code(r.url))
+    check(cause == 'mobile',
+          f"on+phone: screenout_cause 'mobile' recorded (got {cause!r})")
+    check('This study needs a computer' in r.text,
+          'on+phone: cause-driven mobile heading shown')
+    check('not eligible to take part' not in r.text,
+          'on+phone: neutral no-cause fallback NOT shown when a cause is present')
+
     # --- 4. option ON + desktop: unaffected ---------------------------------
-    code, saw_consent, pages, r = run(base, 'on+desktop', DESKTOP_UA, 1)
+    code, saw_consent, pages, r, session_code = run(base, 'on+desktop', DESKTOP_UA, 1)
     check(saw_consent, 'on+desktop: desktop still reaches the consent page')
     check(code == 1, f'on+desktop: completes with exit code 1 (got {code})')
     check(not any('Ended' in p for p in pages), 'on+desktop: never sent to the Ended screen')

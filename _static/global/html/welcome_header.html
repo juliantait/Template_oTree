@@ -1,6 +1,9 @@
-<div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
-    <h2 class="header-title" style="margin: 0;">Welcome to</h2>
-    <img src="{% static 'global/images/Creed_logo_small.jpg' %}" alt="CREED logo" style="height: 48px; width: auto;">
+<!-- "Welcome to [CREED]" header.
+     SCOPE: this belongs to the LAB GATE PAGE ONLY (before/startpage.html) — the
+     wait-to-be-seated screen an experimenter advances. It must NOT appear on the
+     consent page or anywhere in the Prolific flow, which carries no lab
+     branding. Sizing lives in .welcome-header-row in base.css, not inline. -->
+<div class="welcome-header-row">
+    <h2 class="header-title">Welcome to</h2>
+    <img src="{% static 'global/images/Creed_logo_small.jpg' %}" alt="CREED logo">
 </div>
-<p class="header-text"></p>
-

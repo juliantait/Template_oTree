@@ -1,5 +1,9 @@
 {{ block content }}
-<link rel="stylesheet" href="{% static 'global/style.css' %}?v={{ session.config.static_version }}">
+{% include '_static/global/html/css_bundle.html' %}
+{# Monitor chrome, linked HERE and not in the shared css_bundle: this page
+   binds common.focus_live_method, so it is one of the only pages where the
+   overlay/modal can ever appear. #}
+<link rel="stylesheet" href="{% static 'global/css/tabmonitor.css' %}?v={{ session.config.static_version }}">
 
 <div class="experimental-screen">
     <div class="screen-card">

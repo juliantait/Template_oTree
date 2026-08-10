@@ -161,6 +161,12 @@ class Ended(Page):
             reason=('disqualified' if is_disqualified(player)
                     else 'no_consent' if declined_consent(player)
                     else 'screened_out' if was_screened_out(player) else 'other'),
+            # WHICH entry gate removed them ('mobile', or '' if a study set exit
+            # code -4 without recording a cause). `reason` alone is too coarse to
+            # write copy from: -4 is the general screened-out bucket, so the
+            # template picks its sentence from this, not from `reason`.
+            # See common.SCREENOUT_CAUSES.
+            screenout_cause=common.screenout_cause(player.participant),
             completion_redirects=_flag(player, 'completion_redirects'),
         )
 

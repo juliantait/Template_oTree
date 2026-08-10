@@ -1,0 +1,78 @@
+{{ block content }}
+{% include '_static/global/html/css_bundle.html' %}
+
+<!-- PROLIFIC ID CONFIRMATION — the ONLY page in the study that mentions
+     Prolific. Shown only when `capture_participant_id` is on, i.e. never in a
+     lab session, where a recruitment platform is meaningless.
+
+     Everything platform-specific lives here so the shared consent page before it
+     can stay neutral and render identically in both variants. Do not move any of
+     this wording back onto consent. -->
+
+{# Page-local style, EXCEPTION: the no-id notice is an error-ish state the
+   participant must act on, so it borrows the shared --danger colour for a
+   prominent panel variant no other page needs. Everything else is the standard
+   narrative-card anatomy. #}
+<style>
+    .pid-missing {
+        border: 1.5px solid var(--danger);
+        color: var(--danger);
+        font-weight: 600;
+    }
+</style>
+
+<div class="experimental-screen">
+    <div class="screen-card narrative-card">
+        <div class="experimental-header">
+            <div class="eyebrow">Before you begin</div>
+            <h2 class="header-title">Your Prolific ID</h2>
+        </div>
+
+        <div class="experimental-content">
+            {% if has_prefill %}
+                <p class="section-text">
+                    Please confirm this is you. <strong>This is the ID that will
+                    be used to pay you.</strong> If it is not correct, edit it
+                    before continuing.
+                </p>
+            {% else %}
+                <div class="panel panel--hug pid-missing">
+                    We do not have a Prolific ID for you. Please fill it in below.
+                </div>
+                <p class="section-text">
+                    <strong>This is the ID that will be used to pay you</strong>,
+                    so please copy it exactly from your Prolific account.
+                </p>
+            {% endif %}
+
+            <div class="stacked-form">
+                <label for="participant_id_external"><strong>Prolific ID</strong></label>
+                {# Rendered by hand (not {% formfield %}) so the URL-arrived id can
+                   be pre-filled. The field is blank=True server-side, so an empty
+                   submit is always accepted — never a validation trap.
+
+                   SECURITY: prefill_id is PARTICIPANT-CONTROLLED (it arrives in
+                   the URL, via participant.label / the PROLIFIC_PID capture), so
+                   it MUST be HTML-attribute-escaped. oTree's ibis engine does NOT
+                   auto-escape {{ }} output (unlike Django/Jinja), so the |escape
+                   filter is applied explicitly — it runs html.escape with
+                   quotes=True, turning " ' < > & into entities so the value cannot
+                   break out of the attribute or open a tag. DO NOT REMOVE IT:
+                   without it a value like "><script>… is a reflected XSS. An
+                   escaped id also round-trips intact (a literal " in the id
+                   survives instead of truncating the attribute). #}
+                <input type="text" name="participant_id_external" id="participant_id_external"
+                       value="{{ prefill_id|escape }}" autocomplete="off" spellcheck="false">
+            </div>
+        </div>
+
+        <div class="button-row">
+            <input type="submit" value="Next" class="next-button">
+        </div>
+
+        {% include '_static/global/html/logo_section.html' %}
+    </div>
+</div>
+
+<script src="{% static 'global/js/global.js' %}?v={{ session.config.static_version }}"></script>
+{{ endblock }}

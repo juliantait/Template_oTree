@@ -1,0 +1,32 @@
+{# THE SHARED STYLESHEET SET. Include this in the <head> region of every
+   participant-facing page:
+
+       {% include '_static/global/html/css_bundle.html' %}
+
+   WHY THESE ARE SEPARATE <link> TAGS AND NOT @import.
+   This used to be one `style.css` whose body was five `@import url('css/…')`
+   lines. The page linked it as `style.css?v={{ static_version }}`, so bumping
+   the version refetched style.css — but the @import'ed children were requested
+   at BARE, UNVERSIONED urls, so the browser (and the CDN/funnel in front of it)
+   kept serving the CACHED base.css behind a freshly-fetched wrapper. The
+   versioning was a no-op for every file that actually contains rules: a CSS
+   change could ship and simply not appear.
+   Linking each file directly puts ?v= on the request that matters. It is also
+   faster — @import serialises the fetches, these load in parallel.
+
+   ORDER IS LOAD-BEARING AND MUST NOT CHANGE. base.css defines the design tokens
+   and every shared component; the per-page files override it at equal
+   specificity, so whichever loads LAST wins. base.css first, always. This is the
+   exact order the old bundle used — preserved deliberately, not re-derived.
+
+   NOT IN THIS SET: tabmonitor.css. It is linked per-page by the two monitored
+   pages only, so the monitor's chrome never ships to pages that cannot show it.
+   Follow that pattern for any future page-specific stylesheet.
+
+   Adding a stylesheet? Add it HERE, after base.css, so every page picks it up in
+   one place — never as a stray <link> in one template. #}
+<link rel="stylesheet" href="{% static 'global/css/base.css' %}?v={{ session.config.static_version }}">
+<link rel="stylesheet" href="{% static 'global/css/instructions.css' %}?v={{ session.config.static_version }}">
+<link rel="stylesheet" href="{% static 'global/css/results.css' %}?v={{ session.config.static_version }}">
+<link rel="stylesheet" href="{% static 'global/css/quiz.css' %}?v={{ session.config.static_version }}">
+<link rel="stylesheet" href="{% static 'global/css/demographics.css' %}?v={{ session.config.static_version }}">

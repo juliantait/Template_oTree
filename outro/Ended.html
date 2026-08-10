@@ -1,38 +1,97 @@
 {% block content %}
-<link rel="stylesheet" href="{% static 'global/style.css' %}?v={{ session.config.static_version }}">
+{% include '_static/global/html/css_bundle.html' %}
 <script src="{% static 'global/js/global.js' %}?v={{ session.config.static_version }}"></script>
 
+<!-- Ending for participants who did NOT complete normally: disqualified,
+     non-consenting, and phone-screened-out.
+
+     NOTE ON THE MOBILE SCREEN-OUT: the `mobile_screenout` gate renders NO page
+     of its own. It decides server-side in before.welcome.get(), before any HTML
+     exists, and every page between entry and here is gated on
+     common.is_screened_out(). So for a screened-out phone THIS PAGE IS THE
+     FIRST AND ONLY SCREEN they ever see — they never reach consent. It is
+     therefore styled as a full narrative card like every other participant-
+     facing page, not as a bare error message. -->
 <div class="experimental-screen">
-    <div class="screen-card welcome-card">
+    <div class="screen-card narrative-card">
         <div class="experimental-header">
-            <h2 class="header-title">Your participation has ended</h2>
+            <div class="eyebrow">Study ended</div>
+            <h2 class="header-title">
+                {% if reason == 'screened_out' and screenout_cause == 'mobile' %}
+                    This study needs a computer
+                {% else %}
+                    Your participation has ended
+                {% endif %}
+            </h2>
         </div>
+
         <div class="experimental-content">
-            <div class="section-text">
-                {% if reason == 'no_consent' %}
+            {% if reason == 'no_consent' %}
+                <p class="section-text">
                     You chose not to take part. Thank you for your time.
-                {% elif reason == 'disqualified' %}
+                </p>
+            {% elif reason == 'disqualified' %}
+                <p class="section-text">
                     Unfortunately your participation cannot continue, so the study
                     has ended for you. Thank you for your time.
-                {% elif reason == 'screened_out' %}
-                    This study can only be taken on a desktop or laptop computer,
-                    so it has ended for you. Thank you for your time.
+                </p>
+            {% elif reason == 'screened_out' %}
+                {# SCREEN-OUT COPY IS CHOSEN BY `screenout_cause`, NOT by the exit
+                   code. Exit code -4 is the GENERAL "removed at entry" bucket
+                   (CODEBOOK.md §exit codes); `mobile` is currently the only gate
+                   that sets it, but this is a template that gets copied into
+                   studies nobody has designed yet. If a future study screens
+                   someone out at entry for a different reason — unsupported
+                   browser, a failed entry check, a region block — and this branch
+                   keyed off the bare reason, that participant would be told they
+                   need a computer and nobody would notice until it was live.
+
+                   TO ADD A REASON: add the cause to common.SCREENOUT_CAUSES, set
+                   it at your gate via common.set_screened_out(participant,
+                   '<cause>'), and add an {% elif %} here with its own sentence.
+                   Do NOT mint a new exit code — every code in the table must be
+                   set by a real path, so reasons are causes, not codes. #}
+                {% if screenout_cause == 'mobile' %}
+                    <p class="section-text">
+                        This study can only be taken on a desktop or laptop
+                        computer, so it has ended for you here.
+                    </p>
+                    <div class="panel panel--hug">
+                        If you would still like to take part, please return to the
+                        study on a desktop or laptop computer.
+                    </div>
                 {% else %}
-                    The study has ended for you. Thank you for your time.
+                    {# Neutral fallback: an unrecognised or unrecorded cause. Says
+                       only what is certainly true, so a study that wires up a new
+                       -4 gate before writing its copy still reads correctly. #}
+                    <p class="section-text">
+                        Unfortunately you are not eligible to take part in this
+                        study, so it has ended for you here.
+                    </p>
                 {% endif %}
-            </div>
+                <p class="section-text">Thank you for your time.</p>
+            {% else %}
+                <p class="section-text">
+                    The study has ended for you. Thank you for your time.
+                </p>
+            {% endif %}
 
             {% if completion_redirects %}
-            <div class="section-text">
+            <p class="section-text">
                 Please click the button below to return to Prolific.
-            </div>
-            <div class="button-row">
-                <button type="button" class="next-button" onclick="backToProlific()">
-                    Back to Prolific
-                </button>
-            </div>
+            </p>
             {% endif %}
         </div>
+
+        <!-- Direct child of the card, so it stays pinned at the foot when the
+             content region scrolls (see .screen-card in base.css). -->
+        {% if completion_redirects %}
+        <div class="button-row">
+            <button type="button" class="next-button" onclick="backToProlific()">
+                Back to Prolific
+            </button>
+        </div>
+        {% endif %}
 
         {% include '_static/global/html/logo_section.html' %}
     </div>

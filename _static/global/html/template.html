@@ -1,29 +1,71 @@
 {{ block content }}
-<link rel="stylesheet" href="{% static 'global/style.css' %}?v={{ session.config.static_version }}">
+{% include '_static/global/html/css_bundle.html' %}
 <script src="{% static 'global/js/global.js' %}?v={{ session.config.static_version }}"></script>
 
+<!-- ===========================================================================
+     DESIGN REFERENCE — every shared component, in use.
+
+     This file is NOT a flow page (it has no working Next control and is
+     deliberately absent from every page_sequence). It exists so that a new study
+     starting from this template can see each component of the design system
+     rendered, with the markup that produces it, instead of having to reverse it
+     out of base.css.
+
+     RULE: if you add a shared component to base.css, add a specimen here. CSS in
+     the tree that no page demonstrates is CSS nobody will find.
+     =========================================================================== -->
+
+<!-- ---------------------------------------------------------------------------
+     CARD 1 — the default (left-aligned) family: header strip, reading band,
+     panels, choice cards, controls.
+     --------------------------------------------------------------------------- -->
 <div class="experimental-screen">
     <div class="screen-card">
 
-        <!-- Experimental header with logo, title, and header text -->
+        <!-- HEADER STRIP: always spans the card and stays top-LEFT. The eyebrow
+             is the small grey uppercase context line above the title. -->
         <div class="experimental-header">
-            <h2 class="header-title" style="margin: 0;">Experimental Screen - Title</h2>
-            <p class="header-text">Header text for subtitles aligned just below the title.</p>
+            <div class="eyebrow">Design reference</div>
+            <h2 class="header-title">Experimental screen — title</h2>
+            <p class="header-text">Header text for subtitles, aligned just below the title.</p>
         </div>
 
-        <!-- Main content preview -->
+        <!-- CONTENT: the scroll region. The header above and the button row
+             below are pinned; if this section outgrows the card's max-height it
+             scrolls inside itself and a soft shadow appears at the edge that has
+             more to read. -->
         <div class="experimental-content">
-            <!-- Anything in this section is vertically and horizontally centered within the card -->
-            <h3 class="section-title">Section Header
-                <span class="popover-anchor" tabindex="0">?<span class="popover-panel" role="tooltip">This is the anchored popover component — hover or focus the "?" to reveal help without shifting the page.</span></span>
+
+            <h3 class="section-title">Section header
+                <span class="popover-anchor" tabindex="0">?<span class="popover-panel" role="tooltip">The anchored popover — hover or focus the "?" to reveal help without shifting the page.</span></span>
             </h3>
             <div class="section-text">
-                 Use this area for any paragraph text content. Any content in this section will be vertically and horizontally centered within the card.
+                Running text sits in the reading band: it narrows to
+                <code>--read-measure</code> and centres as a column inside the wider
+                card, so lines stay legible while functional components below still
+                span the full card width. Controls, tables and widgets are never
+                clamped to this measure.
             </div>
 
-            <!-- mc-option component: full-card-clickable choice cards. Clicking
-                 anywhere on a card selects it (fixes phone mis-taps); selected
-                 state is pure CSS via :has(:checked). -->
+            <!-- PANEL: a quiet grey card for secondary information. -->
+            <div class="panel read-band">
+                <strong>Panel.</strong> Use this for secondary information that
+                belongs with the text but is not part of it — a data-use note, a
+                worked example, a reminder of the key numbers.
+            </div>
+
+            <!-- PANEL--HUG: shrink-wraps its content and centres, instead of
+                 stretching the full band. For one-line reminders, where a
+                 full-width grey block would look heavy. -->
+            <div class="panel panel--hug">
+                Hug panel — shrinks to fit, and centres.
+            </div>
+
+            <!-- MC-OPTION: the shared choice card. Hand-authored form here; an
+                 oTree {{ formfield }} with widgets.RadioSelect produces
+                 .form-check markup that is aliased to these same rules, so both
+                 render identically. The whole card is a tap target. -->
+            <h3 class="section-title">Multiple choice</h3>
             <div class="mc-options">
                 <label class="mc-option">
                     <input type="radio" name="demo_choice" value="a">
@@ -33,20 +75,110 @@
                     <input type="radio" name="demo_choice" value="b">
                     <span class="mc-option-body">Option B — the whole card is the hit area</span>
                 </label>
+                <label class="mc-option">
+                    <input type="radio" name="demo_choice" value="c">
+                    <span class="mc-option-body">Option C — the selected state is pure CSS, no JavaScript</span>
+                </label>
             </div>
+
+            <!-- MC-SCALE: the horizontal escape hatch. Without it an 11-point
+                 scale would render as eleven full-width cards. -->
+            <h3 class="section-title">Rating scale</h3>
+            <p class="section-text">Wrap a many-point scale in <code>.mc-scale</code> so its options
+               become compact cells rather than a stack of full-width cards.</p>
+            <div class="mc-scale">
+                <div>
+                    <div class="form-check"><input type="radio" name="demo_scale" value="0" id="ds0"><label for="ds0">0</label></div>
+                    <div class="form-check"><input type="radio" name="demo_scale" value="1" id="ds1"><label for="ds1">1</label></div>
+                    <div class="form-check"><input type="radio" name="demo_scale" value="2" id="ds2"><label for="ds2">2</label></div>
+                    <div class="form-check"><input type="radio" name="demo_scale" value="3" id="ds3"><label for="ds3">3</label></div>
+                    <div class="form-check"><input type="radio" name="demo_scale" value="4" id="ds4"><label for="ds4">4</label></div>
+                    <div class="form-check"><input type="radio" name="demo_scale" value="5" id="ds5"><label for="ds5">5</label></div>
+                    <div class="form-check"><input type="radio" name="demo_scale" value="6" id="ds6"><label for="ds6">6</label></div>
+                    <div class="form-check"><input type="radio" name="demo_scale" value="7" id="ds7"><label for="ds7">7</label></div>
+                    <div class="form-check"><input type="radio" name="demo_scale" value="8" id="ds8"><label for="ds8">8</label></div>
+                    <div class="form-check"><input type="radio" name="demo_scale" value="9" id="ds9"><label for="ds9">9</label></div>
+                    <div class="form-check"><input type="radio" name="demo_scale" value="10" id="ds10"><label for="ds10">10</label></div>
+                </div>
+            </div>
+
+            <!-- Text input and free-text control. -->
+            <h3 class="section-title">Text entry</h3>
+            <div class="stacked-form read-band">
+                <label for="demo_text"><strong>A short text field</strong></label>
+                <input type="text" id="demo_text" name="demo_text" autocomplete="off">
+            </div>
+            <textarea class="feedback-textarea" rows="3" aria-label="Free-text example"
+                      placeholder="A free-text control keeps the full card width — it is a control, not running text."></textarea>
+
+            <p class="hint">A hint: small, quiet, for asides that must not compete with the body copy.</p>
         </div>
 
-        <!-- Navigation buttons -->
+        <!-- BUTTON ROW: pinned to the FOOT of the card. The secondary action is
+             the same geometry as the primary but quieter, so the forward action
+             always leads. -->
         <div class="button-row">
-            <button type="button" class="next-button" onclick="window.history.back();">Back</button>
+            <button type="button" class="next-button ghost" onclick="window.history.back();">Back</button>
             <input type="submit" value="Next" class="next-button">
         </div>
 
-        <!-- Logos at the bottom -->
         {% include '_static/global/html/logo_section.html' %}
 
     </div>
 </div>
 
-{{ endblock }}
+<!-- ---------------------------------------------------------------------------
+     CARD 2 — the NARRATIVE family (.narrative-card): welcome, consent, the
+     agreement and any part/block-start screen. The script is CENTRED and held to
+     the reading band; the header strip stays top-left, so the eyebrow does not
+     move but the title does.
+     --------------------------------------------------------------------------- -->
+<div class="experimental-screen">
+    <div class="screen-card narrative-card">
+        <div class="experimental-header">
+            <div class="eyebrow">Before you begin</div>
+            <h2 class="header-title">Welcome</h2>
+        </div>
 
+        <div class="experimental-content">
+            <p class="section-text">
+                On a narrative card the sentences are centred and held to the
+                reading band. Quote study length and payment from the session
+                config here — never type either in by hand, or a testing config
+                would advertise a length and a fee the study does not run.
+            </p>
+
+            <!-- The privacy / data-use statement: a hug panel, so it reads as a
+                 distinct commitment rather than another paragraph. -->
+            <div class="panel panel--hug">
+                All recorded data are stored anonymously and used solely for
+                research purposes. You may stop at any time.
+            </div>
+
+            <div>
+                <p class="section-text"><strong>Please indicate whether you consent
+                    to taking part and to the recording of your decisions:</strong></p>
+                <!-- The option group centres as a block; each row inside stays
+                     left-aligned. In a real page this is {{ formfield 'consent' }}. -->
+                <div class="stacked-form">
+                    <div class="form-check">
+                        <input type="radio" name="demo_consent" value="1" id="dc1">
+                        <label for="dc1">I consent and wish to take part</label>
+                    </div>
+                    <div class="form-check">
+                        <input type="radio" name="demo_consent" value="0" id="dc0">
+                        <label for="dc0">I do not consent</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="button-row">
+            <input type="submit" value="Next" class="next-button">
+        </div>
+
+        {% include '_static/global/html/logo_section.html' %}
+    </div>
+</div>
+
+{{ endblock }}

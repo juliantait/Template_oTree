@@ -1,81 +1,175 @@
 /* Instruction pager. Class names are load-bearing: _static/global/js/instructions.js
    pages through .instruction-block and writes #instruction-counter. */
 
-/* The instruction column is a comfortable centred content band — wide enough for
-   worked-example tables/figures to breathe, NOT squeezed to the reading measure.
-   The RUNNING TEXT inside it (heading, paragraphs, lists) then narrows further to
-   the reading measure and centres, so the step title and body copy share one
-   column with a common left edge (title flush-left with that edge, not centred).
-   CENTERING CAVEAT: only running text narrows — the payoff-matrix table and any
-   figures keep their full band width (they are not in the reading-measure
-   selector below). Only this page uses .instructions. */
+/* FAMILY — instructions (JUSTIFIED reading band). INTENTION: the ONLY justified
+   text family. The instruction column is a comfortable centred content band —
+   wide enough for worked-example tables and figures to breathe — inside which the
+   RUNNING TEXT (heading, paragraphs, lists, callout) narrows further to the
+   shared reading measure (--read-measure, base.css) and is JUSTIFIED, so step
+   title and body copy share one centred column. CENTERING CAVEAT: only running
+   text narrows — the payoff-matrix table, any figures and the Back/Next pager
+   keep their full (band) width. Only this page uses .instructions. */
 .instructions {
-    max-width: 800px;
-    margin: 0 auto;
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    text-align: left;
+    gap: clamp(16px, 2.6vw, 24px);
+    width: 100%;
+    max-width: 720px;
+    margin-inline: auto;
 }
+
+/* --- scroll chain EXCEPTION (instructions page only) -------------------------
+   base.css makes .experimental-content the scroll region and pins the card's
+   .button-row. The instructions page has no .button-row: its Back/Next pager
+   (.instruction-controls) lives INSIDE the content, so under the shared rule it
+   would scroll away with a long slide.
+
+   Fix: pass the available height down the chain so the SLIDE BODY becomes the
+   scroller and the pager stays pinned beneath it. Every link needs
+   `min-height: 0`, because a flex child defaults to min-height:auto and refuses
+   to shrink below its content; miss one link and the page silently stops
+   scrolling and overflows instead.
+
+   THE CHAIN IS ONLY TWO LINKS, and that is not an oversight. instructing.html
+   writes a <form method="post"> inside .experimental-content, but oTree has
+   ALREADY wrapped the whole page in <form class="otree-form">, and the HTML5
+   parsing spec drops a nested form start tag. Verified against the rendered page
+   with a spec-compliant parser: the real DOM is
+       .experimental-content > .instructions > .instruction-wrapper
+   with no form element in between. So there is deliberately no `> form` rule
+   here — it would match nothing. If that nesting is ever cleaned up, this chain
+   needs a form link adding. */
+.instructions { flex: 1 1 auto; min-height: 0; }
 
 .instruction-wrapper {
     display: flex;
     flex-direction: column;
-    max-width: 900px;
-    margin: 0 auto;
-    text-align: left;
-    min-height: 320px; /* keep buttons aligned across slides */
     width: 100%;
+    flex: 1 1 auto;
+    /* MUST stay 0 — see the scroll-chain note above. NOTE there is deliberately
+       NO min-height floor here any more. The old floor (and the matching inline
+       min-height that instructions.js used to set from each slide's scrollHeight)
+       existed to stop the controls jumping between slides of different lengths.
+       The flex fill now does that job perfectly: the wrapper always expands to
+       all remaining space, so the pager sits at a constant position whatever the
+       slide contains. Re-introducing a floor here would stop the wrapper
+       shrinking and silently break scrolling on short viewports. */
+    min-height: 0;
+    overflow-y: auto;
+    /* room so a :focus-visible ring inside a slide is not sliced by the
+       scroll edge (overflow-y:auto clips horizontally too) */
+    padding: 6px;
+    margin: -6px;
 }
 
-.instruction-block {
-    display: none;
-}
+.instruction-block { display: none; }
+.instruction-block:first-of-type { display: block; }
 
-.instruction-block:first-of-type {
-    display: block;
-}
-
-/* The reading measure: direct-child running text of each block, centred as a
-   column in the band. The table/figures are not direct text children, so they
-   stay full width. */
+/* The reading measure: direct-child running text of each block, centred in the
+   card. Tables and figures are NOT direct text children, so they stay full
+   width. */
 .instruction-block > h2,
+.instruction-block > h3,
 .instruction-block > p,
 .instruction-block > ul,
-.instruction-block > ol {
-    max-width: 62ch;
+.instruction-block > ol,
+.instruction-block > .panel {
+    max-width: var(--read-measure);
     margin-inline: auto;
 }
 
-/* Body copy is justified; direct children only. */
+/* Body copy is justified; direct children only, so nested widget text is left
+   as authored. */
 .instruction-block > p,
 .instruction-block > ul,
-.instruction-block > ol {
-    text-align: justify;
-}
+.instruction-block > ol { text-align: justify; }
 
-/* Each block's own <h2> is the step title (single source of truth in
-   instructions_text.html). Styled like a page title, left-aligned flush with the
-   text block's left edge (inline margin auto preserves the centred measure). */
+/* Per-step heading = the page title. Its TYPE is defined once in base.css (the
+   shared .header-title, .instruction-block > h2 rule); only its layout lives
+   here. inline margin auto keeps it in the centred reading measure, and
+   text-align centres the title to match the centred .header-title on the
+   welcome / consent / narrative pages. (SUPERSEDES the older flush-left rule
+   recorded in _ai/pilot_snapshot: because the two titles are visually identical
+   they now align identically. The BODY copy below stays justified.) */
 .instruction-block > h2 {
-    margin: 0 auto 20px;
-    font-size: 35px;
-    font-weight: 700;
-    color: var(--color-heading);
-    text-align: left;
+    margin: 0 auto .6em;
+    text-align: center;
 }
 
+.instruction-block > h3 {
+    margin: 0 auto .5em;
+    font-size: clamp(19px, 1.9vw, 23px);
+    font-weight: 660;
+}
+
+.instruction-block p { max-width: var(--read-measure); }
+
+/* Skim emphasis inside instructions: a touch heavier than body <strong> so the
+   load-bearing phrases catch the eye, still the same ink (no colour shouting). */
+.instruction-block strong { font-weight: 680; }
+
+.instruction-block > ul,
+.instruction-block > ol {
+    /* inline margin auto keeps the list within the centred reading measure */
+    margin: 0 auto 1em;
+    padding-left: 1.25em;
+    max-width: var(--read-measure);
+}
+.instruction-block li + li { margin-top: .55em; }
+
+/* Callout for the key numbers a participant must carry forward. */
+.instruction-block > .panel { margin: 0 auto 1em; }
+
+/* Figures inside the instructions (worked-example plots and diagrams). */
+.instruction-figure {
+    margin: 0 0 1em;
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+.instruction-figure figure {
+    margin: 0;
+    flex: 1 1 240px;
+    min-width: 200px;
+    background: var(--sunken);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    padding: 10px;
+}
+.instruction-figure figcaption {
+    font-size: .8em;
+    color: var(--ink-mute);
+    text-align: center;
+    margin-top: 6px;
+}
+.instruction-figure svg { display: block; width: 100%; height: auto; }
+
+/* The step counter: quiet chrome, not body copy. Pinned below the scrolling
+   slide body along with the pager. */
 .instruction-progress {
-    margin-top: auto;
-    padding: 12px 0 4px;
-    font-size: 16px;
+    flex: 0 0 auto;
+    padding-top: 16px;
+    font-size: .82em;
+    color: var(--ink-mute);
     text-align: center;
     width: 100%;
 }
 
+/* Back far left, Next far right — the pager reads as movement through the
+   sequence rather than as a pair of equal choices. Pinned. */
 .instruction-controls {
+    flex: 0 0 auto;
     display: flex;
     gap: 12px;
-    justify-content: center;
+    justify-content: space-between;
     align-items: center;
+}
+
+/* The DEBUG-only skip control is a sibling of the pager inside .instructions,
+   so it needs pinning too or it would be squeezed by the flex fill above. */
+.instructions > .debug-tools { flex: 0 0 auto; }
+
+@media (max-width: 520px) {
+    .instruction-controls .next-button { flex: 1; padding-inline: 1em; }
 }

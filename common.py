@@ -76,7 +76,7 @@ def is_mobile_user_agent(user_agent) -> bool:
 
 
 def is_screened_out(participant) -> bool:
-    """True once the mobile screen-out gate has removed this participant.
+    """True once an entry screen-out gate has removed this participant.
 
     Every page between entry and the ending consults this (like the tab
     monitor's ``ai_safety_disqualified``), so a screened-out participant is
@@ -84,6 +84,57 @@ def is_screened_out(participant) -> bool:
     outro ending. Reads participant vars with .vars.get() — never getattr().
     """
     return bool(participant.vars.get('screened_out'))
+
+
+# --- entry screen-out causes -------------------------------------------------
+# Exit code -4 (``screened_out``) is the GENERAL "removed at entry" bucket, not a
+# phone-specific code. Which gate fired is recorded separately, as a cause string
+# in participant_extra, and that cause is what selects the sentence the
+# participant reads on the ending (see outro/Ended.html).
+#
+# WHY THE CODE STAYS GENERIC: the exit-code table in CODEBOOK.md is a contract —
+# every code in it must be set by a real code path, so codes are not minted
+# speculatively. A new screen-out reason therefore adds a CAUSE and a sentence
+# here, NOT a new exit code. Analysis still gets one clean "screened out at
+# entry" bucket, and splitting by reason is a filter on the cause column.
+#
+# To add one: append it here, set it at the gate via ``set_screened_out``, and
+# add a branch in outro/Ended.html. Ship nothing without its own sentence.
+SCREENOUT_CAUSE_KEY = 'screenout_cause'
+SCREENOUT_CAUSES = {
+    'mobile': 'Entry User-Agent looked like a phone/tablet (mobile_screenout).',
+}
+
+
+def extra_get(participant, key, default=None):
+    """Read one key out of the participant's free JSON bucket (participant_extra).
+
+    Safe on a participant whose bucket predates the key (or the bucket itself).
+    """
+    bucket = participant.vars.get('participant_extra') or {}
+    return bucket.get(key, default)
+
+
+def screenout_cause(participant) -> str:
+    """Why this participant was screened out at entry ('' if not / unrecorded).
+
+    An empty string is a legitimate answer, not an error: a study that sets exit
+    code -4 from a new gate without recording a cause still gets the neutral
+    fallback sentence on the ending rather than another gate's wording.
+    """
+    return extra_get(participant, SCREENOUT_CAUSE_KEY, '') or ''
+
+
+def set_screened_out(participant, cause):
+    """Remove this participant at entry, recording WHY.
+
+    One call so a gate cannot record the flag and the exit code but forget the
+    cause. Idempotent at the caller's discretion (check ``is_screened_out``
+    first, so a page reload never re-stamps).
+    """
+    participant.screened_out = True
+    set_exit_code(participant, EXIT_CODES['screened_out'])
+    extra_set(participant, SCREENOUT_CAUSE_KEY, cause)
 
 
 def extra_set(participant, key, value):

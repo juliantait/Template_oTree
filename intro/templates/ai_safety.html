@@ -1,8 +1,8 @@
 {{ block content }}
-<link rel="stylesheet" href="{% static 'global/style.css' %}?v={{ session.config.static_version }}">
+{% include '_static/global/html/css_bundle.html' %}
 
 <div class="experimental-screen">
-    <div class="screen-card welcome-card">
+    <div class="screen-card narrative-card">
         <div class="experimental-header">
             <h2 class="header-title">Before you begin</h2>
         </div>
