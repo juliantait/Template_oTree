@@ -47,6 +47,19 @@ Before a launch, fuzz with a headless browser one worker per surface (entry,
 instructions and quiz, task, monitor, endings) — that practice found an XSS and a
 dropped participant label that server-side testing missed.
 
+**Read `skills_claude/writing_tests.md` before writing or editing any test.** It
+holds the method (the two drivers, the no-JS submit, phone User-Agents,
+asserting on rendered visible text rather than raw HTML, escaping, frozen
+configs, measured browser rendering checks); the README's Testing table says what
+each kind of check is and is not evidence of.
+
+**A layout or copy change needs a MEASURED render check**, not a look:
+`tests/render_check.py` drives real headless Chromium at three viewports and
+asserts on element geometry and rendered pixels. Layout failures produce no
+error at all — nothing 500s and no test goes red while the participant gets a
+broken page. Headless Chromium runs here without root; the recipe is
+`_ai/headless_chromium_recipe.md`.
+
 ## Deploying
 
 `scripts/predeploy_check.sh` boots a candidate build against a **copy of the live

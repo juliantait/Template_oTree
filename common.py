@@ -36,6 +36,38 @@ def pvar(participant, name, default=None):
     return participant.vars.get(name, default)
 
 
+def cfg(config, name):
+    """Safe read of a SESSION CONFIG value. Use this, never ``config[name]``.
+
+    oTree copies the session config onto the Session row when the session is
+    CREATED and never refreshes it, so a parameter added to
+    ``settings.SESSION_CONFIG_DEFAULTS`` in a later deploy is simply ABSENT from
+    the config of every session already running. ``config['new_param']`` then
+    raises ``KeyError`` — an HTTP 500 for a participant mid-study, visible only
+    in the container log. (That is a live outage from the pilot this template
+    came from, not a hypothetical; see CLAUDE.md.)
+
+    This reads through to the value SHIPPED in settings for that parameter, so a
+    frozen session transparently gets the default instead of 500-ing, while a
+    key that was never shipped at all raises a KeyError that NAMES the
+    parameter — a typo stays loud rather than degrading to a silent None.
+
+    ``config`` may be a session config mapping or anything dict-like
+    (``player.session.config``).
+    """
+    from settings import SESSION_CONFIG_DEFAULTS
+    try:
+        return config[name]
+    except (KeyError, TypeError):
+        pass
+    if name in SESSION_CONFIG_DEFAULTS:
+        return SESSION_CONFIG_DEFAULTS[name]
+    raise KeyError(
+        f"unknown session config parameter {name!r}: it is not on this "
+        f"session's (frozen) config and has no default in "
+        f"settings.SESSION_CONFIG_DEFAULTS")
+
+
 def init_participant(participant):
     """Initialise every participant field at session creation.
 
@@ -152,8 +184,10 @@ def focus_live_method(player, data):
     to that player so the client reloads onto the ending. No-op unless the
     tab_monitor flag is on. See settings + _static/global/js/ai_safety_monitor.js.
     """
-    cfg = player.session.config
-    if not cfg.get('tab_monitor'):
+    # NB the local name is `config`, not `cfg`: `cfg` is this module's safe
+    # session-config accessor and shadowing it here would hide it.
+    config = player.session.config
+    if not config.get('tab_monitor'):
         return
     if not isinstance(data, dict) or data.get('type') != 'focus_loss':
         return
@@ -165,7 +199,7 @@ def focus_live_method(player, data):
     player.participant.focus_event_ids = seen
     count = (player.participant.vars.get('focus_loss_count') or 0) + 1
     player.participant.focus_loss_count = count
-    max_violations = int(cfg.get('tab_monitor_max_violations', 2))
+    max_violations = int(cfg(config, 'tab_monitor_max_violations'))
     if count >= max_violations:
         player.participant.ai_safety_disqualified = True
         set_exit_code(player.participant, EXIT_CODES['tab_monitor'])

@@ -14,8 +14,32 @@
     flex-direction: column;
     gap: clamp(16px, 2.6vw, 24px);
     width: 100%;
-    max-width: 720px;
+    max-width: var(--instructions-band, 720px);
     margin-inline: auto;
+}
+
+/* The band width lives on the CARD, so the eyebrow in the header strip can
+   follow the exact same measure and sit flush with the slide text it
+   introduces (base.css, .eyebrow). One value, two consumers — they cannot
+   drift apart. */
+.screen-card:has(.instructions) { --instructions-band: 720px; }
+/* The header strip takes the same band as the slide body, so the eyebrow lines
+   up with the text it introduces. TWO gutters of inset, not one: this page's
+   copy sits inside .experimental-content AND inside .instruction-wrapper, and
+   both reserve a scrollbar gutter on each edge. */
+.screen-card:has(.instructions) .experimental-header {
+    width: 100%;
+    /* Width: the band plus the OUTERMOST gutter on each side (the content
+       region's), which is what shifts the band's centring. Padding: the sum of
+       every gutter between the card and the copy — two here, because this page's
+       text sits inside .experimental-content AND inside .instruction-wrapper,
+       and both reserve one. Derived from the measured box chain, and it holds at
+       every viewport: when the max-width binds (wide screens) the padding sets
+       the offset from the centred box; when it does not (phones) the padding
+       alone lines the strip up with the copy. */
+    max-width: calc(var(--instructions-band, 720px) + 2 * var(--scroll-gutter));
+    margin-inline: auto;
+    padding-inline: calc(2 * var(--scroll-gutter));
 }
 
 /* --- scroll chain EXCEPTION (instructions page only) -------------------------
@@ -44,7 +68,6 @@
 .instruction-wrapper {
     display: flex;
     flex-direction: column;
-    width: 100%;
     flex: 1 1 auto;
     /* MUST stay 0 — see the scroll-chain note above. NOTE there is deliberately
        NO min-height floor here any more. The old floor (and the matching inline
@@ -57,7 +80,11 @@
     min-height: 0;
     overflow-y: auto;
     /* room so a :focus-visible ring inside a slide is not sliced by the
-       scroll edge (overflow-y:auto clips horizontally too) */
+       scroll edge (overflow-y:auto clips horizontally too). The negative margin
+       cancels it again — which only works while this element has NO explicit
+       `width`: with `width: 100%` the box cannot widen, so the negative left
+       margin just shifts the whole slide 6px off the card's centre line (the
+       same defect measured on .experimental-content, base.css). */
     padding: 6px;
     margin: -6px;
 }

@@ -116,7 +116,17 @@ a { color: var(--accent); }
     padding-left: 0;
     padding-right: 0;
 }
-.otree-content { margin-top: 0; }
+/* WIDTH IS LOAD-BEARING HERE, not cosmetic. oTree wraps the page in
+   <form class="otree-form">, and the `form` rule further down this file makes it
+   a flex column with `align-items: center`. That makes .otree-content — the
+   form's only flex item, and the ancestor of every card — SHRINK-TO-FIT its
+   content, so `.screen-card`'s own `max-width: min(94vw, 1200px)` never binds
+   and each page's card ends up as wide as whatever happens to be inside it.
+   Measured before this line (1280px viewport): lab gate 651px, consent 824px,
+   instructions 818px, quiz 571px — four widths for the one frame the card
+   component promises. `width: 100%` restores the promise without touching the
+   `form` rule, which oTree's own injected elements also sit under. */
+.otree-content { margin-top: 0; width: 100%; }
 .otree-title.page-header { margin: 0; }
 
 /* --- remove oTree's "powered by oTree" line + trailing spacer ----------------
@@ -168,6 +178,11 @@ a { color: var(--accent); }
 :root {
     --card-min: 75vh;
     --card-max: 88vh;
+    /* The width a scroll region reserves for its scrollbar on EACH edge
+       (`scrollbar-gutter: stable both-edges`). It must equal the
+       ::-webkit-scrollbar width below; anything that needs to line up with the
+       content INSIDE a scroll region reads it from here. */
+    --scroll-gutter: 10px;
 }
 .screen-card {
     width: 100%;
@@ -213,7 +228,14 @@ a { color: var(--accent); }
    a :focus-visible ring is 3px + 2px offset. Without room the focus outline on
    the first/last option card would be sliced off by the scroll edge. */
 .experimental-content {
-    width: 100%;
+    /* NO `width: 100%` HERE, and that is deliberate. As a flex item of the card
+       this region already stretches to the card's content width; adding
+       `width: 100%` FIXES that width, so the negative side margins below could
+       only move the box LEFT instead of widening it symmetrically. Measured
+       with it in place (1280px viewport): the region's box sat 8px left of the
+       card's content box, which pushed the whole centred reading band off the
+       card's centre line — the instructions title read visibly left of centre
+       (band centre 625 against a card centre of 632.5). */
     display: flex;
     flex-direction: column;
     gap: 16px;
@@ -226,25 +248,132 @@ a { color: var(--accent); }
     margin: -8px;           /* cancel the focus-ring gutter so nothing shifts */
     scroll-padding-block: 8px;
 
-    /* SCROLL AFFORDANCE (pure CSS, self-hiding). Two pairs of gradients: the
-       `local` ones scroll WITH the content and are painted in the card colour,
-       the `scroll` ones are fixed shadows at the edges. At the top of the scroll
-       the local gradient sits over the top shadow and hides it; scroll down and
-       it moves away, revealing the shadow. So each shadow appears only while
-       there is more content in that direction, and the bottom one disappears
-       exactly when you reach the end. Explicit rgba(255,255,255,0) rather than
-       `transparent`, which some engines interpolate through black. */
+    /* SCROLL AFFORDANCE — THREE LAYERS. Measured 2026-08-10: the background
+       gradients alone (layer 2) were far too quiet to read as "there is more
+       below", and a background can only ever paint BEHIND the text, so a
+       partially visible line was still sliced cleanly through the glyphs and
+       read as a rendering bug rather than as something to scroll to.
+
+       1. A STYLED, ALWAYS-VISIBLE SCROLLBAR (below). Overlay scrollbars fade
+          out when idle and say nothing; an explicitly styled one is painted for
+          as long as the region overflows and needs no script. `stable
+          both-edges` reserves the gutter symmetrically, so centred copy stays
+          centred and nothing shifts when a page starts scrolling.
+       2. THESE GRADIENTS — the JS-free fallback. Two pairs: the `local` ones
+          scroll WITH the content in the card colour, the `scroll` ones are
+          fixed shadows at the edges. At the top of the scroll the local
+          gradient covers the top shadow; scroll and it moves away, revealing
+          it. So each shadow shows only while there is more content that way.
+          Explicit rgba(255,255,255,0) rather than `transparent`, which some
+          engines interpolate through black.
+       3. A CONTENT FADE (the .is-scrollable-* rules below), applied as a MASK
+          so it fades the text itself. It is driven by global.js, which knows
+          the scroll position, so the LAST line is never faded — the fade means
+          "there is more", always. */
+    scrollbar-gutter: stable both-edges;
+       THE MASKING GRADIENTS MUST BE FULLY OPAQUE FOR AT LEAST THE SHADOW'S
+       HEIGHT (16px). They are 30px tall and solid to 60% of that = 18px, then
+       fade. With the earlier 30% stop they were solid for only 9px, so the
+       lower half of a shadow bled through even on a page with nothing to
+       scroll — a phantom band across a card that fits, which is worse than no
+       affordance at all (measured on the lab gate and the instructions page,
+       2026-08-11). */
     background:
-        linear-gradient(var(--card-bg) 30%, rgba(255, 255, 255, 0)) top / 100% 26px no-repeat local,
-        linear-gradient(rgba(255, 255, 255, 0), var(--card-bg) 70%) bottom / 100% 26px no-repeat local,
-        radial-gradient(farthest-side at 50% 0, rgba(16, 32, 52, .13), rgba(255, 255, 255, 0)) top / 100% 11px no-repeat scroll,
-        radial-gradient(farthest-side at 50% 100%, rgba(16, 32, 52, .13), rgba(255, 255, 255, 0)) bottom / 100% 11px no-repeat scroll;
+        linear-gradient(var(--card-bg) 60%, rgba(255, 255, 255, 0)) top / 100% 30px no-repeat local,
+        linear-gradient(rgba(255, 255, 255, 0), var(--card-bg) 40%) bottom / 100% 30px no-repeat local,
+        radial-gradient(farthest-side at 50% 0, rgba(16, 32, 52, .30), rgba(255, 255, 255, 0)) top / 100% 16px no-repeat scroll,
+        radial-gradient(farthest-side at 50% 100%, rgba(16, 32, 52, .30), rgba(255, 255, 255, 0)) bottom / 100% 16px no-repeat scroll;
 }
 
-/* Pinned regions: never shrink, never scroll away. */
+/* Layer 1 — the scrollbar itself. WebKit/Blink ignores scrollbar-width when a
+   ::-webkit-scrollbar rule exists, and painting one explicitly is what stops
+   Chromium using an overlay bar that is invisible in a screenshot (and to a
+   participant who never moves the wheel). */
+/* BOTH scroll regions reserve the gutter symmetrically. The instructions page
+   scrolls its own slide body (.instruction-wrapper), not .experimental-content,
+   and without this it took the scrollbar out of its RIGHT side only — which
+   shifts a centred reading band 5px left of the card's centre line on a phone
+   (measured 2026-08-11). */
+.instruction-wrapper { scrollbar-gutter: stable both-edges; }
+
+.experimental-content::-webkit-scrollbar,
+.instruction-wrapper::-webkit-scrollbar { width: var(--scroll-gutter); }
+.experimental-content::-webkit-scrollbar-track,
+.instruction-wrapper::-webkit-scrollbar-track {
+    background: var(--sunken);
+    border-radius: 999px;
+}
+.experimental-content::-webkit-scrollbar-thumb,
+.instruction-wrapper::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    border: 2px solid var(--card-bg);
+    border-radius: 999px;
+}
+.experimental-content::-webkit-scrollbar-thumb:hover,
+.instruction-wrapper::-webkit-scrollbar-thumb:hover { background: var(--ink-mute); }
+
+/* Firefox has no ::-webkit-scrollbar and needs the standard properties. They are
+   scoped to it on purpose: Chromium supports BOTH, and when the standard ones
+   are present it IGNORES the ::-webkit-* rules above and paints a thin OVERLAY
+   bar that fades out when idle — measured 2026-08-10 as no visible bar at all,
+   which is the affordance we are trying not to have. */
+@supports not selector(::-webkit-scrollbar) {
+    .experimental-content,
+    .instruction-wrapper {
+        scrollbar-width: thin;
+        scrollbar-color: var(--line-strong) var(--sunken);
+    }
+}
+
+/* Layer 3 — the content fade. A MASK, not a background: only a mask can fade
+   the TEXT, and a half-faded line reads as "continues below" where a
+   hard-cut one reads as broken. The classes come from global.js
+   (`is-scrollable-up` / `is-scrollable-down`); with no JavaScript no class is
+   ever set, no mask is applied, and layers 1-2 carry the affordance alone —
+   the script only ever ADDS to a page that already works. */
+:root { --scroll-fade: 46px; }
+.experimental-content.is-scrollable-down,
+.instruction-wrapper.is-scrollable-down {
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - var(--scroll-fade)), rgba(0, 0, 0, 0));
+    mask-image: linear-gradient(to bottom, #000 calc(100% - var(--scroll-fade)), rgba(0, 0, 0, 0));
+}
+.experimental-content.is-scrollable-up,
+.instruction-wrapper.is-scrollable-up {
+    -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0), #000 var(--scroll-fade));
+    mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0), #000 var(--scroll-fade));
+}
+.experimental-content.is-scrollable-up.is-scrollable-down,
+.instruction-wrapper.is-scrollable-up.is-scrollable-down {
+    -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0), #000 var(--scroll-fade),
+                                        #000 calc(100% - var(--scroll-fade)), rgba(0, 0, 0, 0));
+    mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0), #000 var(--scroll-fade),
+                                #000 calc(100% - var(--scroll-fade)), rgba(0, 0, 0, 0));
+}
+
+/* THE LOGO STRIP SITS AT THE FOOT OF THE SCROLL REGION, and the rest of the
+   content is centred in the space ABOVE it. Two `margin-top: auto` in one flex
+   column share the free space equally, so a short narrative page (the lab gate
+   is one sentence) reads as centred copy with the institutional marks along the
+   bottom of the card, instead of copy and logos clumped together in the middle
+   with a bigger hole underneath. When the content overflows there is no free
+   space, both autos collapse to nothing, and nothing moves — so this costs the
+   consent page (the reason the strip was unpinned at all) exactly zero. The
+   `:has()` guard keeps it off pages with no logo strip, where a `margin-top:
+   auto` on the first child would push the content DOWN instead. */
+.experimental-content:has(> .logo-section) > *:first-child,
+.experimental-content:has(> .logo-section) > .logo-section {
+    margin-top: auto;
+}
+
+/* Pinned regions: never shrink, never scroll away. EXACTLY TWO — the header
+   strip and the forward action. The logo strip is deliberately NOT here: pinned,
+   it cost ~90px of every card's height for institutional marks nobody needs
+   on screen at all times, and on a 1280x720 laptop that was the difference
+   between the consent options being visible and being entirely below the fold.
+   It now lives INSIDE .experimental-content in every template and scrolls with
+   the content. */
 .experimental-header,
-.screen-card > .button-row,
-.screen-card > .logo-section {
+.screen-card > .button-row {
     flex: 0 0 auto;
 }
 
@@ -311,20 +440,50 @@ a { color: var(--accent); }
     color: var(--ink);
 }
 
+/* NOT JUSTIFIED. Justification belongs to the instructions family and to the
+   reading band only (`instructions.css` justifies `.instruction-block > p/ul/ol`
+   itself); it was here as a global default, so a one- or two-line sentence on a
+   narrative or task page — the lab gate's single line, the task screen's
+   prompt — came out with stretched word spacing. Narrative pages centre this
+   text (`.narrative-card` below); everything else inherits the card's
+   flush-left. */
 .section-text {
     margin-block: 0;
-    text-align: justify;
 }
 
 /* An "eyebrow": small, quiet, uppercase context line above a title. It lives
-   inside .experimental-header, which always spans the card and stays top-LEFT —
-   families may re-align the title below it, never the eyebrow itself. */
+   inside .experimental-header, which spans the card and stays top-LEFT.
+   ALIGNMENT: on a page whose content is held to a reading band, the eyebrow
+   follows that band (see the family rules below) rather than the card's padding
+   edge. Julian, 2026-08-11: with the frame now a constant 1200px the eyebrow sat
+   ~180px away from the copy it introduces and read as stranded in the margin.
+   (NB the reference build leaves it at the card edge — its narrative cards are
+   the same 1200px frame, so this is a deliberate departure, not a port.)
+   On a FULL-WIDTH page — a task screen, a results table — there is no band to
+   follow, so the eyebrow keeps the card edge, which is why this is scoped to
+   the families that have one. */
 .eyebrow {
     font-size: 0.74em;
     font-weight: 650;
     letter-spacing: .085em;
     text-transform: uppercase;
     color: var(--ink-mute);
+}
+/* Narrative family: the whole HEADER STRIP takes the band, so the eyebrow AND
+   the title sit on the same left edge as the copy below them.
+   Why the strip and not the eyebrow itself: `--read-measure` is `68ch`, and
+   `ch` resolves against the ELEMENT's own font — the eyebrow is 0.74em, so
+   capping it at 68ch gave a band ~360px wide and pushed it further from the
+   copy, not closer (measured 2026-08-11). The strip inherits the card's font,
+   so its 68ch is the same 68ch the body copy uses.
+   The extra `--scroll-gutter` of width and matching padding line the strip up
+   with the CONTENT region, which reserves that gutter for its scrollbar on both
+   edges; without it the strip's band would sit a gutter-width outside the copy's. */
+.narrative-card .experimental-header {
+    width: 100%;
+    max-width: calc(var(--read-measure) + 2 * var(--scroll-gutter));
+    margin-inline: auto;
+    padding-inline: var(--scroll-gutter);
 }
 
 /* COMPONENT — panel. INTENTION: a quiet grey card for secondary information
@@ -450,13 +609,22 @@ form {
     align-items: center;
 }
 
+/* COMPONENT — stacked form. INTENTION: a column of labels and controls that
+   fills its band, so a group of option cards reads as one block of equal-width
+   rows rather than as ragged tags sized by their own text.
+   `align-items: stretch` (the default, stated explicitly because it is
+   load-bearing) is what makes that true: with `flex-start` every child
+   shrink-wrapped, so on the consent page an option card came out roughly half
+   the width of the privacy panel directly above it. The quiz family already
+   overrode this to stretch (quiz.css), which is why quiz options looked right
+   and consent options did not — one behaviour now, defined here. */
 .stacked-form {
     width: 100%;
     max-width: 560px;
     display: flex;
     flex-direction: column;
     gap: 12px;
-    align-items: flex-start;
+    align-items: stretch;
 }
 
 .stacked-form input[type="text"] {
@@ -551,6 +719,24 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
     border-radius: 4px;
 }
 
+/* …and re-assert it over BOOTSTRAP. oTree loads bootstrap5 before this file, and
+   it ships `.form-check-input:focus { outline: 0; box-shadow: 0 0 0 .25rem
+   rgba(13,110,253,.25) }` — two class-level selectors, so it out-ranks the bare
+   `:focus-visible` above no matter the load order. oTree emits every radio and
+   checkbox with `.form-check-input`, so the ONE place a keyboard user most needs
+   a ring — the quiz and consent option cards — was the one place it was silently
+   removed (measured: outline-width 0px on the focused radio, 2026-08-10). These
+   selectors match Bootstrap's specificity and win on order; the box-shadow reset
+   drops Bootstrap's #0d6efd glow so the ring is the design's own accent. The
+   `:checked` inset dot (below) is more specific and is untouched. */
+.form-check-input:focus-visible,
+.mc-option input:focus-visible,
+.form-check input:focus-visible {
+    outline: 3px solid var(--accent-ring);
+    outline-offset: 2px;
+}
+.form-check-input:focus { box-shadow: none; }
+
 /* Testing-only skip buttons (rendered only when settings.DEBUG). Deliberately
    muted/dashed so they read as tooling, not part of the experiment UI. */
 .debug-tools {
@@ -579,12 +765,31 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
    logo_section.html — an inline style beats any stylesheet rule, so a logo sized
    in the markup cannot be re-tuned from the design system. */
 .logo-section { margin-top: 4px; padding-top: 18px; border-top: 1px solid var(--line); }
-.logo-row { display: flex; align-items: center; justify-content: center; gap: 26px; }
-.logo-row img { height: 40px; width: auto; opacity: .62; }
+/* WRAPS, and no image may exceed the row. The marks are sized by HEIGHT, so
+   their widths follow their aspect ratios: at 375px the two shipped logos came
+   to 221px + 108px + gap = 347px in a ~333px column, which overflowed the card's
+   scroll region SIDEWAYS and cost ~15px of it to a horizontal scrollbar
+   (measured 2026-08-11). Wrapping stacks them instead; `max-width: 100%` means a
+   single wide mark shrinks rather than overflowing. */
+.logo-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 14px 26px;
+}
+.logo-row img { height: 40px; width: auto; max-width: 100%; opacity: .62; }
 
 /* The welcome header's inline CREED logo (lab gate page). */
 .welcome-header-row { display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
-.welcome-header-row img { height: 44px; width: auto; }
+.welcome-header-row img { height: 44px; width: auto; max-width: 100%; }
+/* The title INSIDE this row sizes to its words. It is an .header-title, which
+   carries `width: 100%; max-width: var(--read-measure); margin-inline: auto` so
+   that a page title holds the reading band — correct for a title that owns its
+   line, wrong for one paired with a logo: it claimed the whole measure and shoved
+   the mark to the far edge of the card, so "Welcome to" and the CREED logo read
+   as two unrelated things. */
+.welcome-header-row .header-title { width: auto; max-width: none; margin-inline: 0; }
 
 /* --- responsive: phone breakpoint ------------------------------------------- */
 @media (max-width: 520px) {
@@ -592,6 +797,30 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
     .button-row .next-button { flex: 1; text-align: center; }
     .logo-row img { height: 32px; }
     .logo-row { gap: 18px; }
+}
+
+/* --- SHORT VIEWPORTS: tighten the rhythm, not the content -------------------
+   Every value in the card's vertical rhythm is driven by vw (3vw padding, 2.6vw
+   gaps), so a WIDE BUT SHORT screen — a 1280x720 laptop, the single most common
+   participant display — gets a desktop's generous spacing inside a card that is
+   only 634px tall. Measured 2026-08-10: on that screen the consent options sat
+   entirely below the fold, so a participant could reach Next without ever seeing
+   the choice they were consenting to.
+
+   This block buys back ~60px of visible content on a 720px-tall screen by
+   tightening spacing ONLY — no font size, no copy, no component changes, so
+   nothing about how the page reads changes. Keyed on height, so a tall desktop
+   is untouched. */
+@media (max-height: 820px) {
+    .screen-card {
+        padding: 18px clamp(18px, 4.5vw, 48px);
+        gap: 16px;
+    }
+    .screen-card > .button-row { padding-top: 14px; }
+    .experimental-header { gap: 8px; }
+    .experimental-content { gap: 12px; }
+    .panel { padding: 14px 16px; }
+    .logo-section { margin-top: 0; padding-top: 12px; }
 }
 
 /* --- respect reduced-motion preference -------------------------------------- */

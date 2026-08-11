@@ -129,6 +129,13 @@ RECRUITMENT_PROFILES = {
 # sentinel that survives to launch.
 PROLIFIC_CODE_PLACEHOLDERS = ('REPLACE_CC', 'REPLACE_NC', 'REPLACE_DQ', 'REPLACE_ERR')
 
+# --- static asset version ----------------------------------------------------
+# Appended as ?v=... to every CSS/JS href so a redeploy is never served a stale
+# cached asset. BUMP THIS ON EVERY CHANGE to a file under _static/. Each app
+# exposes it as C.STATIC_VERSION, which is what the templates read.
+STATIC_VERSION = '2'
+
+
 SESSION_CONFIG_DEFAULTS = dict(
     # oTree's built-in per-config description (shown on the demo page).
     doc="",
@@ -258,9 +265,15 @@ SESSION_CONFIG_DEFAULTS = dict(
     # (OTREE_PRODUCTION unset) — in production validation always runs, so a
     # leftover False cannot weaken a real launch (prelaunch flags it too).
     verify_quiz=True,
-    # static_version is appended as ?v=... to CSS/JS hrefs so a redeploy is
-    # never served a stale cached asset. Bump on every static change.
-    static_version='1',
+    # The asset version, MIRRORED here from the module-level STATIC_VERSION so
+    # the admin's config view still shows what a session ran with. Templates do
+    # NOT read this copy — they read C.STATIC_VERSION, which comes from the
+    # deployed CODE. A session config is frozen at creation, so a template
+    # reading `session.config.static_version` 500s for every in-flight
+    # participant of a study that adds the parameter later (measured; see
+    # tests/frozen_config_test.py), and a cache-busting token should follow the
+    # build anyway, not the session.
+    static_version=STATIC_VERSION,
 )
 
 

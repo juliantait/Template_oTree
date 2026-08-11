@@ -64,15 +64,17 @@
                 <input type="text" name="participant_id_external" id="participant_id_external"
                        value="{{ prefill_id|escape }}" autocomplete="off" spellcheck="false">
             </div>
+
+            {# Inside the scroll region, not pinned — see base.css "Pinned
+               regions": only the header strip and the button row are pinned. #}
+            {% include '_static/global/html/logo_section.html' %}
         </div>
 
         <div class="button-row">
             <input type="submit" value="Next" class="next-button">
         </div>
-
-        {% include '_static/global/html/logo_section.html' %}
     </div>
 </div>
 
-<script src="{% static 'global/js/global.js' %}?v={{ session.config.static_version }}"></script>
+<script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
 {{ endblock }}

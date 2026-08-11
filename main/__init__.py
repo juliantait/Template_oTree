@@ -2,7 +2,7 @@ from otree.api import *
 import random
 
 # Take NUM_ROUNDS from session defaults (static at import time for oTree).
-from settings import SESSION_CONFIG_DEFAULTS
+from settings import SESSION_CONFIG_DEFAULTS, STATIC_VERSION
 import common
 num_experimental_rounds = SESSION_CONFIG_DEFAULTS['num_experimental_rounds']
 
@@ -13,6 +13,11 @@ manager = None
 task_manager = None
 
 class C(BaseConstants):
+    # Asset cache-buster for this BUILD (settings.STATIC_VERSION).
+    # Templates read C.STATIC_VERSION, never session.config.static_version:
+    # a session config is frozen at creation, so the template read 500s
+    # for in-flight participants when the parameter post-dates them.
+    STATIC_VERSION = STATIC_VERSION
     NAME_IN_URL = 'main'
     PLAYERS_PER_GROUP = None
     # FIXED AT IMPORT: oTree builds its round tables from this constant, so it
@@ -24,7 +29,7 @@ class C(BaseConstants):
 
 def rounds_for(session) -> int:
     """How many rounds THIS session runs (config value, capped at NUM_ROUNDS)."""
-    requested = int(session.config.get('num_experimental_rounds', C.NUM_ROUNDS))
+    requested = min(int(common.cfg(session.config, 'num_experimental_rounds')), C.NUM_ROUNDS)
     return min(requested, C.NUM_ROUNDS)
 
 
@@ -50,7 +55,7 @@ class Player(BasePlayer):
 
 def creating_session(subsession: Subsession):
     # NUM_ROUNDS is fixed at import; a config must never request MORE rounds.
-    requested = int(subsession.session.config.get('num_experimental_rounds', C.NUM_ROUNDS))
+    requested = int(common.cfg(subsession.session.config, 'num_experimental_rounds'))
     if requested > C.NUM_ROUNDS:
         raise ValueError(
             f"num_experimental_rounds={requested} exceeds the imported "
@@ -85,9 +90,9 @@ def ai_safety_js_vars(player):
     return dict(
         tab_monitor=bool(cfg.get('tab_monitor')),
         AI_SAFETY_CONFIG=dict(
-            max_violations=int(cfg.get('tab_monitor_max_violations', 2)),
-            threshold_ms=int(cfg.get('tab_monitor_threshold_ms', 4000)),
-            overlay_delay_ms=int(cfg.get('tab_monitor_overlay_delay_ms', 400)),
+            max_violations=int(common.cfg(cfg, 'tab_monitor_max_violations')),
+            threshold_ms=int(common.cfg(cfg, 'tab_monitor_threshold_ms')),
+            overlay_delay_ms=int(common.cfg(cfg, 'tab_monitor_overlay_delay_ms')),
         ),
     )
 

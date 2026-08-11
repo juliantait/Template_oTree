@@ -114,3 +114,50 @@
             nextButton.click();
         }
     });
+    // --- SCROLL AFFORDANCE (progressive enhancement) -------------------------
+    // Marks every scroll region with `is-scrollable-up` / `is-scrollable-down`
+    // so base.css can fade the CONTENT toward whichever edge still has more
+    // behind it (a mask; a background can only paint behind the text, which is
+    // why a clipped line used to look sliced rather than continued).
+    //
+    // This only ever ADDS: with the script blocked no class is ever set, no mask
+    // applies, and the styled scrollbar plus the background shadows still say
+    // the region scrolls. The whole block is wrapped so instrumentation can
+    // never break a page (conventions.md).
+    (function () {
+        try {
+            var EPS = 2;
+            var regions = document.querySelectorAll(
+                '.experimental-content, .instruction-wrapper');
+            if (!regions.length) { return; }
+
+            function sync(el) {
+                var hidden = el.scrollHeight - el.clientHeight;
+                el.classList.toggle('is-scrollable-up', el.scrollTop > EPS);
+                el.classList.toggle('is-scrollable-down',
+                    hidden > EPS && el.scrollTop < hidden - EPS);
+            }
+
+            function syncAll() {
+                Array.prototype.forEach.call(regions, sync);
+            }
+
+            Array.prototype.forEach.call(regions, function (el) {
+                sync(el);
+                el.addEventListener('scroll', function () { sync(el); },
+                                    { passive: true });
+                // Content can change size after first paint (images, fonts, a
+                // revealed instruction slide), which changes whether there is
+                // anything to scroll to.
+                if (window.ResizeObserver) {
+                    var ro = new ResizeObserver(syncAll);
+                    ro.observe(el);
+                    Array.prototype.forEach.call(el.children, function (child) {
+                        ro.observe(child);
+                    });
+                }
+            });
+            window.addEventListener('resize', syncAll);
+            window.addEventListener('load', syncAll);
+        } catch (e) { /* never block a page */ }
+    })();

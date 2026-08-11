@@ -1,6 +1,6 @@
 {% block content %}
 {% include '_static/global/html/css_bundle.html' %}
-<script src="{% static 'global/js/global.js' %}?v={{ session.config.static_version }}"></script>
+<script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
 
 
 <div class="experimental-screen">
@@ -45,7 +45,13 @@
                     aria-expanded="false"
                     aria-controls="results-table-wrapper"
                 >
-                    <span id="results-arrow" class="results-arrow" aria-hidden="true">▸</span>
+                    <!-- The caret is DRAWN IN CSS, not typed. It used to be the
+                         character ▸ (U+25B8), which Roboto — the render
+                         container's font here, and Android's system UI font —
+                         does not carry, so it came out as an empty tofu box next
+                         to the label. A control's affordance must not depend on
+                         the participant's font stack. -->
+                    <span id="results-arrow" class="results-arrow" aria-hidden="true"></span>
                     <span>See Payoff by Round</span>
                 </button>
                 <div id="results-table-wrapper" class="results-collapsible is-hidden">
@@ -73,6 +79,10 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Inside the scroll region, not pinned — see base.css "Pinned
+                 regions": only the header strip and the button row are pinned. -->
+            {% include '_static/global/html/logo_section.html' %}
         </div>
 
         <!-- Pinned at the foot of the card, NOT inside .experimental-content.
@@ -86,8 +96,6 @@
             </button>
         </div>
         {% endif %}
-
-        {% include '_static/global/html/logo_section.html' %}
     </div>
 </div>
 

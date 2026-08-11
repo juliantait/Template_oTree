@@ -25,7 +25,7 @@
     </div>
 </div>
 
-<script src="{% static 'global/js/global.js' %}?v={{ session.config.static_version }}"></script>
+<script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
 <script>
     // Arm the monitor on agreement (see ai_safety_monitor.js).
     document.querySelector('input[type="submit"]').addEventListener('click', function () {

@@ -10,9 +10,15 @@
 
 from main import *
 import common
+from settings import STATIC_VERSION
 from . import treatment_assignment
 
 class C(BaseConstants):
+    # Asset cache-buster for this BUILD (settings.STATIC_VERSION).
+    # Templates read C.STATIC_VERSION, never session.config.static_version:
+    # a session config is frozen at creation, so the template read 500s
+    # for in-flight participants when the parameter post-dates them.
+    STATIC_VERSION = STATIC_VERSION
     NAME_IN_URL = 'before'
     PLAYERS_PER_GROUP = None
     NUM_ROUNDS = 1
@@ -26,8 +32,21 @@ class Group(BaseGroup):
 class Player(BasePlayer):
     participant_label = models.StringField(blank=True)
     treatment_group = models.StringField(blank=True)
+    # NO `initial=` AND NO `blank=True`, both deliberate and both load-bearing
+    # (`skills_claude/writing_welcome_consent.md`: "Consent is an explicit
+    # affirmative action … never a pre-checked box"):
+    #   * `initial=True` made oTree render the "I consent" radio with `checked`,
+    #     so consent was pre-ticked — measured 2026-08-10, and on a 1280x720
+    #     laptop the options were below the fold, so a participant could submit
+    #     a consent they had never seen;
+    #   * `blank=True` then accepted a submit with the field absent and stored
+    #     the pre-ticked True anyway.
+    # Required + unset means an untouched submit is REJECTED with oTree's own
+    # validation message, so the choice cannot be skipped. It is only ever in
+    # form_fields when completion_redirects is on (see get_form_fields), so the
+    # lab variant is unaffected and leaves it null — read it with
+    # field_maybe_none anywhere outside that branch.
     consent = models.BooleanField(
-        initial=True, blank=True,
         label="Do you consent to take part?",
         choices=[(True, "I consent and wish to take part"),
                  (False, "I do not consent")],
@@ -171,8 +190,8 @@ class welcome(Page):
             collect_bank_details=_flag(player, 'collect_bank_details'),
             # Consent quotes duration and payment from config, so a lab session
             # can state its own show-up fee (safe reads: defaults if unset).
-            expected_duration_minutes=cfg.get('expected_duration_minutes', 30),
-            showup_fee=cu(cfg.get('showup', 0) or 0),
+            expected_duration_minutes=common.cfg(cfg, 'expected_duration_minutes'),
+            showup_fee=cu(common.cfg(cfg, 'showup') or 0),
         )
 
     # NB: there is deliberately no error_message here blocking `is_mobile`.
