@@ -1,4 +1,15 @@
-/* Scoped styling for demographics page */
+/* Scoped styling for the demographics page.
+
+   REWRITTEN 2026-08-11 (change_requests item 10). Every input on that page is
+   now rendered by oTree's formfield tag rather than by hand, so the markup this
+   file has to style changed: each field arrives as
+       <div class="mb-3 _formfield">
+         <label class="col-form-label" for="id_<name>">…</label>
+         <div class="controls"> …the input, or a stack of .form-check cards… </div>
+       </div>
+   The option cards, focus rings and error styling come from base.css's shared
+   components; this file only sets the page's own rhythm. The old rules for the
+   hand-built `.radio-group` / `.other-option` markup are gone with that markup. */
 .demographics-section {
     width: 100%;
     max-width: 100%;
@@ -11,58 +22,49 @@
     text-align: left;
 }
 
+/* STRETCH, not flex-start: base.css's .stacked-form stretches its children on
+   purpose (with flex-start every option card shrink-wraps to its own text and
+   a group comes out ragged — measured on the consent page). Stated here
+   because this file used to override it. */
 .demographics-section .stacked-form {
     gap: 12px;
-    align-items: flex-start;
+    align-items: stretch;
+    /* Centred as a block under the (now always centred) page title — see the
+       constant title rule in base.css, change_requests item 8. The COLUMN is
+       centred; everything inside it stays left-aligned, which is how a form
+       should read. */
+    margin-inline: auto;
 }
 
-.demographics-section h3.section-header {
-    margin: 8px 0 4px; /* tighten space above and below the Gender heading */
-}
+/* One field = one labelled block. oTree's Bootstrap margin class is replaced by
+   the column gap above, so the spacing is the design system's, not Bootstrap's. */
+.demographics-section ._formfield { margin: 0; width: 100%; }
 
-.demographics-section .radio-group {
-    align-items: flex-start;
-    gap: 10px;
-    padding-left: 16px; /* indent options relative to the question */
-}
-
-.demographics-section .radio-group label {
-    display: flex;
-    gap: 10px;
-    line-height: 1.4;
-    font-weight: 400;
-    font-size: 20px;
-    align-items: center; /* vertically center text with radios */
-}
-
-.demographics-section .radio-group input[type="radio"] {
-    width: 18px;
-    height: 18px;
-}
-
-.demographics-section .radio-group .other-option {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.demographics-section .radio-group .other-option input[type="text"] {
-    height: 28px;
-    width: 150px;
-    padding: 4px 8px;
-    align-self: center;
-}
-
-.demographics-section #age {
-    max-width: 70px;
-    width: 100%;
-}
-
-.demographics-section label {
+.demographics-section .col-form-label {
+    display: block;
+    margin-bottom: 6px;
     font-weight: 500;
     color: var(--color-heading);
     font-size: 20px;
 }
 
+/* The radio group inside a field: the shared .form-check cards, stacked. */
+.demographics-section .controls {
+    display: flex;
+    flex-direction: column;
+    gap: var(--mc-gap);
+    align-items: stretch;
+}
 
+/* A short numeric answer does not need a full-width box. */
+.demographics-section #id_age {
+    max-width: 90px;
+    width: 100%;
+}
 
+/* oTree's own per-field error text, under the control it belongs to. */
+.demographics-section .form-control-errors {
+    margin-top: 6px;
+    color: var(--danger);
+    font-size: .9em;
+}

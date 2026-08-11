@@ -90,6 +90,126 @@
         if (form) { form.submit(); }
     }
 
+    // Run `fn` once the page's own markup exists. NOT OPTIONAL: this file is
+    // linked at DIFFERENT POINTS in different templates — at the END of the
+    // body on the consent and quiz pages, but at the TOP on the instructions
+    // and results pages, before their card is parsed. Anything that queries the
+    // card at script time therefore silently found nothing on those pages (the
+    // scroll affordance below was dead on the instructions page for exactly
+    // this reason). Deferring costs nothing and makes the file
+    // position-independent.
+    function onReady(fn) {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', fn);
+        } else {
+            fn();
+        }
+    }
+
+    // Enable/disable every forward control on the card in one call. Used
+    // whenever a modal is open: the Enter handler below binds to the first
+    // ENABLED forward control, so without this an Enter meant for the dialog
+    // would submit the page from behind it. One implementation, shared by the
+    // warning modal here and the quiz's re-read dialog (quiz.js).
+    function setForwardControlsDisabled(state) {
+        try {
+            var els = document.querySelectorAll(
+                '.screen-card input[type="submit"], .screen-card button.next-button');
+            for (var i = 0; i < els.length; i++) { els[i].disabled = !!state; }
+        } catch (e) { /* never block a page */ }
+    }
+
+    // --- WARNING MODAL (shared) ---------------------------------------------
+    // ALL WARNINGS ARE CENTRED, SCREEN-DIMMING MODALS, never a banner that
+    // pushes the page down under the participant. oTree renders a validation
+    // failure as `.otree-form-errors` ABOVE the card; this takes that text,
+    // hides the banner and shows the same words in the shared warning-modal
+    // chrome (base.css). It is generic on purpose — consent, demographics, the
+    // quiz and any page a study adds get the behaviour with no page code.
+    //
+    // PROGRESSIVE ENHANCEMENT, exactly like the scroll fade: with scripts
+    // blocked the banner simply stays visible and the page still works. The
+    // whole block is wrapped so instrumentation can never break a page.
+    //
+    // A page that ships its OWN warning modal marks it `data-warning-modal`
+    // (the lab's quiz-failure dialogs do). Then the banner is still hidden —
+    // nothing may push the page down — but this helper stays silent and lets
+    // that better-worded dialog speak, rather than stacking two modals.
+    //
+    // The text is inserted with textContent, NEVER innerHTML: framework and
+    // field-derived strings are not trusted markup (the escaping rule).
+    onReady(function initWarningModal() {
+        try {
+            var banner = document.querySelector('.otree-form-errors');
+            if (!banner) { return; }
+            var message = (banner.textContent || '').trim();
+            if (!message) { return; }
+
+            banner.hidden = true;
+            banner.style.display = 'none';
+            if (document.querySelector('[data-warning-modal]')) { return; }
+
+            var backdrop = document.createElement('div');
+            backdrop.className = 'modal-backdrop';
+            backdrop.id = 'warning-modal-backdrop';
+
+            var card = document.createElement('div');
+            card.className = 'modal-card modal-card--warning';
+            card.setAttribute('role', 'alertdialog');
+            card.setAttribute('aria-modal', 'true');
+            card.setAttribute('aria-labelledby', 'warning-modal-title');
+            card.setAttribute('aria-describedby', 'warning-modal-text');
+
+            var title = document.createElement('h3');
+            title.className = 'modal-title';
+            title.id = 'warning-modal-title';
+            title.textContent = 'Please check your answers';
+
+            var text = document.createElement('p');
+            text.className = 'modal-text';
+            text.id = 'warning-modal-text';
+            text.textContent = message;
+
+            var actions = document.createElement('div');
+            actions.className = 'modal-actions';
+
+            var ok = document.createElement('button');
+            ok.type = 'button';
+            ok.className = 'modal-ok-button';
+            ok.textContent = 'OK';
+
+            function close() {
+                backdrop.hidden = true;
+                setForwardControlsDisabled(false);
+                var first = document.querySelector(
+                    '.screen-card input:not([type="hidden"]), .screen-card select, '
+                    + '.screen-card textarea');
+                if (first) { try { first.focus(); } catch (e) {} }
+            }
+
+            ok.addEventListener('click', close);
+            backdrop.addEventListener('click', function (event) {
+                if (event.target === backdrop) { close(); }
+            });
+            document.addEventListener('keydown', function (event) {
+                if (backdrop.hidden) { return; }
+                if (event.key === 'Escape' || event.key === 'Enter') {
+                    event.preventDefault();
+                    close();
+                }
+            });
+
+            actions.appendChild(ok);
+            card.appendChild(title);
+            card.appendChild(text);
+            card.appendChild(actions);
+            backdrop.appendChild(card);
+            document.body.appendChild(backdrop);
+            setForwardControlsDisabled(true);
+            ok.focus();
+        } catch (e) { /* never block a page */ }
+    });
+
     // Allow Enter key to activate the primary forward action (Next/Submit).
     document.addEventListener('keydown', (event) => {
         if (event.key !== 'Enter') {
@@ -124,7 +244,7 @@
     // applies, and the styled scrollbar plus the background shadows still say
     // the region scrolls. The whole block is wrapped so instrumentation can
     // never break a page (conventions.md).
-    (function () {
+    onReady(function initScrollAffordance() {
         try {
             var EPS = 2;
             var regions = document.querySelectorAll(
@@ -160,4 +280,4 @@
             window.addEventListener('resize', syncAll);
             window.addEventListener('load', syncAll);
         } catch (e) { /* never block a page */ }
-    })();
+    });

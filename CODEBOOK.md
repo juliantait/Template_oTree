@@ -20,7 +20,7 @@ participant leaves early. Defined in `settings.EXIT_CODES`.
 | `-1` | no_consent | Declined consent on the entry page. | `before.welcome.before_next_page` |
 | `-2` | comprehension | Disqualified: failed the comprehension check too many times. | `intro.quiz.error_message` |
 | `-3` | tab_monitor | Disqualified: AI-safety / tab-switch monitor. | `common.focus_live_method` |
-| `-4` | screened_out | **General** "removed at entry, before the consent page" bucket. Which gate fired is in `participant_extra['screenout_cause']` — see below. | `common.set_screened_out`, called by `before._apply_mobile_screenout` |
+| `-4` | screened_out | **General** "removed at entry, before the consent page" bucket. Set by the **device allow-list** (`allowed_devices`) and by any future entry gate. WHICH DEVICE was detected is in `participant_extra['screenout_cause']` — see below. The code is deliberately NOT device-specific: one bucket, split by cause. | `common.set_screened_out`, called by `before._apply_device_gate` |
 
 When you add an outcome, add it to `settings.EXIT_CODES` **and** this table —
 with the place that sets it. Every code in the table must be set by real code:
@@ -35,10 +35,36 @@ for a second reason adds a **cause**, not a new exit code — so analysis keeps 
 clean "screened out at entry" bucket and splits by this column, and the exit-code
 table stays a short list where every entry is genuinely wired up.
 
+Since 2026-08-11 the entry gate is a **device allow-list**, so the cause is the
+**device type the server detected** — not the name of the gate. A study lists the
+types it accepts in `allowed_devices` (default: all four = no gate at all), and
+anything else is screened out with the detected type recorded here. The ending
+writes a different sentence per type.
+
 | Cause | Meaning | Set where |
 |-------|---------|-----------|
-| `mobile` | Entry User-Agent looked like a phone/tablet (`mobile_screenout` option on; server-side check). | `before._apply_mobile_screenout` |
+| `phone` | Entry User-Agent classified as a phone; `allowed_devices` excludes phones. | `before._apply_device_gate` |
+| `tablet` | Entry User-Agent classified as a tablet (iPad, Android without "Mobile", Kindle…); excluded. | `before._apply_device_gate` |
+| `computer` | Entry User-Agent classified as a computer; excluded. **Laptop and desktop are the same type** — see the note below. | `before._apply_device_gate` |
+| `unknown` | The device could not be identified: no User-Agent, a blank one, one stripped by a privacy tool, or one this template does not recognise. `unknown` is its own allow-list entry, so admitting it is a study's decision. | `before._apply_device_gate` |
 | *(empty)* | `-4` recorded without a cause. Valid but discouraged — the ending falls back to a neutral "not eligible" sentence. | — |
+
+**Why there is no `laptop` cause, and why one must never be added.** A browser
+does not expose the form factor of a computer. Neither the User-Agent nor the
+client hints (`Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform`,
+`navigator.userAgentData`) distinguish a laptop from a tower — both report the
+same platform with the mobile hint false — and the usual proxies do not work
+either: a desktop may have a touch screen, a laptop may be docked to a large
+monitor with its lid shut, and the Battery Status API is removed or
+permission-gated in current browsers. A study that genuinely needs "laptop only"
+has to ask the participant. Both are recorded as `computer`.
+
+**Related fields.** `participant_extra['entry_device_type']` holds the server's
+classification for **every** participant, including the ones let through, so
+device mix is analysable even when the gate is wide open;
+`participant_extra['screenout_user_agent']` keeps the evidence for a screen-out;
+and `device_info_json.device_type` (when `device_capture` is on) is the CLIENT's
+own guess, recorded for comparison and never enforced.
 
 **Adding a cause** — all three steps, or a participant reads the wrong thing:
 
@@ -62,7 +88,7 @@ A dict `{stage_name: epoch_seconds}` filled as the participant clears each stage
 
 | Stage | Set when |
 |-------|----------|
-| `screened_out` | The mobile screen-out gate removed the participant at entry (`mobile_screenout` on). |
+| `screened_out` | The entry device gate removed the participant (their device type is not in `allowed_devices`). |
 | `consent` | Leaving the welcome/consent page. |
 | `confirm_id` | Prolific only: leaving the Prolific-ID confirmation page (`capture_participant_id` on). |
 | `instructions_done` | Leaving the instructions page (round 1). |
@@ -126,9 +152,11 @@ Fill in per-study fields as you build the task. The template ships with:
     settles a later payment dispute. Both are empty in a lab session, which has
     no ConfirmProlificID page.
   - `is_mobile` is the client-side device measurement only — it blocks nobody;
-    the screen-out is the server-side `mobile_screenout` gate, whose User-Agent
-    evidence is in `participant_extra['screenout_user_agent']` and whose reason
-    is in `participant_extra['screenout_cause']`.
+    the screen-out is the server-side `allowed_devices` gate, whose User-Agent
+    evidence is in `participant_extra['screenout_user_agent']`, whose detected
+    device type is in `participant_extra['entry_device_type']` (recorded for
+    everyone, not only the screened-out), and whose reason — the same detected
+    type — is in `participant_extra['screenout_cause']`.
 - `intro.Player`: the quiz fields from `intro/quiz_items.py`,
   `num_failed_attempts`. Two rounds: round 2 is the lab re-read pass, so for
   every participant who never takes the re-read offer (all Prolific and most

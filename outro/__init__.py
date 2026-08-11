@@ -22,7 +22,7 @@ def declined_consent(player) -> bool:
 
 
 def was_screened_out(player) -> bool:
-    """True for a participant the entry mobile screen-out removed (exit code -4)."""
+    """True for a participant the entry device gate removed (exit code -4)."""
     return common.is_screened_out(player.participant)
 
 
@@ -147,7 +147,7 @@ class Ended(Page):
     """Finish screen for participants who did NOT complete normally.
 
     Shown to disqualified, non-consenting and screened-out participants (a phone
-    stopped by the mobile_screenout gate lands here as its FIRST page — it never
+    stopped by the allowed_devices gate lands here as its FIRST page — it never
     saw consent). When completion redirects are on it sends them back to
     Prolific with the matching code.
     """
@@ -167,18 +167,48 @@ class Ended(Page):
             reason=('disqualified' if is_disqualified(player)
                     else 'no_consent' if declined_consent(player)
                     else 'screened_out' if was_screened_out(player) else 'other'),
-            # WHICH entry gate removed them ('mobile', or '' if a study set exit
-            # code -4 without recording a cause). `reason` alone is too coarse to
-            # write copy from: -4 is the general screened-out bucket, so the
-            # template picks its sentence from this, not from `reason`.
-            # See common.SCREENOUT_CAUSES.
+            # WHICH DEVICE TYPE the entry gate detected ('phone' / 'tablet' /
+            # 'computer' / 'unknown'), or '' if a study set exit code -4 without
+            # recording a cause. `reason` alone is too coarse to write copy
+            # from: -4 is the general screened-out bucket, so the template picks
+            # its sentence from this — the participant is told something true
+            # about their own case instead of everyone being told the study
+            # needs a computer. `allowed_devices_phrase` says what the study DOES
+            # accept, built from the same list the gate enforces so the two
+            # cannot drift apart. (There is no 'laptop' type and cannot be one —
+            # see the allow-list note in settings.py.)
             screenout_cause=common.screenout_cause(player.participant),
+            allowed_devices_phrase=common.device_types_phrase(
+                common.allowed_devices(player.session.config)),
+            # WHICH integrity module removed them (change_requests item 16).
+            # `reason='disqualified'` is the bucket; this is the cause, and the
+            # template writes a different sentence for each so the participant
+            # is told WHY the study ended instead of "cannot continue".
+            # If somehow both flags are set the tab monitor wins the message: it
+            # is the harder stop, and it is the one the participant was warned
+            # about on screen.
+            dq_cause=(
+                'tab_monitor'
+                if player.participant.vars.get('ai_safety_disqualified')
+                else 'comprehension'
+                if player.participant.vars.get('comprehension_disqualified')
+                else ''),
             completion_redirects=_flag(player, 'completion_redirects'),
         )
 
 
 class Demographics(Page):
     form_model = 'player'
+    # KEEP THE ANSWERS ON A VALIDATION ERROR (change_requests item 10). oTree
+    # implements this client-side: it stores each named input in sessionStorage
+    # as it is typed and restores it on the next render of the same page, so a
+    # participant who trips one error (a mistyped IBAN confirmation) does not
+    # have to retype everything else. It therefore needs the inputs to be real
+    # named form inputs — which is why Demographics.html renders them all with
+    # {% formfield %} — and, being JS, it degrades quietly if scripts are
+    # blocked: the page still validates and still submits, the boxes are just
+    # empty again.
+    preserve_unsubmitted_inputs = True
 
     @staticmethod
     def is_displayed(player):
@@ -321,12 +351,21 @@ class Results(Page):
             }
             for round_no, payoff in round_payoffs
         ]
+        # THE BREAKDOWN IS REAL MONEY, not decoration (change_requests item 11).
+        # Every line of the receipt on Results.html is one of these figures, and
+        # they must add up to `earned` exactly as compute_final_payoff computed
+        # it: base (the show-up fee) + quiz bonus + the selected rounds.
+        # `base_payment` is the show-up fee under the name the receipt uses;
+        # `decision_bonus` is the sum of the randomly selected rounds.
         return{
             'earned': cu(self.earned),
             'showup': cu(common.cfg(self.session.config, 'showup')),
+            'base_payment': cu(common.cfg(self.session.config, 'showup')),
             'selected_sum': cu(self.selected_sum),
+            'decision_bonus': cu(self.selected_sum),
             'quiz_bonus': cu(self.quiz_bonus_awarded),
             'show_quiz_bonus': self.quiz_bonus_awarded > 0,
+            'has_rounds': bool(payout_rows),
             'sepa': self.sepa,
             'payouts': payouts,
             'payout_rows': payout_rows,

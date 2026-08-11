@@ -39,7 +39,7 @@ So: **drive the real thing.** Everything below is about how.
 | Kind | Answers | Blind to |
 |---|---|---|
 | HTTP flow (`http_flow_test.py`, `gated_flow_test.py`) | can a participant get from entry to an ending in every config, without a 5xx? | anything about how the page LOOKS |
-| Server-side gates (`mobile_screenout_test.py`) | does a gate decided from the REQUEST fire correctly? | client-side behaviour |
+| Server-side gates (`device_gate_test.py`) | does a gate decided from the REQUEST fire correctly? | client-side behaviour |
 | Content (`example_quiz_content_test.py`) | does the page SAY what the design says it says? | everything not asserted |
 | Rendering (`render_check.py`) | is it laid out, visible and clickable in a browser? | data correctness |
 | Frozen/upgrade (`frozen_config_test.py`, `scripts/predeploy_check.sh`) | does an EXISTING participant survive this build? | fresh-install bugs |
@@ -99,13 +99,13 @@ server-side with `player.field_maybe_none('name')`.
 
 ## Simulating a phone
 
-A gate decided from the entry REQUEST (this template's `mobile_screenout`) can
+A gate decided from the entry REQUEST (this template's `allowed_devices`) can
 only be exercised by sending a phone User-Agent — no bot has one, and the
 client-side `is_mobile` field is measurement that blocks nobody:
 
 ```python
 s = requests.Session()
-s.headers['User-Agent'] = PHONE_UA        # see mobile_screenout_test.py
+s.headers['User-Agent'] = PHONE_UA        # see device_gate_test.py
 ```
 
 Test the option **both ways round**: with the gate off, a phone must be entirely
@@ -157,7 +157,7 @@ today's defaults:
 ```python
 requests.post(base + '/api/sessions', json={
     'session_config_name': 'prolific', 'num_participants': 2,
-    'modified_session_config_fields': {'mobile_screenout': 1}})
+    'modified_session_config_fields': {'allowed_devices': ['computer']}})
 ```
 
 The strongest form of this: create a SECOND session with deliberately different
@@ -170,7 +170,7 @@ Three ways, in order of preference:
 
 1. **REST API** — `POST /api/get_session/<code>` with
    `{'participant_vars': ['exit_code']}` reads participant fields back over
-   HTTP with no database access (`mobile_screenout_test.py`).
+   HTTP with no database access (`device_gate_test.py`).
 2. **In-process ORM** — `ot.participant_vars(code)`, or query the app's `Player`
    directly. Always read nullable columns with `field_maybe_none()`: a bare read
    of a null column raises `TypeError`.

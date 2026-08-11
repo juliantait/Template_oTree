@@ -3,12 +3,12 @@
 <script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
 
 <!-- Ending for participants who did NOT complete normally: disqualified,
-     non-consenting, and phone-screened-out.
+     non-consenting, and screened out at entry by the device allow-list.
 
-     NOTE ON THE MOBILE SCREEN-OUT: the `mobile_screenout` gate renders NO page
-     of its own. It decides server-side in before.welcome.get(), before any HTML
+     NOTE ON THE DEVICE GATE: the `allowed_devices` gate renders NO page of its
+     own. It decides server-side in before.welcome.get(), before any HTML
      exists, and every page between entry and here is gated on
-     common.is_screened_out(). So for a screened-out phone THIS PAGE IS THE
+     common.is_screened_out(). So for a screened-out device THIS PAGE IS THE
      FIRST AND ONLY SCREEN they ever see — they never reach consent. It is
      therefore styled as a full narrative card like every other participant-
      facing page, not as a bare error message. -->
@@ -17,8 +17,8 @@
         <div class="experimental-header">
             <div class="eyebrow">Study ended</div>
             <h2 class="header-title">
-                {% if reason == 'screened_out' and screenout_cause == 'mobile' %}
-                    This study needs a computer
+                {% if reason == 'screened_out' %}
+                    This study needs a different device
                 {% else %}
                     Your participation has ended
                 {% endif %}
@@ -31,34 +31,94 @@
                     You chose not to take part. Thank you for your time.
                 </p>
             {% elif reason == 'disqualified' %}
-                <p class="section-text">
-                    Unfortunately your participation cannot continue, so the study
-                    has ended for you. Thank you for your time.
-                </p>
+                {# THE PARTICIPANT IS TOLD WHY (change_requests item 16). Both
+                   integrity modules land on this page, and "your participation
+                   cannot continue" left someone who had just failed the quiz
+                   unable to tell that from a monitoring stop. The cause comes
+                   from `dq_cause` (Ended.vars_for_template), never from the
+                   exit code — see the same rule for screen-outs below.
+                   TO ADD A MODULE: set its own flag, extend dq_cause, and add a
+                   branch here. Keep the neutral fallback. #}
+                {% if dq_cause == 'comprehension' %}
+                    <p class="section-text">
+                        You did not pass the comprehension check within the
+                        allowed number of attempts, so the study has ended here.
+                        Thank you for your time.
+                    </p>
+                {% elif dq_cause == 'tab_monitor' %}
+                    <p class="section-text">
+                        The study page was left inactive too many times after you
+                        agreed to keep it in focus, so the study has ended here.
+                        Thank you for your time.
+                    </p>
+                {% else %}
+                    <p class="section-text">
+                        Unfortunately your participation cannot continue, so the study
+                        has ended for you. Thank you for your time.
+                    </p>
+                {% endif %}
             {% elif reason == 'screened_out' %}
                 {# SCREEN-OUT COPY IS CHOSEN BY `screenout_cause`, NOT by the exit
                    code. Exit code -4 is the GENERAL "removed at entry" bucket
-                   (CODEBOOK.md §exit codes); `mobile` is currently the only gate
-                   that sets it, but this is a template that gets copied into
-                   studies nobody has designed yet. If a future study screens
-                   someone out at entry for a different reason — unsupported
-                   browser, a failed entry check, a region block — and this branch
-                   keyed off the bare reason, that participant would be told they
-                   need a computer and nobody would notice until it was live.
+                   (CODEBOOK.md §exit codes). The device allow-list records the
+                   DETECTED DEVICE TYPE as the cause — 'phone', 'tablet',
+                   'computer' or 'unknown' — so each participant is told
+                   something true about their own case instead of everyone being
+                   told the study needs a computer. What the study DOES accept
+                   comes from `allowed_devices_phrase`, built from the same list
+                   the gate enforces, so the sentence cannot drift from the rule.
 
-                   TO ADD A REASON: add the cause to common.SCREENOUT_CAUSES, set
-                   it at your gate via common.set_screened_out(participant,
-                   '<cause>'), and add an {% elif %} here with its own sentence.
-                   Do NOT mint a new exit code — every code in the table must be
-                   set by a real path, so reasons are causes, not codes. #}
-                {% if screenout_cause == 'mobile' %}
+                   THERE IS NO 'laptop' CASE, and adding one is impossible: a
+                   browser cannot distinguish a laptop from a desktop (see the
+                   allow-list note in settings.py). Both are 'computer'.
+
+                   TO ADD A REASON from a future, non-device gate: add the cause
+                   to common.SCREENOUT_CAUSES, set it via
+                   common.set_screened_out(participant, '<cause>'), and add a
+                   branch here with its own sentence. Do NOT mint a new exit
+                   code — every code in the table must be set by a real path, so
+                   reasons are causes, not codes. #}
+                {% if screenout_cause == 'phone' %}
                     <p class="section-text">
-                        This study can only be taken on a desktop or laptop
-                        computer, so it has ended for you here.
+                        This study cannot be taken on a phone. It needs
+                        {{ allowed_devices_phrase }}, so it has ended for you here.
                     </p>
                     <div class="panel panel--hug">
                         If you would still like to take part, please return to the
-                        study on a desktop or laptop computer.
+                        study on {{ allowed_devices_phrase }}.
+                    </div>
+                {% elif screenout_cause == 'tablet' %}
+                    <p class="section-text">
+                        This study cannot be taken on a tablet. It needs
+                        {{ allowed_devices_phrase }}, so it has ended for you here.
+                    </p>
+                    <div class="panel panel--hug">
+                        If you would still like to take part, please return to the
+                        study on {{ allowed_devices_phrase }}.
+                    </div>
+                {% elif screenout_cause == 'computer' %}
+                    <p class="section-text">
+                        This study cannot be taken on a desktop or laptop
+                        computer. It needs {{ allowed_devices_phrase }}, so it has
+                        ended for you here.
+                    </p>
+                    <div class="panel panel--hug">
+                        If you would still like to take part, please return to the
+                        study on {{ allowed_devices_phrase }}.
+                    </div>
+                {% elif screenout_cause == 'unknown' %}
+                    {# The device could not be identified at all — a stripped or
+                       unrecognised User-Agent. Do NOT tell this participant what
+                       they are using; we do not know. Say what is needed. #}
+                    <p class="section-text">
+                        We could not identify the device or browser you are using,
+                        and this study can only be taken on
+                        {{ allowed_devices_phrase }}, so it has ended for you here.
+                    </p>
+                    <div class="panel panel--hug">
+                        If you are using {{ allowed_devices_phrase }}, a privacy
+                        setting or extension may be hiding your browser details.
+                        You could try again in a standard browser window.
                     </div>
                 {% else %}
                     {# Neutral fallback: an unrecognised or unrecorded cause. Says

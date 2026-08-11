@@ -133,12 +133,18 @@ documented. See `settings.EXIT_CODES` and the CODEBOOK.md exit-code table.
 - **passive_capture** — hidden-field time-on-page on the task form (`main`).
 - **device_capture** — device/screen JSON at entry, measurement only (`before`);
   the `is_mobile` field it fills blocks nobody.
-- **mobile_screenout** — `0`/`1` option (not part of any recruitment profile, so
-  choosing `prolific` never turns it on). At `1`, the entry request's User-Agent
-  is checked server-side BEFORE the consent page renders (`before.welcome.get`);
-  a phone never sees consent, records exit code `-4` and is walked straight to
-  the outro ending (`error_code` on Prolific). At `0` the check does nothing —
-  no participant-visible effect of any kind.
+- **allowed_devices** — the entry DEVICE ALLOW-LIST: the device types a study
+  accepts, from `phone`, `tablet`, `computer`, `unknown` (not part of any
+  recruitment profile, so choosing `prolific` never narrows it). The entry
+  request's User-Agent is classified server-side BEFORE the consent page renders
+  (`before.welcome.get`); a device whose type is not listed never sees consent,
+  records exit code `-4` with the DETECTED TYPE as its screen-out cause, and is
+  walked straight to the outro ending (`error_code` on Prolific), which writes
+  copy for that type. Shipped permitting all four types, so by default the check
+  does nothing — no participant-visible effect of any kind. `computer` covers
+  laptops and desktops alike (a browser cannot distinguish them, so there is no
+  `laptop` type); `unknown` means the device could not be identified and is
+  admitted or excluded like any other type.
 - **collect_bank_details** — lab IBAN/BIC/SEPA payment collection (`outro`).
 - **collect_demographics** — explicit demographics questionnaire (`outro`); off
   for Prolific, which supplies demographics in its own export.

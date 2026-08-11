@@ -3,10 +3,11 @@
 # - startpage: lab hold screen shown only for experimenter-run (lab) sessions.
 # - welcome: welcome + consent; captures the external participant id and device
 #   info when those modules are enabled. Non-consenters are routed straight to
-#   the outro (they never see the task). When the `mobile_screenout` option is
-#   on, a server-side User-Agent gate runs before this page renders and sends a
-#   phone straight to the outro ending with exit code -4 (see
-#   _apply_mobile_screenout) — with the option off it does nothing at all.
+#   the outro (they never see the task). A server-side User-Agent gate runs
+#   before this page renders and sends any device the study's `allowed_devices`
+#   list excludes straight to the outro ending with exit code -4 (see
+#   _apply_device_gate) — with the shipped list (all four types) it does
+#   nothing at all.
 
 from main import *
 import common
@@ -47,7 +48,14 @@ class Player(BasePlayer):
     # lab variant is unaffected and leaves it null — read it with
     # field_maybe_none anywhere outside that branch.
     consent = models.BooleanField(
-        label="Do you consent to take part?",
+        # NO LABEL, deliberately (Julian, 2026-08-11, change_requests item 13).
+        # oTree renders a field's label as a line above its options, and the
+        # page already asks the question in bold directly above the group
+        # ("Please indicate whether you consent…"). The label repeated it and
+        # cost ~40px on the page where vertical space is tightest. An empty
+        # string (not None) is what suppresses the line without oTree falling
+        # back to the field NAME.
+        label="",
         choices=[(True, "I consent and wish to take part"),
                  (False, "I do not consent")],
         widget=widgets.RadioSelect,
@@ -82,35 +90,48 @@ def _flag(player, name):
     return bool(player.session.config.get(name))
 
 
-def _apply_mobile_screenout(player, user_agent):
-    """MOBILE SCREEN-OUT GATE — decided BEFORE the consent page is rendered.
+def _apply_device_gate(player, user_agent):
+    """DEVICE ALLOW-LIST GATE — decided BEFORE the consent page is rendered.
 
-    No-op unless the `mobile_screenout` config option is 1: with the option off
-    (the default, in every recruitment profile) this function returns before
-    touching anything, so the phone check has no participant-visible effect at
-    all and every device proceeds normally.
+    The study STATES which device types it accepts (`allowed_devices`: any of
+    'phone', 'tablet', 'computer', 'unknown'); anything else is screened out at
+    entry. It replaced the old phones-only `mobile_screenout` flag.
 
-    With the option on, a phone User-Agent is recorded as screened out
-    (`participant.screened_out` + exit code -4) and never sees consent: the
-    caller runs this on the consent page's own GET, before any HTML is
-    produced, and `welcome.is_displayed` then returns False, so oTree redirects
-    the participant onward. Every page in between is gated on the same flag, so
-    they land on the outro ending.
+    NO-OP BY DEFAULT. The shipped list is all four types, so every device is
+    permitted and this function changes nothing a participant could see — the
+    same safety property the old flag had at 0. (device_capture still RECORDS
+    the device as measurement; it never blocks anyone.)
+
+    THE SERVER DECIDES, from the entry request's User-Agent. The client's own
+    idea of what it is arrives later, in the device-info JSON, and is kept
+    beside this for comparison — but a client-side check is trivially bypassed,
+    so it never gates. See common.device_gate_verdict.
+
+    A screened-out participant never sees consent: the caller runs this on the
+    consent page's own GET, before any HTML is produced, and
+    `welcome.is_displayed` then returns False, so oTree redirects them onward.
+    Every page in between is gated on `common.is_screened_out`, so they land on
+    the outro ending.
 
     Idempotent — a refresh re-decides identically and never re-stamps.
     """
     participant = player.participant
-    if not _flag(player, 'mobile_screenout'):
-        return
     if common.is_screened_out(participant):
         return  # already decided (page reload)
-    if not common.is_mobile_user_agent(user_agent):
+    detected, allowed = common.device_gate_verdict(
+        player.session.config, user_agent)
+    # Measurement, recorded for EVERY participant including the ones let
+    # through: it is the server's own classification of the entry request, and
+    # analysis wants it whether or not the gate was narrowed.
+    common.extra_set(participant, 'entry_device_type', detected)
+    if allowed:
         return
-    # Records the flag, exit code -4 AND the cause in one call. The cause is what
-    # picks the sentence on the ending — -4 alone is the generic "screened out at
-    # entry" bucket and must never be assumed to mean "phone" (see
-    # common.SCREENOUT_CAUSES).
-    common.set_screened_out(participant, 'mobile')
+    # Records the flag, exit code -4 AND the cause in one call. THE CAUSE IS THE
+    # DETECTED TYPE, not the name of the gate: -4 alone is the generic "screened
+    # out at entry" bucket, and the ending writes a different sentence for a
+    # phone, a tablet, a computer and an unidentifiable device (see
+    # common.SCREENOUT_CAUSES and outro/Ended.html).
+    common.set_screened_out(participant, detected)
     common.stamp_stage(participant, 'screened_out')
     # Keep the evidence for the decision (export only — never rendered).
     common.extra_set(participant, 'screenout_user_agent', (user_agent or '')[:300])
@@ -133,7 +154,7 @@ class welcome(Page):
     form_model = 'player'
 
     def get(self):
-        """Run the mobile screen-out gate before this page renders.
+        """Run the entry device gate before this page renders.
 
         This override is the ONE place the entry request is reachable
         server-side (oTree's page hooks receive the player, not the request), and
@@ -146,7 +167,7 @@ class welcome(Page):
         the gate raises, the participant simply proceeds to consent.
         """
         try:
-            _apply_mobile_screenout(
+            _apply_device_gate(
                 self.player, self.request.headers.get('user-agent', ''))
         except Exception:
             pass
@@ -154,7 +175,7 @@ class welcome(Page):
 
     @staticmethod
     def is_displayed(player):
-        # A screened-out participant (see _apply_mobile_screenout) never sees
+        # A screened-out participant (see _apply_device_gate) never sees
         # the consent page; oTree walks them forward to the outro ending.
         return not common.is_screened_out(player.participant)
 
@@ -190,16 +211,27 @@ class welcome(Page):
             collect_bank_details=_flag(player, 'collect_bank_details'),
             # Consent quotes duration and payment from config, so a lab session
             # can state its own show-up fee (safe reads: defaults if unset).
+            # Rendered only when show_duration_and_fee is on (off by default).
+            show_duration_and_fee=bool(common.cfg(cfg, 'show_duration_and_fee')),
             expected_duration_minutes=common.cfg(cfg, 'expected_duration_minutes'),
             showup_fee=cu(common.cfg(cfg, 'showup') or 0),
+            # WHICH CONTACT ROUTE the closing sentence offers. `recruitment` is
+            # an explicit resolved config key (settings.resolve_recruitment_
+            # profile), read through common.cfg so a session created before the
+            # key existed still renders. `capture_participant_id` is the flag
+            # that means "this study runs on Prolific" — the same one that gates
+            # the ID page — so exactly the studies that have a Prolific message
+            # channel name it.
+            is_lab=(common.cfg(cfg, 'recruitment') == 'lab'),
+            names_prolific=_flag(player, 'capture_participant_id'),
         )
 
     # NB: there is deliberately no error_message here blocking `is_mobile`.
     # The client-side `is_mobile` field is MEASUREMENT (device_capture) and
-    # never blocks anyone; screening phones out is the `mobile_screenout`
-    # option's job alone, and it happens before this page (see
-    # _apply_mobile_screenout). Blocking here as well would give the phone check
-    # a participant-visible effect even with that option off.
+    # never blocks anyone; screening devices out is the `allowed_devices`
+    # gate's job alone, and it happens before this page (see
+    # _apply_device_gate). Blocking here as well would give the device check a
+    # participant-visible effect even when the allow-list permits everything.
 
     @staticmethod
     def before_next_page(player, timeout_happened):

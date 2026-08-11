@@ -8,7 +8,18 @@
 <div class="experimental-screen">
     <div class="screen-card">
         <div class="experimental-header">
-            <h2 class="header-title">Round {{ round_count }}</h2>
+            {# ROUND-OF-TOTAL PROGRESS (change_requests item 7). Both halves —
+               the text line and the bar — are driven by ONE server-side
+               computation (main.progress_vars), and the total is the SESSION's
+               round count, so a config running fewer rounds counts truthfully.
+               This replaces the old "Round N" title: the strip states the round,
+               and two of them on one screen is one too many. #}
+            <div class="progress-strip">
+                <div class="progress-count">Round {{ round_count }} of {{ rounds_total }}</div>
+                <div class="progress-track">
+                    <div class="progress-fill" style="width: {{ progress_pct }}%;"></div>
+                </div>
+            </div>
         </div>
         <div class="experimental-content">
             <div class="section-text">

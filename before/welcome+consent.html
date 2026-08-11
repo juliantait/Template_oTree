@@ -11,16 +11,18 @@
         page — before/startpage.html, the lab gate an experimenter advances. A
         Prolific participant never sees that gate and has no relationship with a
         lab they are not sitting in.
-     2. NO PROLIFIC ANYTHING. No ID field, and no sentence naming the platform, a
-        completion code or a participant ID. This page renders in the lab, where
-        all of that is meaningless. The Prolific ID is collected on its own page
-        (before/confirm_prolific_id.html), which is the ONLY page in the study
-        that mentions Prolific.
+     2. NO PROLIFIC PLUMBING. No ID field, no completion code, no participant
+        ID — that machinery lives on before/confirm_prolific_id.html, and this
+        page must render unchanged in the lab, where all of it is meaningless.
 
-     A page either mentions Prolific or it does not — never both, and never CREED
-     plus Prolific. There is no hybrid entry page. The config branches below vary
-     PAYMENT MECHANICS wording only, and each branch must stay neutral about the
-     platform. #}
+        AMENDED 2026-08-11 (Julian, change_requests items 12 + 14): the CONTACT
+        sentence at the foot now names the route a participant actually has —
+        "raise your hand" in the lab, "through Prolific" online. So the page can
+        now say the word Prolific, in that ONE sentence, on the Prolific variant
+        only. Everything else about rule 2 stands: no id, no code, no platform
+        wording anywhere else, and never CREED plus Prolific on one page. The
+        remaining config branches vary PAYMENT MECHANICS wording only and stay
+        neutral about the platform. #}
 <div class="experimental-screen">
     <div class="screen-card narrative-card">
         <div class="experimental-header">
@@ -32,13 +34,18 @@
             {# Duration and fee come from the session config (see
                welcome.vars_for_template). Neither may be typed in here — a
                testing config would then advertise a length and a fee the study
-               does not actually run. #}
+               does not actually run.
+               OFF BY DEFAULT (`show_duration_and_fee`, settings.py): this
+               sentence is hidden unless a study switches it on, e.g. because
+               its ethics text requires the fee to be stated. #}
+            {% if show_duration_and_fee %}
             <p class="section-text">
                 This study takes about {{ expected_duration_minutes }} minutes.
                 You will receive a payment of <strong>{{ showup_fee }}</strong>
                 for completing it, plus any additional earnings from your
                 decisions.
             </p>
+            {% endif %}
 
             <div class="panel panel--hug">
                 All recorded data are stored anonymously and used solely for
@@ -69,10 +76,35 @@
             </p>
             {% endif %}
 
+            {# CONTACT ROUTE — one sentence, chosen by how the participant can
+               actually reach a human (Julian, 2026-08-11, items 12 + 14):
+                 * lab      -> there is an experimenter in the room;
+                 * Prolific -> the platform's messaging is the only channel, and
+                               `capture_participant_id` is the flag that means
+                               "this study runs on Prolific" (it is what gates
+                               the ID page, the one other page that names it);
+                 * neither  -> the neutral sentence, so a non-lab, non-Prolific
+                               study still reads correctly.
+               NOTE THIS RELAXES THE PAGE'S OLD "NO PROLIFIC ANYTHING" RULE: the
+               Prolific branch names the platform on purpose. The rule survives
+               for everything else on the page (no ID field, no completion code,
+               no CREED header) and the lab branch stays free of it entirely. #}
+            {% if is_lab %}
+            <p class="section-text">
+                If you have any questions at any time, please raise your hand to
+                speak to the experimenter.
+            </p>
+            {% elif names_prolific %}
+            <p class="section-text">
+                If you have any questions at any time, please contact the
+                researchers through Prolific.
+            </p>
+            {% else %}
             <p class="section-text">
                 If you have any questions at any time, please contact the
                 researchers.
             </p>
+            {% endif %}
 
             {# The logo strip lives INSIDE the scroll region on purpose: as a
                pinned sibling it cost ~90px of every card, which pushed the

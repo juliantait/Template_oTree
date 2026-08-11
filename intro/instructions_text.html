@@ -80,7 +80,12 @@
 </style>
 
 <div class="instruction-block">
-    <h2>Welcome</h2>
+    {# TITLE: "Instructions", NOT "Welcome" (Julian, 2026-08-11,
+       change_requests item 2). The welcome happened on the consent page; this
+       page is the instructions, and its body must not greet the participant a
+       second time. Keep any replacement first block to the same rule: it opens
+       with what the study IS, not with a greeting. #}
+    <h2>Instructions</h2>
     <p style="font-size: 14px; color: #777; font-style: italic;">
         Template note: this oTree starter ships with a worked Stag Hunt
         example to demonstrate variable substitution and treatment-conditional
@@ -88,7 +93,7 @@
         <code>intro/__init__.py</code>) with your own experiment.
     </p>
     <p>
-        Welcome. In this study you will play a simple two-person game
+        In this study you will play a simple two-person game
         called the <strong>Stag Hunt</strong> with another participant in
         this room. You will play {{ num_experimental_rounds }} rounds in total.
     </p>

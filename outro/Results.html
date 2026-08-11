@@ -10,25 +10,50 @@
             <p class="header-text"></p>
         </div>
         <div class="experimental-content">
-            <div class="section-text">
-                <p>
-                    <strong>{{ num_rewarded }}</strong> rounds were randomly selected for payment.
-                    The selected rounds sum to <strong>{{ selected_sum }}</strong>.
+            {# THE RECEIPT (change_requests item 11): a compact centred block —
+               thank-you line, the headline figure, then the composition as
+               label/amount rows that ADD UP to it. Every number comes from
+               Results.vars_for_template, i.e. from what compute_final_payoff
+               actually paid; nothing here is computed in the template, so the
+               breakdown cannot drift from the payment.
+               It replaces the old running paragraph that stated the same
+               numbers in prose; the "N rounds were randomly selected" sentence
+               moved down into the All results section, where the table it
+               describes lives. #}
+            <div class="payment-summary">
+                <p class="payment-greeting">Thank you, you're all done.</p>
+                <div class="payout">
+                    <div class="payout-label">Total earned</div>
+                    <div class="payout-total">{{ earned }}</div>
+                </div>
+
+                <div class="payout-lines">
+                    <div class="payout-line">
+                        <span>Base payment</span><span class="amount">{{ base_payment }}</span>
+                    </div>
                     {% if show_quiz_bonus %}
-                        Including the quiz bonus of <strong>{{ quiz_bonus }}</strong>
-                        and the show-up fee <strong>{{ showup }}</strong>,
-                    {% else %}
-                        Including the show-up fee of <strong>{{ showup }}</strong>,
+                    <div class="payout-line">
+                        <span>Quiz bonus</span><span class="amount">{{ quiz_bonus }}</span>
+                    </div>
                     {% endif %}
-                    your total earnings are <strong>{{ earned }}</strong>.
+                    <div class="payout-line">
+                        <span>Bonus from your decisions</span>
+                        <span class="amount">{{ decision_bonus }}</span>
+                    </div>
+                    <div class="payout-line total">
+                        <span>Total</span><span class="amount">{{ earned }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section-text results-notes">
                 <p>Please leave up to 2 weeks for the payment to be processed.</p>
                 {% if sepa == 0 %}
-                    <div style="margin: 10px 0;">
+                    <div class="panel panel--hug">
                         Your bank account is not in SEPA.<br>
                         <strong>Speak to the experimenter before leaving</strong> to ensure payment will be successful!
                     </div>
                 {% endif %}
-                <b>Thank you for taking part!</b>
             </div>
 
             {% if completion_redirects %}
@@ -38,6 +63,15 @@
             {% endif %}
 
             <div class="results-section">
+                {# The sentence that explains the table, immediately above it —
+                   it is about WHICH rounds were paid, so it belongs to the
+                   table and not to the receipt. #}
+                {% if has_rounds %}
+                <p class="section-text results-lead">
+                    <strong>{{ num_rewarded }}</strong> of your rounds were selected at
+                    random to count for payment; they are highlighted below.
+                </p>
+                {% endif %}
                 <button
                     type="button"
                     id="results-toggle"
@@ -80,9 +114,6 @@
                 </div>
             </div>
 
-            <!-- Inside the scroll region, not pinned — see base.css "Pinned
-                 regions": only the header strip and the button row are pinned. -->
-            {% include '_static/global/html/logo_section.html' %}
         </div>
 
         <!-- Pinned at the foot of the card, NOT inside .experimental-content.
@@ -96,6 +127,16 @@
             </button>
         </div>
         {% endif %}
+
+        <!-- THE ONE PAGE WHERE THE LOGO STRIP SITS BELOW THE BUTTON (Julian,
+             2026-08-11, change_requests item 19), in BOTH study types so the two
+             results pages look the same. Everywhere else the strip lives inside
+             the scroll region, because pinned it cost ~90px of card height and
+             pushed the consent options below the fold. Here that argument does
+             not apply: this page's action is already pinned, so the strip simply
+             sits under it, outside the scroll region — and in the lab, where
+             there is no button at all, it is just the foot of the card. -->
+        {% include '_static/global/html/logo_section.html' %}
     </div>
 </div>
 

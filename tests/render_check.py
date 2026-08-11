@@ -307,10 +307,23 @@ def page_specs():
              label='PID_FROM_URL_4242'),
         dict(key='instructions', config='lab', stop='instructing'),
         dict(key='quiz', config='lab', stop='quiz'),
+        # The ONLINE quiz, which is the one that carries the at-will re-read
+        # dialog (the lab deliberately has no such button — see
+        # intro.quiz.vars_for_template).
+        dict(key='quiz_prolific', config='prolific', stop='quiz'),
+        # The tab-monitor agreement page: its one bold sentence is the
+        # consequence the participant is agreeing to (change_requests item 18).
+        dict(key='ai_safety', config='prolific', stop='AISafetyAgree'),
         dict(key='task_tabmonitor', config='prolific', stop='GameStart'),
+        dict(key='task_payoff', config='prolific', stop='payoff'),
+        # The lab's demographics/bank page. It had NO render leg until
+        # 2026-08-11, which is how a template syntax error on it (a tag quoted
+        # inside a JS comment — oTree parses tags there too) reached a 500 that
+        # nothing caught: the lab walks all stopped before this page.
+        dict(key='demographics_lab', config='lab', stop='Demographics'),
         dict(key='results', config='prolific', stop='Results'),
         dict(key='ended_screenout', config='prolific', stop='Ended',
-             modified={'mobile_screenout': 1}, user_agent=PHONE_UA),
+             modified={'allowed_devices': ['computer']}, user_agent=PHONE_UA),
     ]
 
 
@@ -714,7 +727,8 @@ def check_eyebrow_alignment(server, browser):
             ('prolific_id', 'prolific', 'ConfirmProlificID', '.stacked-form'),
             ('ended_screenout', 'prolific', 'Ended', '.section-text'),
             ('instructions', 'lab', 'instructing', '.instruction-block')):
-        modified = {'mobile_screenout': 1} if key == 'ended_screenout' else None
+        modified = ({'allowed_devices': ['computer']}
+                    if key == 'ended_screenout' else None)
         ua = PHONE_UA if key == 'ended_screenout' else None
         session = create_session(config, num_participants=2,
                                  modified_session_config_fields=modified)
@@ -805,6 +819,655 @@ def check_short_page_balance(server, browser):
         geometry.setdefault('short_page', {})[vp_name] = m
         screenshot(page, 'lab_entry_gate_balance', vp_name)
         context.close()
+
+
+def check_card_min_derivation(server, browser, facts):
+    """Q. --card-min is derived from the TASK screen, and the derivation holds.
+
+    change_requests item 5. The floor exists so the frame stops jumping between
+    pages, and it is DERIVED rather than eyeballed: this leg renders the task
+    pages with the floor disabled, records their NATURAL height, and requires
+    that height to be at or below the floor actually shipped. If a study grows
+    its task screen past the floor, this fails and says re-derive — which is the
+    whole point of writing the number down.
+
+    It also asserts the consequence Julian asked for: with the floor in place
+    the card is the SAME HEIGHT on every page at a given viewport.
+    """
+    section('Q. The card floor is derived from the task screen, and holds')
+    natural = {}
+    for key, stop in (('task', 'GameStart'), ('payoff', 'payoff')):
+        session = create_session('prolific', num_participants=2)
+        code, _ = walk_to(server.base, session, stop)
+        for vp_name, vp in VIEWPORTS.items():
+            context = browser.new_context(viewport=vp)
+            page = context.new_page()
+            page.goto(f'{server.base}/InitializeParticipant/{code}',
+                      wait_until='load')
+            page.wait_for_timeout(120)
+            m = page.evaluate("""() => {
+                const card = document.querySelector('.screen-card');
+                const cs = getComputedStyle(card);
+                const shippedMin = parseFloat(cs.minHeight) || 0;
+                // Measure the card's NATURAL height: no floor, no ceiling.
+                const prevMin = card.style.minHeight;
+                const prevMax = card.style.maxHeight;
+                card.style.minHeight = '0px';
+                card.style.maxHeight = 'none';
+                const nat = Math.round(card.getBoundingClientRect().height);
+                card.style.minHeight = prevMin;
+                card.style.maxHeight = prevMax;
+                return {natural: nat, shippedMin: Math.round(shippedMin),
+                        rendered: Math.round(card.getBoundingClientRect().height),
+                        vh: window.innerHeight};
+            }""")
+            label = f'{key} @ {vp_name}'
+            natural[label] = m
+            check(m['natural'] <= m['shippedMin'] + 2,
+                  f'{label}: the task screen\'s NATURAL height {m["natural"]}px '
+                  f'is at or below the shipped floor {m["shippedMin"]}px '
+                  f'({100 * m["natural"] / m["vh"]:.0f}vh vs '
+                  f'{100 * m["shippedMin"] / m["vh"]:.0f}vh) — if this fails, '
+                  f're-derive --card-derived in base.css from this number')
+            # The trap the spec calls out: a px floor taller than the ceiling
+            # would beat max-height and push the card to the screen edges.
+            check(m['rendered'] <= 0.88 * m['vh'] + 2,
+                  f'{label}: the floor never beats the 88vh ceiling '
+                  f'(card {m["rendered"]}px in a {m["vh"]}px viewport)')
+            context.close()
+    geometry['card_min_derivation'] = natural
+
+    # …and the point of the floor: one card height per viewport.
+    for vp_name in VIEWPORTS:
+        heights = {k: per[vp_name]['card']['h'] for k, per in facts.items()}
+        spread = max(heights.values()) - min(heights.values())
+        check(spread <= 2,
+              f'{vp_name}: every page renders the SAME card height '
+              f'(spread {spread}px across {len(heights)} pages: '
+              f'{sorted(set(heights.values()))})')
+        geometry.setdefault('card_heights', {})[vp_name] = heights
+
+
+def check_titles_centred(facts):
+    """R. THE CONSTANT RULE: if a page has a title, the title is centred."""
+    section('R. Every page title is centred (change_requests item 8)')
+    for key, per_vp in facts.items():
+        for vp, f in per_vp.items():
+            title = f['title']
+            if not title:
+                continue
+            check(title['textAlign'] == 'center',
+                  f'{key} @ {vp}: the page title is centred '
+                  f'(text-align: {title["textAlign"]})')
+
+
+def check_scroll_catchment(server, browser):
+    """S. The scroll gesture is caught over the FULL WIDTH of the card.
+
+    change_requests item 6. The instructions page used to scroll a 720px band
+    inside a 1200px card, so the wheel did nothing over ~230px of card on either
+    side. Measured two ways: the scroller's box really spans the card, and a
+    point 12px inside the card's left and right edges really lands on it.
+    """
+    section('S. The scroll catchment is the full card width')
+    pages = (('instructions', 'lab', 'instructing',
+              '.instruction-wrapper', '.instruction-block'),
+             # The quiz page has the same shape: a scroller that used to be
+             # capped at the reading band, with dead card either side of it.
+             ('quiz', 'lab', 'quiz', '.experimental-content', '.quiz-block'))
+    for key, config, stop, scroll_sel, band_sel in pages:
+      code, _ = walk_to(server.base, create_session(config, num_participants=2),
+                        stop)
+      for vp_name, vp in VIEWPORTS.items():
+        context = browser.new_context(viewport=vp)
+        page = context.new_page()
+        page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+        page.wait_for_timeout(200)
+        m = page.evaluate("""([scrollSel, bandSel]) => {
+            const card = document.querySelector('.screen-card');
+            const wrap = document.querySelector(scrollSel);
+            const block = document.querySelector(bandSel);
+            if (!card || !wrap || !block) return null;
+            const cs = getComputedStyle(card);
+            const c = card.getBoundingClientRect();
+            const w = wrap.getBoundingClientRect();
+            const b = block.getBoundingClientRect();
+            const innerL = c.left + parseFloat(cs.paddingLeft);
+            const innerR = c.right - parseFloat(cs.paddingRight);
+            const midY = w.top + w.height / 2;
+            const hit = (x) => {
+                const el = document.elementFromPoint(x, midY);
+                return el ? (el === wrap || wrap.contains(el) ? 'scroller'
+                             : el.className || el.tagName) : 'none';
+            };
+            return {innerW: Math.round(innerR - innerL),
+                    wrapW: Math.round(w.width),
+                    bandW: Math.round(b.width),
+                    leftHit: hit(innerL + 12), rightHit: hit(innerR - 12),
+                    scrolls: wrap.scrollHeight > wrap.clientHeight + 2};
+        }""", [scroll_sel, band_sel])
+        label = f'{key} @ {vp_name}'
+        if not check(m is not None, f'{label}: the scroller and its band render'):
+            context.close()
+            continue
+        # The scroller may be up to one reserved scrollbar gutter narrower on
+        # each side than the card's content box; anything more is a band.
+        check(m['wrapW'] >= m['innerW'] - 24,
+              f'{label}: the scrolling element spans the card '
+              f'({m["wrapW"]}px of a {m["innerW"]}px content box)')
+        check(m['bandW'] < m['wrapW'] + 1,
+              f'{label}: …while the TEXT stays in its band '
+              f'({m["bandW"]}px inside the {m["wrapW"]}px scroller)')
+        check(m['leftHit'] == 'scroller' and m['rightHit'] == 'scroller',
+              f'{label}: a point 12px inside each card edge lands on the '
+              f'scroller (left: {m["leftHit"]}, right: {m["rightHit"]})')
+        geometry.setdefault('catchment', {})[label] = m
+        context.close()
+
+
+def check_scroll_cue(server, browser):
+    """T. The pulsing V: wide, low, painted only while there is more — and NEVER
+    on top of a line of content.
+
+    change_requests item 4, plus the defect Julian reported on 2026-08-11: the
+    cue was drawn across the results page's "Total" row, which reads as a
+    rendering fault rather than as a scroll cue. So the shape is measured (wide
+    and low, constant stroke) AND its band is measured OFF THE PIXELS with the
+    cue suppressed: whatever is behind the V must be blank card.
+
+    Run on the three pages that scroll at laptop size (results, quiz, consent).
+    """
+    section('T. The scroll cue: wide, low, and never over content')
+    try:
+        from PIL import Image
+    except ImportError:
+        check(False, 'Pillow is installed (needed to measure the cue band)')
+        return
+    pages = (('results', 'prolific', 'Results'),
+             ('quiz', 'lab', 'quiz'),
+             ('consent_prolific', 'prolific', 'welcome'))
+    for key, config, stop in pages:
+        code, _ = walk_to(server.base, create_session(config, num_participants=2),
+                          stop)
+        for vp_name in ('laptop_1280x720', 'phone_375x667'):
+            context = browser.new_context(viewport=VIEWPORTS[vp_name])
+            page = context.new_page()
+            page.goto(f'{server.base}/InitializeParticipant/{code}',
+                      wait_until='load')
+            page.wait_for_timeout(250)
+            m = page.evaluate("""() => {
+                const el = document.querySelector('.experimental-content');
+                const row = document.querySelector('.screen-card > .button-row');
+                if (!el || !row) return null;
+                const a = getComputedStyle(row, '::before');
+                const b = getComputedStyle(row, '::after');
+                const r = row.getBoundingClientRect();
+                const cs = getComputedStyle(row);
+                const cardCS = getComputedStyle(
+                    document.querySelector('.screen-card'));
+                return {overflows: el.scrollHeight > el.clientHeight + 2,
+                        cls: el.className,
+                        content: a.content, content2: b.content,
+                        armW: parseFloat(a.width) || 0,
+                        armH: parseFloat(a.height) || 0,
+                        animation: a.animationName,
+                        gutter: el.offsetWidth - el.clientWidth,
+                        edgeY: r.top, edgeX: r.left + r.width / 2,
+                        padTop: parseFloat(cs.paddingTop) || 0,
+                        gapAbove: parseFloat(cardCS.rowGap || cardCS.gap) || 0,
+                        contentBottom: el.getBoundingClientRect().bottom};
+            }""")
+            label = f'{key} @ {vp_name}'
+            if not m or not m['overflows']:
+                print(f'  [skip] {label}: content fits, no cue expected')
+                context.close()
+                continue
+            check(m['content'] not in ('none', 'normal')
+                  and m['content2'] not in ('none', 'normal'),
+                  f'{label}: BOTH arms of the V are generated')
+            check(m['animation'] == 'scroll-cue-pulse',
+                  f'{label}: it pulses (animation-name: {m["animation"]})')
+            # WIDE AND LOW, with a stroke thick enough to see: two 51px arms at
+            # 18.4 degrees span 96px across and 16px down, drawn 4px thick.
+            check(m['armW'] >= 45 and m['armH'] >= 3.5,
+                  f'{label}: each arm is {m["armW"]}x{m["armH"]}px — the V is '
+                  f'~{2 * m["armW"] * 0.94:.0f}px wide and ~16px tall, at a '
+                  f'constant {m["armH"]}px stroke')
+            # ITS BAND IS RESERVED WHITESPACE on both sides of the row's top
+            # edge: the card's flex gap above, the row's own padding below.
+            check(m['gapAbove'] >= 10 and m['padTop'] >= 10,
+                  f'{label}: the cue band is empty by construction '
+                  f'({m["gapAbove"]}px card gap above the edge, '
+                  f'{m["padTop"]}px row padding below it)')
+            check(m['gutter'] >= 8,
+                  f'{label}: the scrollbar gutter is STILL reserved alongside '
+                  f'it ({m["gutter"]}px) — the cue joins the other layers')
+
+            # …AND NOTHING IS UNDERNEATH IT. Suppress the cue, then measure the
+            # exact band it occupies: it must be blank card colour.
+            page.add_style_tag(content="""
+                .button-row::before, .button-row::after,
+                .instruction-controls::before, .instruction-controls::after {
+                    content: none !important; }""")
+            page.wait_for_timeout(80)
+            clip = dict(x=max(0, m['edgeX'] - 50), y=max(0, m['edgeY'] - 9),
+                        width=100, height=18)
+            path = os.path.join(OUT_DIR, '_cueband.png')
+            page.screenshot(path=path, clip=clip)
+            img = Image.open(path).convert('L')
+            px = list(img.getdata())
+            os.remove(path)
+            darkness = 255 - (sum(px) / len(px))
+            darkest = 255 - min(px)
+            check(darkness < 0.8 and darkest < 12,
+                  f'{label}: the 100x18px band the V occupies is blank card '
+                  f'(mean darkness {darkness:.2f}, darkest pixel {darkest}) — '
+                  f'nothing is painted underneath it')
+            geometry.setdefault('scroll_cue', {})[label] = dict(
+                m, band_darkness=round(darkness, 3), band_darkest=darkest)
+
+            # …and it goes away at the end of the scroll, with the fade.
+            page.evaluate("""() => { const el = document.querySelector(
+                '.experimental-content'); el.scrollTop = el.scrollHeight; }""")
+            page.wait_for_timeout(200)
+            end = page.evaluate("""() => {
+                const el = document.querySelector('.experimental-content');
+                const row = document.querySelector('.screen-card > .button-row');
+                return {cls: el.className,
+                        content: getComputedStyle(row, '::before').content};
+            }""")
+            check('is-scrollable-down' not in end['cls'],
+                  f'{label}: at the end of the scroll the cue is gone '
+                  f'(class={end["cls"]!r})')
+            context.close()
+
+    # A separate pass for the instructions pager, whose cue hangs off the pager
+    # row rather than a button row, and only when a slide overflows.
+    code, _ = walk_to(server.base, create_session('lab', num_participants=2),
+                      'instructing')
+    context = browser.new_context(viewport=VIEWPORTS['phone_375x667'])
+    page = context.new_page()
+    page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+    page.wait_for_timeout(250)
+    m = page.evaluate("""() => {
+        const wrap = document.querySelector('.instruction-wrapper');
+        const row = document.querySelector('.instruction-controls');
+        const cs = getComputedStyle(row);
+        return {overflows: wrap.scrollHeight > wrap.clientHeight + 2,
+                cls: wrap.className,
+                content: getComputedStyle(row, '::before').content,
+                padTop: parseFloat(cs.paddingTop) || 0};
+    }""")
+    if m['overflows']:
+        check(m['content'] not in ('none', 'normal'),
+              'instructions @ phone: the pager carries the cue when a slide '
+              'overflows')
+        check(m['padTop'] >= 10,
+              f'instructions @ phone: the pager reserves the cue strip '
+              f'({m["padTop"]}px padding-top)')
+        screenshot(page, 'instructions_scroll_cue', 'phone_375x667')
+    else:
+        print('  [skip] instructions @ phone: the first slide fits')
+    context.close()
+
+
+def check_task_progress(server, browser, facts):
+    """U. The task screen states the round of the total, in text AND a bar."""
+    section('U. Round-of-total progress on the task screens (item 7)')
+    code, _ = walk_to(server.base, create_session('prolific', num_participants=2),
+                      'GameStart')
+    for vp_name, vp in VIEWPORTS.items():
+        context = browser.new_context(viewport=vp)
+        page = context.new_page()
+        page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+        page.wait_for_timeout(120)
+        m = page.evaluate("""() => {
+            const strip = document.querySelector('.progress-strip');
+            const count = document.querySelector('.progress-count');
+            const track = document.querySelector('.progress-track');
+            const fill = document.querySelector('.progress-fill');
+            if (!strip || !count || !track || !fill) return null;
+            const t = track.getBoundingClientRect();
+            const f = fill.getBoundingClientRect();
+            return {text: count.textContent.trim(),
+                    trackW: Math.round(t.width), fillW: Math.round(f.width),
+                    trackH: Math.round(t.height),
+                    fillBg: getComputedStyle(fill).backgroundColor,
+                    pct: t.width ? Math.round(100 * f.width / t.width) : null};
+        }""")
+        label = f'task @ {vp_name}'
+        if not check(m is not None, f'{label}: the progress strip renders'):
+            context.close()
+            continue
+        check(m['text'].startswith('Round 1 of '),
+              f'{label}: the text line names the round AND the total '
+              f'({m["text"]!r})')
+        check(0 < m['fillW'] <= m['trackW'] + 1 and 3 <= m['trackH'] <= 8,
+              f'{label}: the bar is drawn and filled to {m["pct"]}% of a '
+              f'{m["trackW"]}x{m["trackH"]}px track')
+        geometry.setdefault('task_progress', {})[vp_name] = m
+        context.close()
+
+
+def _money(text):
+    """The number out of an oTree currency string, for adding up a receipt."""
+    import re
+    m = re.findall(r'-?\d+(?:[.,]\d+)?', (text or '').replace(',', ''))
+    return float(m[0]) if m else None
+
+
+def check_results_receipt(server, browser):
+    """V. The results receipt says the truth: the lines add up to the total.
+
+    change_requests item 11 — this one is not cosmetic. The line wording is
+    participant-facing and the figures must be the REAL ones, so the check
+    reads the rendered receipt and adds it up.
+    """
+    section('V. The results receipt: real figures that add up (item 11)')
+    code, _ = walk_to(server.base, create_session('prolific', num_participants=2),
+                      'Results')
+    context = browser.new_context(viewport=VIEWPORTS['laptop_1280x720'])
+    page = context.new_page()
+    page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+    page.wait_for_timeout(150)
+    m = page.evaluate("""() => {
+        const total = document.querySelector('.payout-total');
+        const lines = Array.from(document.querySelectorAll('.payout-line')).map(
+            l => ({label: l.querySelector('span').textContent.trim(),
+                   amount: l.querySelector('.amount').textContent.trim(),
+                   isTotal: l.classList.contains('total')}));
+        const summary = document.querySelector('.payment-summary');
+        const card = document.querySelector('.screen-card');
+        const s = summary ? summary.getBoundingClientRect() : null;
+        const c = card.getBoundingClientRect();
+        const cs = getComputedStyle(card);
+        return {headline: total ? total.textContent.trim() : null, lines: lines,
+                summaryCentre: s ? (s.left + s.right) / 2 : null,
+                cardCentre: (c.left + parseFloat(cs.paddingLeft)
+                             + c.right - parseFloat(cs.paddingRight)) / 2,
+                summaryW: s ? Math.round(s.width) : null,
+                cardW: Math.round(c.width)};
+    }""")
+    if not check(m and m['headline'], 'the receipt renders a headline figure'):
+        context.close()
+        return
+    rows = {l['label']: _money(l['amount']) for l in m['lines']}
+    total_row = [l for l in m['lines'] if l['isTotal']]
+    check('Base payment' in rows and 'Bonus from your decisions' in rows,
+          f'the breakdown names its lines in participant language '
+          f'({list(rows)})')
+    check(len(total_row) == 1, 'there is exactly one Total row')
+    parts = sum(v for l, v in rows.items() if l != 'Total' and v is not None)
+    headline = _money(m['headline'])
+    check(headline is not None and abs(parts - headline) < 0.005,
+          f'the lines ADD UP to the headline: {parts} vs {headline} '
+          f'({rows})')
+    check(abs(_money(total_row[0]['amount']) - headline) < 0.005,
+          f'…and the Total row matches the headline '
+          f'({total_row[0]["amount"]} vs {m["headline"]})')
+    check(abs(m['summaryCentre'] - m['cardCentre']) <= 2,
+          f'the summary block is CENTRED in the card '
+          f'({m["summaryCentre"]:.0f} vs {m["cardCentre"]:.0f})')
+    check(m['summaryW'] < m['cardW'] / 2,
+          f'…and it is a narrow receipt, not a full-width panel '
+          f'({m["summaryW"]}px in a {m["cardW"]}px card)')
+    geometry['results_receipt'] = dict(m, rows=rows)
+    screenshot(page, 'results_receipt', 'laptop_1280x720')
+    context.close()
+
+    # …AND THE TOTAL ROW IS READABLE, not cut and dimmed at the fold. It is the
+    # line that proves the breakdown adds up, so on the two viewports where the
+    # page can fit it, it must clear the scroll fade (46px, base.css) entirely.
+    for vp_name in ('laptop_1280x720', 'desktop_1512x1200', 'phone_375x667'):
+        context = browser.new_context(viewport=VIEWPORTS[vp_name])
+        page = context.new_page()
+        page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+        page.wait_for_timeout(200)
+        t = page.evaluate("""() => {
+            const el = document.querySelector('.experimental-content');
+            const total = document.querySelector('.payout-line.total');
+            const head = document.querySelector('.payout-total');
+            const r = el.getBoundingClientRect();
+            const tr = total.getBoundingClientRect();
+            const hr = head.getBoundingClientRect();
+            const fade = parseFloat(getComputedStyle(document.documentElement)
+                .getPropertyValue('--scroll-fade')) || 46;
+            return {clearOfFold: Math.round(r.bottom - tr.bottom),
+                    fade: fade,
+                    headlineVisible: hr.bottom <= r.bottom && hr.top >= r.top};
+        }""")
+        check(t['headlineVisible'],
+              f'{vp_name}: the headline "Total earned" figure is on screen '
+              f'without scrolling')
+        if vp_name == 'phone_375x667':
+            # HONEST LIMIT: a 375x667 phone gives the region ~325px and this
+            # page's own copy is ~640px, so no arrangement puts the breakdown's
+            # last row above the fold. What matters there is that the HEADLINE
+            # total is visible (checked above) and the page announces that it
+            # scrolls (checked in D1/D2 and T).
+            print(f'  [note] {vp_name}: the Total ROW sits {t["clearOfFold"]}px '
+                  f'above the fold, inside the {t["fade"]:.0f}px fade — '
+                  f'physically unfittable on this viewport; the headline figure '
+                  f'is fully visible')
+        else:
+            check(t['clearOfFold'] >= t['fade'],
+                  f'{vp_name}: the Total row clears the fold by '
+                  f'{t["clearOfFold"]}px, past the {t["fade"]:.0f}px fade — it '
+                  f'is not dimmed')
+        geometry.setdefault('results_total_row', {})[vp_name] = t
+        context.close()
+
+
+def check_reread_dialog(server, browser):
+    """W. The online quiz's at-will re-read dialog (item 17, Prolific half).
+
+    Opens whether or not anything has been failed, shows the REAL instructions,
+    disables the quiz's submit while it is open, and closes again. The LAB must
+    NOT have the button at all: Julian's rule is that a lab participant re-reads
+    only after a failed attempt, then raises their hand.
+    """
+    section('W. The online re-read dialog opens, reads, and closes (item 17)')
+    code, _ = walk_to(server.base, create_session('prolific', num_participants=2),
+                      'quiz')
+    for vp_name in ('laptop_1280x720', 'phone_375x667'):
+        context = browser.new_context(viewport=VIEWPORTS[vp_name])
+        page = context.new_page()
+        page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+        page.wait_for_timeout(200)
+        label = f'quiz_prolific @ {vp_name}'
+        if not check(page.locator('#rereadOpen').count() == 1,
+                     f'{label}: the re-read button is on the page, unfailed'):
+            context.close()
+            continue
+        check(page.locator('#rereadOpen.next-button').count() == 0,
+              f'{label}: it is NOT a .next-button (Enter must still submit)')
+        page.click('#rereadOpen')
+        page.wait_for_timeout(200)
+        m = page.evaluate("""() => {
+            const back = document.getElementById('reread-backdrop');
+            const body = document.getElementById('reread-body');
+            const blocks = Array.from(body.querySelectorAll('.instruction-block'));
+            const visible = blocks.filter(
+                b => b.getBoundingClientRect().height > 0);
+            const submits = Array.from(document.querySelectorAll(
+                '.screen-card input[type="submit"]'));
+            const r = back.getBoundingClientRect();
+            return {hidden: back.hidden,
+                    covers: Math.round(r.width) >= window.innerWidth
+                            && Math.round(r.height) >= window.innerHeight,
+                    blocks: blocks.length, visible: visible.length,
+                    scrolls: body.scrollHeight > body.clientHeight + 2,
+                    submitsDisabled: submits.every(s => s.disabled),
+                    text: body.innerText.slice(0, 400)};
+        }""")
+        check(not m['hidden'] and m['covers'],
+              f'{label}: the dialog opens over the whole viewport')
+        check(m['blocks'] >= 2 and m['visible'] == m['blocks'],
+              f'{label}: EVERY instruction block is visible inside it '
+              f'({m["visible"]} of {m["blocks"]}) — the pager hides all but the '
+              f'first outside the dialog')
+        check('Instructions' in m['text'] or len(m['text']) > 120,
+              f'{label}: it contains the real instructions text')
+        check(m['submitsDisabled'],
+              f'{label}: the quiz submit is disabled while it is open')
+        screenshot(page, 'quiz_reread_dialog', vp_name)
+        # Escape closes it and the submit comes back.
+        page.keyboard.press('Escape')
+        page.wait_for_timeout(150)
+        after = page.evaluate("""() => ({
+            hidden: document.getElementById('reread-backdrop').hidden,
+            enabled: Array.from(document.querySelectorAll(
+                '.screen-card input[type="submit"]')).every(s => !s.disabled)})""")
+        check(after['hidden'] and after['enabled'],
+              f'{label}: Escape closes it and re-enables the submit')
+        geometry.setdefault('reread_dialog', {})[vp_name] = m
+        context.close()
+
+    # …and the LAB does not have it at all.
+    code, _ = walk_to(server.base, create_session('lab', num_participants=2),
+                      'quiz')
+    context = browser.new_context(viewport=VIEWPORTS['laptop_1280x720'])
+    page = context.new_page()
+    page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+    check(page.locator('#rereadOpen').count() == 0,
+          'the LAB quiz has NO at-will re-read button (its re-read is offered '
+          'only after a failed attempt)')
+    context.close()
+
+
+def check_warning_modal(server, browser):
+    """X. A validation failure is a centred modal, not a banner (items 9 + 10).
+
+    Driven on the DEMOGRAPHICS page, deliberately. The consent page's radios
+    carry oTree's `required`, so a browser blocks that submit itself and the
+    server-side banner never appears — testing there would have proved nothing.
+    Demographics' fields are all blank=True and the page's own error_message()
+    does the validating, so an empty submit produces exactly the server-rendered
+    `.otree-form-errors` banner this feature is about.
+
+    The same leg then checks item 10: after a failed submit the answers already
+    given are still there.
+    """
+    section('X. Validation errors open a centred, dimming modal (items 9 + 10)')
+    code, _ = walk_to(server.base, create_session('lab', num_participants=2),
+                      'Demographics')
+    context = browser.new_context(viewport=VIEWPORTS['laptop_1280x720'])
+    page = context.new_page()
+    page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+    # Submit with nothing filled in: the page's error_message() rejects it and
+    # oTree re-renders with its own banner, which the helper must replace.
+    with page.expect_navigation(wait_until='load'):
+        page.click('.button-row input[type="submit"]')
+    page.wait_for_timeout(300)
+    m = page.evaluate("""() => {
+        const banner = document.querySelector('.otree-form-errors');
+        const back = document.getElementById('warning-modal-backdrop');
+        if (!back) return {banner: !!banner, modal: false};
+        const r = back.getBoundingClientRect();
+        const card = back.querySelector('.modal-card');
+        const cr = card.getBoundingClientRect();
+        const cs = getComputedStyle(back);
+        return {banner: !!banner,
+                bannerVisible: banner ? banner.getBoundingClientRect().height > 0
+                                      : false,
+                modal: true,
+                text: card.innerText.trim(),
+                position: cs.position, dim: cs.backgroundColor,
+                covers: Math.round(r.width) >= window.innerWidth
+                        && Math.round(r.height) >= window.innerHeight,
+                centredX: Math.abs((cr.left + cr.right) / 2
+                                   - window.innerWidth / 2) <= 2,
+                centredY: Math.abs((cr.top + cr.bottom) / 2
+                                   - window.innerHeight / 2) <= 2,
+                submitsDisabled: Array.from(document.querySelectorAll(
+                    '.screen-card input[type="submit"]')).every(s => s.disabled)};
+    }""")
+    check(m['banner'], 'oTree did render its validation error (the page rejected '
+                       'the empty submit)')
+    check(m['modal'], 'the shared warning modal was built from it')
+    if m['modal']:
+        check(not m['bannerVisible'],
+              'the plain banner is hidden — nothing pushes the page down')
+        check(m['position'] == 'fixed' and m['covers'],
+              'the modal dims the WHOLE screen (position:fixed, full viewport)')
+        check(m['centredX'] and m['centredY'],
+              'its card is centred both ways')
+        check(m['submitsDisabled'],
+              'the page submit is disabled while it is open (so Enter dismisses '
+              'the modal instead of re-submitting)')
+        check(len(m['text']) > 5, f'it says what is wrong ({m["text"][:60]!r})')
+        geometry['warning_modal'] = m
+        screenshot(page, 'demographics_warning_modal', 'laptop_1280x720')
+
+        # --- item 10: the answers survive the next failed submit -------------
+        page.click('#warning-modal-backdrop .modal-ok-button')
+        page.fill('#id_age', '42')
+        page.check('input[name="gender"][value="Female"]')
+        with page.expect_navigation(wait_until='load'):
+            page.click('.button-row input[type="submit"]')   # IBAN still empty
+        page.wait_for_timeout(400)
+        kept = page.evaluate("""() => {
+            const age = document.getElementById('id_age');
+            const gender = document.querySelector(
+                'input[name="gender"]:checked');
+            return {age: age ? age.value : null,
+                    gender: gender ? gender.value : null,
+                    stillHere: !!document.getElementById('id_age')};
+        }""")
+        check(kept['stillHere'], 'the page was re-rendered (submit rejected '
+                                 'again — the IBAN is still missing)')
+        check(kept['age'] == '42',
+              f'ITEM 10: the age already typed is still there after the error '
+              f'(got {kept["age"]!r})')
+        check(kept['gender'] == 'Female',
+              f'ITEM 10: …and the gender already chosen is still selected '
+              f'(got {kept["gender"]!r})')
+        geometry['preserved_answers'] = kept
+    context.close()
+
+
+def check_dq_ending(server, browser):
+    """Y. The ending says WHY the study ended (change_requests item 16).
+
+    Drives a REAL comprehension failure: walk to the quiz, then submit wrong
+    answers until comprehension_dq fires. The participant must be told which
+    check they failed, not just that participation "cannot continue" — and the
+    tab-monitor wording must not be what they get.
+    """
+    section('Y. A disqualified participant is told WHY (item 16)')
+    session = create_session('prolific', num_participants=2)
+    code, resp = walk_to(server.base, session, 'quiz')
+    s = requests.Session()
+    r = s.get(f'{server.base}/InitializeParticipant/{code}', allow_redirects=True)
+    wrong = {}
+    for item in QUIZ_ITEMS:
+        alternatives = [c for c in item['choices'] if c != item['answer']]
+        wrong[item['field']] = alternatives[0] if alternatives else item['answer']
+    for _ in range(6):
+        if page_of(r.url) != 'quiz':
+            break
+        fp = FormParser()
+        fp.feed(r.text)
+        r = s.post(r.url, data=build_payload(fp.inputs, {}, wrong),
+                   allow_redirects=True)
+    check(page_of(r.url) == 'Ended',
+          f'the quiz disqualified them and routed to the ending '
+          f'(now at {page_of(r.url)})')
+    context = browser.new_context(viewport=VIEWPORTS['laptop_1280x720'])
+    page = context.new_page()
+    page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+    page.wait_for_timeout(150)
+    text = ' '.join(visible_text(page).split())
+    check('comprehension check' in text.lower(),
+          f'the page names the comprehension check as the reason '
+          f'({text[:160]!r})')
+    check('inactive' not in text.lower(),
+          'it does NOT give them the tab-monitor wording')
+    check('cannot continue' not in text.lower(),
+          'the old catch-all sentence is gone')
+    geometry['dq_ending'] = text[:400]
+    screenshot(page, 'ended_comprehension', 'laptop_1280x720')
+    context.close()
 
 
 def check_constant_card(facts):
@@ -923,11 +1586,63 @@ def check_consent_choice_visible(server, browser, facts):
           'oTree shows its "this field is required" message')
 
 
+def check_results_logo_below_button(server, browser):
+    """D4b: on the RESULTS page only, the strip sits BELOW the pinned button.
+
+    change_requests item 19, in both study types. Everywhere else the strip is
+    inside the scroll region (D4) because pinned it cost ~90px of card height;
+    on this page the action is already pinned, so the strip sits under it,
+    outside the scroll region.
+    """
+    section('D4b. The results logo strip sits below the button (item 19)')
+    for key, config, stop in (('results_prolific', 'prolific', 'Results'),
+                              ('results_lab', 'lab', 'Results')):
+        session = create_session(config, num_participants=2)
+        code, _ = walk_to(server.base, session, stop)
+        context = browser.new_context(viewport=VIEWPORTS['laptop_1280x720'])
+        page = context.new_page()
+        page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+        page.wait_for_timeout(150)
+        m = page.evaluate("""() => {
+            const logo = document.querySelector('.logo-section');
+            const el = document.querySelector('.experimental-content');
+            const row = document.querySelector('.screen-card > .button-row');
+            const card = document.querySelector('.screen-card');
+            if (!logo || !el) return null;
+            const l = logo.getBoundingClientRect();
+            return {insideScroller: el.contains(logo),
+                    parentIsCard: logo.parentElement === card,
+                    logoTop: Math.round(l.top),
+                    contentBottom: Math.round(el.getBoundingClientRect().bottom),
+                    buttonBottom: row ? Math.round(
+                        row.getBoundingClientRect().bottom) : null,
+                    hasButton: !!row};
+        }""")
+        if not check(m is not None, f'{key}: the page has a logo strip'):
+            context.close()
+            continue
+        check(not m['insideScroller'] and m['parentIsCard'],
+              f'{key}: the strip is a direct child of the card, OUTSIDE the '
+              f'scroll region')
+        check(m['logoTop'] >= m['contentBottom'] - 2,
+              f'{key}: it sits below the scrolling content '
+              f'({m["logoTop"]} >= {m["contentBottom"]})')
+        if m['hasButton']:
+            check(m['logoTop'] >= m['buttonBottom'] - 2,
+                  f'{key}: …and BELOW the Back-to-Prolific button '
+                  f'({m["logoTop"]} >= {m["buttonBottom"]})')
+        else:
+            print(f'  [note] {key}: no button on this variant (lab), so the '
+                  f'strip is simply the foot of the card')
+        geometry.setdefault('results_logo', {})[key] = m
+        screenshot(page, key, 'laptop_1280x720')
+        context.close()
+
+
 def check_logo_unpinned(server, browser):
     """D4: the logo strip scrolls with the content instead of eating card height."""
     section('D4. The logo strip is inside the scroll region, not pinned')
-    for key, config, stop in (('consent_prolific', 'prolific', 'welcome'),
-                              ('results', 'prolific', 'Results')):
+    for key, config, stop in (('consent_prolific', 'prolific', 'welcome'),):
         session = create_session(config, num_participants=2)
         code, _ = walk_to(server.base, session, stop)
         context = browser.new_context(viewport=VIEWPORTS['laptop_1280x720'])
@@ -1316,11 +2031,33 @@ def check_features(server, browser, facts):
             check(has, 'the lab entry gate DOES show the CREED welcome header')
         else:
             check(not has, f'{key}: no CREED header (it belongs to the gate only)')
+    # CONSENT NEUTRALITY, as amended on 2026-08-11 (change_requests items 12 +
+    # 14). The lab consent page still never names the platform. The ONLINE one
+    # now does, in exactly ONE place: the contact sentence, which tells the
+    # participant how to reach a human. Everything else — no ID field, no
+    # completion code, no CREED header — is unchanged, so this asserts the new
+    # rule rather than dropping the old one.
+    lab_text = facts['consent_lab']['laptop_1280x720']['text']
+    check('Prolific' not in lab_text,
+          'consent_lab: the participant never READS the word Prolific')
+    check('raise your hand' in lab_text.lower(),
+          'consent_lab: the contact sentence points at the experimenter in the '
+          'room')
+    pro_text = facts['consent_prolific']['laptop_1280x720']['text']
+    check(pro_text.count('Prolific') == 1,
+          f'consent_prolific: Prolific is named EXACTLY once '
+          f'(got {pro_text.count("Prolific")})')
+    check('contact the researchers through Prolific' in ' '.join(pro_text.split()),
+          'consent_prolific: …and that once is the contact sentence')
+    check('raise your hand' not in pro_text.lower(),
+          'consent_prolific: no lab wording online')
     for key in ('consent_lab', 'consent_prolific'):
         text = facts[key]['laptop_1280x720']['text']
-        check('Prolific' not in text,
-              f'{key}: the participant never READS the word Prolific')
         check('Welcome to' not in text, f'{key}: no CREED welcome wording')
+        # The duration/fee sentence is behind a flag that ships OFF (item 1).
+        check('takes about' not in text and 'You will receive a payment' not in text,
+              f'{key}: the duration/fee paragraph is hidden by default '
+              f'(show_duration_and_fee)')
     idtext = facts['prolific_id']['laptop_1280x720']['text']
     check('Prolific' in idtext,
           'the ID page names Prolific (the one page that may)')
@@ -1338,6 +2075,26 @@ def check_features(server, browser, facts):
     check('We do not have a Prolific ID' not in visible_text(page),
           'the loud no-ID panel is NOT shown when an id arrived')
     context.close()
+
+    section('L2. The tab-monitor agreement bolds its one load-bearing sentence')
+    bold = None
+    for vp in VIEWPORTS:
+        code, _ = walk_to(server.base, create_session('prolific', num_participants=2),
+                          'AISafetyAgree')
+        context = browser.new_context(viewport=VIEWPORTS[vp])
+        page = context.new_page()
+        page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+        bold = page.evaluate("""() => Array.from(
+            document.querySelectorAll('.experimental-content strong')).map(
+                s => ({text: s.innerText.trim(),
+                       weight: getComputedStyle(s).fontWeight}))""")
+        texts = [b['text'] for b in bold]
+        check(any('Repeated inactivity will end your participation' in t
+                  for t in texts),
+              f'{vp}: the inactivity consequence is BOLD on the page '
+              f'({texts})')
+        context.close()
+    geometry['ai_safety_bold'] = bold
 
     section('L. The screened-out ending shows its OWN wording')
     text = facts['ended_screenout']['phone_375x667']['text']
@@ -1457,6 +2214,15 @@ def main():
                 check_scrolling(server, browser, facts)
                 if not LONG_QUIZ:
                     check_constant_card(facts)
+                    check_card_min_derivation(server, browser, facts)
+                    check_titles_centred(facts)
+                    check_scroll_catchment(server, browser)
+                    check_scroll_cue(server, browser)
+                    check_task_progress(server, browser, facts)
+                    check_results_receipt(server, browser)
+                    check_reread_dialog(server, browser)
+                    check_warning_modal(server, browser)
+                    check_dq_ending(server, browser)
                     check_scroll_really_moves(server, browser)
                     check_scroll_affordance(server, browser)
                     check_no_phantom_affordance(server, browser)
@@ -1466,6 +2232,7 @@ def main():
                     check_eyebrow_alignment(server, browser)
                     check_consent_choice_visible(server, browser, facts)
                     check_logo_unpinned(server, browser)
+                    check_results_logo_below_button(server, browser)
                     check_focus_rings(server, browser)
                     check_overlay(server, browser)
                     check_features(server, browser, facts)

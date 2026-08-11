@@ -28,14 +28,22 @@
                         {% include "intro/prequiz_text.html" %}
                     </div>
 
-                    <div class="instruction-progress">
-                        <span id="instruction-counter"></span>
-                    </div>
-
+                    <!-- Back · counter · Next, on ONE row (change_requests
+                         item 3). The counter used to be a row of its own above
+                         the pager, which cost ~40px of card height for one line
+                         of quiet chrome. It sits BETWEEN the buttons, which is
+                         also where it reads best: the pager becomes one control
+                         that says where you are and where you can go.
+                         instructions.js still writes #instruction-counter and
+                         toggles .instruction-progress's visibility (never its
+                         display — the space stays reserved, stability rule). -->
                     <div class="instruction-controls">
                         <button type="button" id="prevBtn" class="next-button ghost">
                             Back
                         </button>
+                        <div class="instruction-progress">
+                            <span id="instruction-counter"></span>
+                        </div>
                         <button type="button" id="nextBtn" class="next-button">
                             Next
                         </button>

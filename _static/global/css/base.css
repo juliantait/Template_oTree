@@ -176,8 +176,32 @@ a { color: var(--accent); }
    88vh card can still overflow the visible area on a phone. Browsers that do not
    know `dvh` drop the second declaration and keep the first. */
 :root {
-    --card-min: 75vh;
+    /* THE FLOOR IS DERIVED FROM THE TASK SCREEN (change_requests item 5,
+       2026-08-11). A card shorter than the game screen makes the frame jump
+       between pages, which is what Julian saw: measured at 1280x720, short
+       pages (lab gate, Prolific ID, game screen) sat at the 75vh floor = 540px
+       while tall pages (consent, quiz, results) sat at the 88vh cap = 634px —
+       a 94px jump every time the participant moved between them.
+       HOW THE NUMBER IS DERIVED, so it stays stable rather than following
+       whatever the placeholder task screen happens to contain today:
+       tests/render_check.py renders the task pages with the floor DISABLED and
+       records their NATURAL height (geometry.json -> card_min_derivation). For
+       this template that is ~300px at 1280x720 — far BELOW the tall pages — so
+       the binding constraint is "never shorter than the tall pages" and the
+       derived floor rounds up to the ceiling: one constant card height, no
+       jumping. A real study re-derives --card-derived from ITS task screen;
+       the render check FAILS if the task screen ever grows past the floor,
+       which is the signal to re-derive rather than let the jumping return.
+       THE min() IS LOAD-BEARING. A floor expressed in px alone would, on a
+       short window, exceed the ceiling — and CSS lets min-height beat
+       max-height, so the card would grow past 88vh, touch the top and bottom
+       of the screen and start scrolling the page. Taking the min with
+       --card-max means the ceiling always wins on a short window and the card
+       simply sits at the cap with its content region scrolling, which is what
+       short windows already do. */
+    --card-derived: 88vh;
     --card-max: 88vh;
+    --card-min: min(var(--card-derived), var(--card-max));
     /* The width a scroll region reserves for its scrollbar on EACH edge
        (`scrollbar-gutter: stable both-edges`). It must equal the
        ::-webkit-scrollbar width below; anything that needs to line up with the
@@ -271,13 +295,18 @@ a { color: var(--accent); }
           the scroll position, so the LAST line is never faded — the fade means
           "there is more", always. */
     scrollbar-gutter: stable both-edges;
-       THE MASKING GRADIENTS MUST BE FULLY OPAQUE FOR AT LEAST THE SHADOW'S
+    /* THE MASKING GRADIENTS MUST BE FULLY OPAQUE FOR AT LEAST THE SHADOW'S
        HEIGHT (16px). They are 30px tall and solid to 60% of that = 18px, then
        fade. With the earlier 30% stop they were solid for only 9px, so the
        lower half of a shadow bled through even on a page with nothing to
        scroll — a phantom band across a card that fits, which is worse than no
        affordance at all (measured on the lab gate and the instructions page,
-       2026-08-11). */
+       2026-08-11).
+       NB 2026-08-11 (2): the `/*` that opens this comment was MISSING, so CSS
+       error recovery swallowed everything from here to the end of the
+       `background` declaration below — layer 2 was silently absent from every
+       page. A comment that does not open is not a comment; it is a deleted
+       rule. */
     background:
         linear-gradient(var(--card-bg) 60%, rgba(255, 255, 255, 0)) top / 100% 30px no-repeat local,
         linear-gradient(rgba(255, 255, 255, 0), var(--card-bg) 40%) bottom / 100% 30px no-repeat local,
@@ -411,14 +440,23 @@ a { color: var(--accent); }
    their type from this ONE rule — edit the title look here and nowhere else.
    (Both are <h2>, so colour and letter-spacing come from the shared h1,h2,h3
    rule above; this rule only sets the size/line-height/weight.)
-   ALIGNMENT DELIBERATELY LIVES ELSEWHERE: no text-align here, so a family class
-   (.narrative-card) can centre the title. Putting text-align on this rule would
-   out-rank the family at equal specificity and lock every title flush-left. */
+   ALIGNMENT IS A CONSTANT RULE, NOT A FAMILY CHOICE (change_requests item 8,
+   Julian 2026-08-11): IF A PAGE HAS A TITLE, THE TITLE IS CENTRED — on every
+   page, in every family. It used to be centred by .narrative-card only, so the
+   narrative pages, the instruction step titles and the end-of-experiment
+   heading disagreed with each other for no reason a participant could see.
+   The centring therefore lives HERE, on the component, and the note that used
+   to say the opposite is gone. Body copy alignment is still the family's
+   business (narrative centres, instructions justify, quiz stays left) — this
+   is about the title only. Visible knock-on when this shipped: the Quiz,
+   Results and demographics titles became centred too, which is the rule
+   working. */
 .header-title {
     margin: 0;
     font-size: clamp(23px, 2.4vw, 31px);
     line-height: 1.22;
     font-weight: 680;
+    text-align: center;
 }
 
 .header-text {
@@ -512,7 +550,8 @@ a { color: var(--accent); }
    family; quiz is the LEFT-aligned form family; task/results are unchanged.
    Opt in with class="screen-card narrative-card". */
 .narrative-card .experimental-content { text-align: center; }
-.narrative-card .header-title { text-align: center; }   /* title centred; the eyebrow above it stays left */
+/* (The title's centring is no longer here: it is the constant rule on
+   .header-title itself — see item 8 above. The eyebrow above it stays left.) */
 .narrative-card .section-text { max-width: var(--read-measure); margin-inline: auto; text-align: center; }
 /* Option groups keep the uniform band width (see the mc-option component) and
    centre as a block; each option row stays left-aligned inside. */
@@ -1073,6 +1112,236 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
     opacity: 1;
     visibility: visible;
 }
+
+/* --- COMPONENT: the scroll cue, a wide low pulsing V --------------------------
+   THE FOURTH LAYER of the scroll affordance (change_requests item 4, Julian
+   2026-08-11), and it JOINS the other three rather than replacing any of them:
+   the styled scrollbar, the CSS-only edge shadow and the content fade all stay.
+   Julian's rule: anything that makes it obvious there is more text below is
+   worth having.
+
+   DRAWN, NOT TYPED. Two rounded bars, one per arm — no glyph, so it cannot come
+   out as a tofu box in a font that lacks a chevron (that is what happened to the
+   results page's ▸). Bars rather than the usual rotated-square-with-two-borders
+   trick because that trick CANNOT make this shape: flattening a rotated square
+   enough to be wide and low also squashes its borders, and the V comes out as a
+   hairline (measured 2026-08-11 — Julian's "too small and too thin"). Two
+   explicit bars keep a constant 4px stroke at any width and any shallowness.
+   Geometry: 96px wide, 16px tall — wide and low, as asked.
+
+   WHERE IT IS DRAWN, and why NOT inside the scroll region: the region carries
+   the content fade as a CSS MASK, and a mask fades EVERYTHING the element
+   paints, so a cue drawn there would be faded away exactly where it is needed.
+   It is therefore drawn on the element that FOLLOWS the scroller.
+
+   IT MUST NEVER LAND ON A LINE OF TEXT (fixed 2026-08-11 after Julian saw it
+   painted across the results page's "Total €79.50" row, which reads as a
+   rendering fault, not as a cue). Its own strip is the ALWAYS-EMPTY band around
+   the top edge of that following element: the card's flex gap above the edge
+   (>=16px) and the row's own padding-top below it (>=14px on the shortest
+   viewport; .instruction-controls carries a matching padding-top for the same
+   reason). `bottom: 100%` + `translateY(50%)` centres each bar's box exactly on
+   that edge, so the V spans edge-8px .. edge+8px and both halves are in
+   reserved whitespace. It is measured off the rendered pixels in
+   tests/render_check.py: with the cue suppressed, its band must be blank card.
+
+   NO CUE ON A CARD WITH NO BUTTON ROW (the lab results page). The only band
+   available there is the logo strip's top rule, and a V drawn across a
+   horizontal rule looks like the very glitch this rule exists to avoid; those
+   pages keep the other three layers.
+
+   It is bound to the .is-scrollable-down class global.js already maintains, so
+   it appears only while there is more below and disappears at the end of the
+   scroll. No JavaScript of its own; with scripts blocked no class is ever set
+   and the other three layers carry the affordance alone. The pulse sits under
+   the file's global prefers-reduced-motion rule, which kills every animation. */
+.experimental-content.is-scrollable-down ~ .button-row,
+.instruction-wrapper.is-scrollable-down ~ .instruction-controls {
+    position: relative;
+}
+
+.experimental-content.is-scrollable-down ~ .button-row::before,
+.experimental-content.is-scrollable-down ~ .button-row::after,
+.instruction-wrapper.is-scrollable-down ~ .instruction-controls::before,
+.instruction-wrapper.is-scrollable-down ~ .instruction-controls::after {
+    content: "";
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    width: 51px;                 /* arm length: hypotenuse of 48 x 16 */
+    height: 4px;                 /* constant stroke, whatever the shape */
+    border-radius: 999px;
+    background: var(--ink-mute);
+    pointer-events: none;        /* never intercept a click meant for a button */
+    animation: scroll-cue-pulse 2.6s ease-in-out infinite;
+}
+
+/* left arm: down-right; right arm: down-left. They meet on the centre line,
+   8px below the edge, with their outer ends 8px above it. */
+.experimental-content.is-scrollable-down ~ .button-row::before,
+.instruction-wrapper.is-scrollable-down ~ .instruction-controls::before {
+    margin-left: -50px;
+    transform: translateY(50%) rotate(18.4deg);
+}
+
+.experimental-content.is-scrollable-down ~ .button-row::after,
+.instruction-wrapper.is-scrollable-down ~ .instruction-controls::after {
+    margin-left: -1px;
+    transform: translateY(50%) rotate(-18.4deg);
+}
+
+@keyframes scroll-cue-pulse {
+    0%, 100% { opacity: .30; }
+    50%      { opacity: .95; }
+}
+
+/* --- COMPONENT: round-of-total progress strip --------------------------------
+   The task screens' one progress indicator (change_requests item 7): a text
+   line above a slim bar, both fed by the SAME server-side numbers
+   (main.progress_vars), so they cannot disagree. Ported from the reference
+   build's task screen and simplified to "Round X of Y" — this template has no
+   blocks/parts. Lives here, not in a page stylesheet, because any page that
+   needs to say where the participant is should use this one component. */
+.progress-strip { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+
+.progress-count {
+    font-size: clamp(17px, 1.5vw, 20px);
+    font-weight: 650;
+    color: var(--ink);
+    letter-spacing: -.01em;
+}
+
+.progress-track {
+    height: 5px;
+    border-radius: 999px;
+    background: var(--line);
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--accent);
+    transition: width .3s ease;
+}
+
+/* --- COMPONENT: warning modal ------------------------------------------------
+   ALL WARNINGS ARE CENTRED, SCREEN-DIMMING MODALS (change_requests item 9,
+   Julian 2026-08-11) — never a banner that pushes the page down under the
+   participant. These rules used to live in quiz.css and serve the lab's
+   quiz-failure dialogs only; they are the shared component now, and
+   global.js's warning-modal helper builds oTree's validation errors into
+   exactly this chrome on every page. An overlay, so revealing it moves nothing
+   underneath (the stability rule).
+
+   DELIBERATELY NOT SHARED: the tab monitor's full-screen red overlay
+   (tabmonitor.css). That is an ENFORCEMENT warning covering the whole viewport
+   on purpose, not a validation message, and Julian confirmed it stays as it is.
+
+   [hidden] must win over the flex display. */
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(16, 32, 52, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.modal-backdrop[hidden] { display: none; }
+
+.modal-card {
+    background: var(--card-bg);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-lift);
+    max-width: 34rem;
+    width: 100%;
+    padding: 28px 32px;
+    text-align: center;
+}
+
+.modal-title {
+    color: var(--ink);
+    margin: 0 0 12px;
+    font-size: 1.15em;
+    font-weight: 680;
+}
+
+/* A validation failure is the one modal that reads as an error, so its title
+   takes the danger ink (the reference build does the same). */
+.modal-card--warning .modal-title { color: var(--danger); }
+
+.modal-text {
+    margin: 0 0 20px;
+    color: var(--ink-soft);
+    line-height: 1.5;
+}
+
+.modal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Secondary (dismiss) action: quieter than the primary, but clearly a real
+   control — not the dashed debug styling. Matches the shared .ghost button so
+   the modal's two actions read as one pair.
+   NB: deliberately NOT .next-button — global.js's Enter handler targets the
+   first .next-button, and dismissing must never steal Enter from a page's own
+   submit while the modal is closed. */
+.modal-dismiss-button {
+    appearance: none;
+    -webkit-appearance: none;
+    display: inline-block;
+    font: inherit;
+    font-weight: 620;
+    line-height: 1;
+    border: 1px solid var(--line-strong);
+    background: transparent;
+    color: var(--ink-soft);
+    padding: 0.85em 2em;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background-color .16s ease, border-color .16s ease, color .16s ease;
+}
+
+.modal-dismiss-button:hover {
+    background: var(--sunken);
+    border-color: var(--line-strong);
+    color: var(--ink);
+}
+
+/* The warning modal's single OK: it looks primary, but it is NOT .next-button —
+   see the note above. While the modal is open global.js disables the page's own
+   submits, so Enter reaches the modal's own handler and dismisses it. */
+.modal-ok-button {
+    appearance: none;
+    -webkit-appearance: none;
+    display: inline-block;
+    font: inherit;
+    font-weight: 620;
+    line-height: 1;
+    color: #fff;
+    background: var(--accent);
+    border: 1px solid transparent;
+    padding: 0.85em 2em;
+    border-radius: 999px;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(16, 32, 52, .12);
+    transition: background-color .16s ease;
+}
+
+.modal-ok-button:hover { background: var(--accent-hover); }
+
+/* A logo strip that is a DIRECT CHILD of the card (the results page only — see
+   the note in outro/Results.html) must not be squeezed by the scroll region's
+   flex fill. Everywhere else the strip is inside .experimental-content. */
+.screen-card > .logo-section { flex: 0 0 auto; }
 
 /* Pilot feedback textarea: a control, so it keeps the full card width (never
    clamped to the reading measure). */

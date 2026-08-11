@@ -43,7 +43,7 @@ session-configuration view shows exactly what ran:
 | `collect_bank_details`, `collect_demographics` | off | on | Lab pays by transfer and asks demographics itself |
 | `quiz_reread` | off | on | The supervised one-time re-read pass |
 
-`mobile_screenout` is deliberately **not** in the profile — see §4.
+`allowed_devices` is deliberately **not** narrowed by the profile — see §4.
 
 ## 2. Completion codes
 
@@ -72,7 +72,7 @@ Two variants, and the shared page in the middle is shared **exactly**:
 ```
 LAB       startpage (the "Welcome to CREED" gate, experimenter-advanced)
           -> welcome/consent
-PROLIFIC  [mobile screen-out — server-side, renders no page]
+PROLIFIC  [device allow-list — server-side, renders no page]
           -> welcome/consent
           -> ConfirmProlificID
 ```
@@ -96,30 +96,46 @@ not — never both, and never CREED plus Prolific. There is no hybrid entry page
 of both variants, so a regression fails the build rather than reaching a
 participant.
 
-## 4. The mobile screen-out (`mobile_screenout`)
+## 4. The device allow-list (`allowed_devices`)
 
-**Off by default, including in the Prolific profile.** Choosing the Prolific study
-type must never start screening phones out on its own; turn it on explicitly:
+**Wide open by default, including in the Prolific profile.** Choosing the
+Prolific study type must never start screening devices out on its own; narrow it
+explicitly:
 
 ```python
-dict(name='prolific', recruitment='prolific', mobile_screenout=1, …)
+dict(name='prolific', recruitment='prolific', allowed_devices=['computer'], …)
 ```
 
-With it **off** it does nothing at all — a phone completes normally, and
-`device_capture` still *records* `is_mobile` as measurement that blocks nobody.
+The four types are `phone`, `tablet`, `computer` and `unknown`. **`computer`
+covers laptops and desktops** — a browser exposes no way to tell them apart
+(not the User-Agent, not client hints, not battery/touch/screen size), so there
+is no `laptop` type and one must never be added; a study that truly needs that
+has to ask the participant. **`unknown`** means the device could not be
+identified — no User-Agent, a blank one, or one stripped by a privacy tool — and
+it is listed like any other type, so admitting those participants is a
+configuration decision rather than a code change.
 
-With it **on**, the decision is made server-side in `before.welcome.get()`, from
-the entry request's User-Agent, **before a single byte of the consent page
+With the **default** list (all four) it does nothing at all — every device
+completes normally, and `device_capture` still *records* the device as
+measurement that blocks nobody.
+
+When **narrowed**, the decision is made server-side in `before.welcome.get()`,
+from the entry request's User-Agent, **before a single byte of the consent page
 exists**. There is no inline error and no page of its own: the participant is
 flagged, given exit code `-4`, and every page between entry and the ending is
 gated on `common.is_screened_out()`, so they are walked straight to
 `outro/Ended.html`. **That ending is the first and only screen they ever see.**
+The client's own opinion of what it is (`device_info_json.device_type`) is
+recorded beside the server's for comparison and never enforced — a client-side
+check is trivially bypassed.
 
-Exit code `-4` is the **general** "removed at entry" bucket, not a phone-specific
-code. The gate records *why* in `participant_extra['screenout_cause']`
-(`'mobile'`), and the ending picks its wording from that cause. To add another
-entry screen-out reason, add a cause — not a new exit code. See
-`common.SCREENOUT_CAUSES` and the CODEBOOK section on screen-out causes.
+Exit code `-4` is the **general** "removed at entry" bucket, not a device-specific
+code. The gate records *which device type it detected* in
+`participant_extra['screenout_cause']` (`'phone'`, `'tablet'`, `'computer'` or
+`'unknown'`), and the ending picks its wording from that cause, naming what the
+study does accept. To add another entry screen-out reason, add a cause — not a
+new exit code. See `common.SCREENOUT_CAUSES` and the CODEBOOK section on
+screen-out causes.
 
 ## 5. Getting the participant id
 
@@ -170,7 +186,7 @@ never sees platform wording.
 - [ ] Set `OTREE_PRODUCTION=1` so `DEBUG` is off and every skip control and quiz
       solution is gone from the page source.
 - [ ] Set the study URL with `?participant_label={{%PROLIFIC_PID%}}`.
-- [ ] Decide `mobile_screenout` explicitly (§4) and, if on, check the ending copy.
+- [ ] Decide `allowed_devices` explicitly (§4) and, if narrowed, check the ending copy for each excluded type.
 - [ ] Check `showup` and `expected_duration_minutes` — the consent page quotes
       both from config, so a testing config would advertise a length and a fee
       the study does not run.
@@ -178,7 +194,7 @@ never sees platform wording.
       non-zero on any placeholder or testing value, so it can gate a launcher or
       CI — unlike the startup banner, which is only advisory.
 - [ ] Run `tests/http_flow_test.py`, `tests/gated_flow_test.py` and
-      `tests/mobile_screenout_test.py` against a throwaway database.
+      `tests/device_gate_test.py` against a throwaway database.
 - [ ] Run `scripts/predeploy_check.sh <copy-of-live-db>` before deploying over
       running sessions. It boots the candidate build against a **copy of the live
       database** and drives real participants over real HTTP — a fresh install

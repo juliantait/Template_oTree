@@ -76,7 +76,7 @@ EXIT_CODES = dict(
     no_consent=-1,       # declined consent
     comprehension=-2,    # disqualified: failed the comprehension check
     tab_monitor=-3,      # disqualified: AI-safety / tab-switch monitor
-    screened_out=-4,     # phone screened out before consent (mobile_screenout)
+    screened_out=-4,     # device screened out at entry (allowed_devices gate)
 )
 
 # --- recruitment profiles (STUDY TYPE axis) ----------------------------------
@@ -112,11 +112,11 @@ RECRUITMENT_PROFILES = {
         collect_bank_details=False,  # Prolific pays through the platform
         collect_demographics=False,  # Prolific supplies demographics in its own export
         quiz_reread=False,           # no re-read pass online; comprehension_dq instead
-        # NB: `mobile_screenout` is deliberately NOT listed here. It is a
-        # Prolific-block option but its own decision: selecting the prolific
-        # study type must never start screening phones out on its own. It falls
-        # through to the SESSION_CONFIG_DEFAULTS baseline (0 = off) and is
-        # turned on by setting it explicitly on a config.
+        # NB: `allowed_devices` is deliberately NOT listed here. It sits in the
+        # Prolific block but is its own decision: selecting the prolific study
+        # type must never start screening devices out on its own. It falls
+        # through to the SESSION_CONFIG_DEFAULTS baseline (all four types = no
+        # gate) and is narrowed explicitly on a config.
     ),
     # There is deliberately NO 'testing' profile: clickthrough loosenings are
     # the DEBUG axis (env-driven), not a study type. For a clickthrough config,
@@ -133,7 +133,7 @@ PROLIFIC_CODE_PLACEHOLDERS = ('REPLACE_CC', 'REPLACE_NC', 'REPLACE_DQ', 'REPLACE
 # Appended as ?v=... to every CSS/JS href so a redeploy is never served a stale
 # cached asset. BUMP THIS ON EVERY CHANGE to a file under _static/. Each app
 # exposes it as C.STATIC_VERSION, which is what the templates read.
-STATIC_VERSION = '2'
+STATIC_VERSION = '3'
 
 
 SESSION_CONFIG_DEFAULTS = dict(
@@ -168,6 +168,14 @@ SESSION_CONFIG_DEFAULTS = dict(
     quiz_bonus=5,                # bonus for passing the quiz on the first attempt
     num_rewarded=2,              # how many rounds are randomly selected for payment
     collect_bank_details=False,  # lab-style IBAN/BIC/SEPA payment collection
+    # Whether the consent page states the study's LENGTH and FEE ("This study
+    # takes about 30 minutes. You will receive a payment of ... plus any
+    # additional earnings"). Shipped OFF (Julian, 2026-08-11): the sentence is
+    # not wanted by default and is the only place `expected_duration_minutes`
+    # and `showup` reach the participant. It stays behind this flag rather than
+    # being deleted because the next study's ethics text may REQUIRE the fee to
+    # be stated, and that must not need a template edit.
+    show_duration_and_fee=False,
 
     # =========================================================================
     # GAME AND DESIGN
@@ -239,23 +247,44 @@ SESSION_CONFIG_DEFAULTS = dict(
     # survives to launch.
     capture_participant_id=False,   # capture an external (Prolific) ID at entry
     completion_redirects=False,     # send participants back to Prolific with a code
-    # MOBILE SCREEN-OUT — 0 = OFF (default), 1 = ON. Its own switch, and
-    # deliberately NOT part of the prolific profile bundle: choosing the
-    # prolific study type must NOT turn it on. Someone screening out phones is
-    # making a design decision, so they say so explicitly on the config.
-    #   0: the phone check has NO participant-visible effect whatsoever — every
-    #      device proceeds normally (device_capture still RECORDS is_mobile as
-    #      measurement; it never blocks anyone).
-    #   1: the entry request's User-Agent is checked SERVER-SIDE before the
-    #      consent page is rendered (before.welcome.get -> _apply_mobile_screenout).
-    #      A phone never sees consent: it is recorded with
-    #      EXIT_CODES['screened_out'] (-4) and redirected straight to the outro
-    #      ending, which returns it to Prolific with error_code.
-    mobile_screenout=0,
+    # DEVICE ALLOW-LIST — which device types may take part. A study STATES the
+    # devices it accepts; everything else is screened out at entry. It replaced
+    # the old `mobile_screenout` 0/1 flag on 2026-08-11, which could only ever
+    # express "no phones".
+    #
+    # THE FOUR TYPES ARE 'phone', 'tablet', 'computer' and 'unknown', and there
+    # are only four:
+    #   * 'computer' COVERS BOTH LAPTOPS AND DESKTOPS. A browser does not expose
+    #     the form factor of a computer — neither the User-Agent nor the client
+    #     hints (Sec-CH-UA-Mobile / Sec-CH-UA-Platform / navigator.userAgentData)
+    #     distinguish a laptop from a tower, and battery, touch and screen size
+    #     do not either (a desktop can have a touch screen; a laptop can sit
+    #     docked to a 27" monitor). THERE IS NO 'laptop' TYPE AND ONE CANNOT BE
+    #     ADDED — a study that truly needs that has to ask the participant.
+    #   * 'unknown' is its own type: the detection could not identify the
+    #     device, or the User-Agent was absent, blank or stripped by a privacy
+    #     tool. Whether such a participant may take part is a study's decision,
+    #     so it is listed here like the others and can be admitted or excluded
+    #     without a code change.
+    #
+    # THE DEFAULT IS ALL FOUR = THE GATE IS OFF, and that safety property is
+    # deliberate: with everything permitted the check has NO participant-visible
+    # effect whatsoever (device_capture still RECORDS the type as measurement;
+    # it never blocks anyone). Narrow the list and the excluded types never see
+    # consent — the entry request's User-Agent is classified SERVER-SIDE before
+    # the consent page is rendered (before.welcome.get -> _apply_device_gate),
+    # the participant is recorded with EXIT_CODES['screened_out'] (-4) plus the
+    # DETECTED TYPE as the screen-out cause, and is walked straight to the outro
+    # ending, which returns them to Prolific with error_code.
+    #
+    # NOT part of any recruitment profile: choosing the prolific study type must
+    # never start screening devices out on its own. A comma-separated string is
+    # accepted as well as a list, e.g. allowed_devices='computer'.
+    allowed_devices=['phone', 'tablet', 'computer', 'unknown'],
     cc_code='REPLACE_CC',        # normal completion
     noconsent_code='REPLACE_NC', # declined consent
     dq_code='REPLACE_DQ',        # disqualified (comprehension / tab monitor)
-    error_code='REPLACE_ERR',    # screened out at entry (mobile_screenout)
+    error_code='REPLACE_ERR',    # screened out at entry (device allow-list)
 
     # =========================================================================
     # TESTING AND DEV  (the DEBUG axis' config-side values)
@@ -376,7 +405,7 @@ PARTICIPANT_FIELDS = [
     'comprehension_disqualified',  # comprehension-DQ authoritative flag
     'instructions_reread_used',    # lab: the one-time re-read pass was taken
     'device_info',          # dict of captured device/screen info, if enabled
-    'screened_out',         # mobile screen-out gate removed them before consent
+    'screened_out',         # entry device gate removed them before consent
 ]
 # Description of PARTICIPANT_FIELDS:
 # - temp_data: Temporary storage for any participant-specific data during the session.
@@ -394,7 +423,7 @@ PARTICIPANT_FIELDS = [
 # - instructions_reread_used: True once a lab participant enters the second
 #   instructions pass (quiz_reread module). Consumed on entry, not on offer.
 # - device_info: captured device/screen dict when device_capture is on.
-# - screened_out: True when the mobile_screenout gate removed the participant
+# - screened_out: True when the entry device gate (allowed_devices) removed the participant
 #   before the consent page (exit_code -4). Authoritative flag: every page
 #   between entry and the ending checks it, exactly like the tab monitor's.
 

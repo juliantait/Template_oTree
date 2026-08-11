@@ -8,7 +8,17 @@
 <div class="experimental-screen">
     <div class="screen-card">
         <div class="experimental-header">
-            <h2 class="header-title">Round {{ round_count }} Payoff</h2>
+            {# The same progress strip as the task screen (change_requests
+               item 7) — the two task pages of a round must not disagree about
+               where the participant is. The title keeps only the word the strip
+               does not say. #}
+            <div class="progress-strip">
+                <div class="progress-count">Round {{ round_count }} of {{ rounds_total }}</div>
+                <div class="progress-track">
+                    <div class="progress-fill" style="width: {{ progress_pct }}%;"></div>
+                </div>
+            </div>
+            <h2 class="header-title">Payoff</h2>
         </div>
         <div class="experimental-content">
             <div class="section-text">

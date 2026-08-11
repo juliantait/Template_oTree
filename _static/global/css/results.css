@@ -1,5 +1,103 @@
 /* Outro results */
 
+/* --- the payment receipt (change_requests item 11) ---------------------------
+   Ported from the reference build's payment screen: a compact block holding a
+   thank-you line, the headline earnings figure and the composition as
+   label/amount rows. Deliberately NARROW (a receipt, not a full-width panel)
+   and CENTRED in the card, which is where this template differs from the
+   reference — Julian asked for the summary block centred.
+   THE FIGURES ARE REAL: every row is a value from Results.vars_for_template,
+   i.e. from what compute_final_payoff actually paid. Nothing here is arithmetic
+   done in the template, so the breakdown cannot drift from the payment. */
+.payment-summary {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(12px, 2vw, 18px);
+    width: 100%;
+    max-width: 340px;
+    margin-inline: auto;
+    text-align: left;
+}
+
+.payment-greeting { margin: 0; text-align: center; color: var(--ink-soft); }
+
+/* headline earnings figure */
+.payout {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    background: var(--accent-soft);
+    border: 1px solid #cddcfb;
+    border-radius: var(--r-lg);
+    padding: clamp(18px, 3vw, 26px);
+}
+
+.payout-label {
+    font-size: .8em;
+    font-weight: 650;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--accent);
+}
+
+.payout-total {
+    font-size: clamp(34px, 5vw, 46px);
+    font-weight: 720;
+    line-height: 1.05;
+    color: var(--ink);
+    letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
+}
+
+/* the breakdown lines */
+.payout-lines { display: flex; flex-direction: column; gap: 0; }
+
+.payout-line {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: .62em 0;
+    border-bottom: 1px solid var(--line);
+    font-size: .95em;
+}
+
+.payout-line:last-child { border-bottom: 0; }
+
+.payout-line.total {
+    font-weight: 680;
+    color: var(--ink);
+    border-top: 2px solid var(--line-strong);
+}
+
+.payout-line .amount {
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    font-weight: 620;
+}
+
+/* The notes under the receipt (processing time, the SEPA warning) and the line
+   that introduces the per-round table. Centred with the receipt. */
+.results-notes { text-align: center; }
+.results-lead { margin: 0 0 4px; }
+
+/* --- SHORT VIEWPORTS: get the WHOLE receipt above the fold -------------------
+   Measured 2026-08-11 at 1280x720 (the commonest participant display): the
+   receipt's "Total" row — the line that proves the breakdown adds up — ended
+   20px below the fold, so it was cut and dimmed by the scroll fade. The whole
+   point of this page is that a participant reads what they earned, so the
+   rhythm tightens on a short screen exactly as base.css does for the card:
+   SPACING ONLY, no copy and no component changes. Buys ~48px, which is enough
+   to clear the fold at both 720p and on a phone. The headline figure stays
+   large — it is the number that matters most. */
+@media (max-height: 820px) {
+    .payment-summary { gap: 10px; }
+    .payout { padding: 12px; }
+    .payout-total { font-size: clamp(30px, 4vw, 36px); }
+    .payout-line { padding: .45em 0; }
+    .results-notes { font-size: .94em; }
+}
+
 /* Wide tables scroll inside their own container rather than being clamped to the
    reading measure or forcing the page to scroll sideways (house convention). */
 .table-scroll {
