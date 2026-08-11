@@ -63,6 +63,12 @@
     line-height: 1.5;
     margin: 0 0 14px;
 }
+/* base.css gives every <strong> the body ink colour, which lands as dark navy
+   ON RED here — the emphasised "N seconds", the one number the participant must
+   read, was the least legible text on the overlay (measured in the render check,
+   2026-08-10). This chrome is white-on-red by design; keep emphasis inside it
+   white and let weight do the emphasising. */
+.tabmon-overlay strong { color: #fff; }
 .tabmon-countdown {
     font-size: 3.2em;
     font-weight: 700;

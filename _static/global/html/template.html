@@ -1,6 +1,6 @@
 {{ block content }}
 {% include '_static/global/html/css_bundle.html' %}
-<script src="{% static 'global/js/global.js' %}?v={{ session.config.static_version }}"></script>
+<script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
 
 <!-- ===========================================================================
      DESIGN REFERENCE — every shared component, in use.
@@ -112,6 +112,11 @@
                       placeholder="A free-text control keeps the full card width — it is a control, not running text."></textarea>
 
             <p class="hint">A hint: small, quiet, for asides that must not compete with the body copy.</p>
+
+            <!-- LOGO STRIP: the last thing IN the scroll region, never a pinned
+                 sibling of it. Pinned it costs ~90px of every card for marks
+                 that need not be on screen at all times. -->
+            {% include '_static/global/html/logo_section.html' %}
         </div>
 
         <!-- BUTTON ROW: pinned to the FOOT of the card. The secondary action is
@@ -121,8 +126,6 @@
             <button type="button" class="next-button ghost" onclick="window.history.back();">Back</button>
             <input type="submit" value="Next" class="next-button">
         </div>
-
-        {% include '_static/global/html/logo_section.html' %}
 
     </div>
 </div>
@@ -171,13 +174,13 @@
                     </div>
                 </div>
             </div>
+
+            {% include '_static/global/html/logo_section.html' %}
         </div>
 
         <div class="button-row">
             <input type="submit" value="Next" class="next-button">
         </div>
-
-        {% include '_static/global/html/logo_section.html' %}
     </div>
 </div>
 

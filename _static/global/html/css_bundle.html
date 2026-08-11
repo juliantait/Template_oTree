@@ -25,8 +25,8 @@
 
    Adding a stylesheet? Add it HERE, after base.css, so every page picks it up in
    one place — never as a stray <link> in one template. #}
-<link rel="stylesheet" href="{% static 'global/css/base.css' %}?v={{ session.config.static_version }}">
-<link rel="stylesheet" href="{% static 'global/css/instructions.css' %}?v={{ session.config.static_version }}">
-<link rel="stylesheet" href="{% static 'global/css/results.css' %}?v={{ session.config.static_version }}">
-<link rel="stylesheet" href="{% static 'global/css/quiz.css' %}?v={{ session.config.static_version }}">
-<link rel="stylesheet" href="{% static 'global/css/demographics.css' %}?v={{ session.config.static_version }}">
+<link rel="stylesheet" href="{% static 'global/css/base.css' %}?v={{ C.STATIC_VERSION }}">
+<link rel="stylesheet" href="{% static 'global/css/instructions.css' %}?v={{ C.STATIC_VERSION }}">
+<link rel="stylesheet" href="{% static 'global/css/results.css' %}?v={{ C.STATIC_VERSION }}">
+<link rel="stylesheet" href="{% static 'global/css/quiz.css' %}?v={{ C.STATIC_VERSION }}">
+<link rel="stylesheet" href="{% static 'global/css/demographics.css' %}?v={{ C.STATIC_VERSION }}">

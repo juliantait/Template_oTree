@@ -1,0 +1,47 @@
+# Build context exclusions. The Dockerfile does `COPY . .`, so ANYTHING not
+# listed here ends up in the image — keep local-only, regenerable and private
+# material out. When you add a local-only directory to .gitignore, add it here
+# too; the two lists overlap but are not the same (this one also drops the .git
+# directory itself and the host-side launchers).
+#
+# NB: a line here is a pattern, not a pattern plus a comment — `#` only starts a
+# comment at the beginning of a line.
+
+# --- never bake a database into the image ------------------------------------
+# The container creates its own at /app/data/db.sqlite3 on first boot.
+db.sqlite3
+db.sqlite3-wal
+db.sqlite3-shm
+**/db.sqlite3
+**/db.sqlite3-wal
+**/db.sqlite3-shm
+data/
+
+# --- virtualenvs and byte-code caches (host-built, wrong platform, huge) -----
+.venv/
+.venv-linux/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# --- version control ----------------------------------------------------------
+.git/
+.gitignore
+.gitattributes
+
+# --- agent scaffolding and regenerable outputs --------------------------------
+_ai/
+previews/
+.preview_state.json
+.preview_config.json
+
+# --- private / host-specific / never needed at run time -----------------------
+MACMINI_HOSTING.md
+.env
+*.command
+*.log
+*.bak
+.DS_Store
+**/.DS_Store
+Dockerfile
+.dockerignore

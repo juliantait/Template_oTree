@@ -77,12 +77,27 @@ END_MARKERS = (
 )
 
 
-def build_payload(inputs, overrides, answers):
+# Radio groups whose answer is a DECISION, not a formality. An unmapped radio
+# group falls back to "pick the first option", which is fine for an opinion item
+# and disastrous for a routing one: the consent radio ships unticked (it must be
+# an affirmative act), so a first-option pick is only the consenting path by
+# luck of the order the choices happen to be written in. Reorder them and every
+# generic walk would quietly measure the NO-CONSENT flow and still report PASS.
+DECISION_RADIOS = {
+    'consent': 'True',
+}
+
+
+def build_payload(inputs, overrides, answers, warn=True):
     payload = {}
     radios = {}
     for f in inputs:
         name = f.get('name')
         if not name or f['type'] in ('submit', 'button', 'reset'):
+            continue
+        if (f['type'] == 'radio' and name in DECISION_RADIOS
+                and name not in overrides and name not in answers):
+            payload[name] = DECISION_RADIOS[name]
             continue
         if name in overrides:
             payload[name] = overrides[name]
@@ -106,6 +121,12 @@ def build_payload(inputs, overrides, answers):
             # confirmation matches because every text field gets the same value.
             payload.setdefault(name, '25')
     for name, val in radios.items():
+        # Say so out loud rather than picking silently: a group nobody has
+        # decided about is answered by document order, which is not a decision.
+        if warn and name not in DECISION_RADIOS:
+            print(f"    [walker] no answer given for radio {name!r}; taking the "
+                  f"first option {val!r}. If this choice ROUTES the "
+                  f"participant, add it to DECISION_RADIOS or override it.")
         payload.setdefault(name, val)
     return payload
 

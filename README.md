@@ -15,7 +15,7 @@ The project root holds the four oTree apps plus a small set of top-level items:
 | `before/` `intro/` `main/` `outro/` | the four oTree apps, run in this order (see App Timeline). `intro/` also holds `generate_instructions_preview.py`. |
 | `_static/` | shared CSS/JS/HTML/images (the design system and `template.html`). |
 | `scripts/` | operational scripts: `start.sh`, `prelaunch_check.py` (config guard), `predeploy_check.sh`/`.py` (upgrade gate), `export_data.py`, `format_session_data.py`, `set_up_otree.bat`. |
-| `tests/` | HTTP-driven flow tests (see "Testing"). |
+| `tests/` | HTTP-driven flow tests, escaping/frozen-config regressions, and the browser render check (see "Testing"). |
 | `prolific/` | Prolific operational guide (`Prolific_running.md`). |
 | `skills_claude/` | authoring playbooks (e.g. writing instructions). |
 | `settings.py` | oTree settings: session configs, recruitment profiles, feature flags, completion codes. |
@@ -266,27 +266,54 @@ You can share the instructions with coauthors who don't have the codebase instal
   or `$SESSION_DATA_EMAIL`).
 - `scripts/set_up_otree.bat` : starts oTree on the experimenter's Windows PC in
   the lab.
-- `tests/` : HTTP-driven flow tests (see "Testing" below).
+- `tests/` : HTTP-driven flow tests, escaping and frozen-config regression
+  tests, and a measured browser render check (see "Testing" below).
 
 > **`common.py` stays at the project root** — it is *not* in `scripts/`. All four
 > apps do a top-level `import common`, and oTree puts the project root (not
 > `scripts/`) on `sys.path`, so moving it would break every app's import.
 
 ## Testing
-Bots alone are not sufficient here: several pages rely on JavaScript-produced
-hidden fields, and the template must not 500 when those arrive **empty** (JS
-disabled/blocked). `tests/http_flow_test.py` boots nothing itself — point it at a
-running server on a throwaway database and it drives each config's form pages
-over real HTTP, including a POST with the hidden fields deliberately empty, and
-asserts no 500s. See the header of that file for usage.
 
-- `tests/gated_flow_test.py` — the lab-vs-Prolific gated flow (re-read offer,
-  comprehension DQ, pilot feedback).
-- `tests/mobile_screenout_test.py` — the `mobile_screenout` gate at **both**
-  settings, with a phone and a desktop **User-Agent** (the only way to test it:
-  the decision is server-side on the entry request, before consent, so no bot
-  and no client-side check can exercise it). Asserts what each of the four
-  combinations sees and the exit code recorded.
+There are several kinds of check here, and that is deliberate: each one is
+evidence about a different thing, and each is blind to what the others see.
+**Bots are not on the list.** `otree test` bots submit through the Python API —
+they never issue an HTTP POST, never render a page, never leave a
+JavaScript-filled field empty and never carry a User-Agent, and three live
+outages in the pilot study this template was distilled from went green under
+bots while real participants got a 500. Everything below drives the real thing.
+
+Writing a new one: read **`skills_claude/writing_tests.md`** first — it teaches
+the method (drivers, the no-JS submit, visible-text assertions, escaping, frozen
+configs, browser rendering checks) rather than just listing these files.
+
+| Check | What it is evidence of | What it CANNOT catch | When to run it |
+|---|---|---|---|
+| **`tests/http_flow_test.py`** — walks every shipped config entry→ending over real HTTP, including a POST with the JS-produced hidden fields deliberately **empty** | a participant can complete the study in each config; no page 5xxs; the no-JS participant is not stranded | anything about how a page looks or reads; anything that only breaks for an EXISTING participant | after any change to a page, form field or flow |
+| **`tests/gated_flow_test.py`** — lab vs Prolific scenarios: the one-time re-read offer, comprehension DQ, pilot feedback, the two-variant consent rule | the three orthogonal controls actually route people where the design says | rendering; data written to the export | after touching `settings.py` profiles, gates, or the intro/outro flow |
+| **`tests/mobile_screenout_test.py`** — the entry gate at **both** settings with a phone and a desktop User-Agent | a gate decided server-side from the entry REQUEST fires, and does nothing at all when off | client-side behaviour; anything past entry | after touching the entry gate or `mobile_screenout` |
+| **`tests/xss_escaping_test.py`** — hostile participant- and URL-supplied values through the real entry URL, in production mode | every hand-interpolated value is HTML-escaped (oTree's ibis does **not** auto-escape) and round-trips un-truncated | injection through anything you did not render in the walk | after adding any template that prints a participant- or URL-supplied value |
+| **`tests/frozen_config_test.py`** — deletes parameters from a created session's stored config, then walks it | a session created BEFORE a parameter existed still completes; `common.cfg` falls back to the shipped default | a schema change (that needs a real database copy — see the pre-deploy gate) | whenever you add a session-config parameter (and add its name to the test's `STRIPPED` list) |
+| **`tests/render_check.py`** — real headless Chromium at three viewports; screenshots to `_ai/render_check/`, assertions on measured element geometry and on rendered pixels | the pages are actually laid out, visible, scrollable and clickable — the failures that produce no error at all | data correctness; anything server-side | after any CSS or template-structure change |
+| **`tests/example_quiz_content_test.py`** — **an EXAMPLE to copy**, not a suite member | what a page SAYS (prompts and options reach the participant, in order; answers absent in production) | anything you did not assert — content tests are only as good as their list | write your study's own version when you write your quiz |
+| **`scripts/prelaunch_check.py`** — static config guard, no server, instant | the configuration is safe to open to participants: no `REPLACE_*` completion codes, `DEBUG` off, no testing loosenings left on | anything dynamic — it never runs a page | in the target environment, before opening a study |
+| **`scripts/predeploy_check.sh`** — boots the candidate build against a **copy of the live database** and drives real participants | the *upgrade* is safe: an existing mid-flow participant, a fresh one and a no-JS one all survive the new code | placeholder codes and other configuration problems | before every deploy onto a database that has participants |
+
+**The pre-deploy upgrade check is SKIPPED when there is no database.** Run with
+no argument it reports the upgrade-path legs as **NOT TESTED** (never PASS) and
+prints `THE UPGRADE PATH WAS NOT TESTED` in a banner. For this template, which
+has no live data, that is expected and correct. **It must never be treated as a
+pass for a study that has live sessions** — a fresh database is structurally
+incapable of reproducing the failures the gate exists for. Pass `--require-db`
+(or `PREDEPLOY_REQUIRE_DB=1`) in any pipeline for a study with participants, so
+a missing database copy fails the deploy instead of quietly passing degraded.
+
+Running them: the first three want a server you started on a **throwaway**
+database (`OTREE_ADMIN_PASSWORD=admin otree devserver 8000`, then
+`python tests/http_flow_test.py http://localhost:8000`). The rest boot oTree
+in-process against their own temp database and need no server —
+`python tests/frozen_config_test.py`. `render_check.py` needs a headless
+Chromium; on a box without root see `_ai/headless_chromium_recipe.md`.
 
 ### Two gates: pre-launch and pre-deploy (they check different things)
 
@@ -387,6 +414,54 @@ code is still a `REPLACE_*` placeholder.
 
 For the operational walkthrough — creating the Prolific study, wiring the URLs,
 and the finish-screen routing in practice — see **`prolific/Prolific_running.md`**.
+
+## Docker (build and run the container)
+The root `Dockerfile` builds a self-contained image that serves the study, so
+every study copied from this template inherits one. It bakes in nothing but
+Python 3.12, a pinned oTree and the code: **no database is in the image** — the
+container creates `/app/data/db.sqlite3` on first boot and keeps it across
+restarts, so mount that directory as a volume if the data matters.
+
+```bash
+docker build -t otree-template .
+
+docker run -d --name otree-template --restart unless-stopped \
+  -p 8101:8101 \
+  -v otree-template-db:/app/data \
+  -e OTREE_PRODUCTION=1 \
+  -e OTREE_AUTH_LEVEL=STUDY \
+  -e OTREE_REST_KEY=<rest-key> \
+  -e OTREE_ADMIN_PASSWORD=<password> \
+  otree-template
+```
+
+Then open `http://localhost:8101/` (admin) or `/demo`. Port **8101** is the
+standing test-hosting convention below; keep it unless you have a reason not to.
+To bind a session to the `experiment` room, run the host-side script against the
+container: `OTREE_BASE_URL=http://localhost:8101 scripts/start.sh`.
+
+Environment variables that matter:
+
+- **`OTREE_PRODUCTION`** — set it to `1` for anything a participant touches.
+  Unset means DEBUG: skip controls and quiz solutions in the browser. It is the
+  DEBUG axis, so it is deliberately *not* baked into the image — a clickthrough
+  and a real run are the same image, one flag apart.
+- **`OTREE_AUTH_LEVEL`** — `STUDY` locks `/demo` and the admin panel behind the
+  login and turns on REST authentication. Unset is wide open: fine on localhost,
+  never once the container is reachable from outside.
+- **`OTREE_REST_KEY`** — required once `OTREE_AUTH_LEVEL=STUDY`: the value REST
+  calls must send as the `otree-rest-key` header. `scripts/start.sh` reads the
+  same variable, and refuses to run without it under `STUDY`.
+- **`OTREE_ADMIN_PASSWORD`** (with `OTREE_ADMIN_USERNAME`, default `admin`) — the
+  admin login. The dev fallback is `admin`/`admin`, so set a real one on anything
+  exposed. `OTREE_SECRET_KEY` has a dev fallback too and deserves the same.
+
+`FORWARDED_ALLOW_IPS=*` is baked into the image on purpose: behind a
+TLS-terminating proxy, uvicorn must trust `X-Forwarded-Proto` or it builds
+absolute `http://` links on an `https://` site and they break. The other two
+knobs are `PORT` (default `8101`) and `RESET_DB=1`, which wipes the database at
+boot — necessary after a schema change, and it strands anyone mid-run, so never
+pass it casually.
 
 ## Hosting an oTree experiment online (Mac mini)
 See `MACMINI_HOSTING.md` for the full self-contained guide: how the Mac mini serves an oTree experiment (Docker container + Cloudflare Tunnel subdomain), the problems we hit and how we solved them, and a step-by-step recipe to deploy a brand-new experiment. That file is gitignored (it holds private infra details) so it stays local only.

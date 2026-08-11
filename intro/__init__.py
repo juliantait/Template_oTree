@@ -2,12 +2,18 @@ from otree.api import *
 from otree import settings as otree_settings
 import json
 import common
+from settings import STATIC_VERSION
 from .quiz_items import QUIZ_ITEMS
 
 doc = """
 Intro
 """
 class C(BaseConstants):
+    # Asset cache-buster for this BUILD (settings.STATIC_VERSION).
+    # Templates read C.STATIC_VERSION, never session.config.static_version:
+    # a session config is frozen at creation, so the template read 500s
+    # for in-flight participants when the parameter post-dates them.
+    STATIC_VERSION = STATIC_VERSION
     NAME_IN_URL = 'Introduction'
     # Instructions + quiz are individual; no grouping.
     PLAYERS_PER_GROUP = None
@@ -78,7 +84,7 @@ def reread_available(player) -> bool:
     # Participant fields via .vars.get(), never getattr() (KeyError trap).
     if player.participant.vars.get('instructions_reread_used'):
         return False
-    threshold = int(cfg.get('comprehension_max_failures', 2))
+    threshold = int(common.cfg(cfg, 'comprehension_max_failures'))
     failed = player.participant.vars.get('failed_attempts', 0) or 0
     return failed >= threshold
 
@@ -147,7 +153,7 @@ class quiz(Page):
         # verify_quiz=False is a DEBUG loosening (clickthrough), honoured only
         # while DEBUG is on — in production validation always runs, whatever
         # the config says.
-        if otree_settings.DEBUG and not player.session.config.get('verify_quiz', True):
+        if otree_settings.DEBUG and not common.cfg(player.session.config, 'verify_quiz'):
             return
         # A participant taking the re-read offer is not submitting answers, so
         # don't validate them. Honoured ONLY while the offer is actually open
@@ -171,7 +177,7 @@ class quiz(Page):
             # again — they are flagged and allowed through to the disqualified
             # ending (see app_after_this_page and the outro Disqualified page).
             if cfg.get('comprehension_dq'):
-                max_fail = int(cfg.get('comprehension_max_failures', 2))
+                max_fail = int(common.cfg(cfg, 'comprehension_max_failures'))
                 if player.participant.failed_attempts >= max_fail:
                     player.participant.comprehension_disqualified = True
                     common.set_exit_code(

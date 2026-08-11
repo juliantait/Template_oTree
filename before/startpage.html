@@ -2,7 +2,12 @@
 {% include '_static/global/html/css_bundle.html' %}
 
 <div class="experimental-screen">
-    <div class="screen-card">
+    {# NARRATIVE family, like the consent and ending screens: this is a short
+       piece of running copy, not a form or a table. Without the family class it
+       fell through to the card's flush-left default AND to the old global
+       justify on .section-text, so its single sentence rendered justified with
+       stretched word spacing. #}
+    <div class="screen-card narrative-card">
         <div class="experimental-header">
             {% include '_static/global/html/welcome_header.html' %}
         </div>
@@ -10,19 +15,21 @@
             <div class="section-text">
                 The experiment will start when everyone has taken their places.
             </div>
+
+            <!-- Inside the scroll region, not pinned — see base.css "Pinned
+                 regions": only the header strip and the button row are pinned. -->
+            {% include '_static/global/html/logo_section.html' %}
         </div>
 
         <!-- OPTIONAL NEXT BUTTON   -->
         <!-- <div class="button-row">
             <input type="submit" value="Next" class="next-button">
         </div> -->
-        
-        {% include '_static/global/html/logo_section.html' %}
 
     </div>
 </div>
 
-<script src="{% static 'global/js/global.js' %}?v={{ session.config.static_version }}"></script>
+<script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
 
 {{ endblock }}
 

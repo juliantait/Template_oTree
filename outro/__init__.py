@@ -1,6 +1,7 @@
 from otree.api import *
 import numbers, json
 import common
+from settings import STATIC_VERSION
 from .payment_rule import select_random_payouts
 
 PROLIFIC_COMPLETE_URL = "https://app.prolific.com/submissions/complete?cc="
@@ -48,6 +49,11 @@ doc = """
 Outro.
 """
 class C(BaseConstants):
+    # Asset cache-buster for this BUILD (settings.STATIC_VERSION).
+    # Templates read C.STATIC_VERSION, never session.config.static_version:
+    # a session config is frozen at creation, so the template read 500s
+    # for in-flight participants when the parameter post-dates them.
+    STATIC_VERSION = STATIC_VERSION
     NAME_IN_URL = 'outro'
     PLAYERS_PER_GROUP = None
     NUM_ROUNDS = 1
@@ -242,7 +248,10 @@ def compute_final_payoff(p):
     # Read participant vars with .vars.get(), never getattr() (KeyError trap; see conventions.md).
     payoffs_vector = p.participant.vars.get('payoff_vector', []) or []
     round_payoffs = extract_round_payoffs(payoffs_vector, missing_payoff_values)
-    num_rewarded = p.session.config['num_rewarded']
+    # common.cfg, never []-indexing: a session created before a parameter
+    # existed does not carry it, and a KeyError here is a 500 on the payment
+    # page — the worst possible place (CLAUDE.md).
+    num_rewarded = common.cfg(p.session.config, 'num_rewarded')
     payouts = select_random_payouts(round_payoffs, num_rewarded)
 
     # Calculate the experiment payoff from i) the selected payoffs, ii) the quiz bonus and iii) the showup fee
@@ -250,10 +259,10 @@ def compute_final_payoff(p):
     # Quiz bonus awarded only if no failed attempts and quiz_bonus is positive
     # (.vars.get() rather than getattr()/attribute access — KeyError trap.)
     participant_failed_attempts = p.participant.vars.get('failed_attempts', 0) or 0
-    quiz_bonus = p.session.config['quiz_bonus']
+    quiz_bonus = common.cfg(p.session.config, 'quiz_bonus')
     quiz_bonus_awarded = quiz_bonus if (participant_failed_attempts == 0 and quiz_bonus > 0) else 0
     p.quiz_bonus_awarded = quiz_bonus_awarded
-    showup_fee = p.session.config['showup']
+    showup_fee = common.cfg(p.session.config, 'showup')
     p.earned = showup_fee + p.selected_sum + p.quiz_bonus_awarded
     p.payouts = json.dumps(payouts)
     p.all_round_payoffs = json.dumps(round_payoffs)
@@ -314,14 +323,14 @@ class Results(Page):
         ]
         return{
             'earned': cu(self.earned),
-            'showup': cu(self.session.config['showup']),
+            'showup': cu(common.cfg(self.session.config, 'showup')),
             'selected_sum': cu(self.selected_sum),
             'quiz_bonus': cu(self.quiz_bonus_awarded),
             'show_quiz_bonus': self.quiz_bonus_awarded > 0,
             'sepa': self.sepa,
             'payouts': payouts,
             'payout_rows': payout_rows,
-            'num_rewarded': self.session.config['num_rewarded'],
+            'num_rewarded': common.cfg(self.session.config, 'num_rewarded'),
             'completion_redirects': bool(self.session.config.get('completion_redirects')),
         }
 

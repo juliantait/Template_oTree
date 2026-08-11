@@ -73,13 +73,17 @@
                 If you have any questions at any time, please contact the
                 researchers.
             </p>
+
+            {# The logo strip lives INSIDE the scroll region on purpose: as a
+               pinned sibling it cost ~90px of every card, which pushed the
+               consent options below the fold on a 1280x720 laptop. Only the
+               header strip and the button row are pinned. #}
+            {% include '_static/global/html/logo_section.html' %}
         </div>
 
         <div class="button-row">
             <input type="submit" value="Next" class="next-button">
         </div>
-
-        {% include '_static/global/html/logo_section.html' %}
     </div>
 </div>
 
@@ -103,9 +107,9 @@
 <input type="hidden" name="participant_id_url" id="participant_id_url" value="">
 {% endif %}
 
-<script src="{% static 'global/js/global.js' %}?v={{ session.config.static_version }}"></script>
+<script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
 {% if capture_participant_id or device_capture %}
-<script src="{% static 'global/js/device_capture.js' %}?v={{ session.config.static_version }}"></script>
+<script src="{% static 'global/js/device_capture.js' %}?v={{ C.STATIC_VERSION }}"></script>
 {% endif %}
 {% if capture_participant_id %}
 <script>

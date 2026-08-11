@@ -78,7 +78,7 @@
 </script>
 {{ endif }}
 {# global.js first: quiz.js calls its submitFormBehindVeil helper. #}
-<script src="{% static 'global/js/global.js' %}?v={{ session.config.static_version }}"></script>
-<script src="{% static 'global/js/quiz.js' %}?v={{ session.config.static_version }}"></script>
+<script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
+<script src="{% static 'global/js/quiz.js' %}?v={{ C.STATIC_VERSION }}"></script>
 
 {{ endblock }}

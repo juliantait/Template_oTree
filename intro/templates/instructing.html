@@ -5,7 +5,7 @@
 <!--------- This file dynamically updates to blocks in instructions_text.html. --------->
 
 {% include '_static/global/html/css_bundle.html' %}
-<script src="{% static 'global/js/global.js' %}?v={{ session.config.static_version }}"></script>
+<script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
 
 <!--------- Each step's title is the <h2> inside its instruction block in
             instructions_text.html — single source of truth, no fixed page
@@ -56,5 +56,5 @@
     </div>
 </div>
 
-<script src="{% static 'global/js/instructions.js' %}?v={{ session.config.static_version }}"></script>
+<script src="{% static 'global/js/instructions.js' %}?v={{ C.STATIC_VERSION }}"></script>
 {{ endblock }}
