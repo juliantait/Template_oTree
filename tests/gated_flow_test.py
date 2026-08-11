@@ -111,18 +111,32 @@ def advance_until(s, r, name_fragment, limit=40, overrides=None, answers=None):
 
 def scenario_lab_reread(base):
     print("[lab-reread]")
-    s, r = new_participant(base, 'lab', modified={'showup': 7.5, 'expected_duration_minutes': 45})
+    # show_duration_and_fee is switched ON for this scenario ONLY, because the
+    # flag ships OFF (change_requests item 1) and this is the one place the
+    # duration/fee sentence can be exercised at all. The prolific scenario below
+    # asserts the shipped default: no such sentence.
+    s, r = new_participant(base, 'lab', modified={'showup': 7.5,
+                                                  'expected_duration_minutes': 45,
+                                                  'show_duration_and_fee': True})
     r = advance_until(s, r, '/welcome/')
     check('contact and bank details are used only to arrange your payment'
           in visible_text(r.text), 'consent shows the LAB payment sentence')
-    check('45' in r.text and '7.50' in r.text,
-          'consent quotes config duration (45 min) and show-up fee (7.50)')
-    # THE TWO-VARIANT RULE: a page either mentions Prolific or it does not, and
-    # never CREED plus Prolific. The consent page is SHARED, so it must carry
-    # neither the lab's CREED header nor anything platform-specific — in EITHER
-    # variant. The CREED header lives only on before/startpage.html, the lab gate.
+    # Asserted on the RENDERED TEXT, not on the raw HTML: '45' and '7.50' occur
+    # in markup for all sorts of reasons, so an HTML-level check passes even
+    # when the sentence is not on the page at all.
+    text = ' '.join(visible_text(r.text).split())
+    check('45 minutes' in text and '7.50' in text,
+          f'with the flag ON, consent quotes the config duration (45 min) and '
+          f'show-up fee (7.50)')
+    # THE TWO-VARIANT RULE, as amended 2026-08-11 (items 12 + 14): the shared
+    # consent page still carries no Prolific PLUMBING (no ID field, no code) and
+    # never the CREED header, and the LAB variant never says the word at all —
+    # it points the participant at the experimenter in the room instead. Only
+    # the online variant's contact sentence names the platform (asserted below).
     check('Prolific' not in visible_text(r.text),
           'lab consent: participant never reads the word Prolific')
+    check('raise your hand to speak to the experimenter' in text,
+          'lab consent: the contact sentence points at the experimenter')
     check('Welcome to' not in visible_text(r.text),
           'lab consent: no CREED welcome header')
     check('name="participant_id_external"' not in r.text,
@@ -183,11 +197,29 @@ def scenario_prolific_dq(base):
           'consent shows the NON-LAB payment sentence')
     check('contact and bank details' not in r.text,
           'consent does NOT show the lab sentence')
-    # Same rule from the other side: the SHARED consent page must be free of
-    # Prolific wording and of the ID field on the Prolific variant too. Both
-    # belong on before/ConfirmProlificID, the only page that mentions Prolific.
-    check('Prolific' not in visible_text(r.text),
-          'prolific consent: participant never reads the word Prolific')
+    # Same rule from the other side, as amended 2026-08-11 (change_requests
+    # items 13 + 14): the ID FIELD still belongs on ConfirmProlificID and
+    # nothing platform-specific may leak onto this page — but the CONTACT
+    # sentence now names Prolific, because online that is the only way to reach
+    # a researcher. Exactly once, and only there.
+    ptext = ' '.join(visible_text(r.text).split())
+    check(ptext.count('Prolific') == 1,
+          f'prolific consent: Prolific is named exactly once '
+          f'(got {ptext.count("Prolific")})')
+    check('contact the researchers through Prolific' in ptext,
+          'prolific consent: …and that once is the contact sentence')
+    check('raise your hand' not in ptext.lower(),
+          'prolific consent: no lab wording online')
+    # The duration/fee sentence ships OFF (item 1) — this config does not turn
+    # it on, so it must not be here.
+    check('takes about' not in ptext and 'You will receive a payment' not in ptext,
+          'prolific consent: the duration/fee paragraph is hidden by default')
+    # The redundant field label above the consent options is gone (item 13),
+    # while the bold prompt above it stays.
+    check('Do you consent to take part?' not in ptext,
+          'prolific consent: the redundant question line is gone')
+    check('Please indicate whether you consent' in ptext,
+          'prolific consent: …but the bold prompt above the options stays')
     check('Welcome to' not in visible_text(r.text),
           'prolific consent: no CREED welcome header')
     check('name="participant_id_external"' not in r.text,

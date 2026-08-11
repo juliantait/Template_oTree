@@ -3,7 +3,7 @@
 Shared by the tests in this folder that need more than an HTTP client can reach:
 the session config as stored in the database (frozen-config simulation), the
 model rows behind a page, and the DEBUG/production switch. `http_flow_test.py`,
-`gated_flow_test.py` and `mobile_screenout_test.py` drive a server you started
+`gated_flow_test.py` and `device_gate_test.py` drive a server you started
 yourself; these drive oTree's own ASGI app inside the test process.
 
     from otree_inprocess import boot

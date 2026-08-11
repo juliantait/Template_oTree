@@ -72,8 +72,10 @@ STRIPPED = [
     # measurement
     'passive_capture', 'device_capture', 'collect_demographics',
     'collect_bank_details',
+    # consent-page copy switches
+    'show_duration_and_fee',
     # recruitment plumbing
-    'capture_participant_id', 'completion_redirects', 'mobile_screenout',
+    'capture_participant_id', 'completion_redirects', 'allowed_devices',
     'cc_code', 'noconsent_code', 'dq_code', 'error_code',
     # misc
     'pilot_feedback', 'static_version',

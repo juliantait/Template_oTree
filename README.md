@@ -68,22 +68,32 @@ pattern.)
 
 Modules (all off by default): `capture_participant_id`, `completion_redirects`,
 `tab_monitor`, `comprehension_dq`, `quiz_reread`, `passive_capture`,
-`device_capture`, `mobile_screenout`, `collect_bank_details`,
+`device_capture`, `collect_bank_details`,
 `collect_demographics`, `pilot_feedback`. Thresholds (`comprehension_max_failures`,
 `tab_monitor_*`) and Prolific codes (`cc_code`, `noconsent_code`, `dq_code`,
 `error_code`) are config values too. Each participant records a numeric
 `exit_code` (see `CODEBOOK.md`). `C.NUM_ROUNDS` is fixed at import — a config may
 run fewer rounds, never more.
 
-**`mobile_screenout` (0/1, default 0)** lives in the Prolific block but is
-*not* in the prolific profile bundle: selecting the prolific study type does
-**not** turn it on. At `0` the phone check has no participant-visible effect at
-all and every device proceeds normally. At `1`, the entry request's User-Agent
-is checked **server-side, before the consent page is rendered**: a phone never
-sees consent, is recorded with exit code `-4` (`screened_out`) and is sent
-straight to the outro ending (back to Prolific with `error_code`); a
-desktop/laptop sees consent as usual. The client-side `is_mobile` field that
-`device_capture` fills is measurement only and blocks nobody.
+**`allowed_devices` (default `['phone', 'tablet', 'computer', 'unknown']`)** is
+the entry DEVICE ALLOW-LIST: a study states the device types it accepts and
+everything else is screened out before consent. It lives in the Prolific block
+but is *not* in the prolific profile bundle — selecting the prolific study type
+does **not** narrow it. With the shipped list (all four types) the check has no
+participant-visible effect at all and every device proceeds normally. Narrow it
+and the entry request's User-Agent is classified **server-side, before the
+consent page is rendered**: an excluded device never sees consent, is recorded
+with exit code `-4` (`screened_out`) plus the DETECTED TYPE as its screen-out
+cause, and is sent straight to the outro ending (back to Prolific with
+`error_code`), which writes a sentence for that specific device. The
+client-side `is_mobile` / `device_type` values that `device_capture` fills are
+measurement only and block nobody.
+
+There are exactly four types, and **`computer` covers laptops AND desktops**: a
+browser cannot tell them apart — not from the User-Agent, not from client hints
+— so there is no `laptop` type and one cannot be added. `unknown` (no,
+blank or unrecognised User-Agent) is its own type, so admitting or excluding
+unidentifiable devices is a configuration choice, not a code change.
 
 Every participant field, exit code, stage timestamp and future-proofing spare
 column is documented in **`CODEBOOK.md`** (including the repurpose convention for
@@ -110,11 +120,11 @@ flowchart TD
 
     Start(["Opens the Prolific study link"]) --> Gate
     subgraph BEFORE ["before — entry"]
-        Gate{"mobile_screenout = 1?<br>server-side User-Agent check,<br>runs before consent is rendered"}
-        Gate -- "option 0 (default), or a desktop/laptop" --> Welcome
+        Gate{"device in allowed_devices?<br>server-side User-Agent check,<br>runs before consent is rendered"}
+        Gate -- "default list (all devices), or a permitted type" --> Welcome
         Welcome["welcome + consent<br>explicit consent question,<br>Prolific ID + device capture"]
     end
-    Gate -. "option 1 AND a phone:<br>consent is never shown" .-> EndedSO
+    Gate -. "a type the study excludes:<br>consent is never shown" .-> EndedSO
     Welcome -- "does not consent" --> EndedNC
     Welcome -- "consents" --> Instr1
 
@@ -160,7 +170,7 @@ flowchart TD
 | `-1` no_consent | Declined consent at entry | `outro` Ended → "Back to Prolific" | `noconsent_code` |
 | `-2` comprehension | Failed the quiz `comprehension_max_failures` times | `outro` Ended → "Back to Prolific" | `dq_code` |
 | `-3` tab_monitor | Tab-away violations reached the cap | `outro` Ended → "Back to Prolific" | `dq_code` |
-| `-4` screened_out | Phone stopped by the entry gate (only when `mobile_screenout=1`) | `outro` Ended → "Back to Prolific" (their FIRST page — consent is never shown) | `error_code` |
+| `-4` screened_out | Device stopped by the entry allow-list (only when `allowed_devices` is narrowed) | `outro` Ended → "Back to Prolific" (their FIRST page — consent is never shown) | `error_code` |
 
 > **The table above is the whole table:** every code in `settings.EXIT_CODES` is
 > set by real code and appears here (`CODEBOOK.md` names the line that sets
@@ -178,7 +188,7 @@ flowchart TD
     Start(["Seated at a lab computer"]) --> Hold
     subgraph BEFORE ["before — entry"]
         Hold["startpage — hold screen,<br>experimenter starts the session"] --> Welcome
-        Welcome["welcome + consent<br>implicit consent: continuing = consenting<br>(no ID or device capture; mobile_screenout off)"]
+        Welcome["welcome + consent<br>implicit consent: continuing = consenting<br>(no ID or device capture; device allow-list wide open)"]
     end
     Welcome --> Instr1
 
@@ -223,8 +233,9 @@ flowchart TD
 
 `-1`/`-2`/`-3` cannot occur in lab: consent is implicit, `comprehension_dq` is
 off (the re-read + experimenter message replace it) and the tab monitor is off.
-`-4` cannot occur either unless you set `mobile_screenout=1` on the config — it
-is off by default in every profile, and a lab session has no phones to screen.
+`-4` cannot occur either unless you narrow `allowed_devices` on the config — it
+permits every device type by default in every profile, and a lab session's
+computers would pass anyway.
 
 
 ## Collaborating on the instructions flow with others?
@@ -291,7 +302,7 @@ configs, browser rendering checks) rather than just listing these files.
 |---|---|---|---|
 | **`tests/http_flow_test.py`** — walks every shipped config entry→ending over real HTTP, including a POST with the JS-produced hidden fields deliberately **empty** | a participant can complete the study in each config; no page 5xxs; the no-JS participant is not stranded | anything about how a page looks or reads; anything that only breaks for an EXISTING participant | after any change to a page, form field or flow |
 | **`tests/gated_flow_test.py`** — lab vs Prolific scenarios: the one-time re-read offer, comprehension DQ, pilot feedback, the two-variant consent rule | the three orthogonal controls actually route people where the design says | rendering; data written to the export | after touching `settings.py` profiles, gates, or the intro/outro flow |
-| **`tests/mobile_screenout_test.py`** — the entry gate at **both** settings with a phone and a desktop User-Agent | a gate decided server-side from the entry REQUEST fires, and does nothing at all when off | client-side behaviour; anything past entry | after touching the entry gate or `mobile_screenout` |
+| **`tests/device_gate_test.py`** — the entry allow-list with phone, tablet, desktop and no-User-Agent requests, permitted and forbidden | a gate decided server-side from the entry REQUEST admits the listed types, screens out the rest with the DETECTED TYPE as the cause, and does nothing at all with the default list | client-side behaviour; anything past entry | after touching the entry gate or `allowed_devices` |
 | **`tests/xss_escaping_test.py`** — hostile participant- and URL-supplied values through the real entry URL, in production mode | every hand-interpolated value is HTML-escaped (oTree's ibis does **not** auto-escape) and round-trips un-truncated | injection through anything you did not render in the walk | after adding any template that prints a participant- or URL-supplied value |
 | **`tests/frozen_config_test.py`** — deletes parameters from a created session's stored config, then walks it | a session created BEFORE a parameter existed still completes; `common.cfg` falls back to the shipped default | a schema change (that needs a real database copy — see the pre-deploy gate) | whenever you add a session-config parameter (and add its name to the test's `STRIPPED` list) |
 | **`tests/render_check.py`** — real headless Chromium at three viewports; screenshots to `_ai/render_check/`, assertions on measured element geometry and on rendered pixels | the pages are actually laid out, visible, scrollable and clickable — the failures that produce no error at all | data correctness; anything server-side | after any CSS or template-structure change |
@@ -401,9 +412,9 @@ scheme" section and `settings.py`). That bundle turns on:
 - the **integrity modules** — `tab_monitor`, `comprehension_dq`, plus
   `passive_capture` and `device_capture`.
 
-The profile deliberately does **not** turn on `mobile_screenout` (see the
-parameter scheme above): screening phones out is a separate, explicit decision,
-so set `mobile_screenout=1` on the config if you want it.
+The profile deliberately does **not** narrow `allowed_devices` (see the
+parameter scheme above): screening devices out is a separate, explicit decision,
+so set e.g. `allowed_devices=['computer']` on the config if you want it.
 
 **Completion codes** are config values, set in `settings.py`: the
 `SESSION_CONFIG_DEFAULTS` placeholders `cc_code` (normal), `noconsent_code`

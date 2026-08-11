@@ -8,39 +8,36 @@
             <p class="header-text">Please fill out the information below. Once you press next you'll see your payment.</p>
         </div>
         <div class="experimental-content">
+            {# EVERY INPUT HERE IS RENDERED BY THE formfield TAG, not by hand
+               (change_requests item 10, 2026-08-11). Two reasons:
+                 1. ANSWERS SURVIVE A VALIDATION ERROR. The page class sets
+                    `preserve_unsubmitted_inputs = True`; oTree implements that
+                    by writing each named input's value into sessionStorage and
+                    restoring it on the next render, so a participant who
+                    tripped one error does not retype the rest.
+                 2. The option cards, focus rings and per-field error styling of
+                    the shared design system come for free — hand-rolled radios
+                    got none of them.
+               The old hand-built markup also carried an "Other: [specify]" text
+               box named `other`, which matched no Player field and was
+               therefore never stored anywhere: dropped rather than silently
+               collecting data into nothing. If a study wants it, add a real
+               `gender_other` field and render it as a formfield too.
+               (NB: this comment deliberately writes the tag name WITHOUT its
+               braces. oTree parses template tags even inside comments, so a
+               quoted tag here is a parse error, not documentation — it 500s
+               the page.) #}
             <div class="section-text demographics-section">
                 <div class="stacked-form">
                     {% if collect_demographics %}
-                    <label for="age">Age*</label>
-                    <input type="text" id="age" name="age" maxlength="2" inputmode="numeric">
-
-                    <h3 class="section-header">Gender*</h3>
-                    <div class="radio-group">
-                        <label>
-                            <input type="radio" name="gender" value="Male"> Male
-                        </label>
-                        <label>
-                            <input type="radio" name="gender" value="Female"> Female
-                        </label>
-                        <label class="other-option">
-                            <input type="radio" name="gender" value="Other"> Other:
-                            <input type="text" id="other_input" name="other" placeholder="Please specify">
-                        </label>
-                        <label>
-                            <input type="radio" name="gender" value="Prefer not to say"> Prefer not to say
-                        </label>
-                    </div>
+                    {% formfield player.age label="Age*" %}
+                    {% formfield player.gender label="Gender*" %}
                     {% endif %}
 
                     {% if collect_bank_details %}
-                    <label for="bank">IBAN Number*</label>
-                    <input type="text" id="bank" name="bank" placeholder="Enter IBAN number">
-
-                    <label for="bank_confirmation">IBAN Number Confirmation*</label>
-                    <input type="text" id="bank_confirmation" name="bank_confirmation" placeholder="Re-enter IBAN number">
-
-                    <label for="bic">BIC (if not NL-)</label>
-                    <input type="text" id="bic" name="bic" placeholder="Enter BIC if IBAN is not Dutch">
+                    {% formfield player.bank label="IBAN Number*" %}
+                    {% formfield player.bank_confirmation label="IBAN Number Confirmation*" %}
+                    {% formfield player.bic label="BIC (if not NL-)" %}
                     {% endif %}
                 </div>
             </div>
@@ -56,15 +53,23 @@
 
 {% if collect_bank_details %}
 <script>
-    // Disable copy, cut, and paste events on sensitive fields (guarded: these
-    // inputs only exist when bank details are collected).
-    if (typeof bank !== 'undefined') {
-        bank.oncopy = function(e) { e.preventDefault(); };
-        bank.oncut = function(e) { e.preventDefault(); };
-    }
-    if (typeof bank_confirmation !== 'undefined') {
-        bank_confirmation.onpaste = function(e) { e.preventDefault(); };
-    }
+    // Disable copy/cut on the IBAN and paste on its confirmation, so the
+    // confirmation is really retyped. The ids are oTree's own (`id_<field>`)
+    // now that these are formfields — the fields used to be hand-built
+    // with bare ids, and this script silently did nothing after the change
+    // until the ids were updated with it. Guarded: the inputs only exist when
+    // bank details are collected.
+    (function () {
+        var iban = document.getElementById('id_bank');
+        var confirm_ = document.getElementById('id_bank_confirmation');
+        if (iban) {
+            iban.oncopy = function (e) { e.preventDefault(); };
+            iban.oncut = function (e) { e.preventDefault(); };
+        }
+        if (confirm_) {
+            confirm_.onpaste = function (e) { e.preventDefault(); };
+        }
+    })();
 </script>
 {% endif %}
 

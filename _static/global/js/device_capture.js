@@ -2,11 +2,12 @@
 //
 // Fills two hidden fields on the entry page's OWN form (no side requests):
 //   - #is_mobile           : "True"/"False" — MEASUREMENT ONLY; it never blocks
-//                            anyone. Screening phones out is the server-side
-//                            `mobile_screenout` gate's job (before/__init__.py),
+//                            anyone. Screening devices out is the server-side
+//                            `allowed_devices` gate's job (before/__init__.py),
 //                            because it must decide before consent is rendered,
 //                            i.e. before this script has ever run.
-//   - #device_info_json    : a JSON blob of screen/browser facts
+//   - #device_info_json    : a JSON blob of screen/browser facts, INCLUDING the
+//                            client's own `device_type` guess (see below)
 // Both submit with the page, so the values land in the same POST as consent.
 //
 // Enabled by the `device_capture` (and `capture_participant_id`) session flags;
@@ -25,9 +26,38 @@
         return (uaMobile && narrow) || (coarse && narrow);
     }
 
+    // THE CLIENT'S OWN CLASSIFICATION, mirroring the server's four types
+    // (common.detect_device_type): 'phone' | 'tablet' | 'computer' | 'unknown'.
+    // It is RECORDED, NEVER ENFORCED — the gate has already run server-side by
+    // the time this executes, and anything a client reports can be edited by
+    // whoever is sitting at it. Its value is keeping the two side by side in
+    // the export, so a disagreement (an iPadOS tablet claiming to be a Mac, a
+    // stripped User-Agent) is visible rather than invisible.
+    //
+    // It can use signals the server cannot: touch points and viewport size. It
+    // still cannot tell a laptop from a desktop — nothing in a browser can, so
+    // both are 'computer' here too (see the note in settings.py).
+    function deviceType() {
+        var ua = navigator.userAgent || '';
+        if (!ua) return 'unknown';
+        var touch = (navigator.maxTouchPoints || 0) > 1;
+        // iPadOS 13+ reports itself as a Macintosh; the touch points give it away.
+        if (/iPad/i.test(ua) || (/Macintosh/i.test(ua) && touch)) return 'tablet';
+        if (/Android/i.test(ua) && !/Mobile/i.test(ua)) return 'tablet';
+        if (/Tablet|Kindle|Silk|PlayBook/i.test(ua)) return 'tablet';
+        if (/iPhone|iPod|Android.*Mobile|webOS|BlackBerry|IEMobile|Opera Mini|Windows Phone|Mobile Safari/i.test(ua)) {
+            return 'phone';
+        }
+        if (/Windows NT|Macintosh|Mac OS X|X11|CrOS|Linux|FreeBSD|OpenBSD/i.test(ua)) {
+            return 'computer';
+        }
+        return 'unknown';
+    }
+
     function deviceInfo() {
         var s = window.screen || {};
         return {
+            device_type: deviceType(),   // client's guess; the server's is authoritative
             user_agent: navigator.userAgent || '',
             platform: navigator.platform || '',
             language: navigator.language || '',

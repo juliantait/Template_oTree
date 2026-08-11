@@ -11,15 +11,25 @@
    bias is its one page-specific behaviour. Only the quiz page carries
    .quiz-card. */
 .quiz-card > .experimental-header,
-.quiz-card > .experimental-content,
 .quiz-card > .button-row {
     width: 100%;
     max-width: var(--read-measure);
     margin-inline: auto;
 }
 
+/* THE SCROLL CATCHMENT IS THE WHOLE CARD HERE TOO (change_requests item 6,
+   applied to the quiz on 2026-08-11 for the same reason as the instructions
+   page). The content region used to be capped at the reading measure, so it was
+   also the SCROLLING element — and the wheel did nothing over the card either
+   side of the questions. The cap moved down onto .quiz-block, which is the
+   text; the questions and their option cards are exactly as wide as before, the
+   region that scrolls is the card, and the scrollbar sits at the card's edge.
+   NB there is deliberately no `width: 100%` on .experimental-content — see the
+   measured note on that rule in base.css. */
 .quiz-block {
     width: 100%;
+    max-width: var(--read-measure);
+    margin-inline: auto;
     display: flex;
     flex-direction: column;
     gap: clamp(18px, 3vw, 28px);
@@ -73,81 +83,102 @@
 }
 
 
-/* --- quiz-failure modal ------------------------------------------------------
-   Lab flow only: the re-read offer / "raise your hand" notice. An overlay, so
-   revealing it moves nothing underneath (stability rule). [hidden] must win
-   over the flex display. */
-.modal-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 1000;
-    background: rgba(16, 32, 52, 0.55);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-}
+/* --- quiz-failure modals -----------------------------------------------------
+   THE MODAL CHROME NOW LIVES IN base.css (.modal-backdrop / .modal-card /
+   .modal-title / .modal-text / .modal-actions / .modal-dismiss-button), where
+   it is the shared warning-modal component every page uses — see
+   "COMPONENT: warning modal" there. It was moved out of this file on
+   2026-08-11 (change_requests item 9); the lab's re-read offer and the
+   "raise your hand" notice pick it up unchanged. Do not re-declare it here. */
 
-.modal-backdrop[hidden] {
-    display: none;
-}
+/* --- the at-will re-read dialog (ONLINE ONLY) ---------------------------------
+   change_requests item 17. The button lives in the quiz's own .button-row and
+   opens a dialog containing the REAL instructions file. The LAB deliberately
+   gets neither (see intro.quiz.vars_for_template): there, re-reading is offered
+   only after a failed attempt, and after that the participant raises a hand. */
 
-.modal-card {
-    background: var(--card-bg);
-    border: 1px solid var(--line-strong);
-    border-radius: var(--r-lg);
-    box-shadow: var(--shadow-lift);
-    max-width: 34rem;
-    width: 100%;
-    padding: 28px 32px;
-    text-align: center;
-}
-
-.modal-title {
-    color: var(--ink);
-    margin: 0 0 12px;
-    font-size: 1.15em;
-    font-weight: 680;
-}
-
-.modal-text {
-    margin: 0 0 20px;
-    color: var(--ink-soft);
-    line-height: 1.5;
-}
-
-.modal-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    justify-content: center;
-    align-items: center;
-}
-
-/* Secondary (dismiss) action: quieter than the primary, but clearly a real
-   control — not the dashed debug styling. Matches the shared .ghost button so
-   the modal's two actions read as one pair.
-   NB: deliberately NOT .next-button — global.js's Enter handler targets the
-   first .next-button, and dismissing must never steal Enter from the quiz's own
-   submit while the modal is closed. */
-.modal-dismiss-button {
+/* Ghost-styled, and NOT .next-button — that class is what global.js's Enter
+   handler looks for, and Enter must keep submitting the quiz. */
+.quiz-reread-btn {
     appearance: none;
     -webkit-appearance: none;
-    display: inline-block;
     font: inherit;
     font-weight: 620;
+    font-size: 1em;
     line-height: 1;
-    border: 1px solid var(--line-strong);
-    background: transparent;
     color: var(--ink-soft);
-    padding: 0.85em 2em;
+    background: transparent;
+    border: 1px solid var(--line-strong);
     border-radius: 999px;
+    padding: 0.85em 2em;
     cursor: pointer;
-    transition: background-color .16s ease, border-color .16s ease, color .16s ease;
+    transition: background-color .16s ease, color .16s ease, border-color .16s ease;
 }
 
-.modal-dismiss-button:hover {
-    background: var(--sunken);
-    border-color: var(--line-strong);
-    color: var(--ink);
+.quiz-reread-btn:hover { background: var(--sunken); color: var(--ink); }
+
+/* The dialog is the shared modal chrome, widened: it holds a whole document,
+   not a sentence. Height-capped so the card can never grow past the viewport;
+   the BODY inside it is what scrolls. */
+.reread-backdrop .modal-card.reread-card {
+    position: relative;
+    max-width: min(1140px, 92vw);
+    max-height: 86vh;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    text-align: left;
+    padding: 24px clamp(18px, 3vw, 32px);
 }
+
+.reread-title { text-align: center; margin: 0; }
+
+/* The scrolling document. min-height:0 is the same load-bearing line as every
+   other scroll region in this design (a flex child defaults to min-height:auto
+   and refuses to shrink, so the region silently never scrolls). */
+.reread-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-gutter: stable both-edges;
+    padding-right: 4px;
+}
+
+.reread-body::-webkit-scrollbar { width: var(--scroll-gutter); }
+.reread-body::-webkit-scrollbar-track { background: var(--sunken); border-radius: 999px; }
+.reread-body::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    border: 2px solid var(--card-bg);
+    border-radius: 999px;
+}
+
+/* instructions.css hides every block but the first (that is the pager). Inside
+   this dialog there is no pager: every block is shown, stacked, with a rule
+   between them so the document reads as one continuous set of instructions. */
+.reread-body .instruction-block { display: block; }
+.reread-body .instruction-block + .instruction-block {
+    margin-top: 1.2em;
+    padding-top: 1.2em;
+    border-top: 1px solid var(--line);
+}
+
+/* The X. A real button in the corner, kept clear of the title. */
+.reread-close {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--ink-mute);
+    font: inherit;
+    font-size: 1.4em;
+    line-height: 1;
+    padding: 2px 10px 6px;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: color .14s ease, background-color .14s ease;
+}
+
+.reread-close:hover { color: var(--ink); background: var(--sunken); }

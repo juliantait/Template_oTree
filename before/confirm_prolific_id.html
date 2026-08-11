@@ -65,9 +65,11 @@
                        value="{{ prefill_id|escape }}" autocomplete="off" spellcheck="false">
             </div>
 
-            {# Inside the scroll region, not pinned — see base.css "Pinned
-               regions": only the header strip and the button row are pinned. #}
-            {% include '_static/global/html/logo_section.html' %}
+            {# NO LOGO STRIP ON THIS PAGE, in every variant (Julian,
+               2026-08-11, change_requests item 15). This is a one-field
+               administrative confirmation, not an institutional statement, and
+               the marks read as padding here. Do not re-add the
+               logo_section include. #}
         </div>
 
         <div class="button-row">

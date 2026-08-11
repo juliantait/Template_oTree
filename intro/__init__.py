@@ -210,11 +210,35 @@ class quiz(Page):
             and bool(self.session.config.get('quiz_reread'))
             and bool(self.participant.vars.get('instructions_reread_used'))
         )
+        cfg = self.session.config
+        # THE AT-WILL RE-READ DIALOG (change_requests item 17). ONLINE ONLY.
+        # Online there is no experimenter to ask, so the instructions are always
+        # one click away, in a dialog on this page, whether or not the
+        # participant has failed. The LAB deliberately has NO at-will re-read
+        # (Julian, 2026-08-11): a lab participant gets the failure-driven offer
+        # (the quiz_reread module) up to the allowed number of attempts and then
+        # raises their hand. Two re-read mechanisms on one page would also read
+        # as a contradiction. Keyed on the study type, not on quiz_reread, so a
+        # lab session that never enabled that module still gets the lab rule.
+        show_reread_dialog = common.cfg(cfg, 'recruitment') != 'lab'
         return {
             'quiz_solutions_json': json.dumps(solution_pairs),
             'is_debug': is_debug,
             'offer_reread': offer_reread,
             'show_experimenter': show_experimenter,
+            'show_reread_dialog': show_reread_dialog,
+            # Context for the instructions included INSIDE that dialog. It is
+            # the real intro/instructions_text.html, so it needs exactly the
+            # variables the instructions page passes it — keep these in step
+            # with instructing.vars_for_template above or the recap silently
+            # renders blanks where the numbers should be.
+            'showup': cfg.get('showup'),
+            'quiz_bonus': cfg.get('quiz_bonus'),
+            'num_experimental_rounds': cfg.get('num_experimental_rounds'),
+            'treatment': self.participant.vars.get('treatment_group', ''),
+            'stag_payoff': C.STAG_PAYOFF,
+            'hare_payoff': C.HARE_PAYOFF,
+            'stag_alone': C.STAG_ALONE,
         }
 
     def before_next_page(player, timeout_happened):

@@ -65,6 +65,25 @@ def creating_session(subsession: Subsession):
         )
 
 
+def progress_vars(player) -> dict:
+    """Round-of-total progress for the task screens (change_requests item 7).
+
+    ONE source for the strip's text line AND its bar, so the two can never
+    disagree. The total is THIS session's round count (`rounds_for`), not
+    C.NUM_ROUNDS: a config may run fewer rounds, and telling a participant
+    "Round 3 of 10" in a 5-round session would be a lie in the one place they
+    are counting.
+    """
+    total = rounds_for(player.session)
+    current = min(player.round_number, total)
+    return dict(
+        round_count=player.round_number,
+        rounds_total=total,
+        # Whole percent, clamped: a fill of 100.4% would overflow its track.
+        progress_pct=max(0, min(100, round(100 * current / total))) if total else 0,
+    )
+
+
 def is_active_round(player) -> bool:
     """True while the round is within THIS session's (possibly shorter) count."""
     return player.round_number <= rounds_for(player.session)
@@ -123,11 +142,11 @@ class GameStart(Page):
         return ['client_ms'] if player.session.config.get('passive_capture') else []
 
     def vars_for_template(self):
-        return {
-            'round_count': self.round_number,
-            'tab_monitor': bool(self.session.config.get('tab_monitor')),
-            'passive_capture': bool(self.session.config.get('passive_capture')),
-        }
+        return dict(
+            progress_vars(self),
+            tab_monitor=bool(self.session.config.get('tab_monitor')),
+            passive_capture=bool(self.session.config.get('passive_capture')),
+        )
 
     def before_next_page(player, timeout_happened):
         # Generate a payoff for this round before showing the payoff page
@@ -146,11 +165,11 @@ class payoff(Page):
     js_vars = staticmethod(ai_safety_js_vars)
 
     def vars_for_template(self):
-        return {
-            'payoff': cu(self.payoff),
-            'round_count': self.round_number,
-            'tab_monitor': bool(self.session.config.get('tab_monitor')),
-        }
+        return dict(
+            progress_vars(self),
+            payoff=cu(self.payoff),
+            tab_monitor=bool(self.session.config.get('tab_monitor')),
+        )
 
     @staticmethod
     def before_next_page(player, timeout_happened):

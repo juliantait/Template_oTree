@@ -9,13 +9,20 @@
    title and body copy share one centred column. CENTERING CAVEAT: only running
    text narrows — the payoff-matrix table, any figures and the Back/Next pager
    keep their full (band) width. Only this page uses .instructions. */
+/* THE BAND IS ON THE TEXT, NOT ON THE SCROLLER (change_requests item 6, Julian
+   2026-08-11). This column used to carry `max-width: 720px; margin-inline:
+   auto`, which made the SCROLLING ELEMENT 720px wide inside a 1200px card — so
+   the wheel did nothing over the ~230px of card on either side of the reading
+   band, which is exactly the catchment complaint. The cap moved down onto
+   .instruction-block (the text), where a reading measure belongs; this column
+   and .instruction-wrapper inside it now span the full card, so the scroll
+   gesture is caught anywhere over the card and the native scrollbar sits at the
+   card's right edge (accepted, Julian). The band width itself is unchanged. */
 .instructions {
     display: flex;
     flex-direction: column;
     gap: clamp(16px, 2.6vw, 24px);
     width: 100%;
-    max-width: var(--instructions-band, 720px);
-    margin-inline: auto;
 }
 
 /* The band width lives on the CARD, so the eyebrow in the header strip can
@@ -24,20 +31,23 @@
    drift apart. */
 .screen-card:has(.instructions) { --instructions-band: 720px; }
 /* The header strip takes the same band as the slide body, so the eyebrow lines
-   up with the text it introduces. TWO gutters of inset, not one: this page's
-   copy sits inside .experimental-content AND inside .instruction-wrapper, and
-   both reserve a scrollbar gutter on each edge. */
+   up with the text it introduces.
+   RE-DERIVED 2026-08-11 for the full-width scroller (item 6). The text band is
+   now centred inside a wrapper that spans the whole card, with TWO nested
+   scroll gutters between the card's padding edge and the wrapper's content box
+   (.experimental-content reserves one on each side, .instruction-wrapper
+   another). So:
+     * padding-inline = 2 gutters — the distance from the strip's own box edge
+       to the copy when the strip is as wide as the card (phones);
+     * max-width = band + 4 gutters — the band plus BOTH gutters on BOTH sides,
+       so on a wide screen the centred strip's padded edge lands exactly on the
+       centred band's edge.
+   The two regimes cross over at the same width (card inner = band + 4 gutters),
+   which is why one pair of values holds at every viewport. Measured by
+   tests/render_check.py's eyebrow check, which fails loudly at >2px. */
 .screen-card:has(.instructions) .experimental-header {
     width: 100%;
-    /* Width: the band plus the OUTERMOST gutter on each side (the content
-       region's), which is what shifts the band's centring. Padding: the sum of
-       every gutter between the card and the copy — two here, because this page's
-       text sits inside .experimental-content AND inside .instruction-wrapper,
-       and both reserve one. Derived from the measured box chain, and it holds at
-       every viewport: when the max-width binds (wide screens) the padding sets
-       the offset from the centred box; when it does not (phones) the padding
-       alone lines the strip up with the copy. */
-    max-width: calc(var(--instructions-band, 720px) + 2 * var(--scroll-gutter));
+    max-width: calc(var(--instructions-band, 720px) + 4 * var(--scroll-gutter));
     margin-inline: auto;
     padding-inline: calc(2 * var(--scroll-gutter));
 }
@@ -89,7 +99,17 @@
     margin: -6px;
 }
 
-.instruction-block { display: none; }
+/* THE READING BAND. It is the BLOCK that is capped and centred, not the
+   scrolling wrapper around it (see the note on .instructions above): the text
+   keeps exactly the width it had, while the scroll catchment is the whole card.
+   Tables, figures and the payoff matrix still get this band's full width; only
+   the running text inside narrows further, to --read-measure, below. */
+.instruction-block {
+    display: none;
+    width: 100%;
+    max-width: var(--instructions-band, 720px);
+    margin-inline: auto;
+}
 .instruction-block:first-of-type { display: block; }
 
 /* The reading measure: direct-child running text of each block, centred in the
@@ -172,25 +192,38 @@
 }
 .instruction-figure svg { display: block; width: 100%; height: auto; }
 
-/* The step counter: quiet chrome, not body copy. Pinned below the scrolling
-   slide body along with the pager. */
+/* The step counter: quiet chrome, not body copy. It sits BETWEEN the two pager
+   buttons (change_requests item 3) instead of on a row of its own above them,
+   which saved ~40px of card height and makes the pager read as one control.
+   It is a flex item of .instruction-controls now, so it no longer needs the
+   full-width/own-row treatment it used to have.
+   instructions.js hides it with `visibility` (never `display`) on the prequiz
+   step, so its box — and therefore the position of both buttons — never
+   moves (stability rule). */
 .instruction-progress {
-    flex: 0 0 auto;
-    padding-top: 16px;
+    flex: 0 1 auto;
     font-size: .82em;
     color: var(--ink-mute);
     text-align: center;
-    width: 100%;
+    padding-inline: 8px;
+    white-space: nowrap;
 }
 
-/* Back far left, Next far right — the pager reads as movement through the
-   sequence rather than as a pair of equal choices. Pinned. */
+/* Back far left, counter in the middle, Next far right — the pager reads as
+   movement through the sequence rather than as a pair of equal choices.
+   Pinned. */
 .instruction-controls {
     flex: 0 0 auto;
     display: flex;
     gap: 12px;
     justify-content: space-between;
     align-items: center;
+    /* RESERVED STRIP for the scroll cue (base.css): the V is centred on this
+       row's TOP EDGE, so it needs empty space on both sides of that edge — the
+       column gap above it, and this padding below it. Permanent, not applied
+       only while scrolling, because a padding that appeared and disappeared
+       with the cue would move the pager under the participant. */
+    padding-top: 12px;
 }
 
 /* The DEBUG-only skip control is a sibling of the pager inside .instructions,
@@ -198,5 +231,8 @@
 .instructions > .debug-tools { flex: 0 0 auto; }
 
 @media (max-width: 520px) {
-    .instruction-controls .next-button { flex: 1; padding-inline: 1em; }
+    /* The two buttons share what the counter between them does not need. */
+    .instruction-controls .next-button { flex: 1 1 0; padding-inline: .8em; }
+    .instruction-controls { gap: 8px; }
+    .instruction-progress { padding-inline: 2px; font-size: .78em; }
 }
