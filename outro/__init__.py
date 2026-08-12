@@ -427,3 +427,25 @@ class Results(Page):
         }
 
 page_sequence = [Ended, Demographics, Feedback, Results]
+
+# EXPERIMENTER DASHBOARD INSTALL — deliberately the LAST lines of the LAST app
+# module, and deliberately in `outro` rather than `before` or `settings.py`:
+#
+#   * it must run AFTER this module's own `page_sequence` exists, because
+#     importing `otree.urls` builds the whole route table, and that walks every
+#     app's page_sequence — including this one, mid-import;
+#   * an early install from settings.py (identity.py's other install point)
+#     would accomplish NOTHING here: `otree.urls` is never importable at
+#     settings time, and unlike the label guard there is no window to close —
+#     the routes only need to exist before `otree.asgi` builds the app, which
+#     is after every app import on every supported boot path.
+#
+# `install_dashboard_route_or_note` NEVER raises — not even on version drift,
+# which it logs loudly instead. That is the one deliberate difference from
+# identity's asserting install point, and it is the dashboard's own first rule
+# applied to its install: a dashboard that cannot install harms nobody, but a
+# boot that dies over an operator page fails every participant. See the
+# docstrings in experimenter_dashboard.py.
+import experimenter_dashboard
+
+experimenter_dashboard.install_dashboard_route_or_note()

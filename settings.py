@@ -177,6 +177,16 @@ PROLIFIC_CODE_PLACEHOLDERS = ('REPLACE_CC', 'REPLACE_NC', 'REPLACE_DQ')
 # visibly not a URL.
 SCREENOUT_RETURN_URL_PLACEHOLDER = 'REPLACE_SCREENOUT_RETURN_URL'
 
+# --- experimenter dashboard ----------------------------------------------------
+# The live operator view at /experimenter_dashboard (experimenter_dashboard.py,
+# notes in _ai/dashboard_notes.md). These are read AT REQUEST TIME, so tuning
+# them needs only a server restart; deleting either line falls back to the same
+# defaults, defined in that module. NOT session config parameters, deliberately:
+# they are operator-screen behaviour, not experimental design, so they must not
+# show up in the admin's session-config view or the experimental record.
+DASHBOARD_STALL_SECONDS = 300   # a row turns AMBER after this long on one page
+DASHBOARD_POLL_SECONDS = 2      # dashboard refresh; 2s is a floor, enforced server-side
+
 # --- static asset version ----------------------------------------------------
 # Appended as ?v=... to every CSS/JS href so a redeploy is never served a stale
 # cached asset. BUMP THIS ON EVERY CHANGE to a file under _static/. Each app
