@@ -19,6 +19,7 @@ Environment variables (optional):
     SESSION_DATA_EMAIL   recipient for the macOS Mail.app draft (skipped if unset)
 """
 import argparse
+import ast
 import json
 import os
 import subprocess
@@ -29,12 +30,21 @@ from pathlib import Path
 import pandas as pd
 
 
-def is_json(value):
-    try:
-        json.loads(value)
-        return True
-    except Exception:
-        return False
+def is_serialized_blob(value):
+    """True for a cell holding a serialised container.
+
+    Player LongStringFields (quiz_attempt_log, device_info_json) export as real
+    JSON, but participant-vars columns (participant_extra, device_info, ...)
+    export as the PYTHON REPR of the dict/list — single quotes, not JSON — so
+    both parsers are tried. Only containers count: a cell holding a plain
+    number or word is data, not a blob.
+    """
+    for parse in (json.loads, ast.literal_eval):
+        try:
+            return isinstance(parse(value), (dict, list))
+        except Exception:
+            pass
+    return False
 
 
 def draft_email_with_attachment(attachment_path: Path, session_number: str, recipient: str):
@@ -106,10 +116,27 @@ def main():
     print(f"Reading: {input_path}")
     df = pd.read_csv(str(input_path))
 
-    json_columns = ["block1_tasks", "block2_tasks"]
+    # Bulky JSON telemetry/audit blobs this template exports (see CODEBOOK.md).
+    # Their cells are BLANKED in every output: they are logs for debugging and
+    # audit, not analysis data, and they bloat the CSV. Payment and analysis
+    # JSON (payouts, all_round_payoffs, payoff_vector, stage_timestamps) is
+    # deliberately NOT listed and survives intact.
+    json_columns = [
+        "participant.participant_extra",     # free JSON bucket: screen-out history, raw UA copies
+        "participant.device_info",           # raw device/screen blob (device_capture)
+        "participant.focus_event_ids",       # tab-monitor dedup bookkeeping (focus_loss_count is the datum)
+        "before.1.player.device_info_json",  # the same device blob, as submitted
+        "intro.1.player.quiz_attempt_log",   # every graded quiz submission (round 1)
+        "intro.2.player.quiz_attempt_log",   # ... and the lab re-read pass (round 2)
+    ]
+    # Never dropped by the large-column sweep below: the payment file is built
+    # from these. NB the earned amount is `outro.1.player.earned` — there is no
+    # `participant.earned` in this template's export.
     required_columns = {
-        "participant.earned",
         "participant.code",
+        "participant.label",
+        "participant.participant_id_external",
+        "outro.1.player.earned",
         "outro.1.player.bank",
         "outro.1.player.bic",
         "outro.1.player.bank_confirmation",
@@ -117,7 +144,8 @@ def main():
 
     for column in json_columns:
         if column in df.columns:
-            df[column] = df[column].apply(lambda x: "" if is_json(str(x)) else x)
+            df[column] = df[column].apply(
+                lambda x: "" if is_serialized_blob(str(x)) else x)
 
     large_data_threshold = 1000
     columns_to_drop = []
@@ -135,9 +163,14 @@ def main():
     print(f"Cleaned CSV saved to: {cleaned_path}")
     print(f"Removed columns (large): {columns_to_drop}")
 
+    # Lab pays by bank transfer (bank/bic); Prolific pays through the platform,
+    # keyed on the confirmed id. Both sets are listed; columns a session did
+    # not collect are simply absent and filtered out below.
     payment_cols = [
-        "participant.earned",
         "participant.code",
+        "participant.label",
+        "participant.participant_id_external",
+        "outro.1.player.earned",
         "outro.1.player.bank",
         "outro.1.player.bic",
     ]
@@ -150,11 +183,21 @@ def main():
     else:
         print("Warning: payment columns not found; skipping payment CSV.")
 
+    # Anonymised = no payment/bank columns AND no recruitment identity: in this
+    # template the participant label / Prolific id columns are the personal
+    # identifiers, so they go too (participant.code alone remains as the
+    # anonymous key).
     anon_drop_cols = [
         "outro.1.player.bank",
-        "outro.1.player.bic",
-        "participant.earned",
         "outro.1.player.bank_confirmation",
+        "outro.1.player.bic",
+        "outro.1.player.earned",
+        "participant.label",
+        "participant.participant_id_external",
+        "before.1.player.participant_label",
+        "before.1.player.participant_id_url",
+        "before.1.player.participant_id_external",
+        "before.1.player.prolific_label_conflict",
     ]
     df_anonymous = df.drop(columns=[c for c in anon_drop_cols if c in df.columns], errors="ignore")
 

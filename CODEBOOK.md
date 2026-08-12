@@ -307,3 +307,13 @@ Fill in per-study fields as you build the task. The template ships with:
   `bic`, `sepa`, `earned`, `payouts`, …), and `feedback` (free text, collected
   only when the `pilot_feedback` flag is on).
 - `participant`: see `PARTICIPANT_FIELDS` in `settings.py`.
+
+**Removed columns (2026-08-12).** Six columns that no code path ever wrote or
+read were deleted rather than documented (the same rule as unwired exit codes:
+a column nothing records is a lie in the export): `intro.Player.
+participant_label` (the *before* app's copy is the real one), `intro.Player.
+skiptoquiz`, and `outro.Player.selected_round1` / `selected_round2` / `pay1` /
+`pay2` (the payment path records its results in `payouts`,
+`all_round_payoffs`, `selected_sum` and `earned`). This was a SCHEMA change,
+applied while the template has no live data; an export from before that date
+carries the six columns, blank.

@@ -107,10 +107,6 @@ class Player(BasePlayer):
         widget=widgets.RadioSelect,
         choices=['Male', 'Female', 'Other', 'Prefer not to say'], blank=True)
     bic = models.StringField(blank=True)
-    selected_round1 = models.IntegerField()
-    selected_round2 = models.IntegerField()
-    pay1 = models.FloatField()
-    pay2 = models.FloatField()
     selected_sum = models.FloatField()
     earned = models.FloatField()
     payouts = models.LongStringField(blank=True)
