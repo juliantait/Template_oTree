@@ -659,6 +659,37 @@ input.next-button {
 .next-button:disabled:hover { background: var(--accent); box-shadow: none; }
 .next-button.ghost:disabled:hover { background: transparent; }
 
+/* COMPONENT — exit-button. INTENTION: an IRREVERSIBLE way off a page, offered
+   as the quieter of two options. Used by the entry screen-out page's "end the
+   study and go back to Prolific" link, where the action we actually want — go
+   and switch device — has no control at all, and this one closes the door.
+   Same geometry as the shared ghost button so it still reads as a real control.
+
+   NB deliberately NOT .next-button, and NOT .next-button.ghost: global.js's
+   Enter handler clicks the first .next-button on the page, and an irreversible
+   exit must never be one stray keystroke away. Same reasoning as
+   .modal-dismiss-button below. It is an <a href>, so it also has to set the
+   things a link does not inherit from a button (display, text-decoration). */
+.exit-button {
+    display: inline-block;
+    font: inherit;
+    font-weight: 620;
+    font-size: 1em;
+    line-height: 1;
+    color: var(--ink-soft);
+    background: transparent;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    padding: 0.85em 2em;
+    margin: 0;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color .16s ease, border-color .16s ease, color .16s ease;
+}
+
+.exit-button:hover { background: var(--sunken); color: var(--ink); }
+
 /* --- forms ------------------------------------------------------------------ */
 form {
     display: flex;

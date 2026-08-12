@@ -20,7 +20,23 @@ participant leaves early. Defined in `settings.EXIT_CODES`.
 | `-1` | no_consent | Declined consent on the entry page. | `before.welcome.before_next_page` |
 | `-2` | comprehension | Disqualified: failed the comprehension check too many times. **Prolific only** — see the next section for what the same threshold means in a lab session. | `intro.quiz.error_message` |
 | `-3` | tab_monitor | Disqualified: AI-safety / tab-switch monitor. **Prolific only** — the tab monitor is not supported in the lab. | `common.focus_live_method` |
-| `-4` | screened_out | **General** "removed at entry, before the consent page" bucket. Set by the **device allow-list** (`allowed_devices`) and by any future entry gate. WHICH DEVICE was detected is in `participant_extra['screenout_cause']` — see below. The code is deliberately NOT device-specific: one bucket, split by cause. | `common.set_screened_out`, called by `before._apply_device_gate` |
+| `-4` | screened_out | **General** "removed at entry, before the consent page" bucket. Set by the **device allow-list** (`allowed_devices`) and by any future entry gate. WHICH DEVICE was detected is in `participant_extra['screenout_cause']` — see below. The code is deliberately NOT device-specific: one bucket, split by cause. **NOT write-once** — see the note directly below. | `common.set_screened_out`, called by `before._apply_device_gate` |
+
+> **`-4` IS THE ONE CODE THAT CAN CHANGE BACK.** The device screen-out is a soft
+> wall: a participant who returns on an accepted device **before consent** is
+> cleared, and their code reverts to `0` (`common.clear_screened_out`) so
+> somebody who is really doing the study does not sit in the data as screened
+> out. Each value is reverted only if it still holds what the screen-out put
+> there, so a clear cannot clobber a code another mechanism wrote in the
+> meantime. Consequences for analysis, stated plainly:
+> * an export taken while somebody is mid-switch shows a `-4` that later becomes
+>   `0` and then, usually, `1`;
+> * the STATE is reset, the HISTORY never is. `participant.screenout_cleared`
+>   stays `True` for good and `participant_extra['screenout_history']` keeps
+>   every verdict, so "how many people did the gate turn away?" is answered from
+>   those, not from the exit code;
+> * after consent nothing here applies: the check never touches a participant
+>   past `participant.consent_submitted`.
 
 When you add an outcome, add it to `settings.EXIT_CODES` **and** this table —
 with the place that sets it. Every code in the table must be set by real code:
@@ -78,7 +94,8 @@ writes a different sentence per type.
 | `phone` | Entry User-Agent classified as a phone; `allowed_devices` excludes phones. | `before._apply_device_gate` |
 | `tablet` | Entry User-Agent classified as a tablet (iPad, Android without "Mobile", Kindle…); excluded. | `before._apply_device_gate` |
 | `computer` | Entry User-Agent classified as a computer; excluded. **Laptop and desktop are the same type** — see the note below. | `before._apply_device_gate` |
-| `unknown` | The device could not be identified: no User-Agent, a blank one, one stripped by a privacy tool, or one this template does not recognise. `unknown` is its own allow-list entry, so admitting it is a study's decision. | `before._apply_device_gate` |
+| `unknown` | A real, readable User-Agent that matches none of the three device families. `unknown` is its own allow-list entry, so admitting it is a study's decision. It does **not** mean "no User-Agent" — see the row below. | `before._apply_device_gate` |
+| *(never recorded)* | **No decision.** No request object, no User-Agent, a blank/malformed/absurdly long one, or an exception in the classifier (`common.UNDETERMINED`). This is NOT a device type and NOT a cause: the participant is allowed through and **nothing at all is written**, so it can never appear in the export. It also never CLEARS an existing screen-out — absence of evidence is not evidence of a device switch. | — |
 | *(empty)* | `-4` recorded without a cause. Valid but discouraged — the ending falls back to a neutral "not eligible" sentence. | — |
 
 **Why there is no `laptop` cause, and why one must never be added.** A browser
@@ -103,7 +120,9 @@ own guess, recorded for comparison and never enforced.
 1. add it to `common.SCREENOUT_CAUSES` (the registry + its export meaning);
 2. set it at your gate via `common.set_screened_out(participant, '<cause>')`,
    which records the flag, the `-4` code and the cause together;
-3. add an `{% elif %}` branch with its own sentence in `outro/Ended.html`.
+3. add an `{% elif %}` branch with its own sentence in
+   `before/screened_out.html` (the page a screened-out participant is held on),
+   and in `outro/Ended.html` if your gate fires after entry.
 
 The ending picks its copy from the **cause**, never from the bare exit code.
 `mobile` currently says "This study needs a computer" — if a new gate were to
@@ -121,6 +140,7 @@ A dict `{stage_name: epoch_seconds}` filled as the participant clears each stage
 | Stage | Set when |
 |-------|----------|
 | `screened_out` | The entry device gate removed the participant (their device type is not in `allowed_devices`). |
+| `screenout_cleared` | A screen-out was LIFTED: they came back on an accepted device before consent. |
 | `consent` | Leaving the welcome/consent page. |
 | `confirm_id` | Prolific only: leaving the Prolific-ID confirmation page (`capture_participant_id` on). |
 | `instructions_done` | Leaving the instructions page (round 1). |
@@ -234,7 +254,7 @@ Fill in per-study fields as you build the task. The template ships with:
 
 - `before.Player`: `participant_label`, `treatment_group`, `consent`,
   `participant_id_url`, `participant_id_external`, `is_mobile`,
-  `device_info_json`.
+  `device_info_json`, `prolific_label_conflict`.
   - **The two id columns are a matched pair, recorded separately on purpose.**
     `participant_id_url` is the id as it ARRIVED (oTree's `?participant_label=`,
     or the consent page's hidden `?PROLIFIC_PID=` capture) and is never edited;
@@ -243,12 +263,36 @@ Fill in per-study fields as you build the task. The template ships with:
     the two differ is a participant who edited their id — which is exactly what
     settles a later payment dispute. Both are empty in a lab session, which has
     no ConfirmProlificID page.
+  - **`prolific_label_conflict` is empty for everybody, normally.** It carries
+    the OWNING ROW's participant code when this participant typed an id that
+    another row in the session already held: the claim was REFUSED (they keep
+    their own row and finish the study normally, and their typed value is still
+    in `participant_id_external` verbatim), because two rows sharing a label is
+    a permanent 500 at entry for whoever really owns that id — see
+    `identity.py`. A non-empty value is a PAYMENT TRIAGE flag: look at both rows
+    before paying either. Nothing is ever shown to the participant, and no
+    marker is ever written into `participant.label`, which stays the real id or
+    empty. `participant_extra['prolific_label_conflict']` holds the fuller
+    record (which id was refused, and whose row holds it).
+  - **Two more keys exist for the case where a duplicate label got in ANYWAY**
+    (a hand-edited row, a legacy database, a path we did not anticipate):
+    `participant_extra['duplicate_label_seen']` is written on the row a
+    returning participant was joined to, naming the label and every row holding
+    it — entry degrades gracefully for them, but never silently for us, and the
+    same event is logged at ERROR level. `participant_extra['duplicate_label_
+    guard_missing']` appears only if the guard itself was not installed at
+    entry, which should be impossible (it is asserted at boot) — treat either
+    key as "read the server log before paying anybody in this session".
   - `is_mobile` is the client-side device measurement only — it blocks nobody;
     the screen-out is the server-side `allowed_devices` gate, whose User-Agent
     evidence is in `participant_extra['screenout_user_agent']`, whose detected
     device type is in `participant_extra['entry_device_type']` (recorded for
     everyone, not only the screened-out), and whose reason — the same detected
-    type — is in `participant_extra['screenout_cause']`.
+    type — is in `participant_extra['screenout_cause']`. Every verdict the gate
+    reaches is appended to `participant_extra['screenout_history']`
+    (`{ts, ua, device, screened_out, action}`, oldest first, deduped, first
+    entry never dropped); the flat facts to filter on are the participant fields
+    `screened_out` and `screenout_cleared`.
 - `intro.Player`: the quiz fields from `intro/quiz_items.py`,
   `num_failed_attempts`, and `quiz_attempt_log` (every graded submission — see
   the section above). Two rounds: round 2 is the lab re-read pass, so for

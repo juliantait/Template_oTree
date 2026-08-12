@@ -111,6 +111,11 @@ Every participant carries `exit_code`, set to 0 (abandoned) at session creation
 and raised to 1 on a clean finish or a negative reason on early exit. The
 integrity modules, the no-consent short-circuit and the entry screen-out gate
 set the reason; the ending screen reads it to pick the Prolific completion code.
+ONE EXCEPTION, and it is deliberate: the entry screen-out's `-4` is reversible
+while the participant is still pre-consent (the soft wall), so it is the one
+code that is not write-once. The reversal is conditional — a value is only
+reverted if it still holds what the screen-out put there — and it never touches
+the audit history, which is what "how many were turned away" is counted from.
 Every code in the table must be **set by real code** — a code that nothing
 records is a lie in the export, so a reserved-but-unwired code gets deleted, not
 documented. See `settings.EXIT_CODES` and the CODEBOOK.md exit-code table.
@@ -136,18 +141,24 @@ documented. See `settings.EXIT_CODES` and the CODEBOOK.md exit-code table.
 - **passive_capture** — hidden-field time-on-page on the task form (`main`).
 - **device_capture** — device/screen JSON at entry, measurement only (`before`);
   the `is_mobile` field it fills blocks nobody.
-- **allowed_devices** — the entry DEVICE ALLOW-LIST: the device types a study
-  accepts, from `phone`, `tablet`, `computer`, `unknown` (not part of any
-  recruitment profile, so choosing `prolific` never narrows it). The entry
-  request's User-Agent is classified server-side BEFORE the consent page renders
-  (`before.welcome.get`); a device whose type is not listed never sees consent,
-  records exit code `-4` with the DETECTED TYPE as its screen-out cause, and is
-  walked straight to the outro ending (`error_code` on Prolific), which writes
-  copy for that type. Shipped permitting all four types, so by default the check
-  does nothing — no participant-visible effect of any kind. `computer` covers
-  laptops and desktops alike (a browser cannot distinguish them, so there is no
-  `laptop` type); `unknown` means the device could not be identified and is
-  admitted or excluded like any other type.
+- **allowed_devices** — the entry DEVICE ALLOW-LIST, and a SOFT WALL: the device
+  types a study accepts, from `phone`, `tablet`, `computer`, `unknown` (not part
+  of any recruitment profile, so choosing `prolific` never narrows it). The
+  entry request's User-Agent is classified server-side BEFORE the consent page
+  renders (`before.welcome.get`); a device whose type is not listed never sees
+  consent — it is HELD on that same page index, which serves
+  `before/screened_out.html` instead, and records exit code `-4` with the
+  DETECTED TYPE as its screen-out cause. Held rather than walked to an ending
+  because the verdict must stay re-decidable: a later PRE-CONSENT request from
+  an accepted device CLEARS it (oTree only moves forward, so a participant sent
+  to an ending could never come back to consent). After consent the check never
+  applies again. The way out carries NO completion code, so their submission
+  stays open. Shipped permitting all four types, so by default the check does
+  nothing — no participant-visible effect of any kind. `computer` covers laptops
+  and desktops alike (a browser cannot distinguish them, so there is no `laptop`
+  type); `unknown` is a real User-Agent that matches nothing, and is admitted or
+  excluded like any other type — while NO usable User-Agent at all is not a type
+  and always allows. Full reference: "The device check" in README.md.
 - **collect_bank_details** — lab IBAN/BIC/SEPA payment collection (`outro`).
 - **collect_demographics** — explicit demographics questionnaire (`outro`); off
   for Prolific, which supplies demographics in its own export.

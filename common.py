@@ -28,18 +28,67 @@ from settings import EXIT_CODES  # re-exported for convenience
 # and a desktop are BOTH `computer`. If a future study needs "laptop only", it
 # cannot have it from the browser; it has to ask the participant.
 #
-# `unknown` IS ITS OWN TYPE, not a synonym for "computer". It means the
-# detection could not identify the device at all: the User-Agent header was
-# absent, blank, stripped by a privacy tool, or simply unrecognised. Whether an
-# unknown device may take part is a study's decision, so it is listed in
+# `unknown` IS ITS OWN TYPE, not a synonym for "computer". It means a real
+# User-Agent was read and matches none of the three families. Whether such a
+# device may take part is a study's decision, so it is listed in
 # `allowed_devices` exactly like the other three and can be admitted or
-# excluded without touching any code.
+# excluded without touching any code. It does NOT mean "no User-Agent" — that
+# is UNDETERMINED, immediately below, and the difference is load-bearing.
 #
 # The matching is deliberately ORDERED (tablet, then phone, then computer): an
 # iPad's User-Agent contains "Mobile" and an Android tablet's differs from an
 # Android phone's ONLY by the absence of the word "Mobile", so a phone-first
 # test would call every tablet a phone.
 DEVICE_TYPES = ('phone', 'tablet', 'computer', 'unknown')
+
+# =============================================================================
+# 'unknown' IS A DEVICE TYPE.  UNDETERMINED IS NOT A DEVICE AT ALL.
+# =============================================================================
+# These two used to be the same answer, and that was a live false-positive
+# waiting to happen: `unknown` was returned BOTH for "we read a real User-Agent
+# and it matches none of the three families" AND for "there was nothing to read"
+# (absent header, empty string, an exception in the classifier). A study that
+# narrows `allowed_devices` and leaves 'unknown' off the list was therefore
+# ejecting laptops whose header merely failed to arrive — the exact false
+# positive that costs real participants.
+#
+#   'unknown'     — DETERMINED. A usable User-Agent string was read and did not
+#                   match phone, tablet or computer. It is a real device type: a
+#                   study may list it in `allowed_devices` or leave it out, and
+#                   leaving it out screens such a participant out on purpose.
+#   UNDETERMINED  — NO DECISION. There was no usable header to classify: no
+#                   request object at all (oTree instantiates pages WITHOUT one
+#                   while it walks the skip chain), no User-Agent, an empty or
+#                   whitespace-only one, one carrying characters a header may not
+#                   contain, one absurdly longer than any real browser sends, or
+#                   an exception anywhere in the classifier. It is NEVER a
+#                   member of `allowed_devices`, it can never screen anybody out,
+#                   and — see the asymmetry below — it can never clear anybody
+#                   either. The gate records NOTHING and tries again on the next
+#                   real request.
+UNDETERMINED = 'undetermined'
+
+# WHERE THE BOUNDARY BETWEEN "GARBAGE" AND "MERELY UNRECOGNISED" SITS, and why
+# there. Both of these tests are about whether the STRING IS USABLE AT ALL, not
+# about whether we recognise the browser in it:
+#
+#   * LENGTH. Real User-Agents run to ~200 characters; the longest seen in the
+#     wild (a Windows string carrying several .NET and toolbar tokens) is under
+#     600. 1000 is well clear of any real browser and well under the 4-8KB
+#     header limit a proxy would enforce, so anything longer is a probe or a
+#     fuzzer, not a device — and, being UNDETERMINED, it is ALLOWED IN.
+#   * CHARACTERS. RFC 9110 field values are visible ASCII plus space and HTAB.
+#     A value carrying C0 controls, NUL, CR or LF is malformed (CR/LF are the
+#     header-injection markers), so it is not a string to reason about. High
+#     bytes (>= 0x80) are deliberately NOT rejected: a browser with a non-ASCII
+#     product token is unusual but real, and rejecting it here would be a
+#     judgement about the browser rather than about the header.
+#
+# Note which way each rule fails: BOTH of them fail towards UNDETERMINED, i.e.
+# towards letting the participant in. A "garbage" string containing the word
+# iPhone is therefore ALLOWED rather than screened out — deliberately.
+MAX_USABLE_UA_LEN = 1000
+_ILLEGAL_UA_CHARS_RE = re.compile(r'[\x00-\x08\x0a-\x1f\x7f]')
 
 # Tablets. iPad (including iPadOS 13+, which lies and says "Macintosh" but is
 # caught by the touch check client-side — server-side such an iPad reads as a
@@ -132,6 +181,17 @@ def init_participant(participant):
     participant.instructions_reread_used = False
     participant.device_info = {}
     participant.screened_out = False
+    # True once a screen-out has EVER been lifted for this participant. Stays
+    # True even if they are later screened again, so "this person switched
+    # device" is one column in the export instead of a JSON blob to parse.
+    participant.screenout_cleared = False
+    # THE CONSENT BOUNDARY, as a durable participant-level fact rather than a
+    # page index: set in `before.welcome.before_next_page` when the consent page
+    # is SUBMITTED (consenting or not), and read by the device gate, which never
+    # touches a participant past it. Not an index, because adding a page moves
+    # every index; not anything id-related, because the gate must be able to
+    # answer the question on a request for any page.
+    participant.consent_submitted = False
 
 
 def stamp_stage(participant, stage):
@@ -146,31 +206,58 @@ def set_exit_code(participant, code):
     participant.exit_code = code
 
 
-def detect_device_type(user_agent) -> str:
-    """Classify an entry request's User-Agent as one of DEVICE_TYPES.
+def classify_device(user_agent) -> str:
+    """Classify an entry request's User-Agent.
 
-    Returns 'phone', 'tablet', 'computer' or 'unknown'. NEVER raises and never
-    returns anything else, so a caller can always index a copy table with it.
+    Returns one of DEVICE_TYPES ('phone', 'tablet', 'computer', 'unknown') when
+    a usable header was read, or UNDETERMINED when there was nothing usable to
+    classify. NEVER raises and never returns anything else, so a caller can
+    always index a copy table with it.
 
-    'unknown' is a real answer, not a failure: an absent, blank or stripped
-    User-Agent, or one this template does not recognise. A study decides
-    whether unknown devices may take part by listing (or not listing) 'unknown'
-    in `allowed_devices` — see the DEVICE TYPES note at the top of this file,
-    which also explains why there is no 'laptop' type and cannot be one.
+    THE TWO ANSWERS THAT LOOK ALIKE AND ARE NOT (see the note at the top of this
+    file, which is the full argument):
 
-    ORDER MATTERS: tablets first (an iPad says "Mobile"), then phones, then
-    computers.
+      * 'unknown'    — a real, usable User-Agent that matches none of the three
+                       device families. A DEVICE TYPE: a study may admit or
+                       exclude it in `allowed_devices` like any other.
+      * UNDETERMINED — no usable header at all (missing, empty, malformed,
+                       absurdly long, or an exception on the way). NOT a device
+                       type, never in `allowed_devices`, screens nobody out and
+                       clears nobody. The gate records nothing and re-decides on
+                       the next real request.
+
+    ORDER MATTERS for the three families: tablets first (an iPad says "Mobile"),
+    then phones, then computers.
+
+    (Renamed from `detect_device_type` on 2026-08-12 when the two answers above
+    were split. The old name is gone rather than aliased: its contract — "always
+    one of four types" — is the thing that was wrong, so a caller still holding
+    it must be looked at, not silently redirected.)
     """
-    ua = user_agent or ''
-    if not ua.strip():
+    try:
+        if isinstance(user_agent, (bytes, bytearray)):
+            ua = user_agent.decode('latin-1', 'replace')
+        elif isinstance(user_agent, str):
+            ua = user_agent
+        else:
+            return UNDETERMINED          # None, or something that is not a header
+        if not ua.strip():
+            return UNDETERMINED
+        if len(ua) > MAX_USABLE_UA_LEN:
+            return UNDETERMINED
+        if _ILLEGAL_UA_CHARS_RE.search(ua):
+            return UNDETERMINED
+        if TABLET_UA_RE.search(ua):
+            return 'tablet'
+        if PHONE_UA_RE.search(ua):
+            return 'phone'
+        if COMPUTER_UA_RE.search(ua):
+            return 'computer'
         return 'unknown'
-    if TABLET_UA_RE.search(ua):
-        return 'tablet'
-    if PHONE_UA_RE.search(ua):
-        return 'phone'
-    if COMPUTER_UA_RE.search(ua):
-        return 'computer'
-    return 'unknown'
+    except Exception:
+        # A classifier that raises must not decide anything, and above all must
+        # not decide against the participant (the instrumentation rule).
+        return UNDETERMINED
 
 
 def is_mobile_user_agent(user_agent) -> bool:
@@ -178,10 +265,11 @@ def is_mobile_user_agent(user_agent) -> bool:
 
     Kept as a convenience for MEASUREMENT (and for any study code that only
     cares about "small screen"); the entry gate itself uses the four-way
-    detect_device_type above, because "mobile or not" cannot express an
-    allow-list.
+    classify_device above, because "mobile or not" cannot express an
+    allow-list. An UNDETERMINED header is not a mobile device — it is not any
+    device — so this is False for it.
     """
-    return detect_device_type(user_agent) in ('phone', 'tablet')
+    return classify_device(user_agent) in ('phone', 'tablet')
 
 
 def is_screened_out(participant) -> bool:
@@ -227,8 +315,90 @@ def allowed_devices(config) -> tuple:
     return wanted or DEVICE_TYPES
 
 
-def device_gate_verdict(config, user_agent):
-    """(detected_type, is_allowed) for one entry request.
+# =============================================================================
+# THE ASYMMETRY.  READ THIS BEFORE TOUCHING EITHER PREDICATE BELOW.
+# =============================================================================
+# The screen-out is a SOFT WALL: it can be lifted again by a later pre-consent
+# request from an acceptable device (see `before._apply_device_gate`). That
+# makes TWO questions out of what looks like one, and they must NOT be written
+# as each other's negation:
+#
+#   SCREENING SOMEBODY OUT needs positive evidence of a device the study does
+#   not accept. Absence of evidence (UNDETERMINED) means ALLOWED — fail open,
+#   record nothing, ask again on the next real request. A false positive turns a
+#   real participant away; a false negative costs one noisy row.
+#
+#   CLEARING AN EXISTING SCREEN-OUT needs positive evidence of a device the
+#   study DOES accept — the detected type must be EXPLICITLY in the allow-list.
+#   Absence of evidence must NOT clear. If UNDETERMINED could clear, anyone
+#   screened out could lift their own screen-out by arriving with no User-Agent,
+#   which takes about ten seconds to do, and the gate would be a suggestion.
+#
+# So: `device_clears_screenout` is written as EXPLICIT MEMBERSHIP of the
+# allow-list and must stay that way. Do NOT rewrite it as "not screened out", as
+# "not in the rejected set", or as `not device_screens_out(...)` — every one of
+# those formulations lets the sentinel through, because UNDETERMINED is in
+# neither set.
+# =============================================================================
+
+def device_screens_out(config, detected) -> bool:
+    """Is this classification positive evidence of an EXCLUDED device?
+
+    False for UNDETERMINED (no evidence at all) and false for anything that is
+    not one of DEVICE_TYPES, so only a determined type the study does not list
+    can ever remove somebody.
+    """
+    if detected not in DEVICE_TYPES:      # UNDETERMINED, or a value from nowhere
+        return False
+    return detected not in allowed_devices(config)
+
+
+def device_clears_screenout(config, detected) -> bool:
+    """Is this classification positive evidence of an ACCEPTED device?
+
+    EXPLICIT MEMBERSHIP, deliberately — see the asymmetry note above.
+    `allowed_devices` only ever contains members of DEVICE_TYPES, so
+    UNDETERMINED cannot satisfy this no matter what a config says.
+
+    THE INVARIANT, AND THE TEST TO APPLY TO ANY NEW DEVICE TYPE
+    ----------------------------------------------------------
+    **The clear predicate must be exactly the entry-allow predicate MINUS
+    UNDETERMINED.** Nothing else is safe or coherent, in either direction:
+
+      * if CLEAR allows MORE than entry, there is a hole — somebody lifts a
+        screen-out with a device that would not have been let in;
+      * if CLEAR allows LESS than entry, the screen-out page is telling somebody
+        that switching devices will work when for them it cannot. That is the
+        mistake the implementation this was adapted from made: their `unknown`
+        never cleared, even in a study that admitted unknown devices. Their
+        concrete victim: a laptop whose User-Agent is stripped by a privacy tool
+        or a corporate proxy classifies as unknown and is admitted on a fresh
+        visit — but if that person first opened the study on their phone they
+        are screened, and switching to that very laptop does not lift it, while
+        the page in front of them says to switch devices. Rare, and exactly the
+        person the soft wall exists for.
+
+    WHY OURS CANNOT BE EXPLOITED, stated as the rule to check a new type
+    against rather than as a description of today's code: **anything that
+    clears could equally have entered fresh on that same device**, so admitting
+    it on the clear path takes nothing away from the gate. Add a fifth device
+    type tomorrow and the question to ask is that one — if a participant
+    arriving on it for the first time would be let in, it must also lift an
+    existing screen-out; if it would not, it must not.
+
+    UNDETERMINED is the single carve-out, and it is the one case where the two
+    predicates deliberately differ: it is not a device at all, so "could they
+    have entered fresh on it?" has no answer, and treating it as a clear would
+    let anyone lift their own screen-out by sending no User-Agent. The cost is
+    accepted and is the residual gap in OUR version too — somebody screened on a
+    phone who switches to a laptop that sends no usable header stays screened.
+    Their remedy is the way off the page, not a header we cannot read.
+    """
+    return detected in allowed_devices(config)
+
+
+def device_gate_decision(config, user_agent):
+    """(detected, screens_out, clears) for one entry request.
 
     THE SERVER DECIDES. The client also reports what it thinks it is
     (device_capture.js writes a `device_type` into the device-info JSON), but
@@ -237,9 +407,15 @@ def device_gate_verdict(config, user_agent):
     the two disagree, the server's answer is the one recorded and the one acted
     on; the client's is kept beside it so the disagreement is visible in the
     export.
+
+    The two booleans are NOT complements: for UNDETERMINED both are False, which
+    is the whole point (allowed on entry, but not evidence that lifts a
+    screen-out).
     """
-    detected = detect_device_type(user_agent)
-    return detected, detected in allowed_devices(config)
+    detected = classify_device(user_agent)
+    return (detected,
+            device_screens_out(config, detected),
+            device_clears_screenout(config, detected))
 
 
 DEVICE_TYPE_LABELS = {
@@ -273,6 +449,29 @@ def device_types_phrase(types) -> str:
     return ', '.join(labels[:-1]) + ' or ' + labels[-1]
 
 
+def screenout_return_url(config) -> str:
+    """The way OUT for a screened-out participant: the recruitment platform's
+    own site, carrying NO completion code.
+
+    THERE IS DELIBERATELY NO SCREENED-OUT COMPLETION CODE. Submitting one would
+    close the participant's Prolific submission the instant they clicked it, and
+    a returned submission can never be retaken — which forecloses exactly the
+    outcome the screen-out page is trying to produce, namely that they reopen
+    the study on a computer and finish it. Their submission therefore stays
+    OPEN, and returning it stays their decision, taken on Prolific.
+
+    Read through `cfg` so a session created before the parameter existed falls
+    back to the shipped default instead of 500-ing on the one page a stranded
+    participant needs. Returns '' if a study blanks it, and the template then
+    renders no link at all rather than a broken one. Escaping happens at the
+    point of use, in the template.
+    """
+    try:
+        return str(cfg(config, 'screenout_return_url') or '').strip()
+    except Exception:
+        return ''
+
+
 # --- entry screen-out causes -------------------------------------------------
 # Exit code -4 (``screened_out``) is the GENERAL "removed at entry" bucket, not a
 # phone-specific code. Which gate fired is recorded separately, as a cause string
@@ -299,8 +498,11 @@ SCREENOUT_CAUSES = {
     'tablet': 'Entry device detected as a tablet, which allowed_devices excludes.',
     'computer': 'Entry device detected as a computer (desktop or laptop — the '
                 'browser cannot tell them apart), which allowed_devices excludes.',
-    'unknown': 'Entry device could not be identified (no or unrecognised '
-               'User-Agent), and allowed_devices does not admit unknown devices.',
+    # NB: 'unknown' is the DETERMINED unknown — a real User-Agent that matches
+    # no device family. A request with NO usable User-Agent is UNDETERMINED, is
+    # never screened out and never reaches this table at all.
+    'unknown': 'Entry device sent a User-Agent this template does not recognise, '
+               'and allowed_devices does not admit unknown devices.',
 }
 
 
@@ -329,10 +531,135 @@ def set_screened_out(participant, cause):
     One call so a gate cannot record the flag and the exit code but forget the
     cause. Idempotent at the caller's discretion (check ``is_screened_out``
     first, so a page reload never re-stamps).
+
+    WRITTEN AT DECISION TIME, not when the screen-out page renders: a
+    participant who reads that page and closes the tab must still export as a
+    screen-out rather than as an abandoner.
     """
     participant.screened_out = True
     set_exit_code(participant, EXIT_CODES['screened_out'])
     extra_set(participant, SCREENOUT_CAUSE_KEY, cause)
+
+
+def clear_screened_out(participant):
+    """Lift a screen-out: this participant is doing the study after all.
+
+    Called only with POSITIVE evidence of an accepted device, before consent
+    (see the asymmetry note above and `before._apply_device_gate`). Somebody who
+    switched to a device the study accepts must not sit in the data as screened
+    out while completing the study.
+
+    EACH VALUE IS REVERTED ONLY IF IT STILL HOLDS WHAT THE SCREEN-OUT PUT
+    THERE. The exit code goes back to `abandoned` only while it is still
+    `screened_out`, and the cause is dropped only while it is still one this
+    gate wrote. Anything else — a tab-monitor disqualification that landed in
+    the same window, a future gate's own cause — is left exactly as it is, so a
+    clear can never clobber another mechanism's record.
+
+    THE STATE IS RESET; THE HISTORY IS NOT. The appended audit trail
+    (`screenout_history`) keeps the original screen-out entry, and
+    `screenout_cleared` stays True for good. Without that, clearing the exit
+    code would erase the evidence that anybody was ever turned away and nobody
+    could count what the gate stopped.
+
+    ACCEPTED CONSEQUENCE, stated plainly: once the exit code is clearable it is
+    no longer write-once. An export taken while somebody is mid-switch shows a
+    `-4` that later becomes something else. That is the price of the soft wall,
+    and `screenout_cleared` plus the history is how you tell such a row apart
+    from one that never moved.
+    """
+    participant.screened_out = False
+    participant.screenout_cleared = True
+    if participant.vars.get('exit_code') == EXIT_CODES['screened_out']:
+        set_exit_code(participant, EXIT_CODES['abandoned'])
+    if screenout_cause(participant) in SCREENOUT_CAUSES:
+        extra_set(participant, SCREENOUT_CAUSE_KEY, '')
+
+
+def screenout_cleared(participant) -> bool:
+    """True if a screen-out has ever been lifted for this participant."""
+    return bool(participant.vars.get('screenout_cleared'))
+
+
+# --- the screen-out audit history --------------------------------------------
+# One entry per REAL EVENT, appended and never overwritten: it is the only way
+# to diagnose a false positive after the fact, or to see that somebody switched
+# device. Lives in the free JSON bucket rather than in its own column because it
+# is a variable-length record; the flat facts an analyst filters on
+# (`screened_out`, `screenout_cleared`, `exit_code`) are all first-class fields.
+SCREENOUT_HISTORY_KEY = 'screenout_history'
+MAX_SCREENOUT_HISTORY = 20
+SCREENOUT_UA_TRUNC = 300      # an audit note, not a payload
+
+
+def screenout_history(participant) -> list:
+    """The decision history, oldest first ([] if the gate never decided)."""
+    entries = extra_get(participant, SCREENOUT_HISTORY_KEY)
+    return list(entries) if isinstance(entries, list) else []
+
+
+def append_screenout_history(participant, user_agent, device, screened, action):
+    """Append one decision to the audit history. Never overwrites, never raises.
+
+    DEDUPED: a reload re-runs the gate with the same header and the same
+    outcome, and a history full of that would bury the events a reader is
+    looking for, so a repeat of the previous entry is dropped.
+
+    CAPPED, BUT THE FIRST ENTRY IS PERMANENT: the original decision is the one a
+    false-positive investigation needs, so when the cap bites it is the MIDDLE
+    of the history that is dropped, never the beginning.
+    """
+    try:
+        entry = dict(
+            ts=int(time.time()),
+            ua=str(user_agent or '')[:SCREENOUT_UA_TRUNC],
+            device=device,
+            screened_out=bool(screened),
+            action=action,
+        )
+        entries = screenout_history(participant)
+        if entries:
+            last = entries[-1]
+            if (isinstance(last, dict)
+                    and last.get('ua') == entry['ua']
+                    and last.get('device') == entry['device']
+                    and last.get('screened_out') == entry['screened_out']):
+                return                      # a reload, not an event
+        entries.append(entry)
+        if len(entries) > MAX_SCREENOUT_HISTORY:
+            entries = entries[:1] + entries[-(MAX_SCREENOUT_HISTORY - 1):]
+        extra_set(participant, SCREENOUT_HISTORY_KEY, entries)
+    except Exception:
+        # Instrumentation must never break a page — least of all the page whose
+        # job is to give a screened-out participant a way out.
+        pass
+
+
+# --- the consent boundary ----------------------------------------------------
+
+def consent_submitted(participant) -> bool:
+    """True once this participant has SUBMITTED the consent page.
+
+    The boundary the device gate stops at. A durable participant-level fact, not
+    a page index and nothing to do with an id:
+
+      * the gate answers requests for whatever page the participant is on, and
+        oTree also instantiates pages with no request at all while it walks the
+        skip chain, so it needs a fact it can read, not a question about where
+        somebody is;
+      * page indices move the moment the page sequence changes — which this very
+        feature does — so a positional boundary silently drifts.
+
+    Set for EVERYONE who submits that page, whether they consented or not: a
+    non-consenter is past the point this gate guards just as much as a
+    consenter is.
+    """
+    return bool(participant.vars.get('consent_submitted'))
+
+
+def mark_consent_submitted(participant):
+    """Record that the consent page has been submitted (see above). Idempotent."""
+    participant.consent_submitted = True
 
 
 def extra_set(participant, key, value):

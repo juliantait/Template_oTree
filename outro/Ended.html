@@ -2,16 +2,19 @@
 {% include '_static/global/html/css_bundle.html' %}
 <script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
 
-<!-- Ending for participants who did NOT complete normally: disqualified,
-     non-consenting, and screened out at entry by the device allow-list.
+<!-- Ending for participants who did NOT complete normally: disqualified and
+     non-consenting.
 
-     NOTE ON THE DEVICE GATE: the `allowed_devices` gate renders NO page of its
-     own. It decides server-side in before.welcome.get(), before any HTML
-     exists, and every page between entry and here is gated on
-     common.is_screened_out(). So for a screened-out device THIS PAGE IS THE
-     FIRST AND ONLY SCREEN they ever see — they never reach consent. It is
-     therefore styled as a full narrative card like every other participant-
-     facing page, not as a bare error message. -->
+     NOTE ON THE DEVICE GATE: a screened-out participant does NOT come here any
+     more. The gate holds them on the entry page's own index and serves
+     before/screened_out.html there, because the screen-out is a SOFT WALL that
+     has to stay re-decidable — oTree only moves a participant forward, so
+     anyone walked to this ending could never be brought back to consent after
+     switching device. The screened_out branch below is the unreachable-by-
+     design fallback for any future gate that sets the flag later in the flow;
+     it returns them to Prolific WITHOUT a completion code, exactly like the
+     entry page does, since a code would close a submission they may still want
+     to complete. -->
 <div class="experimental-screen">
     <div class="screen-card narrative-card">
         <div class="experimental-header">
@@ -154,6 +157,12 @@
                 Please click the button below to return to Prolific.
             </p>
             {% endif %}
+            {% if reason == 'screened_out' and completion_redirects %}
+            <p class="section-text">
+                Your submission is not completed by this: you will be asked to
+                return it on Prolific.
+            </p>
+            {% endif %}
 
             <!-- Inside the scroll region, not pinned — see base.css "Pinned
                  regions": only the header strip and the button row are pinned. -->
@@ -161,21 +170,35 @@
         </div>
 
         <!-- Direct child of the card, so it stays pinned at the foot when the
-             content region scrolls (see .screen-card in base.css). -->
+             content region scrolls (see .screen-card in base.css).
+
+             A REAL LINK, not a scripted button. It used to be
+             `<button onclick="backToProlific()">` with no href, so a participant
+             whose JavaScript had not run had no way to leave the page at all —
+             the same dead end the entry screen-out page was rebuilt to avoid.
+             ESCAPED because ibis does not auto-escape, and the URL carries a
+             config-supplied completion code.
+
+             THE SCREENED-OUT VARIANT CARRIES NO CODE: it goes to the Prolific
+             participant site itself, so the submission stays open (see
+             outro.completion_link). -->
         {% if completion_redirects %}
         <div class="button-row">
-            <button type="button" class="next-button" onclick="backToProlific()">
+            {% if reason == 'screened_out' %}
+            <a class="exit-button" href="{{ screenout_return_url|escape }}">
                 Back to Prolific
-            </button>
+            </a>
+            {% else %}
+            <a class="next-button" href="{{ completionlink|escape }}">
+                Back to Prolific
+            </a>
+            {% endif %}
         </div>
         {% endif %}
     </div>
 </div>
 
 <script>
-    function backToProlific() {
-        window.location.href = js_vars.completionlink;
-    }
     window.addEventListener('load', clearAllCookies);
 </script>
 

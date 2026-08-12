@@ -154,6 +154,11 @@ os.makedirs(OUT_DIR, exist_ok=True)
 PHONE_UA = ('Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) '
             'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 '
             'Mobile/15E148 Safari/604.1')
+# A computer, for the case that must NOT be screened out however small its
+# window is (check_narrow_desktop_window).
+DESKTOP_UA = ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+              'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 '
+              'Safari/537.36')
 
 VIEWPORTS = {
     'laptop_1280x720': dict(width=1280, height=720),
@@ -339,8 +344,18 @@ def page_specs():
         # nothing caught: the lab walks all stopped before this page.
         dict(key='demographics_lab', config='lab', stop='Demographics'),
         dict(key='results', config='prolific', stop='Results'),
-        dict(key='ended_screenout', config='prolific', stop='Ended',
+        # THE ENTRY SCREEN-OUT PAGE. Rendered at the CONSENT page's own URL —
+        # `before.welcome` serves before/screened_out.html instead of consent
+        # for a device the allow-list rejects, and HOLDS the participant there
+        # so the verdict stays re-decidable (the soft wall). The browser context
+        # carries the phone User-Agent too, so the gate re-decides the same way
+        # for the real browser request as it did for the walker's.
+        dict(key='screened_out', config='prolific', stop='welcome',
              modified={'allowed_devices': ['computer']}, user_agent=PHONE_UA),
+        # THE SAME PAGE IN A NARROW DESKTOP WINDOW is NOT screened out: the gate
+        # reads the User-Agent and nothing else, so window width cannot remove
+        # anybody. Rendered with a computer User-Agent at 640px — the case a
+        # width-based check would get wrong (see check_narrow_desktop_window).
     ]
 
 
@@ -745,11 +760,11 @@ def check_eyebrow_alignment(server, browser):
     for key, config, stop, band_sel in (
             ('consent_prolific', 'prolific', 'welcome', '.section-text'),
             ('prolific_id', 'prolific', 'ConfirmProlificID', '.stacked-form'),
-            ('ended_screenout', 'prolific', 'Ended', '.section-text'),
+            ('screened_out', 'prolific', 'welcome', '.section-text'),
             ('instructions', 'lab', 'instructing', '.instruction-block')):
         modified = ({'allowed_devices': ['computer']}
-                    if key == 'ended_screenout' else None)
-        ua = PHONE_UA if key == 'ended_screenout' else None
+                    if key == 'screened_out' else None)
+        ua = PHONE_UA if key == 'screened_out' else None
         session = create_session(config, num_participants=2,
                                  modified_session_config_fields=modified)
         code, _ = walk_to(server.base, session, stop, user_agent=ua)
@@ -1622,7 +1637,7 @@ def check_page_anatomy(server, browser, facts):
     """
     section('AB. Page anatomy: logo strips, and where the title comes from')
     expected_logo = {'lab_entry_gate', 'consent_lab', 'consent_prolific',
-                     'ended_screenout', 'results'}
+                     'screened_out', 'results'}
     for key, per_vp in facts.items():
         has = per_vp['laptop_1280x720']['has_logo_strip']
         if key in expected_logo:
@@ -1685,16 +1700,18 @@ def check_lab_only_copy(server, browser):
     cases = (
         ('results', 'Results', 'stay seated',
          'until the experimenter tells you that you can leave'),
-        ('ending', 'Ended', 'raise your hand',
-         'so the experimenter can come to you before you leave'),
+        # The SCREEN-OUT page, not the outro ending: a screened-out participant
+        # is now held at entry (the soft wall), so this is where the lab/online
+        # divergence actually reaches somebody. In the lab there is a person in
+        # the room to call; online there is a link back to Prolific instead.
+        ('screenout', 'welcome', 'raise your hand',
+         'so the experimenter can come to you'),
     )
     for page_key, stop, bold_phrase, tail in cases:
         for config in ('lab', 'prolific'):
-            # The ending is only reachable by a participant who did NOT
-            # complete; the device gate is the cheapest way to get one there.
-            modified = ({'allowed_devices': ['computer']} if stop == 'Ended'
-                        else None)
-            ua = PHONE_UA if stop == 'Ended' else None
+            modified = ({'allowed_devices': ['computer']}
+                        if page_key == 'screenout' else None)
+            ua = PHONE_UA if page_key == 'screenout' else None
             session = create_session(config, num_participants=2,
                                      modified_session_config_fields=modified)
             code, _ = walk_to(server.base, session, stop, user_agent=ua)
@@ -1724,6 +1741,175 @@ def check_lab_only_copy(server, browser):
             geometry.setdefault('lab_only_copy', {})[label] = {
                 'has_tail': tail in flat, 'bolds': bolds}
             context.close()
+
+
+def check_screenout_way_out(server, browser):
+    """AD. The screen-out page's way out WORKS WITHOUT JAVASCRIPT.
+
+    This is the bug the page was rebuilt to avoid: the implementation it was
+    adapted from used `onclick="completed()"` with no href, so a participant
+    whose JavaScript had not run had NO way off the page at all — a dead end on
+    the one page whose entire job is to offer a way out. Driven with JS
+    DISABLED, and measured, not looked at: the link must be present, visible,
+    big enough to press, and pointing at the platform with no completion code.
+
+    Also checks the VISUAL HIERARCHY the copy depends on. The irreversible
+    action is the SECONDARY one: it must not be painted like the primary
+    forward button used everywhere else in the study, or a participant reading
+    "do not press this" sees the study's usual Next button.
+    """
+    section('AD. The screen-out way out: no JavaScript, and visibly secondary')
+    session = create_session('prolific', num_participants=2,
+                             modified_session_config_fields={
+                                 'allowed_devices': ['computer']})
+    code, _ = walk_to(server.base, session, 'welcome', user_agent=PHONE_UA)
+    for vp_name, vp in VIEWPORTS.items():
+        context = browser.new_context(viewport=vp, user_agent=PHONE_UA,
+                                      java_script_enabled=False)
+        page = context.new_page()
+        page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+        m = page.evaluate("""() => {
+            const a = document.querySelector('a.exit-button');
+            if (!a) return null;
+            const r = a.getBoundingClientRect();
+            const cs = getComputedStyle(a);
+            return {href: a.getAttribute('href'), w: Math.round(r.width),
+                    h: Math.round(r.height), display: cs.display,
+                    visibility: cs.visibility, background: cs.backgroundColor,
+                    color: cs.color, text: a.innerText.trim(),
+                    onclick: a.getAttribute('onclick')};
+        }""")
+        primary = page.evaluate(
+            """() => document.querySelectorAll('.next-button').length""")
+        label = f'{vp_name}'
+        if not check(m is not None,
+                     f'{label}: the way out EXISTS with JS disabled'):
+            context.close()
+            continue
+        check(m['href'].startswith('http'),
+              f'{label}: it is a real href ({m["href"]!r}) — not a scripted button')
+        check('submissions/complete' not in m['href'] and 'cc=' not in m['href'],
+              f'{label}: it carries NO completion code ({m["href"]!r})')
+        check(m['onclick'] is None,
+              f'{label}: no onclick — nothing about it needs a script')
+        check(m['visibility'] == 'visible' and m['w'] >= 120 and m['h'] >= 36,
+              f'{label}: visible and pressable ({m["w"]}x{m["h"]}px)')
+        check(primary == 0,
+              f'{label}: there is NO .next-button on this page — the exit is '
+              f'not painted as the study\'s primary forward action, and '
+              f'global.js\'s Enter handler has nothing to click ({primary} found)')
+        check(m['background'] in ('rgba(0, 0, 0, 0)', 'transparent'),
+              f'{label}: the irreversible action is SECONDARY — outlined, not '
+              f'filled (background {m["background"]})')
+        geometry.setdefault('screenout_way_out', {})[vp_name] = m
+        if vp_name == 'phone_375x667':
+            screenshot(page, 'screened_out_nojs', vp_name)
+        context.close()
+
+
+def check_completion_link_nojs(server, browser):
+    """AF. EVERY way back to Prolific works with JavaScript DISABLED.
+
+    The completion codes are the participant's PAY. The Results button used to
+    be `<button onclick="backToProlific()">` with the URL only in `js_vars`, so
+    a completer whose JavaScript was blocked or broken finished the entire
+    study, read their payment total, and then had no way to submit their
+    completion — unpaid, and indistinguishable in the data from somebody who
+    abandoned on the last page. The early-exit ending had the same shape, with
+    the disqualification and no-consent codes on it.
+
+    Both are real links now, and this drives them with JS off and reads the href
+    the participant would actually follow — including the CODE in it, so a
+    regression that renders an empty or wrong URL fails here too.
+    """
+    section('AF. The completion links: present and correct with JS disabled')
+    cases = []
+
+    # (1) A COMPLETER, the case that matters most: everybody who finishes.
+    session = create_session('prolific', num_participants=2)
+    code, _ = walk_to(server.base, session, 'Results')
+    cases.append(('Results (completer)', code, 'REPLACE_CC'))
+
+    # (2) An EARLY EXIT — the no-consent route, which carries noconsent_code.
+    session = create_session('prolific', num_participants=2)
+    s = requests.Session()
+    r = s.get(f'{server.base}/join/{anon_code(session.code)}', allow_redirects=True)
+    fp = FormParser(); fp.feed(r.text)
+    r = s.post(r.url, data=build_payload(fp.inputs, {'consent': 'False'}, {},
+                                         warn=False), allow_redirects=True)
+    if check(page_of(r.url) == 'Ended',
+             f'a non-consenter reaches the ending (got {page_of(r.url)})'):
+        cases.append(('Ended (declined consent)', code_of(r.url), 'REPLACE_NC'))
+
+    for label, participant_code, expected_code in cases:
+        context = browser.new_context(viewport=VIEWPORTS['laptop_1280x720'],
+                                      java_script_enabled=False)
+        page = context.new_page()
+        page.goto(f'{server.base}/InitializeParticipant/{participant_code}',
+                  wait_until='load')
+        m = page.evaluate("""() => {
+            const a = Array.from(document.querySelectorAll('a')).find(
+                x => (x.getAttribute('href') || '').includes('prolific'));
+            if (!a) return null;
+            const r = a.getBoundingClientRect();
+            return {href: a.getAttribute('href'), text: a.innerText.trim(),
+                    w: Math.round(r.width), h: Math.round(r.height),
+                    onclick: a.getAttribute('onclick'),
+                    cls: a.getAttribute('class')};
+        }""")
+        buttons = page.evaluate(
+            """() => Array.from(document.querySelectorAll('button')).map(
+                   b => b.innerText.trim()).filter(t => /prolific/i.test(t))""")
+        if not check(m is not None,
+                     f'{label}: a Prolific link EXISTS with JS disabled'):
+            context.close()
+            continue
+        check(m['href'].startswith('https://app.prolific.com/submissions/complete?cc='),
+              f'{label}: it is the completion URL ({m["href"]!r})')
+        check(expected_code in m['href'],
+              f'{label}: carrying THIS outcome\'s code ({expected_code} in '
+              f'{m["href"]!r})')
+        check(m['onclick'] is None and not buttons,
+              f'{label}: nothing about leaving needs a script '
+              f'(onclick={m["onclick"]!r}, scripted buttons {buttons})')
+        check(m['w'] >= 120 and m['h'] >= 36,
+              f'{label}: visible and pressable ({m["w"]}x{m["h"]}px)')
+        geometry.setdefault('completion_link_nojs', {})[label] = m
+        context.close()
+
+
+def check_narrow_desktop_window(server, browser):
+    """AE. A NARROW DESKTOP WINDOW is not a phone, and is never screened out.
+
+    The gate classifies the User-Agent and nothing else — no width, no touch,
+    nothing client-side — and this is the case that would go wrong if anybody
+    ever "improved" it with a viewport test: a computer browser 640px wide,
+    under a computers-only allow-list. It must render CONSENT, and the layout
+    must survive the width (no sideways overflow).
+    """
+    section('AE. A 640px-wide desktop window still gets consent')
+    session = create_session('prolific', num_participants=2,
+                             modified_session_config_fields={
+                                 'allowed_devices': ['computer']})
+    code, _ = walk_to(server.base, session, 'welcome', user_agent=DESKTOP_UA)
+    context = browser.new_context(viewport={'width': 640, 'height': 900},
+                                  user_agent=DESKTOP_UA)
+    page = context.new_page()
+    page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+    page.wait_for_timeout(150)
+    flat = ' '.join(visible_text(page).split())
+    check('I consent and wish to take part' in flat,
+          'a narrow desktop window reaches CONSENT (width screens nobody out)')
+    check('Your place is still open' not in flat,
+          'and never the screen-out page')
+    over = page.evaluate("""() => ({doc: document.documentElement.scrollWidth,
+                                    win: window.innerWidth})""")
+    check(over['doc'] <= over['win'] + 1,
+          f'and the page does not scroll sideways at 640px '
+          f'({over["doc"]}px content in {over["win"]}px)')
+    screenshot(page, 'consent_narrow_window', 'narrow_640x900')
+    geometry['narrow_desktop_window'] = over
+    context.close()
 
 
 def check_phone_page_flow(server, browser):
@@ -2358,7 +2544,7 @@ def check_features(server, browser, facts):
           f'it is the hug variant: shrink-wrapped ({panel["w"]}px inside a '
           f'{consent["content"]["w"]}px column), display:{panel["display"]}')
 
-    for key in ('consent_lab', 'consent_prolific', 'ended_screenout'):
+    for key in ('consent_lab', 'consent_prolific', 'screened_out'):
         st = facts[key]['laptop_1280x720']['section_text']
         if st:
             check(st['textAlign'] == 'center',
@@ -2524,14 +2710,24 @@ def check_features(server, browser, facts):
         context.close()
     geometry['ai_safety_bold'] = bold
 
-    section('L. The screened-out ending shows its OWN wording')
-    text = facts['ended_screenout']['phone_375x667']['text']
-    check('computer' in text.lower() or 'desktop' in text.lower()
-          or 'laptop' in text.lower(),
-          f'the phone screen-out ending explains the desktop-only rule '
-          f'(text: {text[:120]!r})')
-    check(facts['ended_screenout']['laptop_1280x720']['url_page'] == 'Ended',
-          'the screened-out participant lands on the ending page')
+    section('L. The screen-out page: its own wording, and its two unequal paths')
+    text = facts['screened_out']['phone_375x667']['text']
+    flat = ' '.join(text.split())
+    check('computer' in flat.lower() or 'desktop' in flat.lower()
+          or 'laptop' in flat.lower(),
+          f'the phone screen-out explains the computer-only rule '
+          f'(text: {flat[:120]!r})')
+    check('phone' in flat.lower() and 'mobile device' not in flat.lower(),
+          'it says PHONE, never "mobile device" (a study may accept tablets)')
+    check('Your place is still open' in flat,
+          'the SWITCH-DEVICE path promises their place is still open')
+    check('Do not press the button below' in flat,
+          'and tells them not to press the irreversible one')
+    # It is served at the CONSENT page's own index — that is what holds the
+    # participant somewhere a later request can re-decide.
+    check(facts['screened_out']['laptop_1280x720']['url_page'] == 'welcome',
+          'the screened-out participant is HELD on the entry page, not walked '
+          'to an ending they could never come back from')
 
 
 # ==========================================================================
@@ -2870,6 +3066,9 @@ def main():
                     check_consent_single_question(server, browser, facts)
                     check_page_anatomy(server, browser, facts)
                     check_lab_only_copy(server, browser)
+                    check_screenout_way_out(server, browser)
+                    check_completion_link_nojs(server, browser)
+                    check_narrow_desktop_window(server, browser)
                     check_phone_page_flow(server, browser)
                     check_dq_ending(server, browser)
                     check_scroll_really_moves(server, browser)
