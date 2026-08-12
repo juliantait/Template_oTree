@@ -136,6 +136,19 @@
                 </p>
             {% endif %}
 
+            {# LAB ONLY (Julian, 2026-08-12), and deliberately NOT the results
+               page's sentence. Someone whose study ends early in the lab is not
+               waiting for the room to be dismissed — they need to leave now and
+               the experimenter has to know — so they raise a hand rather than
+               sit tight. Gated on `is_lab`, because a Prolific participant has
+               no hand to raise and no room to be in. #}
+            {% if is_lab %}
+            <p class="section-text">
+                Please <strong>raise your hand</strong> so the experimenter can
+                come to you before you leave.
+            </p>
+            {% endif %}
+
             {% if completion_redirects %}
             <p class="section-text">
                 Please click the button below to return to Prolific.

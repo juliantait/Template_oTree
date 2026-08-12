@@ -235,4 +235,28 @@
     .instruction-controls .next-button { flex: 1 1 0; padding-inline: .8em; }
     .instruction-controls { gap: 8px; }
     .instruction-progress { padding-inline: 2px; font-size: .78em; }
+
+    /* THE PHONE MODEL: the page scrolls, not a box inside the card
+       (improvement_suggestions item 1 — the shared half is in base.css's phone
+       breakpoint, which explains the whole decision).
+       IT HAS TO BE REPEATED HERE, not merely written there: this file loads
+       AFTER base.css, so `.instruction-wrapper { overflow-y: auto }` above wins
+       over an identical-specificity rule in base.css whatever the media query
+       says. Miss this and the instructions page keeps its inner scroller on a
+       phone while every other page has let go of it — which is exactly how it
+       failed the eyebrow check on the first attempt (the wrapper kept its
+       reserved scrollbar gutter, so the copy sat 10px right of the eyebrow).
+       The pager follows the slide in document order, so with the wrapper in
+       normal flow Next lands after the text, which is the point. */
+    .instruction-wrapper {
+        overflow: visible;
+        padding: 0;
+        margin: 0;
+    }
+    /* No scroll container, no reserved gutters: the strip lines up with the
+       copy directly (base.css, THE GUTTER COUPLING). */
+    .screen-card:has(.instructions) .experimental-header {
+        max-width: 100%;
+        padding-inline: 0;
+    }
 }

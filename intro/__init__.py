@@ -1,6 +1,7 @@
 from otree.api import *
 from otree import settings as otree_settings
 import json
+import time
 import common
 from settings import STATIC_VERSION
 from .quiz_items import QUIZ_ITEMS
@@ -43,6 +44,16 @@ def make_quiz_fields():
         'redoinstructions': models.BooleanField(initial=0, blank=True),
         'skiptoquiz': models.BooleanField(initial=0, blank=True),
         'num_failed_attempts': models.IntegerField(initial=0),
+        # EVERY GRADED QUIZ SUBMISSION, as a JSON list (see log_quiz_attempt and
+        # CODEBOOK.md for the shape). It answers "which items do people get
+        # wrong a lot", which the failure COUNT cannot. A real named field
+        # rather than a participant var — a participant var reaches the export
+        # only via PARTICIPANT_FIELDS, and participant_extra would mix this in
+        # with everything else in that bucket — and rather than a spare column:
+        # the spares exist to avoid a schema change on a LIVE study, and this
+        # template has no data yet. Being a PER-ROUND player field, it separates
+        # the first pass from the post-re-read pass (round 2) for free.
+        'quiz_attempt_log': models.LongStringField(blank=True),
         # Spare columns (future-proofing) — never rename in place; see CODEBOOK.md.
         'spare_str_1': models.LongStringField(blank=True),
         'spare_str_2': models.LongStringField(blank=True),
@@ -89,6 +100,46 @@ def reread_available(player) -> bool:
     return failed >= threshold
 
 
+def log_quiz_attempt(player, answers, wrong_fields):
+    """Append one graded quiz submission to this round's log. NEVER raises.
+
+    Records what was answered per item, WHICH ITEMS WERE WRONG **as judged at
+    the time**, the attempt number and a timestamp. Correctness is stored, not
+    recomputed later, because `intro/quiz_items.py` changes between studies (and
+    can change between sessions of one study): a re-grade against a different
+    item set would be silently wrong, with nothing to notice it by.
+
+    INSTRUMENTATION MUST NEVER BREAK A PAGE (CLAUDE.md). Everything below is
+    wrapped: if the log cannot be written — a value that will not serialise, a
+    corrupted column — the participant still gets their answer graded and still
+    proceeds, and the only loss is one row of measurement.
+
+    Not every POST to the quiz is an attempt: the re-read shortcut and the
+    DEBUG clickthrough both return before grading, so neither is logged.
+
+    EVERY attempt is stored, however many there are — deliberately UNCAPPED
+    (Julian, 2026-08-12), even though lab attempts are themselves unlimited.
+    The log exists for occasional curiosity about which items people get wrong,
+    not as routine analysis data, so completeness matters more than column size.
+    """
+    try:
+        raw = player.field_maybe_none('quiz_attempt_log') or ''
+        entries = json.loads(raw) if raw else []
+        if not isinstance(entries, list):
+            entries = []
+        entries.append({
+            'n': len(entries) + 1,
+            't': round(time.time(), 3),
+            # Truncated: these are radio choices from our own item set, but the
+            # column must not be shapeable by a hand-crafted POST.
+            'answers': {f: str(v)[:80] for f, v in answers.items()},
+            'wrong': list(wrong_fields),
+        })
+        player.quiz_attempt_log = json.dumps(entries)
+    except Exception:
+        pass  # measurement only: never block the participant
+
+
 def in_reread_pass(player) -> bool:
     """True on round-2 pages, which only the lab re-read pass reaches."""
     if player.round_number == 1:
@@ -115,8 +166,18 @@ class instructing(Page):
         # content. Replace this when you swap in your own instructions.
         cfg = player.session.config
         return {
-            'showup': cfg.get('showup'),
-            'quiz_bonus': cfg.get('quiz_bonus'),
+            # MONEY IS FORMATTED ONCE, THE SAME WAY, EVERYWHERE
+            # (improvement_suggestions item 4, Julian 2026-08-12). The consent
+            # and results pages render currency through oTree's cu(), so the
+            # instructions must too — a participant who was promised "2.5 EUR"
+            # and is paid "€2.50" is comparing two spellings of the same money.
+            # The templates therefore print `{{ showup }}` with NO hand-written
+            # unit after it: the unit comes from the currency formatting, and a
+            # study that changes REAL_WORLD_CURRENCY_CODE gets it everywhere.
+            # Read through common.cfg so a frozen session config falls back to
+            # the shipped default instead of 500-ing.
+            'showup': cu(common.cfg(cfg, 'showup') or 0),
+            'quiz_bonus': cu(common.cfg(cfg, 'quiz_bonus') or 0),
             'num_experimental_rounds': cfg.get('num_experimental_rounds'),
             # Read participant vars with .vars.get(), never getattr() (KeyError trap).
             'treatment': player.participant.vars.get('treatment_group', ''),
@@ -168,6 +229,10 @@ class quiz(Page):
             key for key in solutions
             if values.get(key, '') != solutions[key]
         ]
+        # Log EVERY graded submission, passing ones included — so the last entry
+        # is the passing attempt for anyone who got through, and a failure for
+        # anyone disqualified or abandoning mid-quiz (CODEBOOK.md).
+        log_quiz_attempt(player, {k: values.get(k, '') for k in solutions}, wrong)
         if wrong:
             player.num_failed_attempts += 1
             player.participant.failed_attempts += 1
@@ -196,21 +261,41 @@ class quiz(Page):
                 dict(name=field, value=solution)
                 for field, solution in zip(quiz.quiz_field_names, quiz.quiz_solutions)
             ]
+        cfg = self.session.config
         # Lab quiz-failure modals. Both are computed server-side and rendered
         # only on a re-render that follows a wrong submission IN THIS ROUND
         # (num_failed_attempts is a per-round player field, so entering round 2
         # never pops a stale modal). offer_reread: the one-time re-read offer
-        # is open. show_experimenter: the offer is spent — a dismissible
-        # "raise your hand" notice; the participant may keep trying, nothing is
-        # recorded for it (failed_attempts is the experimenter's record).
+        # is open. show_experimenter: no offer is open — a dismissible
+        # "raise your hand" notice; nothing is recorded for it (failed_attempts
+        # is the experimenter's record).
+        #
+        # THE NOTICE IS KEYED ON THE THRESHOLD AND THE STUDY TYPE, NOT ON THE
+        # quiz_reread MODULE (Julian, 2026-08-12). It used to require
+        # quiz_reread AND instructions_reread_used, which meant a lab session
+        # that turned the re-read module off got NO help at all: no offer, no
+        # at-will dialog (suppressed for lab below) and no notice — just the
+        # inline error, forever, with the experimenter never called. The lab
+        # rule is "crossing comprehension_max_failures starts the study
+        # helping", so the notice appears whenever the threshold has been
+        # crossed and no re-read offer is currently open. Prolific never shows
+        # it: there is no experimenter to raise a hand to.
         failed_this_round = self.num_failed_attempts >= 1
         offer_reread = failed_this_round and reread_available(self)
+        threshold = int(common.cfg(cfg, 'comprehension_max_failures'))
+        # Participant fields via .vars.get(), never getattr() (KeyError trap).
+        failed_total = self.participant.vars.get('failed_attempts', 0) or 0
         show_experimenter = (
             failed_this_round
-            and bool(self.session.config.get('quiz_reread'))
-            and bool(self.participant.vars.get('instructions_reread_used'))
+            and common.cfg(cfg, 'recruitment') == 'lab'
+            and failed_total >= threshold
+            and not offer_reread
         )
-        cfg = self.session.config
+        # ESCALATION, derived from the SAME threshold — no new setting. At twice
+        # comprehension_max_failures the notice also names the number of
+        # attempts. 0 means "not escalated"; the template shows the extra line
+        # only when this is non-zero.
+        experimenter_attempts = failed_total if failed_total >= 2 * threshold else 0
         # THE AT-WILL RE-READ DIALOG (change_requests item 17). ONLINE ONLY.
         # Online there is no experimenter to ask, so the instructions are always
         # one click away, in a dialog on this page, whether or not the
@@ -226,14 +311,17 @@ class quiz(Page):
             'is_debug': is_debug,
             'offer_reread': offer_reread,
             'show_experimenter': show_experimenter,
+            'experimenter_attempts': experimenter_attempts,
             'show_reread_dialog': show_reread_dialog,
             # Context for the instructions included INSIDE that dialog. It is
             # the real intro/instructions_text.html, so it needs exactly the
             # variables the instructions page passes it — keep these in step
             # with instructing.vars_for_template above or the recap silently
-            # renders blanks where the numbers should be.
-            'showup': cfg.get('showup'),
-            'quiz_bonus': cfg.get('quiz_bonus'),
+            # renders blanks where the numbers should be. The money goes through
+            # cu() here for the same reason it does there: one format for one
+            # amount, everywhere in the study.
+            'showup': cu(common.cfg(cfg, 'showup') or 0),
+            'quiz_bonus': cu(common.cfg(cfg, 'quiz_bonus') or 0),
             'num_experimental_rounds': cfg.get('num_experimental_rounds'),
             'treatment': self.participant.vars.get('treatment_group', ''),
             'stag_payoff': C.STAG_PAYOFF,

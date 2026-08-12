@@ -11,6 +11,22 @@ def _flag(player, name):
     return bool(player.session.config.get(name))
 
 
+def is_lab(player) -> bool:
+    """True in an experimenter-run session.
+
+    Used ONLY for copy that is meaningless outside a physical lab — "stay
+    seated" on the results page, "raise your hand" on the early-exit page. Read
+    through common.cfg so a session config frozen before `recruitment` existed
+    still renders.
+
+    KEEP THIS LIST SHORT. Divergence between the lab and Prolific variants is a
+    cost paid on every future change, so a branch has to earn its place: it is
+    for things that cannot be true in both rooms, not for things that merely
+    read differently. See the note on completion in Results.vars_for_template.
+    """
+    return common.cfg(player.session.config, 'recruitment') == 'lab'
+
+
 def is_disqualified(player) -> bool:
     """True if the participant was removed by an integrity module."""
     v = player.participant.vars
@@ -180,6 +196,8 @@ class Ended(Page):
             screenout_cause=common.screenout_cause(player.participant),
             allowed_devices_phrase=common.device_types_phrase(
                 common.allowed_devices(player.session.config)),
+            # Lab-only closing line ("raise your hand"); see is_lab().
+            is_lab=is_lab(player),
             # WHICH integrity module removed them (change_requests item 16).
             # `reason='disqualified'` is the bucket; this is the cause, and the
             # template writes a different sentence for each so the participant
@@ -328,8 +346,20 @@ class Results(Page):
         return dict(completionlink=completion_link(player))
 
     def vars_for_template(self):
-        # Reaching this page IS completion: record the clean outcome. Idempotent,
-        # so re-rendering never corrupts it.
+        # REACHING THIS PAGE IS COMPLETION: the exit code becomes `finished`
+        # when the page LOADS — identically in the lab and on Prolific.
+        # Idempotent, so re-rendering never corrupts it.
+        #
+        # IT IS DELIBERATELY *NOT* TIED TO THE "Back to Prolific" CLICK (Julian,
+        # 2026-08-12, reversing an earlier request). Moving it there would make
+        # completion mean one thing online and another in the lab — and the
+        # principle behind the reversal is worth more than the detail:
+        # DIVERGENCES BETWEEN THE LAB AND PROLIFIC VARIANTS ARE MINIMISED, AND
+        # KEPT ONLY WHERE GENUINELY ESSENTIAL. Every one of them is a thing that
+        # can be true in one variant and quietly wrong in the other, forever.
+        # A participant who closes the tab without clicking the button has still
+        # finished the study; the completion CODE is what Prolific needs from
+        # the click, and that is a separate concern from the exit code.
         compute_final_payoff(self)
         common.set_exit_code(self.participant, common.EXIT_CODES['finished'])
         common.stamp_stage(self.participant, 'finished')
@@ -370,6 +400,8 @@ class Results(Page):
             'payouts': payouts,
             'payout_rows': payout_rows,
             'num_rewarded': common.cfg(self.session.config, 'num_rewarded'),
+            # Lab-only closing line ("stay seated"); see is_lab().
+            'is_lab': is_lab(self),
             'completion_redirects': bool(self.session.config.get('completion_redirects')),
         }
 

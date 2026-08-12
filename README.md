@@ -199,7 +199,7 @@ flowchart TD
         Offer -- "dismiss — keep trying,<br>offer stays open" --> Quiz1
         Offer -- "take it — consumed on entering<br>the second pass, not when offered" --> Instr2["instructing (round 2) —<br>instructions again from the start"]
         Instr2 --> Quiz2["quiz (round 2)"]
-        Quiz2 -- "wrong answers: dismissible modal<br>'raise your hand and speak to the experimenter'<br>— keep trying, no disqualification,<br>nothing recorded beyond failed_attempts" --> Quiz2
+        Quiz2 -- "wrong answers: dismissible modal<br>'raise your hand and speak to the experimenter'<br>(from 2× the threshold it also names the<br>attempt count) — attempts are never capped,<br>no disqualification, nothing recorded<br>beyond failed_attempts" --> Quiz2
     end
     Quiz1 -- "all correct" --> Game
     Quiz2 -- "all correct" --> Game
@@ -231,8 +231,18 @@ flowchart TD
 | `1` finished | Completed the study | `outro` Results (payment summary; paid by bank transfer) | n/a (no redirects in lab) |
 | `0` abandoned | Left the session | none — `failed_attempts` and the stage timestamps are the experimenter's record | n/a |
 
-`-1`/`-2`/`-3` cannot occur in lab: consent is implicit, `comprehension_dq` is
-off (the re-read + experimenter message replace it) and the tab monitor is off.
+`-1`/`-2`/`-3` cannot occur in lab: consent is implicit, and **the integrity
+modules (`comprehension_dq`, `tab_monitor`) are not supported in a lab session**
+— `scripts/prelaunch_check.py` FAILS on a lab config that turns either on. The
+reason is conceptual: in the lab, a participant who does not consent or does not
+pass the comprehension check simply cannot do the study, and that essentially
+never happens because people know what they signed up for when they come to the
+lab. The mechanical consequence, which is why it is a hard gate, is that a
+disqualified participant is not a completer, so they skip the bank-details page
+and the payment summary and are stranded at the machine. The lab's comprehension
+rule is the re-read pass plus the "raise your hand" notice; a failed lab
+participant is identified at analysis time by
+`failed_attempts >= comprehension_max_failures` (see `CODEBOOK.md`).
 `-4` cannot occur either unless you narrow `allowed_devices` on the config — it
 permits every device type by default in every profile, and a lab session's
 computers would pass anyway.
@@ -306,6 +316,7 @@ configs, browser rendering checks) rather than just listing these files.
 | **`tests/xss_escaping_test.py`** — hostile participant- and URL-supplied values through the real entry URL, in production mode | every hand-interpolated value is HTML-escaped (oTree's ibis does **not** auto-escape) and round-trips un-truncated | injection through anything you did not render in the walk | after adding any template that prints a participant- or URL-supplied value |
 | **`tests/frozen_config_test.py`** — deletes parameters from a created session's stored config, then walks it | a session created BEFORE a parameter existed still completes; `common.cfg` falls back to the shipped default | a schema change (that needs a real database copy — see the pre-deploy gate) | whenever you add a session-config parameter (and add its name to the test's `STRIPPED` list) |
 | **`tests/render_check.py`** — real headless Chromium at three viewports; screenshots to `_ai/render_check/`, assertions on measured element geometry and on rendered pixels | the pages are actually laid out, visible, scrollable and clickable — the failures that produce no error at all | data correctness; anything server-side | after any CSS or template-structure change |
+| **`tests/render_check.py --diff`** — the same run, compared against the committed baseline `tests/geometry_baseline.json` (±3px) | a layout **regression**: something that still passes every threshold but MOVED (the Next button 40px up, a band narrowing, an eyebrow drifting). Prints page · viewport · element, old → new and the delta | anything the baseline deliberately excludes — page text, colours, pixel-darkness readings, content-random figures (all listed at the top of the baseline file) | before shipping a CSS/template change. **When the movement is INTENTIONAL, adopt it with `python tests/render_check.py --update-baseline` and let the file's own diff be the record of what moved.** |
 | **`tests/example_quiz_content_test.py`** — **an EXAMPLE to copy**, not a suite member | what a page SAYS (prompts and options reach the participant, in order; answers absent in production) | anything you did not assert — content tests are only as good as their list | write your study's own version when you write your quiz |
 | **`scripts/prelaunch_check.py`** — static config guard, no server, instant | the configuration is safe to open to participants: no `REPLACE_*` completion codes, `DEBUG` off, no testing loosenings left on | anything dynamic — it never runs a page | in the target environment, before opening a study |
 | **`scripts/predeploy_check.sh`** — boots the candidate build against a **copy of the live database** and drives real participants | the *upgrade* is safe: an existing mid-flow participant, a fresh one and a no-JS one all survive the new code | placeholder codes and other configuration problems | before every deploy onto a database that has participants |

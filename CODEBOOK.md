@@ -18,8 +18,8 @@ participant leaves early. Defined in `settings.EXIT_CODES`.
 | `1` | finished | Completed the study normally. | `outro.Results.vars_for_template` |
 | `0` | abandoned | Created but never reached the end (the default). | `common.init_participant` |
 | `-1` | no_consent | Declined consent on the entry page. | `before.welcome.before_next_page` |
-| `-2` | comprehension | Disqualified: failed the comprehension check too many times. | `intro.quiz.error_message` |
-| `-3` | tab_monitor | Disqualified: AI-safety / tab-switch monitor. | `common.focus_live_method` |
+| `-2` | comprehension | Disqualified: failed the comprehension check too many times. **Prolific only** — see the next section for what the same threshold means in a lab session. | `intro.quiz.error_message` |
+| `-3` | tab_monitor | Disqualified: AI-safety / tab-switch monitor. **Prolific only** — the tab monitor is not supported in the lab. | `common.focus_live_method` |
 | `-4` | screened_out | **General** "removed at entry, before the consent page" bucket. Set by the **device allow-list** (`allowed_devices`) and by any future entry gate. WHICH DEVICE was detected is in `participant_extra['screenout_cause']` — see below. The code is deliberately NOT device-specific: one bucket, split by cause. | `common.set_screened_out`, called by `before._apply_device_gate` |
 
 When you add an outcome, add it to `settings.EXIT_CODES` **and** this table —
@@ -27,6 +27,38 @@ with the place that sets it. Every code in the table must be set by real code:
 a code that nothing records is a lie in the export, so a reserved-but-unwired
 code gets deleted, not documented. (One such code, `-5`, has already been
 removed on those grounds; `-4` was wired up instead of removed.)
+
+### Comprehension failure means different things by study type
+
+`comprehension_max_failures` is **one counter and one threshold**
+(`participant.failed_attempts`, incremented in `intro.quiz.error_message`), the
+same value in both study types. What differs is the consequence of crossing it:
+
+| | Prolific | Lab |
+|---|---|---|
+| Crossing the threshold is | the point of **ejection** | the point at which the study **starts helping** |
+| What happens | `comprehension_dq` flags the participant, exit code `-2`, straight to the ending, back to Prolific with `dq_code` | the one-time re-read offer (`quiz_reread`), then a dismissible "raise your hand" notice; at **twice** the threshold that notice also names the attempt count. Attempts are never capped and nobody is ejected |
+| Exit code | `-2` | **`1` (finished)** — they completed the study |
+
+**So `-2` never appears in a lab export, and its absence is not evidence that
+nobody struggled.** The analysis-time flag is
+`failed_attempts >= comprehension_max_failures` — deliberately the *same
+predicate* the online rule ejects on, so "failed comprehension" means one thing
+across both study types. Supporting columns, all existing:
+`instructions_reread_used` and the `reread_taken` stamp (took the supervised
+re-read); `intro.Player.num_failed_attempts` is **per round**, so round 2's
+count is "still failing after being walked through the instructions again";
+`outro.Player.quiz_bonus_awarded == 0` is the monetary trace of any failure.
+
+**The integrity modules (`comprehension_dq`, `tab_monitor`) are not supported in
+a lab session**, and `scripts/prelaunch_check.py` fails on a lab config that
+turns either on. The reason is conceptual: in the lab a participant who does not
+consent or does not pass comprehension simply cannot do the study, and that
+essentially never happens because people know what they signed up for when they
+come to the lab. The mechanical consequence — why it is a hard gate rather than
+advice — is that a disqualified participant is not a completer, so they skip the
+page collecting the lab's IBAN/BIC and the payment summary and are stranded at
+the machine with no record of where to send their fee.
 
 ### Screen-out causes (`participant_extra['screenout_cause']`)
 
@@ -100,6 +132,66 @@ A dict `{stage_name: epoch_seconds}` filled as the participant clears each stage
 
 ---
 
+## Quiz attempt log (`intro.Player.quiz_attempt_log`)
+
+Every **graded** quiz submission, as a JSON list, so an analyst can see *which
+items people get wrong* rather than only how often they were wrong. Written by
+`intro.log_quiz_attempt`, called from `intro.quiz.error_message`.
+
+**It is a per-round `intro.Player` column**, so round 1 is the first pass and
+round 2 is the post-re-read pass (lab only) — the two are separated for free,
+with no extra field. Deliberately not a participant var: those reach the export
+only through `PARTICIPANT_FIELDS`, and `participant_extra` would mix it in with
+every other ad-hoc value. Deliberately not a spare column either — the spares
+exist to avoid a schema change on a *live* study.
+
+Shape — one object per submission, in submission order:
+
+| Key | Meaning |
+|---|---|
+| `n` | Attempt number **within this round**, from 1. |
+| `t` | Epoch seconds (3 dp) when the submission was graded. |
+| `answers` | `{item_field: submitted_value}` for every item on the page; values truncated at 80 chars. An item left blank is `""`. |
+| `wrong` | The item fields that were wrong **as judged at the time**. `[]` means the attempt passed. |
+
+```json
+[{"n": 1, "t": 1755000000.123, "answers": {"q1": "Yes", "q2": "Nothing happens"}, "wrong": ["q2"]},
+ {"n": 2, "t": 1755000041.880, "answers": {"q1": "Yes", "q2": "I can try again"}, "wrong": []}]
+```
+
+**`wrong` is stored, never recomputed.** `intro/quiz_items.py` changes between
+studies and can change between sessions of one study, so grading an old
+`answers` blob against today's item set would be silently wrong with nothing to
+notice it by. Trust `wrong`; treat `answers` as the raw record.
+
+**Uncapped.** Every attempt is stored, however many there are — including in the
+lab, where attempts themselves are unlimited. The log is for occasional
+curiosity about which items people get wrong, not routine analysis data, so
+completeness beats column size (Julian, 2026-08-12). The number of attempts in a
+round is simply `len(log)`.
+
+**Not every POST is an attempt.** Taking the re-read offer and the DEBUG
+clickthrough (`verify_quiz=False`) both return before grading, so neither
+appears here.
+
+**Where to find it.** The column is in the RAW oTree export (`intro.Player`);
+the standard cleaning script (`format_session_data.py`) strips JSON columns, so
+it is **absent downstream by design** — pull it from the raw export if you want
+it.
+
+**Analysis caveat (Julian, 2026-08-12).** The **last entry is the passing
+attempt for anyone who completed the quiz — but not for everyone**: a Prolific
+participant disqualified at `comprehension_max_failures`, and anyone who
+abandoned mid-quiz, ends on a FAILING entry. Do not assume the final row is a
+pass; test `wrong == []`, and cross-check `participant.exit_code`.
+
+**Instrumentation, so it never blocks a page.** The whole writer is wrapped
+(CLAUDE.md): if a value will not serialise or the column is corrupt, the answer
+is still graded and the participant still proceeds — the row is simply missing.
+An empty string means "nothing was ever logged", not "no attempts".
+
+---
+
 ## Spare columns (future-proofing)
 
 Each app's `Player` ships with unused spare columns, and every participant has a
@@ -158,12 +250,15 @@ Fill in per-study fields as you build the task. The template ships with:
     everyone, not only the screened-out), and whose reason — the same detected
     type — is in `participant_extra['screenout_cause']`.
 - `intro.Player`: the quiz fields from `intro/quiz_items.py`,
-  `num_failed_attempts`. Two rounds: round 2 is the lab re-read pass, so for
+  `num_failed_attempts`, and `quiz_attempt_log` (every graded submission — see
+  the section above). Two rounds: round 2 is the lab re-read pass, so for
   every participant who never takes the re-read offer (all Prolific and most
   lab participants) the round-2 row is empty — expected, not data loss.
   `participant.instructions_reread_used` records whether the pass was taken;
   `failed_attempts` is the experimenter's record of quiz trouble (no flag is
-  recorded for the "raise your hand" notice).
+  recorded for the "raise your hand" notice, nor for its escalated form — both
+  are implied by `failed_attempts` against `comprehension_max_failures`; see the
+  exit-code section above).
 - `outro.Player`: demographics + payment fields (`age`, `gender`, `bank`,
   `bic`, `sepa`, `earned`, `payouts`, …), and `feedback` (free text, collected
   only when the `pilot_feedback` flag is on).
