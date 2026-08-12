@@ -112,6 +112,47 @@ STEP_LABELS = {
     'task': 'Task', 'questionnaire': 'Questionnaire', 'done': 'Done',
 }
 
+# =============================================================================
+# THE APP → STEP MAP. **A STUDY THAT ADDS AN APP MUST ADD IT HERE.**
+# =============================================================================
+# This template exists to be COPIED, and adding an app is the likeliest thing a
+# study does to it — so this map is the one place that decides where a new app's
+# pages sit on the timeline. Adding an app to an EXISTING step is this one line.
+# Adding a whole new STEP is four places, because the step list is not yet
+# single-sourced: the STEPS tuple, the six <span>s in _COLGROUP_HTML, and the
+# STEPS array in the page's JavaScript — plus STEP_LABELS, which nothing renders
+# today but which is the natural home if the header is ever generated.
+APP_STEPS = {
+    'before': 'entry',           # startpage, consent, ID capture, AI-safety
+    'intro': 'instructions',     # split by page below (instructions vs quiz)
+    'main': 'task',
+    'outro': 'questionnaire',
+}
+
+# Which step a page of `intro` belongs to. AN UNRECOGNISED PAGE HERE IS NOT THE
+# SAME SITUATION AS AN UNRECOGNISED APP, and the two must not be merged: a page
+# in `intro` is KNOWN to be inside the instructions/quiz block, just not which
+# half of it, so it degrades to the first half. An unrecognised APP is not known
+# to be anywhere at all, and degrading that to a step would be a guess (see
+# UNMAPPED_STEP). Residual worth knowing: a study that adds a page to `intro`
+# AFTER the quiz and does not list it here gets a marker that reads
+# Instructions, i.e. one that appears to move BACKWARDS.
+INTRO_PAGE_STEPS = {'instructing': 'instructions', 'quiz': 'quiz'}
+
+# THE UNRECOGNISED-APP SENTINEL — deliberately NOT one of STEPS.
+#
+# Until 2026-08-12 an app this module had never heard of fell through the same
+# `return 'entry'` as the `before` app, and the two were indistinguishable. They
+# are not the same situation: `before` IS the entry block and Entry is the right
+# answer, while an unknown app is not known to be anywhere — so reporting Entry
+# is a claim, and a wrong one. Collapsed, the first study to copy this template
+# and add an app got EVERY participant in that app rendered at Entry, looking
+# like they had barely started, with nothing on screen to say otherwise and no
+# test to catch it. Kept apart, such a row now shows no marker at all and says
+# loudly which app it could not place, which is what sends somebody to
+# APP_STEPS above. DO NOT "simplify" this back into a step.
+UNMAPPED_STEP = 'unmapped'
+
 # Terminal states OVERRIDE the timeline marker: the emoji + colour fill the
 # marker wherever it had reached, and the row's state cell names the state.
 # One emoji each, chosen to read across a room and to not look like each
@@ -379,6 +420,12 @@ def _participant_row(pp, ctx, now) -> dict:
         stalled=stalled,
         entry_only=entry_only,
         current_page=str(pp._current_page_name or ''),
+        # The app name ONLY when it could not be placed on the timeline, so the
+        # operator is told which app to add to APP_STEPS. None on every normal
+        # row: this is a "something is wrong with the dashboard's map" channel,
+        # not a general-purpose app column.
+        unmapped_app=(str(pp._current_app_name or '')
+                      if step == UNMAPPED_STEP else None),
         # ADD A COLUMN HERE: compute it defensively (a failure must blank the
         # cell, not kill the row), add the <th> in _COLGROUP_HTML and the cell
         # branch at ADD A COLUMN HERE (render) in _PAGE_HTML below.
@@ -390,18 +437,27 @@ def _position_step(pp) -> str:
     """Which step a LIVE participant's marker occupies, from oTree's own page
     cursor (app + page name, updated as each page renders). The marker
     advances exactly when a step completes, because completing it is what
-    moves the cursor onto the next block's first page."""
+    moves the cursor onto the next block's first page.
+
+    THREE OUTCOMES, KEPT APART ON PURPOSE (see UNMAPPED_STEP):
+      * a page in a KNOWN app          -> that app's step (APP_STEPS)
+      * no cursor written yet          -> 'entry', which is where they are
+      * a page in an UNRECOGNISED app  -> UNMAPPED_STEP, a visible non-answer
+    """
     if not pp.visited:
         return 'entry'
     app = pp._current_app_name or ''
     page = pp._current_page_name or ''
+    if not app:
+        # Arrived, but oTree has not written a cursor yet. This is genuinely
+        # the start of the flow, not an unknown position — 'entry' is a fact
+        # here, which is why it is NOT the unmapped case.
+        return 'entry'
+    if app not in APP_STEPS:
+        return UNMAPPED_STEP
     if app == 'intro':
-        return 'quiz' if page == 'quiz' else 'instructions'
-    if app == 'main':
-        return 'task'
-    if app == 'outro':
-        return 'questionnaire'
-    return 'entry'          # 'before', or nothing recorded yet
+        return INTRO_PAGE_STEPS.get(page, 'instructions')
+    return APP_STEPS[app]
 
 
 def _reached_step(terminal, stamps) -> str:
@@ -469,11 +525,23 @@ def _quiz_cell(v, stamps, step, terminal, max_failures) -> dict:
 
 def _instructions_seconds(stamps, step, now) -> dict:
     """Time on the instructions, from the stage timestamps: the entry block's
-    last stamp (consent, or the ID page where that exists) up to
-    instructions_done — or up to NOW, marked live, while they are still
-    reading. First pass only; the lab's optional re-read is not added in."""
+    last stamp up to instructions_done — or up to NOW, marked live, while they
+    are still reading. First pass only; the lab's optional re-read is not
+    added in.
+
+    THE START MUST BE THE LAST ENTRY-BLOCK STAMP, WHICHEVER PAGES THIS CONFIG
+    SHOWS, and that is why all three candidates are listed and max()'d rather
+    than one being picked. The entry block is config-dependent: the lab shows
+    consent only; Prolific adds the ID confirmation and the AI-safety
+    agreement. Miss a candidate and that page's dwell time is silently billed
+    to the instructions for one study type and not the other — which is exactly
+    what happened before `ai_safety_agreed` existed (2026-08-12: a Prolific
+    participant who spent 5s agreeing and 0s reading was reported as 5s on the
+    instructions). A STUDY THAT ADDS A PAGE TO THE ENTRY BLOCK MUST STAMP IT
+    AND ADD IT HERE.
+    """
     start = max(
-        (t for k in ('consent', 'confirm_id')
+        (t for k in ('consent', 'confirm_id', 'ai_safety_agreed')
          for t in [stamps.get(k)] if isinstance(t, (int, float))),
         default=None,
     )
@@ -870,6 +938,10 @@ tr.stalled td.c-label { box-shadow: inset 4px 0 0 var(--dash-amber); }
 tr.terminal-row td { background: #fdf1f2; }
 tr.finished-row td.c-state { background: #eaf6ef; }
 tr.error-row td { color: var(--danger); }
+/* UNRECOGNISED APP: its own colour, not amber and not the terminal pink — it is
+   neither a slow participant nor an ended one, it is a gap in APP_STEPS. */
+tr.unmapped-row td { background: #f5f1fd; }
+tr.unmapped-row td.c-label { box-shadow: inset 4px 0 0 var(--dash-unmapped); }
 
 .c-label { width: 15%; font-weight: 650; color: var(--ink);
   font-variant-numeric: tabular-nums; }
@@ -929,8 +1001,12 @@ tr.error-row td { color: var(--danger); }
 .c-state .done-tick { color: var(--ok); font-weight: 650; }
 .c-state .stall-note { color: var(--dash-amber); font-weight: 650;
   white-space: nowrap; }
+.c-state .unmapped-note { color: var(--dash-unmapped); font-weight: 650; }
 
-:root { --dash-amber: #b45309; }  /* the one colour base.css has no token for */
+/* The two colours base.css has no token for: an operator-screen amber and the
+   unrecognised-app violet. Declared as tokens rather than inlined so the row
+   background and the text stay one decision. */
+:root { --dash-amber: #b45309; --dash-unmapped: #6b21a8; }
 </style></head>
 <body>
 <div class="dash-top">
@@ -1009,6 +1085,16 @@ function stateHTML(row) {
     return '<span class="emoji">' + row.terminal_emoji + '</span>' +
            esc(row.terminal_label);
   if (row.finished) return '<span class="done-tick">✓ finished</span>';
+  /* UNRECOGNISED APP: the timeline shows no marker for this row, so the state
+     cell has to say WHY — otherwise a row with no marker reads as a glitch.
+     Names the app, because that is what somebody types into APP_STEPS. The
+     stall time is appended rather than replaced: both facts matter. */
+  if (row.step === 'unmapped')
+    return '<span class="emoji">⁉️</span>' +
+           '<span class="unmapped-note">app “' + esc(row.unmapped_app) +
+           '” not on the timeline</span>' +
+           (row.stalled ? '<span class="stall-note"> · ' +
+                          fmtSecs(row.seconds_on_page) + ' on page</span>' : '');
   if (row.stalled)
     return '<span class="stall-note">⚠️ ' + fmtSecs(row.seconds_on_page) +
            ' on page</span>';
@@ -1027,6 +1113,7 @@ function renderRow(row, meta) {
   if (row.stalled) cls.push('stalled');
   if (row.terminal) cls.push('terminal-row');
   if (row.finished) cls.push('finished-row');
+  if (row.step === 'unmapped') cls.push('unmapped-row');
   var label = row.label
     ? esc(row.label)
     : '<span class="code-fallback">' + esc(row.code) + '</span>';
@@ -1067,10 +1154,16 @@ function repaint(data) {
   var n = data.rows.length,
       fin = data.rows.filter(function (r) { return r.finished; }).length,
       term = data.rows.filter(function (r) { return r.terminal; }).length,
-      stalled = data.rows.filter(function (r) { return r.stalled; }).length;
+      stalled = data.rows.filter(function (r) { return r.stalled; }).length,
+      /* Counted in the header too, not only per row: an unplaced app is a
+         DASHBOARD defect, and it must be visible even when the affected row
+         has scrolled out of sight. */
+      unmapped = data.rows.filter(function (r) {
+        return r.step === 'unmapped'; }).length;
   document.getElementById('counts').textContent =
     n + ' participants · ' + fin + ' finished · ' + term + ' ended early' +
-    (stalled ? ' · ' + stalled + ' stalled' : '');
+    (stalled ? ' · ' + stalled + ' stalled' : '') +
+    (unmapped ? ' · ⁉️ ' + unmapped + ' in an app not on the timeline' : '');
 }
 
 function tick() {

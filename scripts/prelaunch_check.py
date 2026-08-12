@@ -178,12 +178,49 @@ def lab_module_problems():
     return problems
 
 
+def auth_level_problems():
+    """(label, current, must_be) when the admin is not locked down.
+
+    `OTREE_AUTH_LEVEL` decides whether oTree's admin needs a login at all:
+    unset means NO LOGIN on anything under the admin, which is the right default
+    for local development and completely wrong for a launch. oTree reads it from
+    the environment at import (`otree/settings.py`: `AUTH_LEVEL =
+    os.environ.get('OTREE_AUTH_LEVEL')`), so this script has to read the
+    environment too — run it in the one you will launch in, like the rest of
+    these checks.
+
+    WHY THIS IS A LAUNCH BLOCKER AND NOT A COMMENT. The admin is not just the
+    session-creation screen: the data exports are there, oTree's own monitor is
+    there, and since 2026-08-12 so is the experimenter dashboard
+    (`experimenter_dashboard.py`), which puts every participant's earnings and
+    conduct — screen-outs, comprehension failures, tab-monitor disqualifications
+    — on one page. That page reuses oTree's login rather than inventing its own,
+    which is the right design and also means its security is EXACTLY this
+    environment variable. Unset it and the page is open to anyone who can reach
+    the port. It belongs in the same guard as the placeholder completion codes
+    for the same reason: it is a one-line configuration mistake that nothing at
+    run time will complain about.
+
+    'STUDY' rather than 'DEMO': DEMO leaves oTree's own SessionMonitor open.
+    """
+    level = os.environ.get('OTREE_AUTH_LEVEL')
+    if level == 'STUDY':
+        return []
+    return [('OTREE_AUTH_LEVEL (admin login, and with it the data exports and '
+             'the experimenter dashboard)',
+             level if level is not None else 'unset — NO LOGIN REQUIRED',
+             "'STUDY', set in the launch environment: without it the admin, "
+             'the exports and the experimenter dashboard (earnings and '
+             'per-participant conduct) are open to anyone who can reach the '
+             'port')]
+
+
 def main(argv):
     if '--stamp-assets' in argv:
         return stamp_assets()
 
     problems = (settings._prelaunch_problems() + lab_module_problems()
-                + asset_problems())
+                + asset_problems() + auth_level_problems())
     if not problems:
         print("PRE-LAUNCH OK — no testing/placeholder values detected, "
               "and the asset version matches the files under _static/.")

@@ -8,10 +8,19 @@ rather than asserted (sections B and C):
      the index alike. A participant mid-study (their own cookies, their own
      pages working) is exactly such a request.
   C. A dashboard handler that RAISES breaks the dashboard, never the study:
-     with the data layer monkeypatched to throw, a participant completes
-     pages normally over the same app, the dashboard page returns its error
-     panel (HTTP 200, no oTree 500 machinery), and the data endpoint returns
-     ok:false JSON. Un-patched, everything recovers without a restart.
+     with the data layer monkeypatched to throw, the dashboard page returns its
+     error panel (HTTP 200, no oTree 500 machinery) and the data endpoint
+     returns ok:false JSON; a participant THEN completes a page, and another
+     completes a WHOLE journey, in a process where the dashboard has already
+     blown up. Un-patched, everything recovers without a restart. One poisoned
+     ROW leaves the table ok:true with every other row live.
+
+     READ THE ORDERING NOTE IN SECTION C BEFORE TRUSTING THIS. The failing
+     dashboard requests come FIRST on purpose, and the participant checks are a
+     regression guard rather than proof of this module's wrapper — participant
+     survival rests partly on oTree's own NEW_IDMAP_EACH_REQUEST, which C0
+     pins so a future oTree version cannot quietly change what C means. The
+     checks that fail when the wrapper is deleted are the error-panel ones.
 
 Around them:
 
@@ -225,7 +234,12 @@ def main():
 
     # ------------------------------------------------------------------ B
     section('B. PROOF 1: no login, no dashboard — ever')
-    lab = ot.create_session('test', num_participants=7)
+    # 8 participants, every one of them spoken for: codes[0] stops at consent,
+    # [1] sits on the instructions, [2] is mid-task, [3] finishes, [4] has a
+    # wrong quiz attempt, [5] never arrives, [6] arrives and submits nothing,
+    # and [7] is section C's full journey through a BROKEN dashboard. Adding a
+    # scenario means adding a participant, not borrowing one.
+    lab = ot.create_session('test', num_participants=8)
     codes = ot.participant_codes(lab)
 
     anon = ot.client()
@@ -260,6 +274,39 @@ def main():
 
     # ------------------------------------------------------------------ C
     section('C. PROOF 2: a dashboard bug breaks the dashboard, not the study')
+    # ORDER MATTERS IN THIS SECTION, AND IT IS THE WHOLE POINT (reordered
+    # 2026-08-12 after the conformance audit).
+    #
+    # This used to walk the participant FIRST and only then hit the broken
+    # dashboard — so at the moment the participant walked, the handlers were
+    # patched to raise but nothing had raised yet, and the test never asked the
+    # question it claimed to answer. The failing dashboard requests now come
+    # first, so the participant walks in a process where a dashboard handler HAS
+    # already blown up: same app instance, same DB session machinery, same
+    # global commit lock.
+    #
+    # AND A HONEST WARNING ABOUT WHAT THIS PROVES. A participant surviving is
+    # NOT, on its own, evidence that OUR wrapper is what saved them. oTree sets
+    # `NEW_IDMAP_EACH_REQUEST = True` (otree/database.py), so
+    # CommitTransactionMiddleware starts every request with `db.new_session()`
+    # and an escaping exception — which skips BOTH commit and rollback, since it
+    # escapes the middleware's `async with` — cannot poison the NEXT request.
+    # Deleting the handler wrapper entirely leaves these participant checks
+    # passing (verified by mutation, audit §3). So:
+    #   * the participant checks below are a REGRESSION GUARD on the property
+    #     that a broken dashboard is survivable at all, not proof of our code;
+    #   * the load-bearing proof of OUR wrapper is the error-panel and
+    #     ok:false checks, which DO fail when it is removed;
+    #   * C0 below pins the oTree property we are leaning on, so a future oTree
+    #     version dropping it is a RED TEST here rather than an invisible change
+    #     of what this section means.
+    from otree.database import NEW_IDMAP_EACH_REQUEST
+    check(NEW_IDMAP_EACH_REQUEST is True,
+          'C0: oTree still starts each request with a fresh DB session '
+          '(NEW_IDMAP_EACH_REQUEST) — if this ever goes False, an escaping '
+          'dashboard exception could reach a participant request and the '
+          'handler wrapper becomes the ONLY thing standing between them')
+
     real_snapshot = ed.session_snapshot
     real_page = ed._page_html
     ed.session_snapshot = lambda session: (_ for _ in ()).throw(
@@ -267,18 +314,8 @@ def main():
     ed._page_html = lambda session: (_ for _ in ()).throw(
         RuntimeError('injected dashboard bug'))
     try:
-        # The study: a participant walks pages NORMALLY while the dashboard
-        # is broken, over the very same app instance. (Stopping after the
-        # welcome submit leaves them ON the instructions page — which is
-        # exactly where section D expects to find this row.)
-        visited, statuses, _ = walk(ot.client(), codes[1], correct,
-                                    stop_after='welcome')
-        check(all(s == 200 for s in statuses)
-              and 'welcome' in visited,
-              f'participant completed pages normally while the dashboard '
-              f'was broken (statuses {sorted(set(statuses))})')
-
-        # The dashboard: its own error panel, not oTree's 500 machinery.
+        # 1. THE DASHBOARD BREAKS FIRST — its own error panel, not oTree's 500
+        #    machinery. THIS is the check that fails if the wrapper is removed.
         r = admin.get(f'{URL}/{lab.code}')
         check(r.status_code == 200
               and 'Experimenter dashboard error' in r.text
@@ -288,6 +325,25 @@ def main():
         check(r.status_code == 200 and r.json().get('ok') is False
               and 'injected dashboard bug' in r.json().get('error', ''),
               'data endpoint degrades to ok:false JSON naming the error')
+
+        # 2. ONLY NOW does a participant use the study, in a process where the
+        #    dashboard has already raised twice. (Stopping after the welcome
+        #    submit leaves them ON the instructions page — which is exactly
+        #    where section D expects to find this row.)
+        visited, statuses, _ = walk(ot.client(), codes[1], correct,
+                                    stop_after='welcome')
+        check(all(s == 200 for s in statuses)
+              and 'welcome' in visited,
+              f'participant completes pages normally AFTER the dashboard has '
+              f'blown up (statuses {sorted(set(statuses))})')
+
+        # 3. And a WHOLE journey, not just one page: a broken dashboard must not
+        #    strand somebody halfway either.
+        visited, statuses, _ = walk(ot.client(), codes[7], correct)
+        check(all(s == 200 for s in statuses) and 'Results' in visited,
+              f'a full participant journey finishes with the dashboard still '
+              f'broken (statuses {sorted(set(statuses))}, ended on '
+              f'{visited[-1] if visited else "?"})')
     finally:
         ed.session_snapshot = real_snapshot
         ed._page_html = real_page
@@ -295,6 +351,44 @@ def main():
     r = admin.get(f'{URL}/{lab.code}/data')
     check(r.status_code == 200 and r.json().get('ok') is True,
           'dashboard recovers the moment the bug is gone (no restart)')
+
+    # ---- C4: THE PER-ROW WRAPPER, which nothing asserted before -------------
+    # The module's rule 2 is not only "the handler is wrapped" but "each ROW is
+    # wrapped, so one poisoned row renders as an error row instead of killing
+    # the whole table". That half had no test at all until now — and
+    # rows_by_code() below FILTERS ERROR ROWS OUT, so it could never have caught
+    # it. Poison exactly one row and check the other rows survive it.
+    real_row = ed._participant_row
+    _calls = {'n': 0}
+
+    def _poison_second_row(pp, ctx, now):
+        _calls['n'] += 1
+        if _calls['n'] == 2:            # exactly one row of the session
+            raise RuntimeError('poisoned row')
+        return real_row(pp, ctx, now)
+
+    ed._participant_row = _poison_second_row
+    try:
+        payload = admin.get(f'{URL}/{lab.code}/data').json()
+        rows_all = payload.get('rows', [])
+        errs = [r for r in rows_all if r.get('error')]
+        live = [r for r in rows_all if not r.get('error')]
+        check(payload.get('ok') is True,
+              f"one poisoned row leaves the table ok:true "
+              f"(got {payload.get('ok')})")
+        check(len(errs) == 1 and len(live) == len(rows_all) - 1,
+              f'exactly ONE error row, every other row still live '
+              f'({len(errs)} error, {len(live)} live of {len(rows_all)})')
+        check(bool(errs) and bool(errs[0].get('code')),
+              'the error row still carries a participant code the operator '
+              'can act on (not a blank row)')
+        r = admin.get(f'{URL}/{lab.code}')
+        check(r.status_code == 200 and 'Experimenter dashboard error'
+              not in r.text,
+              'the dashboard PAGE is unaffected by a poisoned row (200, the '
+              'real page, not the error panel)')
+    finally:
+        ed._participant_row = real_row
 
     # ------------------------------------------------------------------ D
     section('D. rows reflect a real session (lab config, 3 rounds)')
@@ -426,6 +520,74 @@ def main():
               'without touching dashboard code')
     finally:
         del user_settings.DASHBOARD_STALL_SECONDS
+
+    section('D4. the entry-block boundary (instructions time)')
+    # THE AI-SAFETY AGREEMENT PAGE MUST NOT BE BILLED TO THE INSTRUCTIONS.
+    # It sits between confirm_id and instructions_done, so before it was
+    # stamped its dwell time landed in the instructions column — and only for
+    # Prolific, because the lab never shows the page. That made one column mean
+    # two different things depending on the study type (conformance audit,
+    # 2026-08-12). The real sleep below is the only way to test it: with no
+    # measurable dwell anywhere, a wrong start stamp and a right one give the
+    # same answer.
+    DWELL = 3
+    pro2 = ot.create_session('prolific', num_participants=2)
+    dwell_code = ot.participant_codes(pro2)[0]
+    c = ot.client()
+    resp = c.get(f'/InitializeParticipant/{dwell_code}', allow_redirects=True,
+                 headers=DESKTOP)
+    saw_agreement = False
+    for _ in range(12):
+        page = page_name_of(path_of(resp))
+        if page is None or page == 'quiz':
+            break
+        if page == 'AISafetyAgree':
+            saw_agreement = True
+            _time.sleep(DWELL)          # the ONLY dwell in this walk
+        resp = c.post(path_of(resp), data=payload_for(page, correct),
+                      allow_redirects=True, headers=DESKTOP)
+    check(saw_agreement,
+          'the prolific flow really does show the AI-safety agreement page '
+          '(otherwise this section proves nothing)')
+    check('ai_safety_agreed' in (ot.participant_vars(dwell_code)
+                                 .get('stage_timestamps') or {}),
+          'leaving the agreement page stamps ai_safety_agreed')
+    _, drows = rows_by_code(admin, pro2)
+    instr = drows[dwell_code]['instructions_seconds']
+    check(instr is not None and instr < DWELL,
+          f'{DWELL}s on the AGREEMENT page and ~0s on the instructions reports '
+          f'< {DWELL}s of instructions time (got {instr}s) — the agreement '
+          f'page is no longer billed to the instructions')
+
+    section('D5. an app the dashboard has never heard of is VISIBLE')
+    # A study copied from this template WILL add an app, and until 2026-08-12
+    # such a participant was rendered at Entry, indistinguishable from somebody
+    # on the consent page and from somebody who had barely started. Plant the
+    # cursor a study's new app would write and check the dashboard says so
+    # instead of guessing.
+    set_participant(codes[2], _current_app_name='a_study_added_this',
+                    _current_page_name='SomeNewPage')
+    _, urows = rows_by_code(admin, lab)
+    u = urows[codes[2]]
+    check(u['step'] == ed.UNMAPPED_STEP,
+          f"a page in an unrecognised app is NOT reported as a timeline step "
+          f"(got step={u['step']!r})")
+    check(u['step'] != 'entry',
+          'and specifically NOT as entry — the collapse this replaced')
+    check(u['unmapped_app'] == 'a_study_added_this',
+          f"the row names the app the operator must add to APP_STEPS "
+          f"(got {u['unmapped_app']!r})")
+    check(ed.UNMAPPED_STEP not in ed.STEPS,
+          'the sentinel is not one of the six steps, so no marker is drawn')
+    # ... while a known app in the same position still maps normally, i.e. the
+    # new branch did not swallow the ordinary case.
+    set_participant(codes[2], _current_app_name='main',
+                    _current_page_name='GameStart')
+    _, krows = rows_by_code(admin, lab)
+    check(krows[codes[2]]['step'] == 'task'
+          and krows[codes[2]]['unmapped_app'] is None,
+          f"a KNOWN app still maps to its step with no unmapped flag "
+          f"(got {krows[codes[2]]['step']!r})")
 
     # ------------------------------------------------------------------ E
     section('E. strictly read-only')

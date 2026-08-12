@@ -21,6 +21,7 @@ The project root holds the four oTree apps plus a small set of top-level items:
 | `settings.py` | oTree settings: session configs, recruitment profiles, feature flags, completion codes. |
 | `common.py` | shared, oTree-free helpers — **must stay at the project root** (every app does `import common`). |
 | `identity.py` | participant-label identity: one row per external id, and the guard that stops a duplicate label 500-ing at entry. Also root-level, for the same reason. |
+| `experimenter_dashboard.py` | the live operator view at `/experimenter_dashboard` (see "Experimenter dashboard"). Root-level for the same reason as the two above. |
 | `README.md` `conventions.md` `CODEBOOK.md` `TODO.md` | project docs: overview, design principles, field/exit-code reference, and pending work. |
 | `ideas/` | briefs for features that are scoped but not (yet) part of the template. Each file records the SPECIFICATION as it was given, and is deliberately not updated to match what gets built — so specified and built can be compared afterwards. |
 | `MACMINI_HOSTING.md` | private Mac mini hosting runbook (gitignored — kept local). |
@@ -520,6 +521,55 @@ You can share the instructions with coauthors who don't have the codebase instal
 > apps do a top-level `import common`, and oTree puts the project root (not
 > `scripts/`) on `sys.path`, so moving it would break every app's import.
 
+## Experimenter dashboard
+
+A live, **read-only** view of a running session for whoever is supervising it —
+the experimenter in the room for a lab session, whoever is watching the study run
+on Prolific. It is served **in-process** by oTree itself
+(`experimenter_dashboard.py`, design notes in `_ai/dashboard_notes.md`), not as a
+separate service:
+
+- `/experimenter_dashboard` — pick a session;
+- `/experimenter_dashboard/<session_code>` — the dashboard.
+
+One row per participant, keyed on `participant.label` (the seat number in the lab,
+the Prolific ID online; the participant code, dimmed, until a label exists). Each
+row carries a six-step timeline — **Entry → Instructions → Quiz → Task →
+Questionnaire → Done** — with the marker on the current step, carrying the round
+number ("2 of 10") while they are in the task. Then the quiz-attempts cell (white
+→ filling → red at `comprehension_max_failures` → green with the attempt count
+once passed, so `1` means passed first time), time on the instructions, earnings
+once known, and a state cell. A terminal state **overrides the marker** with an
+emoji at the step the participant had reached: 📵 screened out, ✋ declined
+consent, ❌ comprehension DQ, 👀 tab-monitor DQ. A row turns **amber** after too
+long on one page, and rows that never arrived are dimmed with a header toggle to
+hide them. It repaints on a poll with a **2-second floor**.
+
+**Access is oTree's own admin login, which means it is exactly as protected as
+`OTREE_AUTH_LEVEL` makes it.** The dashboard reuses `AdminView`'s login check
+rather than inventing one (and is deliberately stricter than oTree in one respect:
+it also requires a login under `AUTH_LEVEL=DEMO`, which leaves oTree's own
+SessionMonitor open). With `OTREE_AUTH_LEVEL` **unset** there is no login on any
+admin page, this one included — so `scripts/prelaunch_check.py` fails a launch
+that has not set it to `STUDY`. This page shows earnings and per-participant
+conduct; treat it like the data exports.
+
+**Two settings, both read at request time** (so tuning them needs only a server
+restart, and deleting either line falls back to the same default):
+`DASHBOARD_STALL_SECONDS` (default 300 — the amber threshold) and
+`DASHBOARD_POLL_SECONDS` (default 2, and 2 is also a floor enforced
+server-side). They are module-level settings rather than session-config
+parameters on purpose: operator-screen behaviour must not appear in the admin's
+session-config view or in the experimental record.
+
+**Adding a column** is three marked places and nothing else — compute the value
+in `_participant_row` (`ADD A COLUMN HERE`), add a `<th>` to `_COLGROUP_HTML`,
+add the cell branch in `renderRow` (`ADD A COLUMN HERE (render)`). **Adding an
+APP** to a study copied from this template means adding it to `APP_STEPS`, which
+is the map deciding where a new app's pages sit on the timeline; a participant in
+an app that is not in that map is shown as `⁉️ app "x" not on the timeline` with
+no marker, rather than being silently placed at Entry.
+
 ## Testing
 
 There are several kinds of check here, and that is deliberate: each one is
@@ -542,6 +592,8 @@ configs, browser rendering checks) rather than just listing these files.
 | **`tests/device_gate_test.py`** — the entry allow-list, weighted towards FALSE POSITIVES: eleven real browsers (desktop Chrome/Safari/Firefox/Edge, Chrome OS, a touchscreen laptop, an iPad, an Android tablet, phones) plus every shape of unusable User-Agent | the listed types are admitted and nothing else is screened by accident: those browsers are never removed, an unusable User-Agent always proceeds recording nothing, an excluded type gets `-4` with the DETECTED type as its cause, and the default list does nothing at all | client-side behaviour; anything past entry | after touching the entry gate, the classifier or `allowed_devices` |
 | **`tests/screenout_softwall_test.py`** — the screen-out lifecycle over real HTTP: screened → cleared → re-screened → completes, the post-consent immunity, the way out, and the no-decision asymmetry | the verdict is written immediately (a closed tab still exports `-4`), clears only on POSITIVE evidence of an accepted device before consent, never touches anyone after consent, and the way out is a codeless real link | rendering; anything a browser does with the page | after touching the gate, the clear rules or the screen-out page |
 | **`tests/identity_test.py`** — in-process: re-entry, two tabs on one id, case/whitespace variants, a clashing id claim, a PLANTED duplicate label, and a room rebound to a new session | one participant row per id (which is what re-entry and the soft wall depend on); a clashing claim is refused silently with the owner's code recorded; a duplicate that exists anyway does not 500 | anything about the pages themselves | after touching label writes, `identity.py` or the entry sequence |
+| **`tests/dashboard_test.py`** — in-process, production + `AUTH_LEVEL=STUDY`: the install discipline, the two dashboard acceptance criteria, row truth for every stage and all four terminal states, the entry-block boundary, an unmapped app, and read-only | that the dashboard is **unreachable without an admin login** (page, data and index, for an anonymous client AND for a mid-study participant's own cookies; the redirect leaks nothing; POST is 405); that a raising handler yields the **error panel** and `ok:false` JSON rather than a 500, and one poisoned ROW leaves the table `ok:true` with every other row live; that it **writes nothing** (byte-identical participant rows plus an ORM dirty-flag check); that an app missing from `APP_STEPS` is visibly unplaced instead of silently at Entry | **it is NOT proof that the wrapper is what protects participants.** Section C's participant walks are a regression guard: participant survival rests partly on oTree's `NEW_IDMAP_EACH_REQUEST` giving every request a fresh DB session, and those checks still pass with the wrapper deleted (check C0 pins that oTree property so a future version changing it goes red). The checks that fail when the wrapper is removed are the error-panel ones. Also blind to: anything about how the page LOOKS, and concurrency — the polls here are sequential | after touching `experimenter_dashboard.py`, the entry-block stamps, or any app's `page_sequence`/app list |
+| **`tests/dashboard_render_check.py`** — real uvicorn + real headless Chromium at 1280/1512/1152, staging 13 participants across every state | that the operator screen is actually USABLE: the login wall stands in a browser, the poll paints and ticks without a reload, the six timeline steps are **measured** equal to within 2px, the mid-task marker reads "2 of 3", the amber row differs in sampled PIXELS rather than by class, entry-only rows dim and the toggle hides them, no horizontal page scroll, and no time/earnings/stall cell is ever clipped | server-side correctness (that is `dashboard_test.py`'s job); whether the numbers are RIGHT — it checks that cells render legibly, not that they say the truth; anything about a real operator's screen size or emoji font | after ANY change to the dashboard's HTML, CSS or JS — a broken operator layout produces no error anywhere |
 | **`tests/xss_escaping_test.py`** — hostile participant- and URL-supplied values through the real entry URL, in production mode | every hand-interpolated value is HTML-escaped (oTree's ibis does **not** auto-escape) and round-trips un-truncated | injection through anything you did not render in the walk | after adding any template that prints a participant- or URL-supplied value |
 | **`tests/frozen_config_test.py`** — deletes parameters from a created session's stored config, then walks it | a session created BEFORE a parameter existed still completes; `common.cfg` falls back to the shipped default | a schema change (that needs a real database copy — see the pre-deploy gate) | whenever you add a session-config parameter (and add its name to the test's `STRIPPED` list) |
 | **`tests/render_check.py`** — real headless Chromium at three viewports; screenshots to `_ai/render_check/`, assertions on measured element geometry and on rendered pixels | the pages are actually laid out, visible, scrollable and clickable — the failures that produce no error at all | data correctness; anything server-side | after any CSS or template-structure change |
