@@ -301,8 +301,12 @@ so is the device screen-out's soft wall, so this template defends it twice
    the owning row's code lands in `before.Player.prolific_label_conflict` for
    payment triage.
 2. **It survives one that exists anyway** — a hand-edited row, a legacy
-   database. oTree's lookup is patched to join **the earliest row that has not
-   FINISHED** (a finished row is a dead end to join; a *screened-out* row is
+   database. oTree's lookup is patched to match labels **in Python, with the
+   same normalisation conflict detection uses** (whitespace-collapsed,
+   case-folded), so `ABC123` rejoins the row holding `abc123` and the answer
+   cannot change with the database collation — oTree's own `filter_by(label=…)`
+   is SQL, and would behave one way on sqlite and another on postgres. Among the
+   rows that match, it joins **the earliest that has not FINISHED** (a finished row is a dead end to join; a *screened-out* row is
    terminal but must stay joinable, because joining it is what lifts the
    screen-out). When it actually sees a duplicate it is **loud**: an ERROR line
    in the server log naming every row, and a `duplicate_label_seen` record on
