@@ -596,10 +596,28 @@ class AISafetyAgree(Page):
         # asked to agree to being monitored during a study they are not doing.
         return not _leaving_study(player)
 
-    # NO stage stamp, deliberately: the page had none in `intro` either, and
-    # the move is a change of POSITION, not an occasion to start recording
-    # something new in the export. If a study wants "when was the monitor
-    # armed", add it here with a CODEBOOK.md entry alongside.
+    @staticmethod
+    def before_next_page(player, timeout_happened):
+        # STAMPED (added 2026-08-12; this page deliberately had no stamp
+        # before). The stamp is not for the export's sake — it is because this
+        # page sits INSIDE the interval anything measuring "time on the
+        # instructions" has to use.
+        #
+        # The entry block's stamps used to end at `consent` / `confirm_id`, both
+        # of which are BEFORE this page, while the next stamp is
+        # `instructions_done` AFTER the instructions. So the dwell time on this
+        # page fell inside that gap and was billed to the instructions — and
+        # only for Prolific, because the lab ships `tab_monitor` off and never
+        # shows this page at all. One column, two meanings depending on the
+        # study type, with nothing on screen to say which: the experimenter
+        # dashboard reported 5s of "instructions time" for a participant who
+        # spent 5s here and none there (found by the conformance audit,
+        # `_ai/dashboard_conformance_audit.md`).
+        #
+        # Consumers must therefore treat this as the LAST stamp of the entry
+        # block when it is present — see `_instructions_seconds` in
+        # experimenter_dashboard.py, which takes the max of the three.
+        common.stamp_stage(player.participant, 'ai_safety_agreed')
 
 
 # LAB      : startpage (the CREED gate) -> welcome/consent

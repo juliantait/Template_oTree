@@ -100,3 +100,42 @@ Recorded here because they were decisions, not omissions:
 1. Participants who never got past ENTRY are **shown but de-emphasised**, with a
    filter toggle to hide them.
 2. The **agreement page folds into ENTRY** rather than earning a dot of its own.
+
+---
+
+## Implementation Cost
+
+**Appended 2026-08-12, after the feature was built. Everything above this line is
+the specification as briefed and has NOT been edited** — this section records what
+the work cost, which is the one thing that can only be added afterwards. It is
+deliberately kept below the rule so the spec above stays a clean record to compare
+against.
+
+**A precise per-feature figure is not available from the tooling, and this section
+does not pretend otherwise.** `mm cost` reports **per-PROJECT cumulative totals**,
+not per-worker and not per-feature. Several workers ran in this folder on the same
+days, on unrelated work (a settings.py batch, an export-script fix, a
+behaviour-preserving cleanup, the participant-identity consolidation), and the
+tooling does not attribute spend to any of them separately. There is therefore no
+way to say from the tooling what the experimenter dashboard alone cost.
+
+What can be recorded honestly is the folder total:
+
+| Figure | Value | What it is |
+|---|---|---|
+| Project | `oTree-Template` | the whole folder, not this feature |
+| Sessions | **19** | cumulative, all workers, all tasks |
+| Cost | **≈ USD 2132** | cumulative, all workers, all tasks |
+| As at | **2026-08-12** | the day the dashboard was built and audited |
+
+**Read that as a folder cumulative, not as this feature's cost.** It is an upper
+bound on the dashboard's share and a loose one: the dashboard is one of at least
+half a dozen pieces of work inside those 19 sessions, and the folder total also
+carries the template's own earlier development. Anyone wanting a real per-feature
+number would have to attribute sessions to tasks by hand from the history; that
+has not been done, and no estimate is offered here rather than an invented split.
+
+Related: `_ai/dashboard_conformance_audit.md` records what was built against the
+spec above (19 of 26 checklist items met as specified, 6 met differently, 1 not
+met), including which deviations were deliberate. That audit was itself part of
+the spend recorded above.

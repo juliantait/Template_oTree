@@ -143,12 +143,23 @@ A dict `{stage_name: epoch_seconds}` filled as the participant clears each stage
 | `screenout_cleared` | A screen-out was LIFTED: they came back on an accepted device before consent. |
 | `consent` | Leaving the welcome/consent page. |
 | `confirm_id` | Prolific only: leaving the Prolific-ID confirmation page (`capture_participant_id` on). |
+| `ai_safety_agreed` | Leaving the AI-safety agreement page, i.e. when the tab monitor was armed. Only where that page is shown (`tab_monitor` on, so Prolific by default and never the lab). |
 | `instructions_done` | Leaving the instructions page (round 1). |
 | `quiz_done` | Leaving the quiz page (overwritten by the re-read pass, if any). |
 | `reread_taken` | Lab only: taking the one-time re-read offer (entering intro round 2). |
 | `instructions_reread_done` | Lab only: leaving the re-read instructions page (intro round 2). |
 | `task_done` | Completing the last displayed round of `main`. |
 | `finished` | Reaching the final results page. |
+
+**Computing "time on the instructions" from these.** It is
+`instructions_done` minus the **last stamp of the entry block**, and which stamp
+that is depends on the config: `consent` in the lab, `ai_safety_agreed` for
+Prolific (with `confirm_id` in between). Take the **maximum of the three that are
+present** — subtracting `consent` unconditionally silently adds the ID-page and
+agreement-page dwell to a Prolific participant's reading time, and nothing to a
+lab participant's, so the two are not comparable. `experimenter_dashboard._instructions_seconds`
+does it this way; a study that adds a page to the entry block must stamp it and
+include it in that maximum.
 
 ---
 
