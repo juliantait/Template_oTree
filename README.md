@@ -22,6 +22,7 @@ The project root holds the four oTree apps plus a small set of top-level items:
 | `common.py` | shared, oTree-free helpers — **must stay at the project root** (every app does `import common`). |
 | `identity.py` | participant-label identity: one row per external id, and the guard that stops a duplicate label 500-ing at entry. Also root-level, for the same reason. |
 | `README.md` `conventions.md` `CODEBOOK.md` `TODO.md` | project docs: overview, design principles, field/exit-code reference, and pending work. |
+| `ideas/` | briefs for features that are scoped but not (yet) part of the template. Each file records the SPECIFICATION as it was given, and is deliberately not updated to match what gets built — so specified and built can be compared afterwards. |
 | `MACMINI_HOSTING.md` | private Mac mini hosting runbook (gitignored — kept local). |
 | dotfiles | `.gitignore`, `.gitattributes`, etc. |
 
@@ -345,20 +346,23 @@ flowchart TD
         Gate -- "default list (all devices), or a permitted type" --> Welcome
         Welcome["welcome + consent<br>explicit consent question,<br>Prolific ID + device capture"]
         ScreenOut["screened_out — shown INSTEAD of consent,<br>at the same page index (exit code -4).<br>Codeless link back to Prolific."]
+        ConfirmID["ConfirmProlificID — confirm the platform id"]
+        Arm["AISafetyAgree — ARMS THE TAB MONITOR<br>before the instructions and the quiz,<br>so both are monitored too"]
     end
     Gate -. "a type the study excludes:<br>consent is never shown" .-> ScreenOut
     ScreenOut -. "returns on an accepted device<br>BEFORE consent: verdict CLEARED" .-> Welcome
     Welcome -- "does not consent" --> EndedNC
-    Welcome -- "consents" --> Instr1
+    Welcome -- "consents" --> ConfirmID
+    ConfirmID --> Arm
+    Arm --> Instr1
 
     subgraph INTRO ["intro — instructions + quiz (round 2 exists but is never shown online)"]
         Instr1["instructing — instructions (round 1)"] --> Quiz1["quiz (round 1)"]
         Quiz1 -- "wrong answers, failures below<br>the cap: error, try again" --> Quiz1
-        Quiz1 -- "all correct" --> Arm["AISafetyAgree — arms the tab monitor"]
     end
     Quiz1 -- "failures reach comprehension_max_failures" --> EndedDQ
 
-    Arm --> Game
+    Quiz1 -- "all correct" --> Game
     subgraph MAIN ["main — task rounds 1..num_experimental_rounds (tab monitor live)"]
         Game["GameStart — task page"] --> Payoff["payoff — round result"]
         Payoff -- "next round" --> Game
@@ -410,7 +414,7 @@ flowchart TD
     Start(["Seated at a lab computer"]) --> Hold
     subgraph BEFORE ["before — entry"]
         Hold["startpage — hold screen,<br>experimenter starts the session"] --> Welcome
-        Welcome["welcome + consent<br>implicit consent: continuing = consenting<br>(no ID or device capture; device allow-list wide open)"]
+        Welcome["welcome + consent<br>implicit consent: continuing = consenting<br>(no ID or device capture; device allow-list wide open;<br>no AISafetyAgree — the lab ships the tab monitor OFF,<br>and that page exists only to arm it)"]
     end
     Welcome --> Instr1
 
@@ -532,7 +536,8 @@ configs, browser rendering checks) rather than just listing these files.
 
 | Check | What it is evidence of | What it CANNOT catch | When to run it |
 |---|---|---|---|
-| **`tests/http_flow_test.py`** — walks every shipped config entry→ending over real HTTP, including a POST with the JS-produced hidden fields deliberately **empty** | a participant can complete the study in each config; no page 5xxs; the no-JS participant is not stranded | anything about how a page looks or reads; anything that only breaks for an EXISTING participant | after any change to a page, form field or flow |
+| **`tests/full_journey_test.py`** — ONE participant, **room entry to the final page**, over real HTTP, at the config's **real round count**, **failing the quiz once** on the way. **NEVER TRIM OR DELETE THIS** (the file says why) | **that a participant can actually FINISH**: every screen in the real order, every round walked, the failed-attempt retry path, and `exit_code == 1` read back over the REST API | rendering; anything that only breaks for an EXISTING participant; the configs and edge cases the slice suites cover | before any launch, and after any change to the page sequence, the quiz rule or the round count |
+| **`tests/http_flow_test.py`** — walks every shipped config entry→ending over real HTTP, including a POST with the JS-produced hidden fields deliberately **empty** | a participant can complete the study in each config; no page 5xxs; the no-JS participant is not stranded | anything about how a page looks or reads; anything that only breaks for an EXISTING participant. **It cannot tell finishing from being thrown out** — its end markers ("Back to Prolific", "participation has ended") are on `Ended.html` as well as `Results.html`; that is what `full_journey_test.py` is for | after any change to a page, form field or flow |
 | **`tests/gated_flow_test.py`** — lab vs Prolific scenarios: the one-time re-read offer, comprehension DQ, pilot feedback, the two-variant consent rule | the three orthogonal controls actually route people where the design says | rendering; data written to the export | after touching `settings.py` profiles, gates, or the intro/outro flow |
 | **`tests/device_gate_test.py`** — the entry allow-list, weighted towards FALSE POSITIVES: eleven real browsers (desktop Chrome/Safari/Firefox/Edge, Chrome OS, a touchscreen laptop, an iPad, an Android tablet, phones) plus every shape of unusable User-Agent | the listed types are admitted and nothing else is screened by accident: those browsers are never removed, an unusable User-Agent always proceeds recording nothing, an excluded type gets `-4` with the DETECTED type as its cause, and the default list does nothing at all | client-side behaviour; anything past entry | after touching the entry gate, the classifier or `allowed_devices` |
 | **`tests/screenout_softwall_test.py`** — the screen-out lifecycle over real HTTP: screened → cleared → re-screened → completes, the post-consent immunity, the way out, and the no-decision asymmetry | the verdict is written immediately (a closed tab still exports `-4`), clears only on POSITIVE evidence of an accepted device before consent, never touches anyone after consent, and the way out is a codeless real link | rendering; anything a browser does with the page | after touching the gate, the clear rules or the screen-out page |
@@ -554,9 +559,9 @@ incapable of reproducing the failures the gate exists for. Pass `--require-db`
 (or `PREDEPLOY_REQUIRE_DB=1`) in any pipeline for a study with participants, so
 a missing database copy fails the deploy instead of quietly passing degraded.
 
-Running them: the HTTP suites (`http_flow_test`, `gated_flow_test`,
-`device_gate_test`, `screenout_softwall_test`) want a server you started on a
-**throwaway** database (`OTREE_ADMIN_PASSWORD=admin otree devserver 8000`, then
+Running them: the HTTP suites (`full_journey_test`, `http_flow_test`,
+`gated_flow_test`, `device_gate_test`, `screenout_softwall_test`) want a server
+you started on a **throwaway** database (`OTREE_ADMIN_PASSWORD=admin otree devserver 8000`, then
 `python tests/http_flow_test.py http://localhost:8000`). The rest
 (`identity_test`, `frozen_config_test`, `xss_escaping_test`,
 `quiz_attempt_log_test`) boot oTree in-process against their own temp database
@@ -576,6 +581,55 @@ Neither replaces the other: pre-launch cannot detect a broken upgrade path, and
 pre-deploy cannot tell you the completion codes are still placeholders.
 
 ### Before a deploy: `scripts/predeploy_check.sh`
+
+> ## ⚠️ DEPLOYING THE 2026-08-12 BUILD NEEDS `otree resetdb` — NOT JUST RETIRING SESSIONS
+>
+> **Read this before deploying this code over any database that predates
+> 2026-08-12.** Retiring the in-flight sessions is NOT enough on its own: the
+> old rows stay in the database, and the SCHEMA is what has changed.
+>
+> This build carries a **schema change on top of a page-sequence change**, and
+> **oTree has no migrations**:
+>
+> - `before.Player.prolific_label_conflict` is a real `models.StringField`
+>   (`before/__init__.py`) that older databases do not have. **A missing column
+>   500s every page that loads that model** — which, since it is on the entry
+>   app's Player, is every page a participant sees. Not a degraded feature: a
+>   dead study.
+> - Six columns were **removed** the same day (`intro.Player.participant_label`,
+>   `skiptoquiz`; `outro.Player.selected_round1`, `selected_round2`, `pay1`,
+>   `pay2` — see CODEBOOK.md). Leftover columns in an old database are harmless
+>   to reads, but they mean the file no longer matches the models either.
+> - The **page sequence changed, in both `before` and `intro`**: the
+>   tab-monitor agreement page (`AISafetyAgree`) moved OUT of the end of `intro`
+>   and INTO `before`, after the id confirmation, so that the monitor is armed
+>   before the instructions and the quiz rather than after them. oTree stores a
+>   participant's position as an INDEX into the whole sequence, so every index
+>   past the insertion point now names a different page: a participant who was
+>   on the quiz would resume somewhere else entirely. This is the case
+>   CLAUDE.md's rule covers — **a rounds or page-sequence change must never be
+>   deployed over live sessions** — which is why retiring in-flight
+>   participants is necessary here as well, and why `resetdb` is the clean
+>   answer rather than a hand-migration.
+>
+> **What to do:** deploy onto a **fresh database** — `otree resetdb` (in
+> Docker, `RESET_DB=1` on the container, see the Docker section). That **wipes
+> all data**, so export first (`scripts/export_data.py`) and treat every
+> participant in the old database as finished.
+>
+> **The only alternative**, if data must be preserved, is to add the missing
+> column by hand before deploying and accept that everyone mid-flow is stranded
+> by the sequence change anyway:
+>
+> ```sql
+> ALTER TABLE before_player ADD COLUMN prolific_label_conflict VARCHAR(10000);
+> ```
+>
+> Either way, run `scripts/predeploy_check.sh /tmp/db_live_copy.sqlite3`
+> afterwards: it fails with `SCHEMA MISMATCH: COLUMN … is missing` and names the
+> column, which is exactly the failure this box exists to stop you meeting in
+> production. **A template copied fresh has no live database and none of this
+> applies** — it is only about upgrading a study that already has participants.
 
 It tests the **upgrade**, not the install. Two live outages in the pilot study
 this template was distilled from had the same root cause: the new code was only
@@ -732,7 +786,11 @@ TLS-terminating proxy, uvicorn must trust `X-Forwarded-Proto` or it builds
 absolute `http://` links on an `https://` site and they break. The other two
 knobs are `PORT` (default `8101`) and `RESET_DB=1`, which wipes the database at
 boot — necessary after a schema change, and it strands anyone mid-run, so never
-pass it casually.
+pass it casually. **The 2026-08-12 build IS such a schema change** (a new
+`before.Player` column plus a page-sequence change): deploying it over an older
+database needs `RESET_DB=1` — or a hand-added column — or every participant
+page 500s. See the warning box under
+[Before a deploy](#before-a-deploy-scriptspredeploy_checksh).
 
 ## Hosting an oTree experiment online (Mac mini)
 See `MACMINI_HOSTING.md` for the full self-contained guide: how the Mac mini serves an oTree experiment (Docker container + Cloudflare Tunnel subdomain), the problems we hit and how we solved them, and a step-by-step recipe to deploy a brand-new experiment. That file is gitignored (it holds private infra details) so it stays local only.

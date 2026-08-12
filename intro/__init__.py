@@ -337,23 +337,14 @@ class quiz(Page):
             return upcoming_apps[-1]
 
 
-class AISafetyAgree(Page):
-    """Arms the tab-switch monitor. Shown only when tab_monitor is on.
-
-    On submit the template sets sessionStorage.aiSafetyAgreed = '1'; the monitor
-    JS stays dormant until then, so this page marks exactly where monitoring
-    begins.
-    """
-    template_name = 'intro/templates/ai_safety.html'
-
-    @staticmethod
-    def is_displayed(player):
-        # Arm once, after the round-1 quiz; never in the re-read round, and
-        # never for a participant the mobile screen-out already removed.
-        if common.is_screened_out(player.participant):
-            return False
-        return player.round_number == 1 and bool(player.session.config.get('tab_monitor'))
-
-
-page_sequence = [instructing, quiz, AISafetyAgree]
+# THE TAB-MONITOR AGREEMENT PAGE IS NOT HERE ANY MORE — it moved to the
+# `before` app on 2026-08-12, and it must not move back. It used to sit LAST in
+# this sequence (instructing, quiz, AISafetyAgree), which armed the monitor
+# only AFTER the comprehension quiz — leaving the instructions and the quiz
+# itself unmonitored, so a participant could consult an AI assistant during the
+# very check that gates entry to the study, which is exactly what that page's
+# text warns against. It now sits after the consent/ID pages in `before`, so
+# everything a participant is asked to do alone is covered. See
+# `before.AISafetyAgree` for the full reasoning.
+page_sequence = [instructing, quiz]
 

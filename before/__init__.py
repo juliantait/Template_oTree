@@ -254,6 +254,28 @@ def _screenout_vars(player):
     )
 
 
+def _leaving_study(player) -> bool:
+    """True for a participant who is on their way OUT of the study.
+
+    ONE implementation, because more than one page in this app needs it and two
+    copies would drift. A participant is leaving when the entry device gate has
+    screened them out, or when they declined consent — in both cases the
+    remaining pages of THIS app must not be shown to them. (`app_after_this_page`
+    routes them past `intro` and `main`, but it only takes effect once this app
+    finishes, so every later page in `before` has to gate itself.)
+
+    THE SHORT-CIRCUIT IS LOAD-BEARING: `consent` is only ever a form field — and
+    therefore only ever set — when `completion_redirects` is on (see
+    `welcome.get_form_fields`), so it must not be read when that flag is off.
+    In the lab the first operand is False and `player.consent` is never touched.
+    """
+    if common.is_screened_out(player.participant):
+        return True
+    if _flag(player, 'completion_redirects') and not player.consent:
+        return True
+    return False
+
+
 def _claim_participant_label(player, raw_id):
     """Write a participant label the safe way, and record a refused claim.
 
@@ -493,15 +515,10 @@ class ConfirmProlificID(Page):
 
     @staticmethod
     def is_displayed(player):
-        # Never in the lab; never for a participant already screened out or one
-        # who declined consent (they are on their way to the ending).
+        # Never in the lab; never for a participant on their way to an ending.
         if not _flag(player, 'capture_participant_id'):
             return False
-        if common.is_screened_out(player.participant):
-            return False
-        if _flag(player, 'completion_redirects') and not player.consent:
-            return False
-        return True
+        return not _leaving_study(player)
 
     @staticmethod
     def vars_for_template(player):
@@ -530,6 +547,65 @@ class ConfirmProlificID(Page):
         common.stamp_stage(player.participant, 'confirm_id')
 
 
+class AISafetyAgree(Page):
+    """Arms the tab-switch monitor. Shown only when `tab_monitor` is on.
+
+    On submit the template sets `sessionStorage.aiSafetyAgreed = '1'`; the
+    monitor JS (`_static/global/js/ai_safety_monitor.js`) stays dormant until
+    that flag is set, so this page marks exactly where monitoring begins.
+
+    WHY IT IS IN `before`, AND NOT AT THE END OF `intro` (moved 2026-08-12 —
+    a deliberate correction, do not move it back).
+    ------------------------------------------------------------------------
+    It used to be the LAST page of `intro`, after the comprehension quiz. That
+    armed the monitor only once the quiz was already passed, which left the two
+    things a participant does entirely alone — reading the instructions, and
+    sitting the quiz that gates entry to the study — completely unmonitored. A
+    participant could consult an AI assistant during the very check that decides
+    whether they may take part, which is precisely the behaviour the text on
+    this page asks them not to engage in. No rationale for the old position was
+    recorded anywhere (docstring, README, conventions or history); the reference
+    implementation this template is compared against arms it right after consent.
+
+    WHY HERE SPECIFICALLY, i.e. after the ID confirmation rather than before it:
+    this page reads as the "now we begin" gate, and putting it after the ID page
+    keeps the Prolific-specific admin (id capture, id confirmation) together as
+    one block. Arming one page earlier would buy nothing — there is nothing to
+    game on an id confirmation page.
+
+    NO `round_number` TEST. The old one (`round_number == 1`) was meaningless
+    even in `intro` for a page that is only ever shown once, and here it would
+    be actively misleading: `before` has `NUM_ROUNDS = 1`, so it could only ever
+    be True. It is removed rather than carried over, so nothing looks
+    load-bearing that is not.
+
+    The `tab_monitor` gate IS kept, and is what makes this page invisible in the
+    lab: the lab profile ships the monitor off, so a lab participant never sees
+    it. A lab session that deliberately turns the monitor on gets the agreement
+    page too, which is correct — the two belong together.
+    """
+    template_name = 'before/ai_safety.html'
+
+    @staticmethod
+    def is_displayed(player):
+        # No monitor, no agreement to take: the page exists only to arm it.
+        if not _flag(player, 'tab_monitor'):
+            return False
+        # And never for somebody on their way to an ending — a participant who
+        # declined consent, or whom the device gate screened out, must not be
+        # asked to agree to being monitored during a study they are not doing.
+        return not _leaving_study(player)
+
+    # NO stage stamp, deliberately: the page had none in `intro` either, and
+    # the move is a change of POSITION, not an occasion to start recording
+    # something new in the export. If a study wants "when was the monitor
+    # armed", add it here with a CODEBOOK.md entry alongside.
+
+
 # LAB      : startpage (the CREED gate) -> welcome/consent
-# PROLIFIC : [phone screen-out, no page of its own] -> welcome/consent -> ConfirmProlificID
-page_sequence = [startpage, welcome, ConfirmProlificID]
+#            (no ID page and no agreement page: the lab captures no platform id
+#             and ships the tab monitor off)
+# PROLIFIC : [device screen-out, no page of its own] -> welcome/consent ->
+#            ConfirmProlificID -> AISafetyAgree (arms the monitor BEFORE the
+#            instructions and the quiz — see AISafetyAgree's docstring)
+page_sequence = [startpage, welcome, ConfirmProlificID, AISafetyAgree]

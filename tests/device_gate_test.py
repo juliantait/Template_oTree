@@ -160,11 +160,24 @@ def participant_code(url):
     return m.group(1) if m else None
 
 
-def create(base, allowed, config='prolific'):
+# The return URL a CONFIGURED study has. `screenout_return_url` ships as a
+# REPLACE_* placeholder on purpose (settings.SCREENOUT_RETURN_URL_PLACEHOLDER:
+# a working default never gets verified, and this is the one way off the
+# screen-out page), and the pre-launch guard refuses to launch while it is
+# unreplaced. Every scenario here is therefore driven as a study that HAS
+# replaced it — which is what the way-out assertions are about. The placeholder
+# state itself is covered by the pre-launch guard, not by these walks.
+CONFIGURED_RETURN_URL = 'https://app.prolific.com/'
+
+
+def create(base, allowed, config='prolific', **modified):
+    fields = {'allowed_devices': allowed,
+              'screenout_return_url': CONFIGURED_RETURN_URL}
+    fields.update(modified)
     return requests.post(
         base + '/api/sessions',
         json={'session_config_name': config, 'num_participants': 2,
-              'modified_session_config_fields': {'allowed_devices': allowed}},
+              'modified_session_config_fields': fields},
     ).json()
 
 

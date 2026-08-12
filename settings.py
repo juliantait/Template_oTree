@@ -154,6 +154,29 @@ RECRUITMENT_PROFILES = {
 # was removed on 2026-08-12 for exactly that reason; do not reintroduce it.
 PROLIFIC_CODE_PLACEHOLDERS = ('REPLACE_CC', 'REPLACE_NC', 'REPLACE_DQ')
 
+# THE SCREEN-OUT RETURN URL IS A PLACEHOLDER TOO, AND IS GUARDED THE SAME WAY.
+#
+# THIS IS NOT THE SAME CALL AS THE SCREENED-OUT COMPLETION CODE, and the two
+# must not be confused — they point in opposite directions:
+#
+#   * the screened-out COMPLETION CODE does not exist and must never be added
+#     (see the note above). It is never sent, so guarding it would block a
+#     launch over something the study does not use;
+#   * this URL IS USED. It is the entire way off `before/screened_out.html` —
+#     the one page a stranded participant needs — so it must be verified by a
+#     human before a launch, exactly like a completion code.
+#
+# WHY IT IS A PLACEHOLDER RATHER THAN A WORKING DEFAULT (Julian, 2026-08-12).
+# It previously shipped as `https://app.prolific.com/`, which works, and that
+# is precisely the problem: A PLAUSIBLE DEFAULT NEVER GETS CHECKED. A URL that
+# happens to resolve is worse than one that visibly does not, because nobody
+# ever confirms it is the right destination for THIS study — and the person who
+# discovers it was wrong is a participant who has already been turned away and
+# now cannot get back to the platform. Shipping it broken makes the omission
+# impossible to miss: the pre-launch guard fails, and the link on the page is
+# visibly not a URL.
+SCREENOUT_RETURN_URL_PLACEHOLDER = 'REPLACE_SCREENOUT_RETURN_URL'
+
 # --- static asset version ----------------------------------------------------
 # Appended as ?v=... to every CSS/JS href so a redeploy is never served a stale
 # cached asset. BUMP THIS ON EVERY CHANGE to a file under _static/. Each app
@@ -342,7 +365,14 @@ SESSION_CONFIG_DEFAULTS = dict(
     # and which a completion code would foreclose for good. See "The device
     # check" in README.md, and common.screenout_return_url.
     # Blank it to render no link at all (a study with no platform to return to).
-    screenout_return_url='https://app.prolific.com/',
+    #
+    # SHIPPED AS A REPLACE_* PLACEHOLDER, deliberately — see
+    # SCREENOUT_RETURN_URL_PLACEHOLDER above for why a working default is worse
+    # than a broken one here. Replace it with the platform URL your participants
+    # should be sent back to (for Prolific that is https://app.prolific.com/),
+    # or blank it if the study has no platform to return to. The pre-launch
+    # guard fails while this is still the placeholder AND the study redirects.
+    screenout_return_url=SCREENOUT_RETURN_URL_PLACEHOLDER,
     cc_code='REPLACE_CC',        # normal completion
     noconsent_code='REPLACE_NC', # declined consent
     dq_code='REPLACE_DQ',        # disqualified (comprehension / tab monitor)
@@ -598,6 +628,23 @@ def _prelaunch_problems():
                     problems.append(
                         (f"config {cfg['name']!r} {code_key}", value,
                          'a real Prolific completion code (not a REPLACE_* placeholder)'))
+            # THE SCREEN-OUT RETURN URL, guarded in the same family as the codes
+            # but for the opposite reason to the code we deliberately do NOT
+            # have: this one is really used (it is the whole way off the
+            # screen-out page), so an unreplaced placeholder is a participant
+            # stranded with no route back to the platform. Gated on
+            # `completion_redirects` for the same reason the codes are — that
+            # flag is what means "this study sends people back to a platform";
+            # a lab session has nowhere to return to and is never asked.
+            # A DELIBERATELY BLANK value is a legitimate choice (render no link
+            # at all) and is not flagged — only the untouched placeholder is.
+            if eff.get('screenout_return_url') == SCREENOUT_RETURN_URL_PLACEHOLDER:
+                problems.append(
+                    (f"config {cfg['name']!r} screenout_return_url",
+                     SCREENOUT_RETURN_URL_PLACEHOLDER,
+                     'the real URL a screened-out participant is sent back to '
+                     '(e.g. https://app.prolific.com/), or blank for no link — '
+                     'NOT the REPLACE_* placeholder'))
     return problems
 
 

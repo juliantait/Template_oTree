@@ -107,9 +107,64 @@ def labels_in(session):
         s.close()
 
 
-def plant_label(code, label):
-    """Write a label straight onto a row — the hand-edited / legacy case."""
+# =============================================================================
+# PLANTED SETUP MUST BE VERIFIED BEFORE IT IS TRUSTED
+# =============================================================================
+# A SETUP THAT SILENTLY NO-OPS IS INDISTINGUISHABLE FROM A FEATURE THAT WORKS —
+# the collapsed-distinction rule (CLAUDE.md) living in test code, where it is
+# worse, because the failure is invisible: the suite goes GREEN and reports that
+# it tested something it never set up.
+#
+# MEASURED HERE, 2026-08-12, not hypothesised. Stubbing `plant_label` to do
+# nothing, and separately stubbing the terminal-state write to do nothing, was
+# run against this suite. Most checks went red — but in BOTH experiments the
+# screened-out tie-break below ("joins the SCREENED-OUT earliest row") stayed
+# GREEN with no setup whatsoever, because with nothing planted oTree's own
+# fallback (`filter_by(visited=False).first()`) hands back the earliest row,
+# which is the same row the assertion expects. The one check that pins the soft
+# wall's joinability could not tell "the guard chose this row" from "nothing was
+# planted and oTree returned it by default".
+#
+# TWO FIXES, BOTH NEEDED:
+#
+#  1. PLANTED ROWS ARE MARKED VISITED, because that is what a row carrying a
+#     duplicate label actually is: somebody who has been in the study. It also
+#     removes the ambiguity at its root — oTree's fallback only ever returns
+#     `visited=False` rows, so once a planted row is visited, an assertion that
+#     names it can ONLY be satisfied by our guard's Python label match having
+#     run. (This is the second trap the reference implementation hit: they
+#     planted a FINISHED row that was still `visited=False`, so oTree handed it
+#     to a fresh entrant and their not-finished tie-break was never exercised.)
+#  2. EVERY PLANT IS ASSERTED, immediately, before the behaviour that depends
+#     on it — `assert_planted` below.
+# =============================================================================
+
+def plant_label(code, label, visited=True):
+    """Write a label straight onto a row — the hand-edited / legacy case.
+
+    Marks the row VISITED by default: a row that carries a participant label in
+    the wild is one somebody has actually entered on (oTree stamps the label in
+    `mark_visited_and_record_label`, which sets `visited` in the same breath).
+    Planting an unvisited row would leave oTree's own
+    `filter_by(visited=False).first()` fallback able to return it, so a later
+    assertion naming that row could be satisfied without our guard doing
+    anything — see the note above.
+    """
     ot.set_label(code, label)
+    if visited:
+        set_visited(code, True)
+
+
+def set_visited(code, visited=True):
+    from otree.database import DBSession
+    from otree.models import Participant
+    s = DBSession()
+    try:
+        p = s.query(Participant).filter_by(code=code).one()
+        p.visited = visited
+        s.commit()
+    finally:
+        s.close()
 
 
 def set_exit_code(code, exit_code, screened_out=False):
@@ -127,6 +182,53 @@ def set_exit_code(code, exit_code, screened_out=False):
         s.commit()
     finally:
         s.close()
+
+
+def row_state(code):
+    """(label, visited, exit_code, screened_out) as actually stored."""
+    from otree.database import DBSession
+    from otree.models import Participant
+    s = DBSession()
+    try:
+        p = s.query(Participant).filter_by(code=code).one()
+        return dict(label=p.label, visited=bool(p.visited),
+                    exit_code=p.vars.get('exit_code'),
+                    screened_out=bool(p.vars.get('screened_out')))
+    finally:
+        s.close()
+
+
+def assert_planted(code, label=None, exit_code=None, screened_out=None,
+                   visited=True, what=''):
+    """Confirm a planted row REALLY holds the state the next assertion assumes.
+
+    Call this after every plant, before testing the behaviour that depends on
+    it. See the note above for the measured reason this exists.
+    """
+    st = row_state(code)
+    if label is not None:
+        check(identity_same(st['label'], label),
+              f'SETUP {what}: row {code} really carries the label '
+              f'{label!r} (stored {st["label"]!r})')
+    if visited is not None:
+        check(st['visited'] == visited,
+              f'SETUP {what}: row {code} really has visited={visited} '
+              f'(got {st["visited"]}) — an unvisited row would be returned by '
+              f'oTree\'s own fallback, so the assertion below would not be '
+              f'testing our guard at all')
+    if exit_code is not None:
+        check(st['exit_code'] == exit_code,
+              f'SETUP {what}: row {code} really holds exit_code={exit_code} '
+              f'(got {st["exit_code"]})')
+    if screened_out is not None:
+        check(st['screened_out'] == screened_out,
+              f'SETUP {what}: row {code} really holds '
+              f'screened_out={screened_out} (got {st["screened_out"]})')
+
+
+def identity_same(a, b):
+    import identity
+    return identity.same_label(a, b)
 
 
 def post_form(client, resp, data):
@@ -276,6 +378,8 @@ def main():
     plant_label(codes[1], 'dupe0001')      # the state oTree cannot survive
     check(labels_in(dup_session).count('dupe0001') == 2,
           'two rows planted on the same label (a hand-edited / legacy database)')
+    assert_planted(codes[0], label='dupe0001', what='dupe/earliest')
+    assert_planted(codes[1], label='dupe0001', what='dupe/later')
     anon = ot.anon_code(dup_session)
     dupe_browser = browser()
     r = dupe_browser.get(f'/join/{anon}?participant_label=dupe0001',
@@ -301,6 +405,13 @@ def main():
     plant_label(fcodes[0], 'dupefin01')
     plant_label(fcodes[1], 'dupefin01')
     set_exit_code(fcodes[0], 1)             # the EARLIEST row has finished
+    # THE SETUP, ASSERTED BEFORE THE BEHAVIOUR (see the note at plant_label):
+    # both rows really hold the label and are really visited, and the earliest
+    # really is finished. Without this, a plant that quietly did nothing would
+    # be tested as if it had worked.
+    assert_planted(fcodes[0], label='dupefin01', exit_code=1,
+                   what='finished/earliest')
+    assert_planted(fcodes[1], label='dupefin01', what='finished/later')
     r = browser().get(f'/join/{ot.anon_code(fin_session)}'
                       f'?participant_label=dupefin01', allow_redirects=True)
     check(r.status_code < 500, 'finished-earliest duplicate: no 500')
@@ -317,6 +428,15 @@ def main():
     plant_label(scodes[0], 'dupeso001')
     plant_label(scodes[1], 'dupeso001')
     set_exit_code(scodes[0], -4, screened_out=True)   # earliest is SCREENED OUT
+    # THIS IS THE CHECK THAT WENT GREEN ON AN EMPTY SETUP (see plant_label).
+    # Both plants are asserted, and both rows are VISITED, so the assertion
+    # below can no longer be satisfied by oTree's unvisited-row fallback
+    # returning the earliest row by default — it can only pass if our guard
+    # matched the label in Python and `_choose_row` kept a screened-out (i.e.
+    # terminal but NOT finished) row joinable.
+    assert_planted(scodes[0], label='dupeso001', exit_code=-4,
+                   screened_out=True, what='screenedout/earliest')
+    assert_planted(scodes[1], label='dupeso001', what='screenedout/later')
     r = browser().get(f'/join/{ot.anon_code(so_session)}'
                       f'?participant_label=dupeso001', allow_redirects=True)
     check(r.status_code < 500, 'screened-out-earliest duplicate: no 500')
@@ -331,6 +451,8 @@ def main():
     mcodes = ot.participant_codes(mx_session)
     plant_label(mcodes[0], 'MiXeD01')
     plant_label(mcodes[1], 'mixed01')
+    assert_planted(mcodes[0], label='MiXeD01', what='mixedcase/earliest')
+    assert_planted(mcodes[1], label='mixed01', what='mixedcase/later')
     r = browser().get(f'/join/{ot.anon_code(mx_session)}'
                       f'?participant_label=MIXED01', allow_redirects=True)
     check(r.status_code < 500, 'case-differing duplicate: no 500')
