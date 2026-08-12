@@ -158,7 +158,7 @@ PROLIFIC_CODE_PLACEHOLDERS = ('REPLACE_CC', 'REPLACE_NC', 'REPLACE_DQ')
 # Appended as ?v=... to every CSS/JS href so a redeploy is never served a stale
 # cached asset. BUMP THIS ON EVERY CHANGE to a file under _static/. Each app
 # exposes it as C.STATIC_VERSION, which is what the templates read.
-STATIC_VERSION = '5'
+STATIC_VERSION = '6'
 
 
 SESSION_CONFIG_DEFAULTS = dict(

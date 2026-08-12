@@ -40,9 +40,7 @@ class Group(BaseGroup):
 # Dynamically generate Player fields from QUIZ_ITEMS
 def make_quiz_fields():
     fields = {
-        'participant_label': models.StringField(blank=True),
         'redoinstructions': models.BooleanField(initial=0, blank=True),
-        'skiptoquiz': models.BooleanField(initial=0, blank=True),
         'num_failed_attempts': models.IntegerField(initial=0),
         # EVERY GRADED QUIZ SUBMISSION, as a JSON list (see log_quiz_attempt and
         # CODEBOOK.md for the shape). It answers "which items do people get

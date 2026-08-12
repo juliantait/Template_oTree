@@ -485,7 +485,7 @@ You can share the instructions with coauthors who don't have the codebase instal
   - `main/`: This folder contains the core logic and code for your experimental task. Place the main game code, task logic, and any files that control the experiment's core flow here.
 - outro
   - `outro/Results.html`: built-in results summary showing per-round payoffs and total payment; generally leave untouched. To update how payment is calculated, edit the function in `outro/payment_rule.py`.
-  - `outro/Demographics.html`: collects and verifies IVAN numbers and other basic demographic questions; edit here if you need to change the questionnaire.
+  - `outro/Demographics.html`: collects and verifies IBAN numbers and other basic demographic questions; edit here if you need to change the questionnaire.
 
 ## Scripts (`scripts/`)
 - `scripts/start.sh` : bind a session to the lab room on boot, **reusing** an
