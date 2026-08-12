@@ -233,9 +233,27 @@ a { color: var(--accent); }
     :root { --card-max: 88dvh; }
 }
 
-/* THE SCROLL REGION. The header strip and the button row are PINNED (they are
-   flex:0 0 auto siblings); only this middle region scrolls, so the forward
-   action is always on screen and nobody has to scroll to find Next.
+/* THE SCROLL REGION — ON A WIDE SCREEN. The header strip and the button row are
+   PINNED (they are flex:0 0 auto siblings) and only this middle region scrolls.
+
+   THE INTENTION, STATED HONESTLY (rewritten 2026-08-12, improvement_suggestions
+   item 1). This used to read "so the forward action is always on screen". That
+   is TRUE ON A WIDE SCREEN and is why the pattern exists: a participant on a
+   laptop never has to hunt for Next. IT IS DELIBERATELY NOT TRUE ON A PHONE.
+   Below 520px the card-scroll model is switched off entirely (see the phone
+   breakpoint further down): the card grows, the PAGE scrolls, and Next sits
+   after the content in document order — so on a phone the forward action is
+   reached BY scrolling past the content rather than being pinned beside it.
+
+   Why the difference is on purpose, and not a compromise: at 375x667 the
+   consent page's copy is ~750px in a ~415px region, so no arrangement of a
+   pinned layout puts the consent options above the fold — the one thing this
+   template may not do is trim consent copy. A pinned Next on a screen where the
+   choice is below the cut is the "reach the action before seeing what you are
+   agreeing to" shape, which is worse than scrolling. Phone participants also
+   expect to scroll a page rather than a box inside it. So: pinned action on a
+   wide screen, natural document flow on a narrow one, and the property claimed
+   here holds exactly where it is claimed.
 
    `min-height: 0` IS LOAD-BEARING. A flex child's default min-height is `auto`,
    which refuses to shrink below its content — without this line the region
@@ -758,22 +776,38 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
     border-radius: 4px;
 }
 
-/* …and re-assert it over BOOTSTRAP. oTree loads bootstrap5 before this file, and
-   it ships `.form-check-input:focus { outline: 0; box-shadow: 0 0 0 .25rem
-   rgba(13,110,253,.25) }` — two class-level selectors, so it out-ranks the bare
-   `:focus-visible` above no matter the load order. oTree emits every radio and
-   checkbox with `.form-check-input`, so the ONE place a keyboard user most needs
-   a ring — the quiz and consent option cards — was the one place it was silently
-   removed (measured: outline-width 0px on the focused radio, 2026-08-10). These
-   selectors match Bootstrap's specificity and win on order; the box-shadow reset
-   drops Bootstrap's #0d6efd glow so the ring is the design's own accent. The
-   `:checked` inset dot (below) is more specific and is untouched. */
+/* --- ONE focus indicator per option card, and it is the CARD ------------------
+   (improvement_suggestions item 2, Julian 2026-08-12: "drop the INNER one".)
+
+   An option card is one control as far as a participant is concerned, so it
+   gets ONE ring. Two rules used to fire on the same keystroke — the card's
+   `:focus-within` treatment (border + 3px ring, further down this file) and the
+   global `:focus-visible` outline on the radio INSIDE it — which drew a ring
+   inside a ring. The card ring is the more legible of the two, especially at
+   phone size, so the inner outline is suppressed here and the card ring is the
+   single indicator.
+
+   THIS IS A SUPPRESSION WITH A REPLACEMENT, NOT A REMOVAL. Never delete a focus
+   outline without one: the rule immediately below (.mc-option:focus-within) is
+   what a keyboard user actually sees, it is asserted by
+   tests/render_check.py's focus leg, and if that rule is ever dropped this one
+   must go with it.
+
+   THE BOOTSTRAP RESET STAYS. oTree loads bootstrap5 before this file, and it
+   ships `.form-check-input:focus { outline: 0; box-shadow: 0 0 0 .25rem
+   rgba(13,110,253,.25) }`. The outline part no longer matters (we want none
+   anyway), but the box-shadow does: without the reset a focused radio wears
+   Bootstrap's #0d6efd glow, which is neither of this design's colours and
+   reintroduces the doubled look it was just rid of. The `:checked` inset dot is
+   more specific and is untouched. */
 .form-check-input:focus-visible,
 .mc-option input:focus-visible,
 .form-check input:focus-visible {
-    outline: 3px solid var(--accent-ring);
-    outline-offset: 2px;
+    outline: none;
 }
+/* Scoped to Bootstrap's own class ONLY, deliberately: `.mc-option input:focus`
+   would sit at the same specificity as the `:checked` inset-dot rule below and
+   is one reorder away from erasing the selected dot of a focused option. */
 .form-check-input:focus { box-shadow: none; }
 
 /* Testing-only skip buttons (rendered only when settings.DEBUG). Deliberately
@@ -830,12 +864,68 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
    as two unrelated things. */
 .welcome-header-row .header-title { width: auto; max-width: none; margin-inline: 0; }
 
-/* --- responsive: phone breakpoint ------------------------------------------- */
+/* --- responsive: phone breakpoint -------------------------------------------
+   A PHONE SCROLLS THE PAGE, NOT A BOX INSIDE THE CARD (improvement_suggestions
+   item 1, Julian 2026-08-12). Below 520px the card-scroll model is switched off
+   completely: the card's height cap comes off, both scroll regions go back to
+   normal flow, and the browser's own scrollbar takes over. The consequences are
+   the point, not side effects:
+
+     * NEXT COMES AFTER THE CONTENT, in document order and on screen, so it
+       cannot be reached without passing the options above it. On the consent
+       page at 375x667 the choice was 125px below the fold of a pinned layout,
+       which is the one shape this page must not have.
+     * The page scrolls the way a phone user expects, with the system scrollbar
+       and momentum, instead of a nested region with its own bar.
+     * The scroll AFFORDANCES (fade, edge shadow, pulsing V) all disappear here
+       by construction: they are bound to a region that overflows, and nothing
+       overflows any more. That is correct — they exist to say "this box has
+       more inside it", and on a phone there is no box, just a page.
+
+   THE GUTTER COUPLING, easy to miss: `scrollbar-gutter: stable both-edges` only
+   reserves space on a SCROLL CONTAINER, so turning overflow off also removes
+   the gutters the header strips were offset by. The eyebrow rules for the
+   narrative and instructions families subtract those same gutters, so both must
+   be zeroed here or the eyebrow ends up one or two gutters right of the copy it
+   introduces (measured by the eyebrow leg in tests/render_check.py, which is
+   what catches it).
+
+   The card KEEPS its min-height, so a one-line page still fills the screen
+   rather than collapsing to a stub. */
 @media (max-width: 520px) {
     .button-row { justify-content: stretch; }
     .button-row .next-button { flex: 1; text-align: center; }
     .logo-row img { height: 32px; }
     .logo-row { gap: 18px; }
+
+    .screen-card { max-height: none; }
+    /* A card that now EXCEEDS the viewport must not be centred by the old
+       rule: `align-items: center` on an overflowing flex item pushes its top
+       above the container's start edge, where it cannot be scrolled back to.
+       `safe center` centres a card that fits and falls back to start-aligning
+       one that does not; browsers without `safe` keep the flex-start line
+       above it, which is the correct behaviour for them for the same reason. */
+    .experimental-screen {
+        align-items: flex-start;
+        align-items: safe center;
+    }
+    .experimental-content {
+        overflow: visible;
+        /* the padding/negative-margin pair existed to stop `overflow-y: auto`
+           clipping a focus ring; with nothing clipping, it only adds width. */
+        padding: 0;
+        margin: 0;
+    }
+    /* No scroll container, no reserved gutter — so the header strip must not
+       offset itself by one any more (see THE GUTTER COUPLING above).
+       The INSTRUCTIONS page's twin of this pair lives in instructions.css, and
+       has to: that file loads after this one, so its `.instruction-wrapper`
+       overflow rule would otherwise win over anything written here (a media
+       query adds no specificity — only order decides). */
+    .narrative-card .experimental-header {
+        max-width: 100%;
+        padding-inline: 0;
+    }
 }
 
 /* --- SHORT VIEWPORTS: tighten the rhythm, not the content -------------------

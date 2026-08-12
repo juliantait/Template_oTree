@@ -125,11 +125,14 @@ documented. See `settings.EXIT_CODES` and the CODEBOOK.md exit-code table.
   (`common.focus_live_method`) bound to the task pages, and a disqualified
   ending. Thresholds are config values; the client JS reads them via `js_vars`.
 - **comprehension_dq** — disqualify after `comprehension_max_failures` wrong quiz
-  attempts, routing to the ending (`intro`). The online (Prolific) rule.
+  attempts, routing to the ending (`intro`). The online (Prolific) rule. **Not
+  supported in the lab** (with `tab_monitor`; the pre-launch check fails on it).
 - **quiz_reread** — the lab rule for the same threshold: offer ONE re-read pass
   through the instructions (intro round 2, consumed on entry, not on offer);
   once spent, further failures show a dismissible "raise your hand" notice and
-  the participant may keep trying — no disqualification (`intro`).
+  the participant may keep trying — no disqualification (`intro`). The notice
+  itself is NOT part of this module: it is keyed on the threshold and the study
+  type, so a lab session with `quiz_reread` off still calls the experimenter.
 - **passive_capture** — hidden-field time-on-page on the task form (`main`).
 - **device_capture** — device/screen JSON at entry, measurement only (`before`);
   the `is_mobile` field it fills blocks nobody.

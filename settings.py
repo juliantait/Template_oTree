@@ -133,7 +133,7 @@ PROLIFIC_CODE_PLACEHOLDERS = ('REPLACE_CC', 'REPLACE_NC', 'REPLACE_DQ', 'REPLACE
 # Appended as ?v=... to every CSS/JS href so a redeploy is never served a stale
 # cached asset. BUMP THIS ON EVERY CHANGE to a file under _static/. Each app
 # exposes it as C.STATIC_VERSION, which is what the templates read.
-STATIC_VERSION = '3'
+STATIC_VERSION = '4'
 
 
 SESSION_CONFIG_DEFAULTS = dict(
@@ -193,11 +193,35 @@ SESSION_CONFIG_DEFAULTS = dict(
     # the integrity and re-read machinery reacts to). Whether answers are
     # validated at all is verify_quiz, under TESTING AND DEV — turning it off
     # is a debug loosening, honoured only under DEBUG.
-    comprehension_max_failures=2,   # wrong attempts that count as failing the quiz
+    #
+    # THE SAME NUMBER MEANS TWO DIFFERENT THINGS, BY STUDY TYPE. It is one
+    # counter (participant.failed_attempts, incremented in intro.quiz.
+    # error_message) and one threshold, deliberately the same value in both
+    # study types — what differs is the CONSEQUENCE of crossing it:
+    #   * ONLINE (prolific): the point of EJECTION. comprehension_dq is on, so
+    #     crossing it flags the participant, records exit code -2 and sends them
+    #     to the ending and back to Prolific with dq_code.
+    #   * IN THE LAB: the point at which the study STARTS HELPING. Nobody is
+    #     ejected and attempts are never capped — the participant is sitting in
+    #     the room, has been promised the show-up fee, and there is an
+    #     experimenter to ask. Crossing it opens the one-time re-read offer
+    #     (quiz_reread) and, once that is spent or if the module is off, the
+    #     dismissible "raise your hand" notice; at TWICE the threshold that
+    #     notice also names how many attempts they have made. Nothing is
+    #     recorded beyond the counter, which is the point: at analysis time
+    #     `failed_attempts >= comprehension_max_failures` is the SAME predicate
+    #     the online rule ejects on, so "failed comprehension" means one thing
+    #     across both study types. (Failing already costs quiz_bonus, which is
+    #     paid only when failed_attempts == 0.)
+    # See _ai/lab_comprehension_proposal.md and CODEBOOK.md.
+    comprehension_max_failures=3,   # wrong attempts that count as failing the quiz
     # Lab re-read pass: on first crossing the failure threshold, offer ONE
     # return through the instructions (intro round 2). After it is used, further
     # failures show a dismissible "raise your hand" notice — no disqualification.
     # Mutually exclusive in practice with comprehension_dq (the online rule).
+    # Turning it OFF in a lab session is allowed and no longer leaves the
+    # participant without help: the experimenter notice is keyed on the
+    # threshold and the study type, not on this module.
     quiz_reread=False,              # offer a one-time instructions re-read on failure
 
     # =========================================================================
@@ -205,6 +229,23 @@ SESSION_CONFIG_DEFAULTS = dict(
     # =========================================================================
     # Enforcement: the tab-switch monitor and comprehension disqualification,
     # plus their thresholds (thresholds only matter when the module is on).
+    #
+    # BOTH MODULES ARE NOT SUPPORTED IN A LAB SESSION (Julian, 2026-08-12), and
+    # scripts/prelaunch_check.py FAILS on a lab config that turns either on.
+    # The reason is conceptual, not technical: in the lab, a participant who
+    # does not consent or does not pass the comprehension check simply cannot do
+    # the study — and that essentially never happens, because people know what
+    # they signed up for when they come to the lab. There is nothing for a
+    # disqualification to accomplish that the experimenter in the room does not
+    # already handle.
+    # The mechanical consequence, which is why the pre-launch check exists
+    # rather than a comment on its own: a disqualified participant is not a
+    # completer (outro.is_completer), so they skip Demographics — the page that
+    # collects the lab's IBAN/BIC — and the payment summary, and land on an
+    # ending with no redirect (lab has completion_redirects off). That is a
+    # participant stranded at a machine with no record of where to send their
+    # fee. The lab's comprehension rule is the re-read pass plus the
+    # experimenter notice; see comprehension_max_failures above.
     #
     # KNOWN ANNOYANCE (candidate future option — documented, deliberately not
     # solved): when TESTING a prolific-configured study these modules, plus

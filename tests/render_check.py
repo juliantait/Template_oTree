@@ -50,6 +50,17 @@ LD_LIBRARY_PATH at it — full recipe in `_ai/headless_chromium_recipe.md`:
 The script re-runs itself once with `--long-quiz` (a deliberately overflowing
 quiz) to exercise the scroll checks; pass `--long-quiz` yourself to run only
 that pass. Exit code 0 = every check passed.
+
+LAYOUT REGRESSIONS (a diff, not a threshold)
+--------------------------------------------
+The checks above catch BROKEN. `tests/geometry_baseline.json` — committed, and
+in tests/ rather than the gitignored _ai/ — catches CHANGED:
+
+    python tests/render_check.py --diff             fail on anything that moved
+    python tests/render_check.py --update-baseline  adopt an INTENTIONAL change
+
+The tolerance, what the baseline holds and what it deliberately leaves out are
+written at the top of that file.
 """
 
 import json
@@ -63,6 +74,12 @@ import time
 from urllib.parse import urlparse
 
 LONG_QUIZ = '--long-quiz' in sys.argv
+# Compare this run's geometry against the committed baseline and FAIL on any
+# element that moved (see the baseline section at the bottom of this file).
+DIFF = '--diff' in sys.argv
+# Rewrite that baseline from this run — the one command to use when a layout
+# change is INTENTIONAL.
+UPDATE_BASELINE = '--update-baseline' in sys.argv
 
 # --- throwaway database, PRODUCTION mode ------------------------------------
 # LIVE-BUILD FIDELITY: the screenshots must show what a PARTICIPANT sees, so the
@@ -378,6 +395,9 @@ def collect_facts(page, key):
         'first_option': box(page, '.form-check, .mc-option'),
         'section_text': box(page, '.section-text'),
         'has_creed_header': page.locator('.welcome-header-row').count() > 0,
+        'has_logo_strip': page.locator('.logo-section').count() > 0,
+        'has_header_title': page.locator(
+            '.experimental-header .header-title').count() > 0,
         'logo_inline_attrs': page.evaluate(
             """() => Array.from(document.querySelectorAll('.logo-row img, '
                + '.welcome-header-row img')).map(
@@ -878,14 +898,28 @@ def check_card_min_derivation(server, browser, facts):
     geometry['card_min_derivation'] = natural
 
     # …and the point of the floor: one card height per viewport.
-    for vp_name in VIEWPORTS:
+    # WIDE SCREENS ONLY. On a phone the card-scroll model is switched off
+    # (improvement_suggestions item 1), so the card is deliberately as tall as
+    # its content and pages differ — the floor still applies as a FLOOR, which
+    # is what is asserted there instead.
+    for vp_name, vp in VIEWPORTS.items():
         heights = {k: per[vp_name]['card']['h'] for k, per in facts.items()}
+        geometry.setdefault('card_heights', {})[vp_name] = heights
+        if vp['width'] <= 520:
+            floor = 0.88 * vp['height']
+            short = {k: h for k, h in heights.items() if h < floor - 2}
+            check(not short,
+                  f'{vp_name}: the phone card still honours the floor — no page '
+                  f'is shorter than {floor:.0f}px ({sorted(short.items())})')
+            print(f'  [note] {vp_name}: card heights vary by design here '
+                  f'({min(heights.values())}..{max(heights.values())}px) — the '
+                  f'page scrolls, not the card')
+            continue
         spread = max(heights.values()) - min(heights.values())
         check(spread <= 2,
               f'{vp_name}: every page renders the SAME card height '
               f'(spread {spread}px across {len(heights)} pages: '
               f'{sorted(set(heights.values()))})')
-        geometry.setdefault('card_heights', {})[vp_name] = heights
 
 
 def check_titles_centred(facts):
@@ -1335,6 +1369,108 @@ def check_reread_dialog(server, browser):
     context.close()
 
 
+def check_lab_experimenter_notice(server, browser):
+    """W2. The lab "raise your hand" notice, including its escalated form.
+
+    Driven with quiz_reread OFF, which is the case that used to get NO help at
+    all (the notice required the re-read module; fixed 2026-08-12) — so this
+    also proves the hole stays closed. Past TWICE comprehension_max_failures the
+    notice gains a line naming the attempt count, and the point of measuring
+    rather than grepping is that the second line must actually RENDER inside the
+    card: a modal whose card is a fixed height would push it out of view with
+    nothing failing anywhere.
+
+    Julian's copy is verbatim and deliberately does NOT offer "you can keep
+    trying" (see intro/templates/quiz.html) — asserted here, because a helpful
+    edit putting it back would otherwise be invisible.
+    """
+    section('W2. The lab experimenter notice renders, escalates, dismisses')
+    threshold = 2
+    session = create_session(
+        'lab', num_participants=2,
+        modified_session_config_fields={'quiz_reread': False,
+                                        'comprehension_max_failures': threshold})
+    code, _ = walk_to(server.base, session, 'quiz')
+    wrong = {}
+    for item in QUIZ_ITEMS:
+        alternatives = [c for c in item['choices'] if c != item['answer']]
+        wrong[item['field']] = alternatives[0] if alternatives else item['answer']
+    s = requests.Session()
+    r = s.get(f'{server.base}/InitializeParticipant/{code}', allow_redirects=True)
+    for _ in range(2 * threshold):          # escalate: 2x the threshold
+        if page_of(r.url) != 'quiz':
+            break
+        fp = FormParser()
+        fp.feed(r.text)
+        r = s.post(r.url, data=build_payload(fp.inputs, {}, wrong),
+                   allow_redirects=True)
+    if not check(page_of(r.url) == 'quiz',
+                 f'{2 * threshold} wrong submissions and the lab participant is '
+                 f'still on the quiz (now {page_of(r.url)}) — never ejected'):
+        return
+
+    for vp_name in ('laptop_1280x720', 'phone_375x667'):
+        context = browser.new_context(viewport=VIEWPORTS[vp_name])
+        page = context.new_page()
+        page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+        page.wait_for_timeout(250)
+        label = f'quiz_notice @ {vp_name}'
+        m = page.evaluate("""() => {
+            const back = document.getElementById('quiz-modal-backdrop');
+            if (!back) return {present: false};
+            const card = back.querySelector('.modal-card');
+            const r = back.getBoundingClientRect();
+            const cr = card.getBoundingClientRect();
+            const paras = Array.from(card.querySelectorAll('.modal-text'));
+            return {present: true, hidden: back.hidden,
+                    covers: Math.round(r.width) >= window.innerWidth
+                            && Math.round(r.height) >= window.innerHeight,
+                    centredX: Math.abs((cr.left + cr.right) / 2
+                                       - window.innerWidth / 2) <= 2,
+                    // Every line must be INSIDE the card, not spilling past it.
+                    lines: paras.map(p => ({
+                        text: p.innerText.trim(),
+                        h: Math.round(p.getBoundingClientRect().height),
+                        inside: p.getBoundingClientRect().bottom <= cr.bottom + 1})),
+                    bolds: Array.from(card.querySelectorAll('strong'))
+                               .map(b => b.innerText.trim()),
+                    text: card.innerText.trim(),
+                    dismissable: !!card.querySelector('.modal-actions button')};
+        }""")
+        if not check(m['present'] and not m['hidden'],
+                     f'{label}: the notice is on the page and revealed'):
+            context.close()
+            continue
+        check(m['covers'] and m['centredX'],
+              f'{label}: it dims the whole viewport, card centred')
+        flat = ' '.join(m['text'].split())
+        check('raise your hand and speak to the experimenter' in flat,
+              f'{label}: it says to raise your hand ({flat[:90]!r})')
+        check(any('raise your hand' in b.lower() for b in m['bolds']),
+              f'{label}: "raise your hand" is BOLD (bold runs: {m["bolds"]})')
+        check(f'You have made {2 * threshold} attempts so far' in flat,
+              f'{label}: escalated — it names the attempt count '
+              f'({2 * threshold})')
+        check(len(m['lines']) == 2 and all(l['h'] > 0 for l in m['lines']),
+              f'{label}: BOTH lines are rendered with height '
+              f'({[l["h"] for l in m["lines"]]})')
+        check(all(l['inside'] for l in m['lines']),
+              f'{label}: neither line spills out of the card')
+        check('keep trying' not in flat.lower(),
+              f'{label}: it does NOT tell them they can keep trying (Julian\'s '
+              f'copy — do not add it back)')
+        check(m['dismissable'], f'{label}: it is dismissible')
+        screenshot(page, 'quiz_experimenter_notice', vp_name)
+        geometry.setdefault('experimenter_notice', {})[vp_name] = m
+        # Dismissible AT THE ESCALATED STAGE too: nothing ever blocks the quiz.
+        page.click('#quiz-modal-backdrop .modal-actions button')
+        page.wait_for_timeout(150)
+        gone = page.evaluate(
+            "() => document.getElementById('quiz-modal-backdrop').hidden")
+        check(gone, f'{label}: dismissing it returns the participant to the quiz')
+        context.close()
+
+
 def check_warning_modal(server, browser):
     """X. A validation failure is a centred modal, not a banner (items 9 + 10).
 
@@ -1423,6 +1559,268 @@ def check_warning_modal(server, browser):
               f'ITEM 10: …and the gender already chosen is still selected '
               f'(got {kept["gender"]!r})')
         geometry['preserved_answers'] = kept
+    context.close()
+
+
+def check_consent_single_question(server, browser, facts):
+    """AA. The consent page asks its question ONCE, in one voice.
+
+    improvement_suggestions item 3, verified rather than re-implemented: the
+    field's `label` is `""` (before/__init__.py), which suppresses oTree's own
+    question line above the options. This pins that — and pins that no OTHER
+    field on the page reintroduces one, which is the half a one-line diff cannot
+    show.
+    """
+    section('AA. The consent page asks one question, once (item 3)')
+    for key, config in (('consent_prolific', 'prolific'), ('consent_lab', 'lab')):
+        text = ' '.join(facts[key]['laptop_1280x720']['text'].split())
+        check('Do you consent to take part' not in text,
+              f'{key}: oTree\'s own field label is NOT rendered')
+        code, _ = walk_to(server.base, create_session(config, num_participants=2),
+                          'welcome')
+        context = browser.new_context(viewport=VIEWPORTS['laptop_1280x720'])
+        page = context.new_page()
+        page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+        page.wait_for_timeout(150)
+        m = page.evaluate("""() => {
+            // Every label oTree or the template renders on this page, other
+            // than the per-option labels inside the choice cards.
+            const labels = Array.from(document.querySelectorAll(
+                '.experimental-content label'))
+                .filter(l => !l.closest('.form-check, .mc-option'))
+                .map(l => l.textContent.trim())
+                .filter(t => t.length);
+            const qs = (document.querySelector('.experimental-content')
+                .innerText.match(/\\?/g) || []).length;
+            return {labels: labels, questionMarks: qs};
+        }""")
+        check(not m['labels'],
+              f'{key}: no other field puts a labelled question above the '
+              f'options (found {m["labels"]})')
+        check(m['questionMarks'] == 0,
+              f'{key}: the page asks nothing a second time — {m["questionMarks"]} '
+              f'question marks in the content region')
+        geometry.setdefault('consent_question', {})[key] = m
+        context.close()
+
+
+def check_page_anatomy(server, browser, facts):
+    """AB. Which pages carry a logo strip, and where each page's title comes from.
+
+    improvement_suggestions item 5, VERIFIED rather than assumed. Two separate
+    claims, and they do not have the same answer:
+
+      * the logo strip is now entry-and-ending only (lab gate, consent, the
+        Prolific-ID page having lost it, the ending, results) — asserted here so
+        a stray include shows up;
+      * the instructions page's title. Every other page puts its title in the
+        header strip as `.header-title`. The instructions page does NOT: each
+        slide's own <h2> is the title, by the documented rule in
+        writing_instructions.md. This asserts that CURRENT state explicitly, so
+        the divergence is visible in the run rather than being something someone
+        has to notice.
+    """
+    section('AB. Page anatomy: logo strips, and where the title comes from')
+    expected_logo = {'lab_entry_gate', 'consent_lab', 'consent_prolific',
+                     'ended_screenout', 'results'}
+    for key, per_vp in facts.items():
+        has = per_vp['laptop_1280x720']['has_logo_strip']
+        if key in expected_logo:
+            check(has, f'{key}: carries the institutional logo strip')
+        else:
+            check(not has,
+                  f'{key}: has NO logo strip (mid-study pages are kept clean)')
+
+    for key, per_vp in facts.items():
+        has_title = per_vp['laptop_1280x720']['has_header_title']
+        if key == 'instructions':
+            check(not has_title,
+                  'instructions: the header strip carries NO .header-title — '
+                  'this page still takes its title from the SLIDE\'s <h2>, '
+                  'unlike every other page (improvement_suggestions item 5 is '
+                  'NOT resolved on this point)')
+        elif key == 'task_tabmonitor':
+            check(not has_title,
+                  'task screen: no title — the progress strip states the round')
+        else:
+            check(has_title,
+                  f'{key}: the title is in the header strip, as .header-title')
+
+    # …and name the element that actually renders as the instructions title.
+    code, _ = walk_to(server.base, create_session('lab', num_participants=2),
+                      'instructing')
+    context = browser.new_context(viewport=VIEWPORTS['laptop_1280x720'])
+    page = context.new_page()
+    page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+    page.wait_for_timeout(150)
+    m = page.evaluate("""() => {
+        const h = document.querySelector('.instruction-block > h2');
+        const inHeader = document.querySelector(
+            '.experimental-header .header-title');
+        return {slideTitle: h ? h.textContent.trim() : null,
+                slideTitleInHeader: !!(h && h.closest('.experimental-header')),
+                headerTitle: inHeader ? inHeader.textContent.trim() : null};
+    }""")
+    check(m['slideTitle'] and not m['slideTitleInHeader']
+          and m['headerTitle'] is None,
+          f'instructions: the visible title {m["slideTitle"]!r} is the slide '
+          f'<h2>, rendered inside the SCROLL REGION, not the header strip')
+    geometry['instructions_title_source'] = m
+    context.close()
+
+
+def check_lab_only_copy(server, browser):
+    """AC. The two lab-only sentences, and their absence online (2026-08-12).
+
+    Two DIFFERENT sentences for two different situations, both meaningless
+    outside a physical lab:
+      * results  — "stay seated" until the experimenter dismisses the room;
+      * ending   — "raise your hand", because someone leaving early is not
+                   waiting for a general dismissal.
+    A Prolific participant must see neither. That absence is exactly the kind of
+    thing that regresses silently when a template is edited, so it is asserted
+    from the rendered text on BOTH variants of BOTH pages.
+    """
+    section('AC. Lab-only closing copy, and never on Prolific')
+    cases = (
+        ('results', 'Results', 'stay seated',
+         'until the experimenter tells you that you can leave'),
+        ('ending', 'Ended', 'raise your hand',
+         'so the experimenter can come to you before you leave'),
+    )
+    for page_key, stop, bold_phrase, tail in cases:
+        for config in ('lab', 'prolific'):
+            # The ending is only reachable by a participant who did NOT
+            # complete; the device gate is the cheapest way to get one there.
+            modified = ({'allowed_devices': ['computer']} if stop == 'Ended'
+                        else None)
+            ua = PHONE_UA if stop == 'Ended' else None
+            session = create_session(config, num_participants=2,
+                                     modified_session_config_fields=modified)
+            code, _ = walk_to(server.base, session, stop, user_agent=ua)
+            context = browser.new_context(viewport=VIEWPORTS['laptop_1280x720'],
+                                          user_agent=ua)
+            page = context.new_page()
+            page.goto(f'{server.base}/InitializeParticipant/{code}',
+                      wait_until='load')
+            page.wait_for_timeout(150)
+            flat = ' '.join(visible_text(page).split())
+            bolds = [b.strip().lower() for b in page.evaluate(
+                """() => Array.from(document.querySelectorAll(
+                    '.experimental-content strong')).map(s => s.innerText)""")]
+            label = f'{page_key} @ {config}'
+            if config == 'lab':
+                check(tail in flat,
+                      f'{label}: the lab sentence is on the page ({tail!r})')
+                check(any(bold_phrase in b for b in bolds),
+                      f'{label}: "{bold_phrase}" is BOLD (bold runs: {bolds})')
+            else:
+                check(tail not in flat and bold_phrase not in flat.lower(),
+                      f'{label}: neither lab sentence appears online')
+                # …and the other page's sentence has not leaked here either.
+                other = 'raise your hand' if page_key == 'results' else 'stay seated'
+                check(other not in flat.lower(),
+                      f'{label}: nor the other page\'s lab sentence')
+            geometry.setdefault('lab_only_copy', {})[label] = {
+                'has_tail': tail in flat, 'bolds': bolds}
+            context.close()
+
+
+def check_phone_page_flow(server, browser):
+    """Z. On a phone the PAGE scrolls, and Next comes after the content.
+
+    improvement_suggestions item 1 (Julian, 2026-08-12). Below 520px the
+    card-scroll model is switched off: the card grows, the browser's own scroll
+    takes over, and the forward action sits after the content in document order
+    so it cannot be reached without passing what is above it. This asserts all
+    three, on the three pages where it matters most, and re-asserts that the
+    WIDE layout still pins its action (the property the base.css comment now
+    claims only for wide screens).
+    """
+    section('Z. Phone: the page scrolls and Next follows the content (item 1)')
+    pages = (('consent_prolific', 'prolific', 'welcome',
+              'input[name="consent"]'),
+             ('quiz', 'lab', 'quiz', '.form-check input'),
+             ('results', 'prolific', 'Results', '.payout-line.total'))
+    for key, config, stop, last_sel in pages:
+        code, _ = walk_to(server.base, create_session(config, num_participants=2),
+                          stop)
+        context = browser.new_context(viewport=VIEWPORTS['phone_375x667'])
+        page = context.new_page()
+        page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+        page.wait_for_timeout(250)
+        m = page.evaluate("""(sel) => {
+            const el = document.querySelector('.experimental-content');
+            const card = document.querySelector('.screen-card');
+            const row = document.querySelector('.screen-card > .button-row')
+                     || document.querySelector('.instruction-controls');
+            const items = Array.from(document.querySelectorAll(sel));
+            const last = items.length ? items[items.length - 1] : null;
+            const cs = getComputedStyle(el);
+            const doc = document.documentElement;
+            return {
+                overflowY: cs.overflowY,
+                regionScrolls: el.scrollHeight > el.clientHeight + 2,
+                cardMaxHeight: getComputedStyle(card).maxHeight,
+                pageScrolls: doc.scrollHeight > window.innerHeight + 2,
+                docH: doc.scrollHeight, viewH: window.innerHeight,
+                lastBottom: last ? Math.round(
+                    last.getBoundingClientRect().bottom + window.scrollY) : null,
+                buttonTop: row ? Math.round(
+                    row.getBoundingClientRect().top + window.scrollY) : null,
+                buttonAfterInDom: (row && last)
+                    ? !!(last.compareDocumentPosition(row)
+                         & Node.DOCUMENT_POSITION_FOLLOWING) : null,
+                cls: el.className,
+            };
+        }""", last_sel)
+        label = f'{key} @ phone_375x667'
+        check(m['overflowY'] == 'visible' and m['cardMaxHeight'] == 'none',
+              f'{label}: the card-scroll model is OFF '
+              f'(content overflow-y:{m["overflowY"]}, card '
+              f'max-height:{m["cardMaxHeight"]})')
+        check(not m['regionScrolls'],
+              f'{label}: nothing scrolls inside the card any more')
+        check(m['pageScrolls'],
+              f'{label}: the PAGE scrolls instead ({m["docH"]}px document in a '
+              f'{m["viewH"]}px viewport)')
+        check('is-scrollable' not in m['cls'],
+              f'{label}: and no in-card scroll affordance is drawn '
+              f'({m["cls"]!r})')
+        if m['buttonAfterInDom'] is not None:
+            check(m['buttonAfterInDom'],
+                  f'{label}: the forward action FOLLOWS the content in document '
+                  f'order')
+            check(m['buttonTop'] >= m['lastBottom'] - 2,
+                  f'{label}: …and sits below it on screen (button at '
+                  f'{m["buttonTop"]}, last item ends {m["lastBottom"]})')
+        geometry.setdefault('phone_flow', {})[key] = m
+        screenshot(page, f'{key}_phone_flow', 'phone_375x667')
+        context.close()
+
+    # …and the WIDE layout still does the opposite, which is what base.css now
+    # claims only for wide screens: the action is pinned and always on screen.
+    code, _ = walk_to(server.base, create_session('prolific', num_participants=2),
+                      'welcome')
+    context = browser.new_context(viewport=VIEWPORTS['laptop_1280x720'])
+    page = context.new_page()
+    page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+    page.wait_for_timeout(200)
+    w = page.evaluate("""() => {
+        const el = document.querySelector('.experimental-content');
+        const row = document.querySelector('.screen-card > .button-row');
+        const r = row.getBoundingClientRect();
+        return {regionScrolls: el.scrollHeight > el.clientHeight + 2,
+                overflowY: getComputedStyle(el).overflowY,
+                buttonOnScreen: r.top >= 0 && r.bottom <= window.innerHeight,
+                pageScrolls: document.documentElement.scrollHeight
+                             > window.innerHeight + 2};
+    }""")
+    check(w['overflowY'] == 'auto' and w['regionScrolls'],
+          'consent @ laptop_1280x720: the card still scrolls internally')
+    check(w['buttonOnScreen'] and not w['pageScrolls'],
+          'consent @ laptop_1280x720: …and Next is pinned on screen, with no '
+          'page scroll — the wide-screen intention still holds')
     context.close()
 
 
@@ -1537,19 +1935,19 @@ def check_consent_choice_visible(server, browser, facts):
         both = min(m['last']['bottom'], m['viewBottom']) - max(
             m['last']['top'], m['viewTop'])
         if vp_name == 'phone_375x667':
-            # HONEST LIMIT: this page's copy is ~750px tall and a 375x667 phone
-            # gives the scroll region ~415px, so no arrangement of the layout
-            # puts the options above the fold — only cutting the consent text
-            # would, and consent text is the one thing this template must not
-            # trim (skills_claude/writing_welcome_consent.md). What IS required
-            # on a phone is that nothing can be consented to blind: the region
-            # must announce that it scrolls (checked above) and an untouched
-            # submit must be REJECTED (checked below).
-            print(f'  [note] {vp_name}: the first option sits '
-                  f'{max(0, m["first"]["top"] - m["viewBottom"])}px below the '
-                  f'fold (option {m["first"]["top"]}..{m["first"]["bottom"]}, '
-                  f'viewport {m["viewTop"]}..{m["viewBottom"]}) — physically '
-                  f'unfittable, see the note above')
+            # THE PHONE CONTRACT CHANGED (improvement_suggestions item 1). This
+            # page's copy is ~750px and the viewport is 667px, so the options
+            # cannot be above the fold whatever the layout does — only cutting
+            # consent copy would manage it, and that is the one thing this
+            # template may not do. So the guarantee is no longer "the options
+            # are on screen" but "the options cannot be BYPASSED": the card
+            # scroll model is off here, the page scrolls, and Next comes after
+            # the options in document order. That is asserted in its own leg
+            # (check_phone_page_flow); here we only record where things sat.
+            print(f'  [note] {vp_name}: the first option sits at '
+                  f'{m["first"]["top"]}..{m["first"]["bottom"]} in a '
+                  f'{vp["height"]}px viewport — reached by scrolling the PAGE, '
+                  f'with Next below it (see the phone-flow leg)')
         else:
             check(visible_px > 10,
                   f'{vp_name}: the FIRST consent option is on screen without '
@@ -1705,12 +2103,14 @@ def check_scroll_really_moves(server, browser):
 
 
 # ==========================================================================
-# CHECK C — the focus ring on the first and last option is not clipped
+# CHECK C — ONE focus indicator per option, and it is not clipped
 # ==========================================================================
-# The ring is painted on the element that HAS focus — the radio input inside the
-# option card, not the card — so it is measured on document.activeElement. The
-# card's own edges are reported beside it, because the card is the outer thing
-# the scroll box could clip.
+# THE INDICATOR IS THE CARD (improvement_suggestions item 2, 2026-08-12): the
+# option card takes a border + ring on :focus-within, and the outline on the
+# radio INSIDE it is suppressed, so a keyboard user sees exactly one ring rather
+# than a ring inside a ring. This measures both halves — the card really is
+# ringed, the input really has no outline — and then that the ring is not
+# clipped by the scroll edge, which is the original point of this check.
 FOCUS_JS = """() => {
     const scroller = document.querySelector('.experimental-content');
     const opts = Array.from(document.querySelectorAll('.form-check, .mc-option'));
@@ -1719,23 +2119,28 @@ FOCUS_JS = """() => {
     if (!active) return null;
     const card = active.closest('.form-check, .mc-option');
     const cs = getComputedStyle(active);
-    const ring = (parseFloat(cs.outlineWidth) || 0)
-               + (parseFloat(cs.outlineOffset) || 0);
+    const inputOutline = (parseFloat(cs.outlineWidth) || 0);
+    const cardCS = card ? getComputedStyle(card) : null;
+    // The card's ring is a box-shadow, so its painted extent is the shadow's
+    // spread beyond the border box (3px, base.css .form-check:focus-within).
+    const shadow = cardCS ? cardCS.boxShadow : 'none';
+    const ring = shadow && shadow !== 'none' ? 3 : 0;
     const ar = active.getBoundingClientRect();
     const cr = (card || active).getBoundingClientRect();
     const sr = scroller.getBoundingClientRect();
     const sc = getComputedStyle(scroller);
-    // The topmost/bottommost painted pixel: whichever is further out, the ring
-    // around the focused input or the option card's own border.
-    const paintedTop = Math.min(ar.top - ring, cr.top);
-    const paintedBottom = Math.max(ar.bottom + ring, cr.bottom);
+    const paintedTop = cr.top - ring;
+    const paintedBottom = cr.bottom + ring;
     return {
         tag: active.tagName + (active.type ? ':' + active.type : ''),
-        outlineStyle: cs.outlineStyle, outlineWidth: cs.outlineWidth,
-        outlineOffset: cs.outlineOffset, ring: ring,
-        ringTop: Math.round(ar.top - ring), ringBottom: Math.round(ar.bottom + ring),
+        inputOutlineStyle: cs.outlineStyle, inputOutlineWidth: cs.outlineWidth,
+        inputOutline: inputOutline,
+        inputBoxShadow: cs.boxShadow,
+        cardShadow: shadow, cardBorder: cardCS ? cardCS.borderTopColor : null,
+        ring: ring,
         cardTop: Math.round(cr.top), cardBottom: Math.round(cr.bottom),
         scrollerTop: Math.round(sr.top), scrollerBottom: Math.round(sr.bottom),
+        scrollerClips: sc.overflowY !== 'visible',
         padTop: parseFloat(sc.paddingTop), padBottom: parseFloat(sc.paddingBottom),
         headroom: Math.round(paintedTop - sr.top),
         footroom: Math.round(sr.bottom - paintedBottom),
@@ -1745,7 +2150,7 @@ FOCUS_JS = """() => {
 
 
 def check_focus_rings(server, browser):
-    section('C. The :focus-visible ring on the first/last option is not clipped')
+    section('C. ONE focus ring per option (the card), and it is not clipped')
     session = create_session('lab', num_participants=2)
     code, _ = walk_to(server.base, session, 'quiz')
     for vp_name, vp in VIEWPORTS.items():
@@ -1764,14 +2169,36 @@ def check_focus_rings(server, browser):
                      f'{vp_name}: keyboard focus reaches the FIRST option'):
             context.close()
             continue
-        check(first['outlineStyle'] != 'none' and first['ring'] > 0,
-              f'{vp_name}: the focused control ({first["tag"]}) shows a ring '
-              f'({first["outlineWidth"]} + {first["outlineOffset"]} offset)')
-        check(first['headroom'] >= 0,
-              f'{vp_name}: first option ring clears the scroll edge by '
-              f'{first["headroom"]}px (>=0 = not clipped)')
-        # Keep the picture: what a keyboard user actually sees is a ring around
-        # the radio dot, not around the option card.
+        # SETTLE FIRST. The option card transitions its box-shadow over .14s, so
+        # a measurement taken in the same tick as the keypress catches the ring
+        # PART WAY IN (measured 1.1px of a 3px ring, at 12% alpha) and would
+        # fail against any honest threshold.
+        page.wait_for_timeout(250)
+        first = page.evaluate(FOCUS_JS)
+        # ONE indicator: the card is ringed…
+        check(first['cardShadow'] not in ('none', None)
+              and '0px 0px 0px 0px' not in first['cardShadow'],
+              f'{vp_name}: the focused option CARD carries the ring '
+              f'(box-shadow: {first["cardShadow"]})')
+        # …and the control inside it draws no second one. Asserted on the
+        # STYLE, not the width: with `outline: none` Chromium still reports a
+        # used outline-width of 3px, and nothing is painted — the style is what
+        # says whether a ring exists.
+        check(first['inputOutlineStyle'] == 'none',
+              f'{vp_name}: the radio inside draws NO second ring '
+              f'(outline-style: {first["inputOutlineStyle"]}, nothing painted)')
+        check('rgb(13, 110, 253)' not in (first['inputBoxShadow'] or ''),
+              f'{vp_name}: …and no Bootstrap glow either '
+              f'(box-shadow: {first["inputBoxShadow"]})')
+        if first['scrollerClips']:
+            check(first['headroom'] >= 0,
+                  f'{vp_name}: first option ring clears the scroll edge by '
+                  f'{first["headroom"]}px (>=0 = not clipped)')
+        else:
+            # Phone: the card-scroll model is off (item 1), so there is no
+            # scroll edge to be clipped by — the page scrolls instead.
+            print(f'  [note] {vp_name}: no in-card scroll region here, so no '
+                  f'edge can clip the ring')
         screenshot(page, 'quiz_focus_ring', vp_name)
         # …then Shift+Tab backwards from the end for the LAST option.
         page.evaluate("""() => { const o = document.querySelectorAll(
@@ -1779,8 +2206,9 @@ def check_focus_rings(server, browser):
             if (o.length) o[o.length - 1].focus(); }""")
         page.keyboard.press('Shift+Tab')
         page.keyboard.press('Tab')
+        page.wait_for_timeout(250)
         last = page.evaluate(FOCUS_JS)
-        if last:
+        if last and last['scrollerClips']:
             check(last['footroom'] >= 0,
                   f'{vp_name}: last option ring clears the bottom scroll edge by '
                   f'{last["footroom"]}px (>=0 = not clipped)')
@@ -2126,7 +2554,12 @@ def check_scroll_shadow(server, browser):
         return
     session = create_session('lab', num_participants=2)
     code, _ = walk_to(server.base, session, 'quiz')
-    vp = VIEWPORTS['phone_375x667']          # the surest overflow
+    # LAPTOP, not phone. The phone used to be the surest overflow, but since
+    # improvement_suggestions item 1 a phone has no in-card scroll region at
+    # all — so measuring the in-card shadow there would measure nothing and
+    # skip silently. 1280x720 is now the smallest viewport that still uses the
+    # card-scroll model, which is what this layer belongs to.
+    vp = VIEWPORTS['laptop_1280x720']
     context = browser.new_context(viewport=vp, java_script_enabled=False)
     page = context.new_page()
     page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
@@ -2181,6 +2614,217 @@ def check_scroll_shadow(server, browser):
 
 
 # ==========================================================================
+# THE GEOMETRY BASELINE  (--diff / --update-baseline)
+# ==========================================================================
+# WHY: every other check in this file is an absolute threshold, so it catches
+# BROKEN — a card taller than the viewport, a ring clipped by a scroll edge. A
+# layout REGRESSION is usually not broken, it is CHANGED: the Next button moves
+# 40px up, the reading band narrows, the eyebrow drifts. Nothing here would say
+# a word. This compares a run against a committed baseline and fails on
+# movement, printing page, viewport, element, old, new and delta so the numbers
+# are readable while scrolling a terminal.
+#
+# The three decisions behind it — the tolerance, what is in the baseline and
+# what is deliberately not, and how to regenerate it — are written at the top of
+# the baseline file itself, because that is the file someone reads in a review.
+BASELINE_PATH = os.path.join(_TESTS_DIR, 'geometry_baseline.json')
+
+# ±3px. NOT zero: these numbers come from getBoundingClientRect via Math.round,
+# so a value sitting on a half-pixel rounds either way between runs (±1); the
+# fluid type and spacing (clamp()/vw) resolve to fractions that round the same
+# way; and a platform whose scrollbar is a pixel wider shifts a centred band by
+# about one more. 3px stays well under what a human notices as "moved" — the
+# real regressions this exists for are tens of pixels — while staying above the
+# noise floor. If some field turns out to be noisier than this, EXCLUDE it (see
+# BASELINE_FIELDS) rather than raising the tolerance for everything.
+BASELINE_TOLERANCE_PX = 3
+
+# WHAT GOES IN: the boxes that pin a page's layout, per page and viewport.
+BASELINE_FIELDS = {
+    'card': ('x', 'y', 'w', 'h'),
+    'shell': ('w', 'h'),
+    'content': ('x', 'y', 'w', 'h', 'scrollH', 'clientH'),
+    'header': ('x', 'y', 'w', 'h'),
+    'eyebrow': ('x', 'y', 'h'),
+    'title': ('x', 'y', 'w', 'h'),
+    'panel': ('x', 'y', 'w', 'h'),
+    'button': ('x', 'y', 'w', 'h'),
+    'ghost_button': ('x', 'y', 'w', 'h'),
+    'logo_img': ('h',),
+    'first_option': ('x', 'y', 'w', 'h'),
+    'section_text': ('x', 'y', 'w', 'h'),
+}
+
+# …and the whole-run measurement groups that are pure numbers.
+BASELINE_GROUPS = ('band_centring', 'eyebrow', 'card_widths', 'card_heights',
+                   'card_min_derivation', 'catchment', 'instructions_band',
+                   'short_page', 'consent_choice', 'task_progress',
+                   'results_total_row', 'phone_flow')
+
+# WHAT IS DELIBERATELY OUT, and why — this list is the honest half of the
+# feature, because a baseline full of noise gets ignored within a week:
+#   * `text` (the 4000-char page dump) — every copy edit churns it, and it says
+#     nothing about layout; the wording has its own assertions.
+#   * colours, fonts, `display`/`overflow`/`textAlign` strings — real contracts,
+#     but each is already asserted directly by the check that owns it, and a
+#     diff would report them as "changed" without adding information.
+#   * every PIXEL-DARKNESS number (`affordance`, `phantom`, `scroll_shadow`,
+#     the scroll cue's band readings) — analogue values from antialiased
+#     rendering; they drift by fractions between runs and already have
+#     thresholds with an order of magnitude of headroom.
+#   * anything CONTENT-RANDOM: the results receipt's figures (payoffs are drawn
+#     at random per run), the disqualification text, the preserved answers.
+#   * `focus_ring` — it depends on a CSS transition settling and on how many
+#     Tab presses reached the first option, which is timing, not layout.
+#   * `viewport` and `url_page` — constants by construction.
+
+
+def baseline_view(geo):
+    """Flatten the run's geometry into {path: number} for comparison."""
+    flat = {}
+
+    def put(path, value):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return
+        flat[path] = value
+
+    for key, per_vp in sorted(geo.items()):
+        if key in ('pages',):
+            continue
+        if key in BASELINE_GROUPS:
+            def walk(node, path):
+                if isinstance(node, dict):
+                    for k, v in sorted(node.items()):
+                        walk(v, f'{path}/{k}')
+                else:
+                    put(path, node)
+            walk(per_vp, key)
+            continue
+        # per-page/viewport facts (everything render_all recorded)
+        if not isinstance(per_vp, dict):
+            continue
+        for vp_name, facts_ in sorted(per_vp.items()):
+            if not isinstance(facts_, dict):
+                continue
+            for element, fields in BASELINE_FIELDS.items():
+                box = facts_.get(element)
+                if not isinstance(box, dict):
+                    continue
+                for field in fields:
+                    if field in box:
+                        put(f'{key}/{vp_name}/{element}/{field}', box[field])
+    return flat
+
+
+def write_baseline(geo):
+    flat = baseline_view(geo)
+    payload = {
+        '_README': [
+            "Layout baseline for tests/render_check.py. Committed ON PURPOSE, "
+            "and to tests/ rather than _ai/ (which is gitignored), so that a "
+            "layout change shows up as a reviewable diff in this file.",
+            "",
+            "HOW TO USE IT",
+            "  python tests/render_check.py --diff             compare a run "
+            "against this file; exits non-zero on movement, printing page, "
+            "viewport, element, old, new and delta.",
+            "  python tests/render_check.py --update-baseline  REGENERATE it. "
+            "This is the command to run when a layout change is INTENTIONAL: "
+            "run it, then read the diff of this file as part of the change.",
+            "",
+            f"TOLERANCE: {BASELINE_TOLERANCE_PX}px. Not zero — these numbers "
+            "are rounded rects, so a half-pixel rounds either way between runs "
+            "(±1), fluid clamp()/vw values resolve to fractions, and a "
+            "different scrollbar width shifts a centred band by about one "
+            "more. 3px is far below what reads as 'moved' (real regressions "
+            "here are tens of pixels) and above the noise. A field noisier "
+            "than this should be EXCLUDED, not have the tolerance raised.",
+            "",
+            "WHAT IS IN: the boxes that pin layout (card, shell, content "
+            "region and its scroll height, header strip, eyebrow, title, "
+            "panel, buttons, first option card, logo height, section text) per "
+            "page and viewport, plus the numeric measurement groups (band "
+            "centring, eyebrow alignment, card widths and heights, the "
+            "card-floor derivation, scroll catchment, instructions band, short "
+            "page balance, consent choice position, task progress bar, the "
+            "results Total row, and the phone page-flow numbers).",
+            "",
+            "WHAT IS OUT, and why: page text (churns on every copy edit and is "
+            "not layout); colours/fonts/display strings (each already has its "
+            "own assertion); all pixel-darkness readings (analogue, "
+            "antialiasing-dependent, already thresholded); anything "
+            "content-random such as the results figures (payoffs are drawn at "
+            "random per run); and the focus-ring numbers (they depend on a CSS "
+            "transition settling and on Tab timing, not on layout).",
+        ],
+        'tolerance_px': BASELINE_TOLERANCE_PX,
+        'measurements': flat,
+    }
+    with open(BASELINE_PATH, 'w') as fh:
+        json.dump(payload, fh, indent=2, sort_keys=True)
+        fh.write('\n')
+    print(f'\nwrote {len(flat)} measurements -> '
+          f'{os.path.relpath(BASELINE_PATH, _APP_ROOT)}')
+    print('   review the diff of that file: it IS the record of what moved.')
+
+
+def diff_baseline(geo):
+    """Compare this run with the committed baseline. Returns a failure count."""
+    section('GEOMETRY DIFF vs the committed baseline')
+    try:
+        with open(BASELINE_PATH) as fh:
+            stored = json.load(fh)
+    except (OSError, ValueError):
+        print(f'  no baseline at {os.path.relpath(BASELINE_PATH, _APP_ROOT)} — '
+              f'create it with:  python tests/render_check.py --update-baseline')
+        return 1
+    tol = stored.get('tolerance_px', BASELINE_TOLERANCE_PX)
+    old = stored.get('measurements', {})
+    new = baseline_view(geo)
+
+    moved = []
+    for path, was in sorted(old.items()):
+        if path not in new:
+            continue
+        delta = new[path] - was
+        if abs(delta) > tol:
+            moved.append((path, was, new[path], delta))
+    gone = sorted(set(old) - set(new))
+    added = sorted(set(new) - set(old))
+
+    for path, was, now, delta in moved:
+        parts = path.split('/')
+        where = ' · '.join(parts[:-1])
+        what = parts[-1]
+        print(f'  [MOVED] {where}  {what}: {was} -> {now} '
+              f'({delta:+}px, tolerance ±{tol})')
+    if gone:
+        print(f'  [GONE ] {len(gone)} measurement(s) the baseline has and this '
+              f'run does not — a check was removed or a page stopped '
+              f'rendering:')
+        for path in gone[:12]:
+            print(f'          {path}')
+        if len(gone) > 12:
+            print(f'          … and {len(gone) - 12} more')
+    if added:
+        print(f'  [NEW  ] {len(added)} measurement(s) this run has and the '
+              f'baseline does not (new checks — re-run with '
+              f'--update-baseline to adopt them)')
+
+    unchanged = len(set(old) & set(new)) - len(moved)
+    print(f'  {unchanged} measurement(s) within ±{tol}px of the baseline')
+    if moved or gone:
+        _failures.append(
+            f'geometry diff: {len(moved)} element(s) moved more than {tol}px'
+            + (f', {len(gone)} measurement(s) missing' if gone else ''))
+        print('  FAIL — if these moves are INTENTIONAL, adopt them with:'
+              '  python tests/render_check.py --update-baseline')
+        return 1
+    print('  PASS — nothing moved beyond the tolerance')
+    return 0
+
+
+# ==========================================================================
 def main():
     try:
         from playwright.sync_api import sync_playwright
@@ -2221,7 +2865,12 @@ def main():
                     check_task_progress(server, browser, facts)
                     check_results_receipt(server, browser)
                     check_reread_dialog(server, browser)
+                    check_lab_experimenter_notice(server, browser)
                     check_warning_modal(server, browser)
+                    check_consent_single_question(server, browser, facts)
+                    check_page_anatomy(server, browser, facts)
+                    check_lab_only_copy(server, browser)
+                    check_phone_page_flow(server, browser)
                     check_dq_ending(server, browser)
                     check_scroll_really_moves(server, browser)
                     check_scroll_affordance(server, browser)
@@ -2247,6 +2896,18 @@ def main():
         json.dump(geometry, fh, indent=2, sort_keys=True, default=str)
     print(f'\nmeasured geometry -> {os.path.join(OUT_DIR, name)}')
 
+    # THE BASELINE IS THE NORMAL PASS ONLY. The long-quiz pass deliberately
+    # injects eight extra questions to force an overflow, so its geometry is a
+    # different page by construction and must never be compared with, or
+    # written into, the committed baseline.
+    if not LONG_QUIZ:
+        if UPDATE_BASELINE:
+            write_baseline(geometry)
+        elif DIFF:
+            diff_baseline(geometry)
+        else:
+            print('   (layout regressions: python tests/render_check.py --diff)')
+
     section('SUMMARY' + (' (long-quiz pass)' if LONG_QUIZ else ''))
     if _failures:
         print(f'  {len(_failures)} CHECK(S) FAILED:')
@@ -2259,6 +2920,7 @@ def main():
 
     if not LONG_QUIZ:
         print('\n--- re-running with a deliberately overflowing quiz ---')
+        # Deliberately WITHOUT --diff/--update-baseline: see the note above.
         rc |= subprocess.call([sys.executable, os.path.abspath(__file__),
                                '--long-quiz'])
     return rc

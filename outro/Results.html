@@ -48,6 +48,20 @@
 
             <div class="section-text results-notes">
                 <p>Please leave up to 2 weeks for the payment to be processed.</p>
+                {# LAB ONLY (Julian, 2026-08-12). A lab session ends when the
+                   experimenter dismisses the room, not when one participant
+                   finishes, so the last thing this page must say is "wait".
+                   Gated on `is_lab` — a Prolific participant is at home and
+                   must never be told to stay seated. The early-exit page says
+                   something DIFFERENT for the same situation (raise your hand),
+                   because someone leaving early is not waiting for a general
+                   dismissal; see outro/Ended.html. #}
+                {% if is_lab %}
+                <p>
+                    Please <strong>stay seated</strong> until the experimenter
+                    tells you that you can leave.
+                </p>
+                {% endif %}
                 {% if sepa == 0 %}
                     <div class="panel panel--hug">
                         Your bank account is not in SEPA.<br>

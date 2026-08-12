@@ -33,9 +33,18 @@ WRONG = {'quiz1': 'NO', 'quiz2': 'You proceed automatically'}
 RIGHT = {'quiz1': 'YES', 'quiz2': 'You are asked to reread the instructions'}
 
 REREAD_MARKER = 'value="Re-read the instructions"'
+# Asserted against VISIBLE TEXT, never the raw HTML: the notice bolds "raise
+# your hand", so the sentence is not a contiguous substring of the source.
 EXPERIMENTER_MARKER = 'raise your hand and speak to the experimenter'
 MODAL_MARKER = 'id="quiz-modal-backdrop"'
 DISMISS_MARKER = 'dismissQuizModal()'
+
+# The comprehension threshold is PINNED PER SCENARIO below, deliberately at a
+# value that is not the shipped default: every assertion here is then about the
+# PARAMETER — "the modal appears at the threshold, and not before" — rather than
+# about whatever number settings.py happens to ship today. Changing the shipped
+# default must not turn this file red.
+THRESHOLD = 2
 
 FAILURES = []
 
@@ -117,7 +126,8 @@ def scenario_lab_reread(base):
     # asserts the shipped default: no such sentence.
     s, r = new_participant(base, 'lab', modified={'showup': 7.5,
                                                   'expected_duration_minutes': 45,
-                                                  'show_duration_and_fee': True})
+                                                  'show_duration_and_fee': True,
+                                                  'comprehension_max_failures': THRESHOLD})
     r = advance_until(s, r, '/welcome/')
     check('contact and bank details are used only to arrange your payment'
           in visible_text(r.text), 'consent shows the LAB payment sentence')
@@ -147,13 +157,16 @@ def scenario_lab_reread(base):
     check('/quiz/' in r.url, 'quiz round 1 reached')
     i_quiz1 = page_index(r.url)
 
-    r = submit(s, r, answers=WRONG, overrides={'redoinstructions': '0'})
-    check('/quiz/' in r.url and MODAL_MARKER not in r.text,
-          'failure 1: error shown, no modal yet')
+    for i in range(1, THRESHOLD):
+        r = submit(s, r, answers=WRONG, overrides={'redoinstructions': '0'})
+        check('/quiz/' in r.url and MODAL_MARKER not in r.text,
+              f'failure {i} (below the threshold of {THRESHOLD}): '
+              f'error shown, no modal yet')
     r = submit(s, r, answers=WRONG, overrides={'redoinstructions': '0'})
     check(REREAD_MARKER in r.text and DISMISS_MARKER in r.text,
-          'failure 2 (threshold): dismissible re-read offer modal shown')
-    check(EXPERIMENTER_MARKER not in r.text,
+          f'failure {THRESHOLD} (AT the threshold): dismissible re-read offer '
+          f'modal shown')
+    check(EXPERIMENTER_MARKER not in visible_text(r.text),
           'no experimenter notice while the offer is open')
     # Dismissing the modal is client-side; a further failure must re-offer —
     # proof the offer is NOT consumed by the modal having been shown.
@@ -170,7 +183,7 @@ def scenario_lab_reread(base):
 
     r = submit(s, r, answers=WRONG, overrides={'redoinstructions': '0'})
     check(page_index(r.url) == i_quiz2, 'round-2 failure: still on the quiz (no DQ, no block)')
-    check(EXPERIMENTER_MARKER in r.text and DISMISS_MARKER in r.text,
+    check(EXPERIMENTER_MARKER in visible_text(r.text) and DISMISS_MARKER in r.text,
           'round-2 failure: dismissible experimenter notice shown')
     check(REREAD_MARKER not in r.text, 'round-2 failure: re-read no longer offered')
     # Hand-crafted redo POST after the offer is spent must NOT bypass validation.
@@ -189,9 +202,65 @@ def scenario_lab_reread(base):
     check('/Results/' in r.url, 'lab participant reaches results')
 
 
+def scenario_lab_no_reread(base):
+    """THE LAB WITH quiz_reread OFF still calls the experimenter.
+
+    This is the hole closed on 2026-08-12. The notice used to require the
+    re-read module AND a spent re-read pass, so a lab session that turned
+    quiz_reread off got NO help at any point: no offer, no at-will dialog (the
+    lab never has one) and no notice — just the inline error, forever, with the
+    experimenter never called and nothing on screen to send the participant to
+    them. The lab rule is "crossing the threshold starts the study helping", so
+    the notice is keyed on the threshold and the study type, not on the module.
+
+    Also pins the escalation, which is derived from the SAME threshold and has
+    no setting of its own: from 2x the threshold the notice names the attempt
+    count. It stays dismissible at every stage, and it never tells the
+    participant they may keep trying (Julian's copy — see quiz.html).
+    """
+    print("[lab-no-reread]")
+    s, r = new_participant(base, 'lab', modified={
+        'quiz_reread': False, 'comprehension_max_failures': THRESHOLD})
+    r = advance_until(s, r, '/quiz/')
+    i_quiz1 = page_index(r.url)
+
+    for i in range(1, THRESHOLD):
+        r = submit(s, r, answers=WRONG, overrides={'redoinstructions': '0'})
+        check(MODAL_MARKER not in r.text,
+              f'failure {i} (below the threshold): no notice yet')
+    r = submit(s, r, answers=WRONG, overrides={'redoinstructions': '0'})
+    text = visible_text(r.text)
+    check(EXPERIMENTER_MARKER in text and DISMISS_MARKER in r.text,
+          f'failure {THRESHOLD} with quiz_reread OFF: the dismissible '
+          f'experimenter notice is shown anyway')
+    check(REREAD_MARKER not in r.text,
+          'and no re-read offer, since that module is off')
+    check('attempts so far' not in text,
+          'the attempt count is NOT named yet (below 2x the threshold)')
+    check('keep trying' not in text.lower(),
+          'the notice never invites the participant to keep trying')
+    check(page_index(r.url) == i_quiz1, 'the participant is not blocked or ejected')
+
+    # …up to twice the threshold: the notice gains the attempt line.
+    for _ in range(THRESHOLD):
+        r = submit(s, r, answers=WRONG, overrides={'redoinstructions': '0'})
+    text = visible_text(r.text)
+    check(f'You have made {2 * THRESHOLD} attempts so far' in text,
+          f'at 2x the threshold the notice names the attempt count '
+          f'({2 * THRESHOLD})')
+    check(EXPERIMENTER_MARKER in text and DISMISS_MARKER in r.text,
+          'and it is still the same dismissible raise-your-hand notice')
+    check(page_index(r.url) == i_quiz1,
+          'still not blocked — lab attempts are unlimited')
+    r = submit(s, r, answers=RIGHT, overrides={'redoinstructions': '0'})
+    check(page_index(r.url) != i_quiz1,
+          'and passing at last carries on into the study')
+
+
 def scenario_prolific_dq(base):
     print("[prolific-dq]")
-    s, r = new_participant(base, 'prolific')
+    s, r = new_participant(
+        base, 'prolific', modified={'comprehension_max_failures': THRESHOLD})
     r = advance_until(s, r, '/welcome/')
     check('kept separate from your responses' in visible_text(r.text),
           'consent shows the NON-LAB payment sentence')
@@ -238,14 +307,16 @@ def scenario_prolific_dq(base):
     r = submit(s, r)
     check('/quiz/' in r.url, 'quiz round 1 reached')
     i_quiz1 = page_index(r.url)
-    r = submit(s, r, answers=WRONG, overrides={'redoinstructions': '0'})
-    check(page_index(r.url) == i_quiz1 and MODAL_MARKER not in r.text,
-          'failure 1: no modal, no re-read offer online')
+    for i in range(1, THRESHOLD):
+        r = submit(s, r, answers=WRONG, overrides={'redoinstructions': '0'})
+        check(page_index(r.url) == i_quiz1 and MODAL_MARKER not in r.text,
+              f'failure {i}: no modal, no re-read offer online')
     # Hand-crafted redo POST must not bypass validation for Prolific.
+    # This wrong submission is failure THRESHOLD -> DQ routes to outro.
     r = submit(s, r, answers=WRONG, overrides={'redoinstructions': '1'})
-    # This wrong submission is also failure 2 -> at the cap, DQ routes to outro.
     check('/outro/' in r.url and '/Ended/' in r.url,
-          f'failure at the cap: disqualified straight to the ending [{page_name(r.url)}]')
+          f'failure {THRESHOLD} (AT the threshold): disqualified straight to '
+          f'the ending [{page_name(r.url)}]')
     check('REPLACE_DQ' in r.text, 'ending carries the DQ completion code')
     check('/Introduction/' not in r.url, 'round 2 never seen')
 
@@ -296,6 +367,7 @@ def scenario_pilot_feedback(base):
 def main():
     base = (sys.argv[1] if len(sys.argv) > 1 else 'http://localhost:8000').rstrip('/')
     scenario_lab_reread(base)
+    scenario_lab_no_reread(base)
     scenario_prolific_dq(base)
     scenario_prolific_pass(base)
     scenario_pilot_feedback(base)

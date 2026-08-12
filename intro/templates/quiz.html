@@ -95,13 +95,27 @@
 </div>
 {{ endif }}
 {{ if show_experimenter }}
+<!-- COPY SET BY JULIAN (2026-08-12) — VERBATIM, DO NOT "IMPROVE" IT.
+     It used to end "You can keep trying in the meantime." He removed that
+     sentence deliberately, and the reason is why it must not be helpfully added
+     back: the participant CAN still keep trying — the notice is dismissible at
+     every stage, including the escalated one — but not SAYING so means some
+     participants will raise their hand instead of brute-forcing, and with radio
+     items brute force always passes eventually.
+     The second line appears from twice comprehension_max_failures onward
+     (experimenter_attempts, derived from the same threshold in
+     quiz.vars_for_template — there is no separate setting for it). -->
 <div id="quiz-modal-backdrop" class="modal-backdrop" data-warning-modal hidden>
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="quiz-modal-title">
         <h3 id="quiz-modal-title" class="modal-title">Still having trouble?</h3>
         <p class="modal-text">
-            Please raise your hand and speak to the experimenter. You can keep
-            trying in the meantime.
+            Please <strong>raise your hand</strong> and speak to the experimenter.
         </p>
+        {{ if experimenter_attempts }}
+        <p class="modal-text">
+            You have made {{ experimenter_attempts }} attempts so far.
+        </p>
+        {{ endif }}
         <div class="modal-actions">
             <button type="button" class="next-button" onclick="dismissQuizModal()">OK</button>
         </div>
