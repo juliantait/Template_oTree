@@ -317,3 +317,10 @@ skiptoquiz`, and `outro.Player.selected_round1` / `selected_round2` / `pay1` /
 `all_round_payoffs`, `selected_sum` and `earned`). This was a SCHEMA change,
 applied while the template has no live data; an export from before that date
 carries the six columns, blank.
+
+**Deploying this over a study that HAS data needs `otree resetdb`** — the same
+build also ADDS `before.Player.prolific_label_conflict`, and oTree has no
+migrations, so a database without that column 500s on every page that loads the
+model. Retiring the in-flight sessions is not sufficient. See the warning box
+under "Before a deploy" in README.md for the full procedure and the one
+hand-migration alternative.

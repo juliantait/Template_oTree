@@ -1759,9 +1759,14 @@ def check_screenout_way_out(server, browser):
     "do not press this" sees the study's usual Next button.
     """
     section('AD. The screen-out way out: no JavaScript, and visibly secondary')
+    # `screenout_return_url` ships as a REPLACE_* placeholder (see
+    # settings.SCREENOUT_RETURN_URL_PLACEHOLDER), so drive this leg as a study
+    # that has replaced it — the href assertions below are about a CONFIGURED
+    # study's way out.
     session = create_session('prolific', num_participants=2,
                              modified_session_config_fields={
-                                 'allowed_devices': ['computer']})
+                                 'allowed_devices': ['computer'],
+                                 'screenout_return_url': 'https://app.prolific.com/'})
     code, _ = walk_to(server.base, session, 'welcome', user_agent=PHONE_UA)
     for vp_name, vp in VIEWPORTS.items():
         context = browser.new_context(viewport=vp, user_agent=PHONE_UA,
