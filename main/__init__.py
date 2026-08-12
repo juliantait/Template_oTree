@@ -9,8 +9,6 @@ num_experimental_rounds = SESSION_CONFIG_DEFAULTS['num_experimental_rounds']
 doc = """
 tasks
 """
-manager = None
-task_manager = None
 
 class C(BaseConstants):
     # Asset cache-buster for this BUILD (settings.STATIC_VERSION).
@@ -29,8 +27,7 @@ class C(BaseConstants):
 
 def rounds_for(session) -> int:
     """How many rounds THIS session runs (config value, capped at NUM_ROUNDS)."""
-    requested = min(int(common.cfg(session.config, 'num_experimental_rounds')), C.NUM_ROUNDS)
-    return min(requested, C.NUM_ROUNDS)
+    return min(int(common.cfg(session.config, 'num_experimental_rounds')), C.NUM_ROUNDS)
 
 
 class Subsession(BaseSubsession):

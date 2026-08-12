@@ -161,6 +161,20 @@ def cfg(config, name):
         f"settings.SESSION_CONFIG_DEFAULTS")
 
 
+def flag(player, name) -> bool:
+    """Is a module flag on for this player's session?
+
+    The ONE implementation of the `_flag` helper the apps alias. Deliberately a
+    raw ``config.get``, NOT ``cfg``: the two differ for a key missing from a
+    frozen session config. ``cfg`` falls back to the value SHIPPED in settings —
+    right for thresholds and codes, which must keep working mid-study. A module
+    FLAG missing from a session's config means the module post-dates that
+    session, and a module a session was created without must read as OFF for it,
+    whatever a later deploy ships as the default.
+    """
+    return bool(player.session.config.get(name))
+
+
 def init_participant(participant):
     """Initialise every participant field at session creation.
 

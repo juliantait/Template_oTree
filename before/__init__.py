@@ -19,7 +19,7 @@
 #   route in this template that can produce a DUPLICATE participant label, which
 #   is a permanent lockout in oTree — see identity.py.
 
-from main import *
+from otree.api import *
 import common
 import identity
 from settings import STATIC_VERSION
@@ -118,8 +118,9 @@ def creating_session(subsession: Subsession):
     return treatment_assignment.assign_treatments(subsession)
 
 
-def _flag(player, name):
-    return bool(player.session.config.get(name))
+# One implementation, in common.flag (raw config.get — see its docstring for
+# why it is NOT common.cfg).
+_flag = common.flag
 
 
 def _apply_device_gate(player, user_agent):
