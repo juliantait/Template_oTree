@@ -7,8 +7,9 @@ from .payment_rule import select_random_payouts
 PROLIFIC_COMPLETE_URL = "https://app.prolific.com/submissions/complete?cc="
 
 
-def _flag(player, name):
-    return bool(player.session.config.get(name))
+# One implementation, in common.flag (raw config.get — see its docstring for
+# why it is NOT common.cfg).
+_flag = common.flag
 
 
 def is_lab(player) -> bool:
@@ -123,23 +124,20 @@ class Player(BasePlayer):
     spare_str_2 = models.LongStringField(blank=True)
 
 # FUNCTIONS
-# Function to check SEPA code
-def check_sepa_code(self):
-    # List of SEPA two-letter country codes
-    sepa_country_codes = [
-        "FI", "AT", "PT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FR", "DE", "GI", "GR", "HU", 
-        "IS", "IE", "IT", "LV", "LI", "LT", "LU", "MT", "MC", "NL", "NO", "PL", "RO", "SK", "SI", 
-        "ES", "SE", "CH", "GB"
-    ]
-    
-    # Extract the first two characters from the player's bank field
-    bank_country_code = self.bank[:2].upper()  # Get the first two characters, uppercase them
-    
-    # Check if the extracted code is in the SEPA list
-    if bank_country_code not in sepa_country_codes:
-        self.sepa = 0  # Set sepa to 0 if not in SEPA country list
-    else:
-        self.sepa = 1  # Set sepa to 1 if in SEPA country list
+# SEPA two-letter country codes (for flagging non-SEPA IBANs on the lab
+# payment form).
+SEPA_COUNTRY_CODES = frozenset([
+    "FI", "AT", "PT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FR", "DE", "GI", "GR", "HU",
+    "IS", "IE", "IT", "LV", "LI", "LT", "LU", "MT", "MC", "NL", "NO", "PL", "RO", "SK", "SI",
+    "ES", "SE", "CH", "GB"
+])
+
+
+def check_sepa_code(player):
+    # The IBAN's first two characters are its country code; flag a bank account
+    # outside the SEPA area so payment knows a transfer may not work.
+    bank_country_code = player.bank[:2].upper()
+    player.sepa = 1 if bank_country_code in SEPA_COUNTRY_CODES else 0
 
 # Function to extract round payoffs from a list of payoffs as ordered tuples (round_number, payoff)
 def extract_round_payoffs(payoffs_vector, missing_values):
@@ -406,6 +404,8 @@ class Results(Page):
         # it: base (the show-up fee) + quiz bonus + the selected rounds.
         # `base_payment` is the show-up fee under the name the receipt uses;
         # `decision_bonus` is the sum of the randomly selected rounds.
+        showup_fee = cu(common.cfg(self.session.config, 'showup'))
+        selected_sum = cu(self.selected_sum)
         return{
             # The completion URL, rendered into the page's own link. EVERY
             # Prolific completer leaves through it, so it must not need a script
@@ -414,10 +414,10 @@ class Results(Page):
             # code — unpaid, and looking like an abandoner in the data.
             'completionlink': completion_link(self),
             'earned': cu(self.earned),
-            'showup': cu(common.cfg(self.session.config, 'showup')),
-            'base_payment': cu(common.cfg(self.session.config, 'showup')),
-            'selected_sum': cu(self.selected_sum),
-            'decision_bonus': cu(self.selected_sum),
+            'showup': showup_fee,
+            'base_payment': showup_fee,
+            'selected_sum': selected_sum,
+            'decision_bonus': selected_sum,
             'quiz_bonus': cu(self.quiz_bonus_awarded),
             'show_quiz_bonus': self.quiz_bonus_awarded > 0,
             'has_rounds': bool(payout_rows),

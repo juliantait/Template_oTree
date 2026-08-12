@@ -72,12 +72,6 @@ class Player(BasePlayer):
 
 
 # FUNCTIONS
-def common_template_vars(session, group):
-    return {
-
-    }
-
-
 def reread_available(player) -> bool:
     """True while the one-time lab re-read offer is open to this participant.
 
