@@ -65,10 +65,14 @@ their own row instead of colliding with it; storing what was sent means the
 exported label still byte-matches what the platform gave us, which is what
 payment reconciliation is done against.
 
-THE COMPARISON HAPPENS IN PYTHON, NEVER IN SQL. String case-sensitivity in a
-WHERE clause is a property of the database collation — sqlite here, postgres in
-the container — and a rule about who owns an identity must not change with the
-database. A session is a few hundred rows; the cost is nothing.
+THE COMPARISON HAPPENS IN PYTHON, NEVER IN SQL, AND IN EXACTLY ONE PLACE
+(`rows_with_label`), used by BOTH the entry lookup and conflict detection.
+String case-sensitivity in a WHERE clause is a property of the database
+collation — sqlite here, postgres in the container — and a rule about who owns
+an identity must not change with the database. A session is a few hundred rows;
+the cost is nothing. The two callers having their own implementations was a real
+bug, found on 2026-08-12 and described at `rows_with_label`; do not let them
+drift apart again.
 
 SILENT TO THE PARTICIPANT, LOUD IN THE DATA
 -------------------------------------------
@@ -117,21 +121,55 @@ def same_label(a, b) -> bool:
     return normalise_label(a).casefold() == normalise_label(b).casefold()
 
 
-def label_owner(session, label, exclude=None):
-    """The participant in this session already holding `label`, or None.
+def rows_with_label(session, label, exclude=None):
+    """EVERY row in this session whose label denotes this identity, earliest
+    first. The ONE implementation of "is this the same participant?".
 
-    Compared in Python, not in SQL — see the module docstring. `exclude` is the
-    row doing the claiming, which obviously does not count as somebody else.
+    ONE CONCEPT, ONE IMPLEMENTATION — and this function exists because it was
+    briefly two. Conflict detection compared labels here, in Python, casefolded
+    and whitespace-collapsed; the entry lookup inside the guard still used
+    `pp_set.filter_by(label=label)`, which is SQL. Two consequences, both bad:
+
+      * a participant returning as `ABC123` whose row holds `abc123` failed to
+        match and took a FRESH row — while that same spelling typed on the
+        confirmation page would have been REFUSED as a conflict with the very
+        row it had just failed to match. One situation, two code paths, opposite
+        answers;
+      * and being SQL, the answer depended on the DATABASE COLLATION, so it
+        differed between the sqlite dev database and a postgres deployment: a
+        bug that passes every local test and appears only in production.
+
+    So the comparison is in Python, always, for both callers. A session is a few
+    hundred rows and this runs on entry, which is a cost we accept for an
+    identity rule that cannot change with the database under it.
+
+    NB oTree re-stamps the label from the URL on every entry
+    (`mark_visited_and_record_label` -> `participant.set_label`), so the STORED
+    spelling follows the most recent visit. That is fine and deliberately not
+    fought: it is always a real spelling of the id, never a decorated marker,
+    and the row identity — the thing everything else depends on — is stable.
     """
     target = normalise_label(label).casefold()
     if not target:
-        return None                      # an empty label is nobody's identity
-    for other in session.get_participants():
-        if exclude is not None and other.id == exclude.id:
+        return []                        # an empty label is nobody's identity
+    matches = []
+    for row in session.pp_set.order_by('id'):
+        if exclude is not None and getattr(row, 'id', None) == getattr(
+                exclude, 'id', None):
             continue
-        if normalise_label(other.label).casefold() == target:
-            return other
-    return None
+        if normalise_label(row.label).casefold() == target:
+            matches.append(row)
+    return matches
+
+
+def label_owner(session, label, exclude=None):
+    """The participant in this session already holding `label`, or None.
+
+    Compared in Python, not in SQL — see `rows_with_label`. `exclude` is the row
+    doing the claiming, which obviously does not count as somebody else.
+    """
+    rows = rows_with_label(session, label, exclude=exclude)
+    return rows[0] if rows else None
 
 
 def claim_label(participant, raw_label):
@@ -369,7 +407,12 @@ def install_duplicate_label_guard():
     def get_participant_by_label(session, label):
         try:
             if label:
-                rows = session.pp_set.filter_by(label=label).order_by('id').all()
+                # THE SAME MATCH AS CONFLICT DETECTION, in Python — never
+                # `filter_by(label=...)`, which is SQL and therefore decided by
+                # the database's collation (see rows_with_label). Two rows
+                # holding `ABC123` and `abc123` are one person, so they are also
+                # the duplicate the loud path below cares about.
+                rows = rows_with_label(session, label)
                 if rows:
                     chosen = _choose_row(rows)
                     if len(rows) > 1:

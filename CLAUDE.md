@@ -71,6 +71,28 @@ The tell is usually a single predicate, a shared `except`, or one value doing tw
 jobs. When you find one, keep them apart *and say why at the point of the split* —
 the next reader will otherwise see redundancy and simplify it back.
 
+### The same rule inverted — one concept, two implementations
+
+**When one concept has two implementations, they will drift, and the drift will
+be invisible until the environment changes.** Same defect class, mirrored: not
+two situations reaching identical code, but one situation reaching two
+implementations that disagree.
+
+Worked example, found the same day. "Is this the same participant id?" was
+answered twice: conflict detection compared labels in **Python**
+(whitespace-collapsed, case-folded, `identity.rows_with_label`), while the entry
+lookup used `pp_set.filter_by(label=…)`, i.e. **SQL**. So a participant
+returning as `ABC123` whose row held `abc123` took a fresh row — and that same
+spelling typed on the confirmation page was then refused as a conflict with the
+row it had just failed to match. Worse, the SQL half is decided by the database
+**collation**, so it behaved one way on the sqlite dev database and another on a
+postgres deployment: green locally, broken only in production.
+
+The fix is always the same — **one implementation, called by both** — and the
+audit question is: *does any concept in this codebase get decided in two places,
+and does one of them delegate to something the environment controls* (a
+database, a locale, a browser, a clock)?
+
 ## Testing standard
 
 Bot tests passing is not evidence that a browser works. Drive form pages **over

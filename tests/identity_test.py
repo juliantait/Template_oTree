@@ -154,13 +154,28 @@ def main():
     r2 = enter_room(b, label='abc123xyz')
     check(code_of(r2) == first_code, 'the same id in another browser is the SAME row')
 
-    # Spelled differently. oTree matches the label EXACTLY, so an upper-case
-    # spelling is a different label to it — which is why our own writes
-    # normalise and compare case-folded (identity.same_label). What must NOT
-    # happen is a second row carrying a second spelling of one person's id.
+    # SPELLED DIFFERENTLY — the same person, and they must reach the SAME ROW.
+    # oTree's own lookup is `filter_by(label=…)`, i.e. SQL, so it matches (or
+    # does not) according to the DATABASE COLLATION: `ABC123XYZ` misses a row
+    # holding `abc123xyz` on postgres, takes a fresh row, and then the id typed
+    # on the confirmation page is refused as a conflict with the very row it
+    # just failed to match. Our guard matches in Python instead, with the same
+    # normalisation conflict detection uses, so the answer cannot differ between
+    # sqlite here and postgres in production.
     c = browser()
-    r3 = enter_room(c, label='  ABC123XYZ  ')
-    check(r3.status_code == 200, 'a differently-spelled id does not error')
+    r3 = enter_room(c, label='ABC123XYZ')
+    check(r3.status_code == 200, 'a differently-CASED id does not error')
+    check(code_of(r3) == first_code,
+          f'entry as ABC123XYZ REJOINS the row holding abc123xyz '
+          f'({code_of(r3)} vs {first_code})')
+    d0 = browser()
+    r3b = enter_room(d0, label='  abc123xyz  ')
+    check(code_of(r3b) == first_code,
+          f'entry with surrounding whitespace rejoins the same row '
+          f'({code_of(r3b)} vs {first_code})')
+    check(len([l for l in labels_in(session)
+               if identity.same_label(l, 'abc123xyz')]) == 1,
+          'and still exactly ONE row holds that identity, in any spelling')
     check(identity.same_label('  ABC123XYZ  ', 'abc123xyz'),
           'identity.same_label: whitespace-collapsed and case-folded match')
     check(identity.normalise_label('  abc  123  ') == 'abc 123',
@@ -308,6 +323,24 @@ def main():
     check(code_of(r) == scodes[0],
           f'joins the SCREENED-OUT earliest row ({code_of(r)} vs {scodes[0]}) — '
           f'terminal is not finished, and joining it is what clears the wall')
+
+    # A CASE-DIFFERING PAIR IS A DUPLICATE. Two rows holding `MiXeD01` and
+    # `mixed01` are one person, so the guard must see them as the duplicate it
+    # exists for — not as two unrelated rows it never compares.
+    mx_session = ot.create_session('prolific', num_participants=4)
+    mcodes = ot.participant_codes(mx_session)
+    plant_label(mcodes[0], 'MiXeD01')
+    plant_label(mcodes[1], 'mixed01')
+    r = browser().get(f'/join/{ot.anon_code(mx_session)}'
+                      f'?participant_label=MIXED01', allow_redirects=True)
+    check(r.status_code < 500, 'case-differing duplicate: no 500')
+    check(code_of(r) in (mcodes[0], mcodes[1]),
+          f'a third spelling joins one of the two existing rows ({code_of(r)})')
+    seen_mx = (ot.participant_vars(code_of(r)).get('participant_extra')
+               or {}).get('duplicate_label_seen')
+    check(bool(seen_mx) and len(seen_mx[0].get('rows') or []) == 2,
+          f'…and BOTH spellings are recorded as the same duplicate identity '
+          f'({seen_mx})')
 
     section('5c. the guard is LOUD when it actually sees a duplicate')
     # Graceful for the participant, never silent for us.
