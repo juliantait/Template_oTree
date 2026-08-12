@@ -1,18 +1,43 @@
 # The entry app: welcome, consent, and (online) external-ID / device capture.
-# - example_screen: a DEBUG-only live preview of the shared design template.
 # - startpage: lab hold screen shown only for experimenter-run (lab) sessions.
 # - welcome: welcome + consent; captures the external participant id and device
 #   info when those modules are enabled. Non-consenters are routed straight to
-#   the outro (they never see the task). A server-side User-Agent gate runs
-#   before this page renders and sends any device the study's `allowed_devices`
-#   list excludes straight to the outro ending with exit code -4 (see
-#   _apply_device_gate) — with the shipped list (all four types) it does
-#   nothing at all.
+#   the outro (they never see the task).
+#
+#   IT IS ALSO WHERE THE DEVICE ALLOW-LIST IS DECIDED AND WHERE A SCREENED-OUT
+#   PARTICIPANT IS HELD. The entry request's User-Agent is classified
+#   server-side in `welcome.get()`, before a byte of consent exists; a device
+#   the study's `allowed_devices` list excludes is recorded with exit code -4
+#   and served `before/screened_out.html` INSTEAD of the consent page, on this
+#   same page index. Holding them here rather than walking them to the outro is
+#   what makes the wall SOFT: they never advance, so every later request lands
+#   on this page and is re-decided, and coming back on an acceptable device
+#   before consent LIFTS the screen-out and shows them consent. See
+#   `_apply_device_gate` for the rules and the asymmetry between screening and
+#   clearing. With the shipped list (all four types) none of it does anything.
+# - ConfirmProlificID: confirm the platform id. Its free-text field is the one
+#   route in this template that can produce a DUPLICATE participant label, which
+#   is a permanent lockout in oTree — see identity.py.
 
 from main import *
 import common
+import identity
 from settings import STATIC_VERSION
 from . import treatment_assignment
+
+# Make oTree's entry lookup unable to raise MultipleResultsFound on a duplicate
+# label (identity.py, defence 2). settings.py installs it too, as early as it
+# can, because the room's entry views are reachable before any app module is
+# imported; that early attempt is allowed to fail quietly (the views module may
+# legitimately not be importable yet).
+#
+# THIS IS THE ASSERTING POINT — the last install point, and the only place a
+# missing guard is treated as a failure. By now oTree has imported the app
+# modules at boot, so `otree.views.participant` MUST be importable and a failure
+# here is version drift, not ordering. It raises, failing the BOOT rather than a
+# participant's page. See identity.assert_duplicate_label_guard for why the
+# alternative placement (first participant entry) would be the wrong trade.
+identity.assert_duplicate_label_guard()
 
 class C(BaseConstants):
     # Asset cache-buster for this BUILD (settings.STATIC_VERSION).
@@ -72,6 +97,13 @@ class Player(BasePlayer):
     participant_id_external = models.StringField(blank=True, label="Your Prolific ID")
     is_mobile = models.BooleanField(initial=False, blank=True)
     device_info_json = models.LongStringField(blank=True)
+    # DUPLICATE-ID TRIAGE (identity.py). Empty for everybody normally. When a
+    # participant's typed id is already held by ANOTHER row in this session, the
+    # claim is REFUSED — they keep their own row and finish the study, their
+    # typed value is still stored verbatim in `participant_id_external`, and
+    # this column carries the OWNING ROW's participant code so payment triage
+    # can find both sides. Silent to the participant, by design.
+    prolific_label_conflict = models.StringField(blank=True)
     # Spare columns (future-proofing) — never rename in place; see CODEBOOK.md.
     spare_str_1 = models.LongStringField(blank=True)
     spare_str_2 = models.LongStringField(blank=True)
@@ -91,50 +123,153 @@ def _flag(player, name):
 
 
 def _apply_device_gate(player, user_agent):
-    """DEVICE ALLOW-LIST GATE — decided BEFORE the consent page is rendered.
+    """DEVICE ALLOW-LIST GATE — a SOFT WALL decided on the consent page's own
+    request, before a byte of consent is rendered.
 
     The study STATES which device types it accepts (`allowed_devices`: any of
     'phone', 'tablet', 'computer', 'unknown'); anything else is screened out at
-    entry. It replaced the old phones-only `mobile_screenout` flag.
+    entry and held on this page (see `welcome.get_template_name`).
 
     NO-OP BY DEFAULT. The shipped list is all four types, so every device is
-    permitted and this function changes nothing a participant could see — the
-    same safety property the old flag had at 0. (device_capture still RECORDS
-    the device as measurement; it never blocks anyone.)
+    permitted and this function changes nothing a participant could see.
+    (device_capture still RECORDS the device as measurement; it never blocks
+    anyone.)
 
-    THE SERVER DECIDES, from the entry request's User-Agent. The client's own
-    idea of what it is arrives later, in the device-info JSON, and is kept
-    beside this for comparison — but a client-side check is trivially bypassed,
-    so it never gates. See common.device_gate_verdict.
+    THE SERVER DECIDES, from this request's User-Agent. The client's own idea of
+    what it is arrives later, in the device-info JSON, and is kept beside this
+    for comparison — but a client-side check is trivially bypassed, so it never
+    gates. See `common.device_gate_decision`.
 
-    A screened-out participant never sees consent: the caller runs this on the
-    consent page's own GET, before any HTML is produced, and
-    `welcome.is_displayed` then returns False, so oTree redirects them onward.
-    Every page in between is gated on `common.is_screened_out`, so they land on
-    the outro ending.
+    WHY THE VERDICT IS NOT FINAL. oTree rematches a returning participant to the
+    SAME row by participant label, so a naive "record it once, read the record
+    for ever" screen-out locks somebody who reopens the study on a computer into
+    the screen-out page for good — and on Prolific their submission stays open
+    until they return it, while returning it means they can never retake the
+    study. So:
 
-    Idempotent — a refresh re-decides identically and never re-stamps.
+      * THE VERDICT IS WRITTEN IMMEDIATELY, at decision time, not when the
+        screen-out page renders. Somebody who reads that page and closes the tab
+        still exports as a screen-out rather than as an abandoner. That property
+        is the reason the write lives here — do not move it;
+      * EVERY LATER PRE-CONSENT REQUEST IS RE-DECIDED. Positive evidence of a
+        device the study accepts CLEARS the screen-out (`common.
+        clear_screened_out` reverts the terminal marking), because somebody who
+        is really doing the study must not sit in the data as screened out;
+      * A CLEARED PARTICIPANT WHO COMES BACK ON A REJECTED DEVICE before consent
+        is screened again, or the clear would be a permanent bypass;
+      * AFTER CONSENT THE CHECK DOES NOT APPLY and never touches the
+        participant, whatever device their next request comes from. The boundary
+        is the durable `consent_submitted` flag, never a page index.
+
+    THE ASYMMETRY (common.device_screens_out / device_clears_screenout, whose
+    docstrings carry the full argument): an UNDETERMINED classification — no
+    request, no header, garbage, an exception — ALLOWS on entry and records
+    NOTHING, but can never CLEAR an existing screen-out. Absence of evidence is
+    not evidence that somebody switched device; if it were, anyone screened out
+    could lift their own screen-out by sending no User-Agent.
+
+    Idempotent — a refresh re-decides identically, re-stamps nothing, and adds
+    no history entry.
     """
     participant = player.participant
-    if common.is_screened_out(participant):
-        return  # already decided (page reload)
-    detected, allowed = common.device_gate_verdict(
+
+    # PAST THE BOUNDARY: not our business any more.
+    if common.consent_submitted(participant):
+        return
+
+    detected, screens_out, clears = common.device_gate_decision(
         player.session.config, user_agent)
+
+    # NO DECISION. There was no usable User-Agent to classify, so this request
+    # is not evidence of anything: the participant proceeds (fail open) and
+    # NOTHING is written — no verdict, no device type, no history. If they are
+    # already screened out they simply STAY screened out, because clearing needs
+    # positive evidence and this is the absence of it.
+    if detected == common.UNDETERMINED:
+        return
+
     # Measurement, recorded for EVERY participant including the ones let
     # through: it is the server's own classification of the entry request, and
     # analysis wants it whether or not the gate was narrowed.
     common.extra_set(participant, 'entry_device_type', detected)
-    if allowed:
-        return
-    # Records the flag, exit code -4 AND the cause in one call. THE CAUSE IS THE
-    # DETECTED TYPE, not the name of the gate: -4 alone is the generic "screened
-    # out at entry" bucket, and the ending writes a different sentence for a
-    # phone, a tablet, a computer and an unidentifiable device (see
-    # common.SCREENOUT_CAUSES and outro/Ended.html).
-    common.set_screened_out(participant, detected)
-    common.stamp_stage(participant, 'screened_out')
-    # Keep the evidence for the decision (export only — never rendered).
-    common.extra_set(participant, 'screenout_user_agent', (user_agent or '')[:300])
+
+    was_screened = common.is_screened_out(participant)
+    if screens_out and not was_screened:
+        # 'rescreened' when they had been cleared before — that is a device
+        # switch in the other direction, and it must be visible as one.
+        action = 'rescreened' if common.screenout_cleared(participant) else 'screened'
+        # Records the flag, exit code -4 AND the cause in one call. THE CAUSE IS
+        # THE DETECTED TYPE, not the name of the gate: -4 alone is the generic
+        # "screened out at entry" bucket, and the page writes a different
+        # sentence for a phone, a tablet, a computer and an unrecognised device
+        # (see common.SCREENOUT_CAUSES and before/screened_out.html).
+        common.set_screened_out(participant, detected)
+        common.stamp_stage(participant, 'screened_out')
+        # Keep the evidence for the decision (export only — never rendered).
+        common.extra_set(participant, 'screenout_user_agent',
+                         (user_agent or '')[:common.SCREENOUT_UA_TRUNC])
+    elif was_screened and clears:
+        action = 'cleared'
+        common.clear_screened_out(participant)
+        common.stamp_stage(participant, 'screenout_cleared')
+    elif was_screened:
+        # Screened out, and this request is not positive evidence either way.
+        # Unreachable while the two predicates are exact complements for a
+        # determined type, and kept anyway: it is the branch that must exist if
+        # a future study makes them anything else, and it writes NOTHING.
+        action = 'held'
+    else:
+        action = 'allowed'
+
+    common.append_screenout_history(
+        participant, user_agent, detected,
+        common.is_screened_out(participant), action)
+
+
+def _screenout_vars(player):
+    """Template vars for `before/screened_out.html` — the page a screened-out
+    participant is held on in place of consent.
+
+    The COPY IS DRIVEN BY THE DETECTED TYPE (`screenout_cause`), so a tablet
+    participant is not told the study cannot be taken on a phone, and by what
+    the study DOES accept (`allowed_devices_phrase`, built from the same list
+    the gate enforces, so the sentence cannot drift from the rule).
+
+    The way out is a PLAIN LINK to the recruitment platform carrying NO
+    completion code (common.screenout_return_url explains why there is no such
+    code). It is offered only where it means something — a study with
+    `completion_redirects` off has no platform to return to — and never as a
+    broken link when the URL is blank.
+    """
+    cfg = player.session.config
+    return_url = common.screenout_return_url(cfg)
+    return dict(
+        screenout_cause=common.screenout_cause(player.participant),
+        allowed_devices_phrase=common.device_types_phrase(
+            common.allowed_devices(cfg)),
+        return_url=return_url,
+        show_return_link=bool(return_url and _flag(player, 'completion_redirects')),
+        is_lab=(common.cfg(cfg, 'recruitment') == 'lab'),
+    )
+
+
+def _claim_participant_label(player, raw_id):
+    """Write a participant label the safe way, and record a refused claim.
+
+    Never raises, never blocks, never tells the participant anything (see
+    identity.py). A conflict lands in `prolific_label_conflict` — the OWNING
+    ROW's participant code — which is what payment triage needs to see both
+    sides of a mistyped or borrowed id.
+    """
+    try:
+        outcome, owner_code = identity.claim_label(player.participant, raw_id)
+        if outcome == 'conflict':
+            player.prolific_label_conflict = owner_code or ''
+        return outcome
+    except Exception:
+        # A label that cannot be stamped is a data problem; a page that 500s on
+        # the way to consent is a lost participant.
+        return 'error'
 
 
 # PAGES
@@ -150,6 +285,26 @@ class startpage(Page):
 
 
 class welcome(Page):
+    """Consent — AND the screen-out page, which is this page under another
+    template.
+
+    WHY ONE PAGE AND NOT TWO. The screen-out has to be re-decidable: the
+    participant must be able to come back on a computer and carry on. oTree only
+    ever moves a participant FORWARD, and it advances the page index the moment
+    a page's `is_displayed` is False — so a screened-out participant who was
+    walked past this page could never be brought back to consent, and a separate
+    screen-out page placed after it could only ever send them further away. By
+    holding them HERE, on the page index they must pass through anyway, every
+    later request lands on the gate, is re-decided, and either renders the
+    screen-out page again or renders consent.
+
+    THE DECISION IS MADE ONCE PER REAL REQUEST, IN `get()`, AND RECORDED.
+    Everything else — `get_template_name`, `get_form_fields`,
+    `vars_for_template`, every page downstream — READS the record. oTree
+    instantiates pages with NO request while it walks the skip chain
+    (`views/abstract.py`: `instantiate_without_request`), and a header read
+    there would be a phantom answer.
+    """
     template_name = 'before/welcome+consent.html'
     form_model = 'player'
 
@@ -158,14 +313,20 @@ class welcome(Page):
 
         This override is the ONE place the entry request is reachable
         server-side (oTree's page hooks receive the player, not the request), and
-        it runs before a single byte of the consent page exists. `Page.get`
-        re-checks `is_displayed` immediately below, so a participant screened out
-        here is redirected onward instead of being shown consent — nothing is
-        rendered to them here, not even briefly.
+        it runs before a single byte of the consent page exists.
 
         Instrumentation must never break a page (conventions.md): if anything in
         the gate raises, the participant simply proceeds to consent.
         """
+        try:
+            # FIRST REAL USE: is the duplicate-label guard actually in place?
+            # Loud in the log and on the row if not, never fatal — at this point
+            # we are inside a participant's request, and a missing guard is a
+            # CONDITIONAL risk (it only matters if a duplicate exists) that must
+            # not be turned into their certain 500. See identity.py.
+            identity.note_guard_state(self.participant)
+        except Exception:
+            pass
         try:
             _apply_device_gate(
                 self.player, self.request.headers.get('user-agent', ''))
@@ -173,14 +334,40 @@ class welcome(Page):
             pass
         return super().get()
 
-    @staticmethod
-    def is_displayed(player):
-        # A screened-out participant (see _apply_device_gate) never sees
-        # the consent page; oTree walks them forward to the outro ending.
-        return not common.is_screened_out(player.participant)
+    def post(self):
+        """A screened-out participant may not advance past this page.
+
+        Nothing on `before/screened_out.html` can submit — it has no form
+        fields and no submit control — so this is for the stale tab and the
+        crafted POST: someone who had the consent page open and was screened out
+        by a later request, whose browser then posts the old form. Re-rendering
+        is the answer, never processing the submit.
+
+        The gate is deliberately NOT re-run here. The decision belongs to the
+        page's own GET; this reads the RECORD, exactly like everything else
+        downstream.
+        """
+        try:
+            if common.is_screened_out(self.participant):
+                return self.get()
+        except Exception:
+            pass
+        return super().post()
+
+    def get_template_name(self):
+        """Consent, or the screen-out page, for this same page index."""
+        if common.is_screened_out(self.participant):
+            return 'before/screened_out.html'
+        return self.template_name
 
     @staticmethod
     def get_form_fields(player):
+        # A screened-out participant is shown a page with no form at all: no
+        # consent radio, and none of the hidden telemetry either. oTree renders
+        # any form field the template does not place as a visible labelled box,
+        # so this is not optional tidiness.
+        if common.is_screened_out(player.participant):
+            return []
         fields = []
         # Explicit consent (with no-consent routing) only when we redirect people
         # back to a platform; lab consent is implicit in clicking Next.
@@ -200,6 +387,8 @@ class welcome(Page):
     @staticmethod
     def vars_for_template(player):
         cfg = player.session.config
+        if common.is_screened_out(player.participant):
+            return _screenout_vars(player)
         return dict(
             capture_participant_id=_flag(player, 'capture_participant_id'),
             device_capture=_flag(player, 'device_capture'),
@@ -235,6 +424,10 @@ class welcome(Page):
 
     @staticmethod
     def before_next_page(player, timeout_happened):
+        # THE CONSENT BOUNDARY, recorded first and unconditionally: from here on
+        # the device gate never touches this participant again, whether they
+        # consented or not (common.consent_submitted).
+        common.mark_consent_submitted(player.participant)
         player.participant_label = player.participant.label or ''
         # Copy the pre-assigned treatment onto the player for display/testing.
         # Read participant vars with .vars.get(), never getattr() (KeyError trap;
@@ -250,7 +443,10 @@ class welcome(Page):
             if url_id:
                 player.participant_id_url = url_id
                 if not player.participant.label:
-                    player.participant.label = url_id
+                    # Through claim_label, never a bare assignment: two rows
+                    # sharing a label is a permanent 500 on the front door for
+                    # the id's real owner (identity.py).
+                    _claim_participant_label(player, url_id)
         if _flag(player, 'device_capture') and player.device_info_json:
             common.extra_set(player.participant, 'device_info_json', player.device_info_json)
 
@@ -316,12 +512,19 @@ class ConfirmProlificID(Page):
     @staticmethod
     def before_next_page(player, timeout_happened):
         confirmed = (player.field_maybe_none('participant_id_external') or '').strip()
+        # STORED VERBATIM WHATEVER HAPPENS NEXT. This column is what the
+        # participant actually typed; the label claim below may be refused, and
+        # a refused claim must still leave the typed value in the export.
         player.participant_id_external = confirmed
         # The confirmed id is the one payment should use, so it becomes the
-        # participant label the platform matches on. The URL-arrived value stays
-        # in participant_id_url for the audit trail.
+        # participant label the platform matches on — UNLESS another row in this
+        # session already holds it, in which case the claim is refused, silently
+        # (identity.py). A typo or a pasted friend's id would otherwise create
+        # two rows with one label, which is a permanent 500 at entry for
+        # whoever really owns it. The URL-arrived value stays in
+        # participant_id_url for the audit trail either way.
         if confirmed:
-            player.participant.label = confirmed
+            _claim_participant_label(player, confirmed)
             player.participant.participant_id_external = confirmed
         common.stamp_stage(player.participant, 'confirm_id')
 

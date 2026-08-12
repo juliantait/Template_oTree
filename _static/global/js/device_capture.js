@@ -27,7 +27,7 @@
     }
 
     // THE CLIENT'S OWN CLASSIFICATION, mirroring the server's four types
-    // (common.detect_device_type): 'phone' | 'tablet' | 'computer' | 'unknown'.
+    // (common.classify_device): 'phone' | 'tablet' | 'computer' | 'unknown'.
     // It is RECORDED, NEVER ENFORCED — the gate has already run server-side by
     // the time this executes, and anything a client reports can be edited by
     // whoever is sitting at it. Its value is keeping the two side by side in

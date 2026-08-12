@@ -134,11 +134,22 @@
              This is the longest page in the study (the per-round table), so it is
              the one most likely to scroll — the completion button must stay on
              screen rather than scrolling away with the table. -->
+        {# A REAL LINK, NOT A SCRIPTED BUTTON. It used to be
+           `<button onclick="backToProlific()">` with the URL only in js_vars, so
+           a completer whose JavaScript was blocked or broken had NO way to
+           return to Prolific: they finished the whole study, read their payment
+           total, and then could not submit their completion code — unpaid, and
+           indistinguishable in the data from somebody who abandoned on the last
+           page. (Their DATA was never at risk: the exit code is written when
+           this page loads, not when the button is clicked.) An <a href> needs no
+           script. ESCAPED because ibis does not auto-escape and the URL carries
+           a config-supplied completion code. Pinned by tests/render_check.py
+           leg AF, which measures it with JavaScript DISABLED. #}
         {% if completion_redirects %}
         <div class="button-row">
-            <button type="button" class="next-button" onclick="backToProlific()">
+            <a class="next-button" href="{{ completionlink|escape }}">
                 Back to Prolific
-            </button>
+            </a>
         </div>
         {% endif %}
 
@@ -155,9 +166,11 @@
 </div>
 
 <script>
-    function backToProlific() {
-        window.location.href = js_vars.completionlink;
-    }
+    // NB there is no completion-redirect function here any more, deliberately:
+    // the "Back to Prolific" control is a plain link (see the comment above it),
+    // so nothing on the way out of this study depends on JavaScript. Everything
+    // below is enhancement — cookie clearing and the payout-table toggle — and
+    // the page works without it.
     window.onload = function() {
         clearAllCookies()
 

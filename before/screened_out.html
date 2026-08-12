@@ -1,0 +1,136 @@
+{{ block content }}
+{% include '_static/global/html/css_bundle.html' %}
+
+{# THE SCREEN-OUT PAGE. Served by before.welcome in place of consent for a
+    participant whose device type is not in `allowed_devices` — see
+    welcome.get_template_name and _apply_device_gate. It is the FIRST and ONLY
+    screen such a participant ever sees, so it is a full narrative card like
+    every other participant-facing page, not a bare error message.
+
+    (Doc comments are ibis comments, { # … # } without the spaces. An HTML
+    comment would not do: ibis parses { { } } inside one, and — measured on this
+    very file — anything written with SPACED braces is not a comment at all and
+    renders on the page for the participant to read.)
+
+    IT OFFERS TWO PATHS AND THEY ARE NOT EQUAL.
+      * SWITCH DEVICE — reversible, and the one we want taken. The wall is SOFT:
+        reopening the study on an accepted device before consent CLEARS the
+        screen-out and this page stops appearing, so "your place is still open"
+        is literally true. It needs no control at all, which is the point — the
+        participant simply leaves.
+      * END THE STUDY — IRREVERSIBLE. Once they return the submission on
+        Prolific they can never take part. So it is the SECONDARY action
+        visually (.exit-button, a quiet outline; never a style= attribute), it
+        sits below the switch-device panel, and its label says what it does.
+
+    THE WAY OUT IS A REAL LINK, AND IT CARRIES NO COMPLETION CODE.
+      * A REAL <a href>, not a scripted button. The implementation this was
+        adapted from used onclick="completed()" with no href, so a participant
+        whose JavaScript had not run had NO way off the page at all — a dead end
+        on the one page whose entire job is to offer a way out. Pinned by
+        tests/screenout_softwall_test.py (JS-free link) and render_check's
+        screened_out_nojs scenario.
+      * NOT .next-button: global.js's Enter handler clicks the first
+        .next-button on the page, and an irreversible exit must never be one
+        keystroke away by accident.
+      * NO CODE: the destination is the platform's own site
+        (`screenout_return_url`), so their submission stays OPEN and returning it
+        stays THEIR decision. A completion code would close it the instant they
+        clicked, contradicting the sentence above it.
+      * ESCAPED: ibis does not auto-escape, so the URL goes through |escape even
+        though it comes from config — the rule is about the attribute, not about
+        the source of the value.
+
+    SAY "PHONE", NEVER "MOBILE DEVICE": a study may accept tablets and reject
+    phones, so "mobile device" would be untrue for the reader. Every sentence
+    about what happened is chosen by `screenout_cause` (the DETECTED type) and
+    every sentence about what to do names `allowed_devices_phrase` (what the
+    study accepts), so the copy is accurate for any allow-list, not just
+    "computers only". #}
+<div class="experimental-screen">
+    <div class="screen-card narrative-card">
+        <div class="experimental-header">
+            <div class="eyebrow">Before you begin</div>
+            <h2 class="header-title">This study needs {{ allowed_devices_phrase }}</h2>
+        </div>
+
+        <div class="experimental-content">
+            {% if screenout_cause == 'phone' %}
+            <p class="section-text">
+                It looks like you are on a phone. This study can only be done on
+                {{ allowed_devices_phrase }}. You have not done anything wrong.
+            </p>
+            {% elif screenout_cause == 'tablet' %}
+            <p class="section-text">
+                It looks like you are on a tablet. This study can only be done on
+                {{ allowed_devices_phrase }}. You have not done anything wrong.
+            </p>
+            {% elif screenout_cause == 'computer' %}
+            <p class="section-text">
+                It looks like you are on a desktop or laptop computer. This study
+                can only be done on {{ allowed_devices_phrase }}. You have not
+                done anything wrong.
+            </p>
+            {% else %}
+            {# 'unknown' (a User-Agent we do not recognise) and any future
+                cause. Do NOT tell this participant what they are using — we do
+                not know. Say what is needed. #}
+            <p class="section-text">
+                We could not identify the device or browser you are using, and
+                this study can only be done on {{ allowed_devices_phrase }}. You
+                have not done anything wrong.
+            </p>
+            {% endif %}
+
+            <div class="panel panel--hug">
+                <h3 class="section-title">If you can switch to {{ allowed_devices_phrase }}</h3>
+                <p class="section-text">
+                    Do not press the button below. Leave this page, open the study
+                    again on {{ allowed_devices_phrase }}, and start from there.
+                    Your place is still open and you can carry on as normal.
+                </p>
+                <p class="section-text">
+                    Please do this soon, before the study's time limit runs out.
+                </p>
+            </div>
+
+            {% if show_return_link %}
+            <div class="read-band">
+                <h3 class="section-title">If you cannot switch devices</h3>
+                <p class="section-text">
+                    Press the button below. This ends the study for you and takes
+                    you back to Prolific, where you will be asked to return your
+                    submission. Once you do this you will not be able to take
+                    part later.
+                </p>
+            </div>
+            {% elif is_lab %}
+            <div class="read-band">
+                <h3 class="section-title">If you cannot switch devices</h3>
+                <p class="section-text">
+                    Please <strong>raise your hand</strong> so the experimenter
+                    can come to you.
+                </p>
+            </div>
+            {% endif %}
+
+            {% include '_static/global/html/logo_section.html' %}
+        </div>
+
+        {% if show_return_link %}
+        {# Direct child of the card, so it stays pinned at the foot when the
+            content region scrolls (see .screen-card in base.css). #}
+        <div class="button-row">
+            <a class="exit-button" href="{{ return_url|escape }}">
+                End the study and go back to Prolific
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{# global.js is loaded for the shared scroll affordance only. NOTHING on this
+    page depends on it: the way out above is a plain link and works with scripts
+    off, which is the whole point. #}
+<script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
+{{ endblock }}

@@ -76,7 +76,8 @@ STRIPPED = [
     'show_duration_and_fee',
     # recruitment plumbing
     'capture_participant_id', 'completion_redirects', 'allowed_devices',
-    'cc_code', 'noconsent_code', 'dq_code', 'error_code',
+    'screenout_return_url',
+    'cc_code', 'noconsent_code', 'dq_code',
     # misc
     'pilot_feedback', 'static_version',
 ]
@@ -188,6 +189,16 @@ def main():
                   f'{settings.SESSION_CONFIG_DEFAULTS[key]!r}')
         check(common.cfg({'showup': 9.5}, 'showup') == 9.5,
               'a config that HAS the key still wins over the default')
+        # The screen-out page is the one page a stranded participant needs, and
+        # its way out comes from a parameter added in a later deploy. A session
+        # frozen before it existed must still render a working link.
+        import settings as _s
+        check(common.screenout_return_url({}) ==
+              _s.SESSION_CONFIG_DEFAULTS['screenout_return_url'],
+              'a session frozen before screenout_return_url existed still gets '
+              'the shipped URL (the screen-out page cannot be a dead end)')
+        check(common.screenout_return_url({'screenout_return_url': ''}) == '',
+              'and a study that deliberately blanks it gets no link, not a broken one')
         try:
             common.cfg({}, 'a_totally_unknown_param')
             check(False, 'an unknown key raises')

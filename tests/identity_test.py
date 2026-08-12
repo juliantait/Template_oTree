@@ -1,0 +1,433 @@
+#!/usr/bin/env python
+"""PARTICIPANT IDENTITY: one row per Prolific id, re-entry, and the duplicate
+label that would otherwise be a permanent lockout.
+
+    python tests/identity_test.py        (oTree must be importable)
+
+Runs IN-PROCESS against a throwaway database (tests/otree_inprocess.py) because
+two of these cases cannot be produced over HTTP against a running server: a
+duplicate label has to be planted directly in the database, and rebinding a room
+to a NEW session is an operation, not a request.
+
+WHY IT MATTERS. oTree resolves a returning participant by label
+(`otree/views/participant.py`): `q.filter_by(label=label).one()`, catching only
+`NoResultFound`. Two rows sharing a label therefore raise `MultipleResultsFound`
+— an uncaught 500 on the front door, for the participant who really owns that
+id, permanently. And the device screen-out's whole premise is that somebody can
+leave on a phone and come back on a computer AND BE REJOINED TO THE SAME ROW.
+Rejoining IS that lookup.
+
+WHAT IS CHECKED
+
+  1. RE-ENTRY. The same id entering twice is ONE row, at the page they left.
+     Case and whitespace differences are the same person. Two different ids stay
+     two rows.
+  2. TWO TABS AT ONCE. The same id entering twice, interleaved, must not create
+     a second row, must not create a duplicate label, and must not 500.
+  3. BARE LINK THEN AN ID. Somebody who entered on a bare room link holds an
+     unlabelled row; the id they type on the confirmation page becomes their
+     label, and a later entry carrying that id rejoins them.
+  4. A CLASHING CLAIM IS REFUSED, SILENTLY. Typing an id another row already
+     holds does not move the label, does not block the typist, stores their
+     typed value verbatim anyway, records the OWNING row's participant code in
+     `prolific_label_conflict`, and renders a page identical to a clean one.
+  5. A DUPLICATE THAT EXISTS ANYWAY DOES NOT 500. With two rows planted on the
+     same label, entry joins the earliest instead of raising.
+  6. A ROOM REBOUND TO A NEW SESSION ORPHANS PEOPLE. Labels are matched WITHIN a
+     session, so the same id lands on a fresh row in the new session. That is
+     oTree's behaviour, not a bug we can fix — it is checked here so the
+     operational rule in README ("Rebinding a room mid-study") stays true.
+
+Exit 0 = all checks passed. Never touches a real database.
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from otree_inprocess import boot, path_of, page_name_of  # noqa: E402
+
+ot = boot(production=True)          # MUST come before any app import
+
+_failures = []
+
+
+def check(cond, msg):
+    print(f'  [{"PASS" if cond else "FAIL"}] {msg}')
+    if not cond:
+        _failures.append(msg)
+    return bool(cond)
+
+
+def section(title):
+    print(f'\n=== {title} ===')
+
+
+DESKTOP_UA = ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
+              '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36')
+PHONE_UA = ('Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) '
+            'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 '
+            'Safari/604.1')
+
+
+def browser(ua=DESKTOP_UA):
+    """A fresh client with its own cookie jar — i.e. a different browser."""
+    c = ot.client()
+    c.headers['User-Agent'] = ua
+    return c
+
+
+def enter_room(client, room='experiment', label=None):
+    """Enter through the room the way a Prolific link does.
+
+    `welcome_page_ok=1` is what oTree's room welcome page adds when the
+    participant clicks through it (otree/views/participant.py:
+    AssignVisitorToRoom renders that page first and only assigns a row on the
+    second request). Skipping the click, not the assignment.
+    """
+    url = f'/room/{room}?welcome_page_ok=1'
+    if label is not None:
+        url += f'&participant_label={label}'
+    return client.get(url, allow_redirects=True)
+
+
+def code_of(resp):
+    parts = path_of(resp).strip('/').split('/')
+    return parts[1] if len(parts) >= 2 and parts[0] == 'p' else None
+
+
+def labels_in(session):
+    from otree.database import DBSession
+    from otree.models import Participant
+    s = DBSession()
+    try:
+        return [p.label for p in s.query(Participant)
+                .filter_by(_session_code=session.code).order_by(Participant.id)
+                if p.label]
+    finally:
+        s.close()
+
+
+def plant_label(code, label):
+    """Write a label straight onto a row — the hand-edited / legacy case."""
+    ot.set_label(code, label)
+
+
+def set_exit_code(code, exit_code, screened_out=False):
+    """Put a row into a terminal state directly, to test which duplicate row a
+    returning participant joins."""
+    from otree.database import DBSession
+    from otree.models import Participant
+    s = DBSession()
+    try:
+        p = s.query(Participant).filter_by(code=code).one()
+        # `vars` is a read-only view; the participant FIELDS are attributes on
+        # the row (settings.PARTICIPANT_FIELDS), which is what writes them.
+        p.exit_code = exit_code
+        p.screened_out = screened_out
+        s.commit()
+    finally:
+        s.close()
+
+
+def post_form(client, resp, data):
+    from http_flow_test import FormParser, build_payload
+    fp = FormParser(); fp.feed(resp.text)
+    payload = build_payload(fp.inputs, data, {}, warn=False)
+    return client.post(path_of(resp), data=payload, allow_redirects=True)
+
+
+def main():
+    import common
+    import identity
+
+    # =====================================================================
+    section('1. one row per id; case and whitespace are the same person')
+    session = ot.create_session('prolific', num_participants=12,
+                                room_name='experiment')
+    a = browser()
+    r = enter_room(a, label='abc123xyz')
+    first_code = code_of(r)
+    check(r.status_code == 200 and first_code, f'entry with an id: 200, {first_code}')
+
+    # The same id, a different browser (a different machine, even): same row.
+    b = browser()
+    r2 = enter_room(b, label='abc123xyz')
+    check(code_of(r2) == first_code, 'the same id in another browser is the SAME row')
+
+    # Spelled differently. oTree matches the label EXACTLY, so an upper-case
+    # spelling is a different label to it — which is why our own writes
+    # normalise and compare case-folded (identity.same_label). What must NOT
+    # happen is a second row carrying a second spelling of one person's id.
+    c = browser()
+    r3 = enter_room(c, label='  ABC123XYZ  ')
+    check(r3.status_code == 200, 'a differently-spelled id does not error')
+    check(identity.same_label('  ABC123XYZ  ', 'abc123xyz'),
+          'identity.same_label: whitespace-collapsed and case-folded match')
+    check(identity.normalise_label('  abc  123  ') == 'abc 123',
+          'identity.normalise_label collapses inner whitespace, strips the ends')
+
+    # A DIFFERENT id is a different person: two rows.
+    d = browser()
+    r4 = enter_room(d, label='different99')
+    check(code_of(r4) != first_code, 'a different id gets a DIFFERENT row')
+
+    # =====================================================================
+    section('2. the same id in two tabs at once')
+    t1, t2 = browser(), browser()
+    r1 = enter_room(t1, label='twotabs01')
+    r2 = enter_room(t2, label='twotabs01')          # interleaved, same id
+    r1b = t1.get(path_of(r1), allow_redirects=True)
+    r2b = t2.get(path_of(r2), allow_redirects=True)
+    check(code_of(r1) == code_of(r2), 'both tabs are the SAME participant row')
+    check(max(r1.status_code, r2.status_code, r1b.status_code,
+              r2b.status_code) < 500, 'no 5xx in either tab')
+    labels = labels_in(session)
+    check(labels.count('twotabs01') == 1,
+          f'exactly ONE row carries the label (got {labels.count("twotabs01")})')
+
+    # =====================================================================
+    section('3. bare link, then an id typed on the confirmation page')
+    bare = browser()
+    r = enter_room(bare)                            # no id at all
+    bare_code = code_of(r)
+    check(bare_code is not None, f'a bare link still admits a participant ({bare_code})')
+    check(not (ot.participant_vars(bare_code).get('label') or ''),
+          'a bare-link participant has NO label (normal, not a clash)')
+    # consent -> confirmation page -> type an id
+    r = post_form(bare, r, {'consent': 'True', 'is_mobile': '',
+                            'device_info_json': '', 'participant_id_url': ''})
+    check(page_name_of(path_of(r)) == 'ConfirmProlificID',
+          f'reached the id page (got {page_name_of(path_of(r))})')
+    r = post_form(bare, r, {'participant_id_external': 'typedid77'})
+    check(labels_in(session).count('typedid77') == 1,
+          'the typed id became this row\'s label')
+    back = browser()
+    r = enter_room(back, label='typedid77')
+    check(code_of(r) == bare_code,
+          'a later entry carrying that id REJOINS the same row')
+    check(page_name_of(path_of(r)) not in (None, 'welcome'),
+          f'and resumes where they left off (at {page_name_of(path_of(r))}), '
+          f'not back at the start')
+
+    # =====================================================================
+    section('4. a clashing claim is REFUSED, and the participant is told nothing')
+    # A second participant enters on a bare link and types an id that the row
+    # from section 3 already owns — a typo, or a friend's id.
+    clash = browser()
+    r = enter_room(clash)
+    clash_code = code_of(r)
+    r = post_form(clash, r, {'consent': 'True', 'is_mobile': '',
+                             'device_info_json': '', 'participant_id_url': ''})
+    clash_page_html = r.text
+    r = post_form(clash, r, {'participant_id_external': 'TYPEDID77'})   # same id
+    check(max(r.status_code, 0) < 500, 'the clashing submit does not 5xx')
+    check(labels_in(session).count('typedid77') == 1,
+          'still exactly ONE row holds that label — no duplicate was created')
+    v = ot.participant_vars(clash_code)
+    check(not (v.get('label') or ''),
+          'the clashing row keeps its OWN (empty) label — no marker written into it')
+
+    from otree.database import DBSession
+    from otree.models import Participant
+    s = DBSession()
+    try:
+        row = s.query(Participant).filter_by(code=clash_code).one()
+        import before
+        player = s.query(before.Player).filter_by(participant_id=row.id).one()
+        typed = player.field_maybe_none('participant_id_external')
+        conflict = player.field_maybe_none('prolific_label_conflict')
+    finally:
+        s.close()
+    check(typed == 'TYPEDID77',
+          f'their typed value is stored VERBATIM anyway (got {typed!r})')
+    check(conflict == bare_code,
+          f'prolific_label_conflict carries the OWNING row\'s participant code '
+          f'(got {conflict!r}, owner is {bare_code})')
+    extra = (v.get('participant_extra') or {}).get('prolific_label_conflict')
+    check(bool(extra) and extra[0].get('label') == 'TYPEDID77',
+          f'the fuller record says WHICH id was refused ({extra})')
+    # SILENT: the participant is not blocked and not told. They are on the next
+    # page, with no error text anywhere.
+    check(page_name_of(path_of(r)) != 'ConfirmProlificID',
+          f'they were NOT held on the id page (now at {page_name_of(path_of(r))})')
+    check('otree-form-errors' not in r.text and 'conflict' not in r.text.lower(),
+          'no error, no warning, no mention of a conflict on the page they get')
+
+    # =====================================================================
+    section('5. a duplicate that exists anyway must not 500')
+    dup_session = ot.create_session('prolific', num_participants=4)
+    codes = ot.participant_codes(dup_session)
+    plant_label(codes[0], 'dupe0001')
+    plant_label(codes[1], 'dupe0001')      # the state oTree cannot survive
+    check(labels_in(dup_session).count('dupe0001') == 2,
+          'two rows planted on the same label (a hand-edited / legacy database)')
+    anon = ot.anon_code(dup_session)
+    dupe_browser = browser()
+    r = dupe_browser.get(f'/join/{anon}?participant_label=dupe0001',
+                         allow_redirects=True)
+    check(r.status_code < 500,
+          f'entry with the duplicated id does NOT 500 (got {r.status_code}) — '
+          f'without the guard this is MultipleResultsFound')
+    check(code_of(r) == codes[0],
+          f'it joins the EARLIEST row holding the label (got {code_of(r)})')
+    # And oTree's own function is the thing that was made safe.
+    from otree.views import participant as pv
+    check(getattr(pv.get_participant_by_label, '_duplicate_label_guarded', False),
+          'identity.install_duplicate_label_guard is installed at import')
+
+    # =====================================================================
+    section('5b. WHICH duplicate row a returning participant joins')
+    # EARLIEST THAT IS NOT FINISHED. Earliest is the row they will have been
+    # using — but a FINISHED row is a dead end to join (a completed session's
+    # ending, with no way forward), which is the very failure this guard exists
+    # to prevent.
+    fin_session = ot.create_session('prolific', num_participants=4)
+    fcodes = ot.participant_codes(fin_session)
+    plant_label(fcodes[0], 'dupefin01')
+    plant_label(fcodes[1], 'dupefin01')
+    set_exit_code(fcodes[0], 1)             # the EARLIEST row has finished
+    r = browser().get(f'/join/{ot.anon_code(fin_session)}'
+                      f'?participant_label=dupefin01', allow_redirects=True)
+    check(r.status_code < 500, 'finished-earliest duplicate: no 500')
+    check(code_of(r) == fcodes[1],
+          f'joins the later UNFINISHED row ({code_of(r)}), not the finished '
+          f'earliest one ({fcodes[0]})')
+
+    # ...but SCREENED OUT is terminal and NOT finished, and it must stay
+    # joinable: joining that row is exactly what lifts the screen-out. If this
+    # ever picks the later row instead, the soft wall is broken — the returning
+    # participant lands on a fresh row and their cleared verdict is lost.
+    so_session = ot.create_session('prolific', num_participants=4)
+    scodes = ot.participant_codes(so_session)
+    plant_label(scodes[0], 'dupeso001')
+    plant_label(scodes[1], 'dupeso001')
+    set_exit_code(scodes[0], -4, screened_out=True)   # earliest is SCREENED OUT
+    r = browser().get(f'/join/{ot.anon_code(so_session)}'
+                      f'?participant_label=dupeso001', allow_redirects=True)
+    check(r.status_code < 500, 'screened-out-earliest duplicate: no 500')
+    check(code_of(r) == scodes[0],
+          f'joins the SCREENED-OUT earliest row ({code_of(r)} vs {scodes[0]}) — '
+          f'terminal is not finished, and joining it is what clears the wall')
+
+    section('5c. the guard is LOUD when it actually sees a duplicate')
+    # Graceful for the participant, never silent for us.
+    v = ot.participant_vars(fcodes[1])
+    seen = (v.get('participant_extra') or {}).get('duplicate_label_seen')
+    check(bool(seen), f'the joined row records that a duplicate was SEEN ({seen})')
+    if seen:
+        check(seen[0].get('label') == 'dupefin01' and len(seen[0].get('rows') or []) == 2,
+              f'…naming the label and BOTH rows for an operator ({seen[0]})')
+    # …and says nothing at all on an ordinary, single-row lookup.
+    clean = browser()
+    r = enter_room(clean, label='notadupe01')
+    v = ot.participant_vars(code_of(r))
+    check((v.get('participant_extra') or {}).get('duplicate_label_seen') is None,
+          'an ordinary lookup records NOTHING (the loud path is duplicates only)')
+    check((v.get('participant_extra') or {}).get('duplicate_label_guard_missing')
+          is None,
+          'and does not flag a missing guard, because the guard is installed')
+
+    section('5d. the install: benign early failure vs version drift')
+    from otree.views import participant as pv
+    # (a) CANNOT IMPORT YET — what settings.py hits at boot. Must NOT raise, and
+    #     must leave a later install free to succeed. If somebody hardens this
+    #     into a raise, the boot goes down with it.
+    real_import = identity._import_views
+    # BOTH SHAPES of "not importable yet". The second is the one that actually
+    # happens: importing otree.views from settings.py raises AttributeError
+    # ("partially initialized module 'settings' …"), because oTree's own
+    # settings module reads SESSION_CONFIGS back out of ours mid-execution. A
+    # guard that only caught ImportError would crash every boot — this pair is
+    # here so nobody narrows it back.
+    for exc_type, why in ((ImportError, 'otree.views not importable yet'),
+                          (AttributeError,
+                           "partially initialized module 'settings' has no "
+                           "attribute 'SESSION_CONFIGS'")):
+        identity._import_views = (
+            lambda e=exc_type, m=why: (_ for _ in ()).throw(e(m)))
+        try:
+            outcome = identity.install_duplicate_label_guard()
+            check(outcome == identity.NOT_IMPORTABLE,
+                  f'an early install failing with {exc_type.__name__} returns '
+                  f'NOT_IMPORTABLE, quietly (got {outcome!r})')
+        except Exception as exc:
+            check(False, f'an early install must NOT raise, even on '
+                         f'{exc_type.__name__} (raised {exc!r})')
+        finally:
+            identity._import_views = real_import
+    # The REAL boot proves it too: settings.py's early install records why it
+    # could not run, and the app-module install then succeeds.
+    check(any(o == identity.NOT_IMPORTABLE for o, _ in identity._install_log),
+          f'the real boot took the benign early-failure path at least once '
+          f'({[o for o, _ in identity._install_log]})')
+    check(identity.install_duplicate_label_guard() == identity.ALREADY,
+          'and the real install still succeeds afterwards (idempotent)')
+    check(identity.guard_is_installed(),
+          'the guard is in place and detectable — not something you have to '
+          'take on faith')
+
+    # (b) IMPORTED, WRONG SHAPE — version drift. Loud, wherever it happens.
+    original = pv.get_participant_by_label
+    try:
+        pv.get_participant_by_label = None
+        try:
+            identity.install_duplicate_label_guard()
+            check(False, 'a missing entry lookup must RAISE (it did not)')
+        except RuntimeError as exc:
+            check('get_participant_by_label' in str(exc),
+                  'a MISSING entry lookup raises, naming the symbol')
+
+        def wrong_shape(sess, participant_label):    # renamed parameter
+            return None
+        pv.get_participant_by_label = wrong_shape
+        try:
+            identity.install_duplicate_label_guard()
+            check(False, 'a changed signature must RAISE (it did not)')
+        except RuntimeError as exc:
+            check('signature' in str(exc) or 'takes' in str(exc),
+                  'a CHANGED SIGNATURE raises rather than installing a wrapper '
+                  'written for the old one')
+        # …and the same drift is a hard failure at the asserting point.
+        try:
+            identity.assert_duplicate_label_guard()
+            check(False, 'assert_duplicate_label_guard must raise on drift')
+        except RuntimeError:
+            check(True, 'assert_duplicate_label_guard raises on drift too')
+    finally:
+        pv.get_participant_by_label = original
+    check(identity.guard_is_installed(),
+          'the real guard is restored after the drift simulation')
+
+    # =====================================================================
+    section('6. rebinding the room to a NEW session orphans people')
+    # Labels are matched WITHIN a session (session.pp_set), so a participant
+    # mid-study in the old session is not rejoined after a rebind: they get a
+    # fresh row in the new session and start again. Operational rule, not a bug.
+    old_code = None
+    mover = browser()
+    r = enter_room(mover, label='mover0001')
+    old_code = code_of(r)
+    check(old_code is not None, f'the mover entered the OLD session ({old_code})')
+    new_session = ot.create_session('prolific', num_participants=4,
+                                    room_name='experiment')      # REBIND
+    r2 = enter_room(browser(), label='mover0001')
+    check(r2.status_code < 500, 'entry after a rebind does not 500')
+    check(code_of(r2) != old_code,
+          'the same id gets a NEW row in the NEW session (they are orphaned)')
+    check('mover0001' in labels_in(new_session),
+          'the id is now held by a row in the new session')
+    check('mover0001' in labels_in(session),
+          'and the old row still holds it, in the old session, with their data')
+
+    section('SUMMARY')
+    if _failures:
+        print(f'  {len(_failures)} CHECK(S) FAILED:')
+        for f in _failures:
+            print(f'   - {f}')
+        return 1
+    print('  ALL CHECKS PASSED')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

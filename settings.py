@@ -1,6 +1,24 @@
 import os
 from os import environ
 
+import identity
+
+# THE EARLY INSTALL of the duplicate-label guard (identity.py, defence 2). It is
+# here as well as in before/__init__.py because the ROOM's entry views can be
+# reached before any app module has been imported, and a single install point
+# leaves that window open.
+#
+# IT IS EXPECTED TO FAIL HERE, and that must stay survivable: oTree imports this
+# settings module long before `otree.views.participant` is importable, so the
+# usual outcome is NOT_IMPORTABLE, which is recorded and returned rather than
+# raised. Hardening this line into an assert would convert a benign ordering
+# fact into a guaranteed boot crash — strictly worse than the rare gap it
+# guards. The single place a missing guard IS a failure is
+# `identity.assert_duplicate_label_guard()`, called from before/__init__.py.
+# (A symbol that imports fine but has the WRONG SHAPE is version drift and does
+# raise, here or anywhere else. The two are different things — see identity.py.)
+identity.install_duplicate_label_guard()
+
 # =============================================================================
 # THE THREE AXES  (read this first — between them they determine everything a
 # participant experiences, and they are INDEPENDENT of each other)
@@ -127,13 +145,21 @@ RECRUITMENT_PROFILES = {
 # Placeholder Prolific completion codes. Real codes are created in the Prolific
 # study UI and pasted per config; the prelaunch banner flags any REPLACE_*
 # sentinel that survives to launch.
-PROLIFIC_CODE_PLACEHOLDERS = ('REPLACE_CC', 'REPLACE_NC', 'REPLACE_DQ', 'REPLACE_ERR')
+#
+# THERE IS NO SCREENED-OUT COMPLETION CODE, and none must be added here. A
+# device screened out at entry is sent back to Prolific by a PLAIN LINK with no
+# code at all (`screenout_return_url`), because submitting a code closes the
+# participant's submission, and a returned submission can never be retaken —
+# which forecloses the very thing the screen-out page asks them to do, namely
+# come back on a computer and finish. The old `error_code` / 'REPLACE_ERR' pair
+# was removed on 2026-08-12 for exactly that reason; do not reintroduce it.
+PROLIFIC_CODE_PLACEHOLDERS = ('REPLACE_CC', 'REPLACE_NC', 'REPLACE_DQ')
 
 # --- static asset version ----------------------------------------------------
 # Appended as ?v=... to every CSS/JS href so a redeploy is never served a stale
 # cached asset. BUMP THIS ON EVERY CHANGE to a file under _static/. Each app
 # exposes it as C.STATIC_VERSION, which is what the templates read.
-STATIC_VERSION = '4'
+STATIC_VERSION = '5'
 
 
 SESSION_CONFIG_DEFAULTS = dict(
@@ -289,43 +315,39 @@ SESSION_CONFIG_DEFAULTS = dict(
     capture_participant_id=False,   # capture an external (Prolific) ID at entry
     completion_redirects=False,     # send participants back to Prolific with a code
     # DEVICE ALLOW-LIST — which device types may take part. A study STATES the
-    # devices it accepts; everything else is screened out at entry. It replaced
-    # the old `mobile_screenout` 0/1 flag on 2026-08-11, which could only ever
-    # express "no phones".
+    # devices it accepts ('phone', 'tablet', 'computer', 'unknown'); anything
+    # else is screened out at entry and held on the consent page's index, where
+    # it is served before/screened_out.html instead.
     #
-    # THE FOUR TYPES ARE 'phone', 'tablet', 'computer' and 'unknown', and there
-    # are only four:
-    #   * 'computer' COVERS BOTH LAPTOPS AND DESKTOPS. A browser does not expose
-    #     the form factor of a computer — neither the User-Agent nor the client
-    #     hints (Sec-CH-UA-Mobile / Sec-CH-UA-Platform / navigator.userAgentData)
-    #     distinguish a laptop from a tower, and battery, touch and screen size
-    #     do not either (a desktop can have a touch screen; a laptop can sit
-    #     docked to a 27" monitor). THERE IS NO 'laptop' TYPE AND ONE CANNOT BE
-    #     ADDED — a study that truly needs that has to ask the participant.
-    #   * 'unknown' is its own type: the detection could not identify the
-    #     device, or the User-Agent was absent, blank or stripped by a privacy
-    #     tool. Whether such a participant may take part is a study's decision,
-    #     so it is listed here like the others and can be admitted or excluded
-    #     without a code change.
+    # READ "THE DEVICE CHECK" IN README.md BEFORE NARROWING THIS. It is the
+    # reference for what the check actually inspects (the entry request's
+    # User-Agent, and nothing else — no screen size, no touch, nothing
+    # client-side), what the four types mean, why there is no 'laptop' type and
+    # cannot be one, the fifth NO-DECISION state and its asymmetry, the soft
+    # wall, worked config examples, and the honest limits. It is deliberately
+    # not repeated here: two copies of a rule this subtle would drift.
     #
     # THE DEFAULT IS ALL FOUR = THE GATE IS OFF, and that safety property is
     # deliberate: with everything permitted the check has NO participant-visible
     # effect whatsoever (device_capture still RECORDS the type as measurement;
-    # it never blocks anyone). Narrow the list and the excluded types never see
-    # consent — the entry request's User-Agent is classified SERVER-SIDE before
-    # the consent page is rendered (before.welcome.get -> _apply_device_gate),
-    # the participant is recorded with EXIT_CODES['screened_out'] (-4) plus the
-    # DETECTED TYPE as the screen-out cause, and is walked straight to the outro
-    # ending, which returns them to Prolific with error_code.
+    # it never blocks anyone).
     #
     # NOT part of any recruitment profile: choosing the prolific study type must
     # never start screening devices out on its own. A comma-separated string is
     # accepted as well as a list, e.g. allowed_devices='computer'.
     allowed_devices=['phone', 'tablet', 'computer', 'unknown'],
+    # WHERE A SCREENED-OUT PARTICIPANT IS SENT, as a plain link carrying NO
+    # completion code: the Prolific participant site itself. Their submission
+    # therefore stays OPEN, so they can still reopen the study on an accepted
+    # device and finish it — which is the outcome the screen-out page asks for,
+    # and which a completion code would foreclose for good. See "The device
+    # check" in README.md, and common.screenout_return_url.
+    # Blank it to render no link at all (a study with no platform to return to).
+    screenout_return_url='https://app.prolific.com/',
     cc_code='REPLACE_CC',        # normal completion
     noconsent_code='REPLACE_NC', # declined consent
     dq_code='REPLACE_DQ',        # disqualified (comprehension / tab monitor)
-    error_code='REPLACE_ERR',    # screened out at entry (device allow-list)
+    # NB: no screened-out code. See PROLIFIC_CODE_PLACEHOLDERS above.
 
     # =========================================================================
     # TESTING AND DEV  (the DEBUG axis' config-side values)
@@ -447,6 +469,8 @@ PARTICIPANT_FIELDS = [
     'instructions_reread_used',    # lab: the one-time re-read pass was taken
     'device_info',          # dict of captured device/screen info, if enabled
     'screened_out',         # entry device gate removed them before consent
+    'screenout_cleared',    # a screen-out was LIFTED (they switched device)
+    'consent_submitted',    # the consent page was submitted (the gate's boundary)
 ]
 # Description of PARTICIPANT_FIELDS:
 # - temp_data: Temporary storage for any participant-specific data during the session.
@@ -464,9 +488,19 @@ PARTICIPANT_FIELDS = [
 # - instructions_reread_used: True once a lab participant enters the second
 #   instructions pass (quiz_reread module). Consumed on entry, not on offer.
 # - device_info: captured device/screen dict when device_capture is on.
-# - screened_out: True when the entry device gate (allowed_devices) removed the participant
-#   before the consent page (exit_code -4). Authoritative flag: every page
-#   between entry and the ending checks it, exactly like the tab monitor's.
+# - screened_out: True while the entry device gate (allowed_devices) is holding
+#   the participant on the consent page's index with exit_code -4, shown
+#   before/screened_out.html instead of consent. Authoritative flag, and NOT
+#   write-once: the wall is soft, so a pre-consent request from an accepted
+#   device clears it again (see before._apply_device_gate).
+# - screenout_cleared: True once a screen-out has EVER been lifted for this
+#   participant, and it stays True even if they are later screened again. This
+#   is the column that makes device switching findable in the export without
+#   parsing the audit history in participant_extra['screenout_history'].
+# - consent_submitted: True once the consent page has been SUBMITTED (consenting
+#   or not). The device gate's boundary: past it the check never applies again.
+#   A durable fact rather than a page index, because indices move when the page
+#   sequence does and the gate must answer on requests for any page.
 
 SESSION_FIELDS = []
 
@@ -556,8 +590,10 @@ def _prelaunch_problems():
                  'True (False is a DEBUG-only loosening and is ignored in production)'))
         # Placeholder completion codes only matter when the config actually
         # redirects to Prolific.
+        # NB three codes, not four: there is deliberately NO screened-out code
+        # (see PROLIFIC_CODE_PLACEHOLDERS). Do not add one back here.
         if eff.get('completion_redirects'):
-            for code_key in ('cc_code', 'noconsent_code', 'dq_code', 'error_code'):
+            for code_key in ('cc_code', 'noconsent_code', 'dq_code'):
                 value = eff.get(code_key)
                 if value in PROLIFIC_CODE_PLACEHOLDERS:
                     problems.append(

@@ -39,6 +39,38 @@ must return every gate to the real study behaviour with nothing left changed.
 - **`NUM_ROUNDS` is fixed at import.** A config may run fewer rounds, never more,
   and a rounds or page-sequence change must never be deployed over live sessions.
 
+## The collapsed-distinction rule — where the bugs actually are
+
+**When two genuinely different situations reach identical code and become
+indistinguishable, that is where the bug lives.** Go looking for it deliberately:
+it is the single most productive audit you can run on this codebase, and it does
+not show up as a failing test, because both situations behave "correctly" for
+whichever meaning the shared code picked.
+
+The four worked examples below were all found on one day (2026-08-12), each by
+comparing this template against an independent implementation of the same
+feature. The examples are the point — the rule alone reads as a platitude.
+
+- **`unknown` vs `undetermined` device.** A User-Agent that parsed and matched
+  nothing is a device type a study may reject. No header, no request, an
+  exception or garbage is *not a device type* and must always be allowed. Collapsed,
+  a study rejecting `unknown` starts ejecting laptops behind a privacy proxy.
+- **Allowed-on-entry vs allowed-to-clear.** Absence of evidence *allows on entry*
+  but must never *clear* an existing screen-out, or anyone lifts their own
+  screen-out by sending no User-Agent. The clear predicate is exactly the
+  entry-allow predicate **minus undetermined**.
+- **Cannot-import-yet vs symbol-drifted.** A guard installed before oTree's views
+  are importable must fail quietly and retry; the same guard finding the symbol
+  changed shape is version drift and must be loud. `except Exception` around both
+  makes them identical, and turns a missing guard into something nobody can see.
+- **Abandoned vs screened-out.** Exit code `0` means "never reached an ending";
+  a screen-out has its own code. Collapsed, you cannot tell someone the gate
+  turned away from someone who closed the tab during the task.
+
+The tell is usually a single predicate, a shared `except`, or one value doing two
+jobs. When you find one, keep them apart *and say why at the point of the split* —
+the next reader will otherwise see redundancy and simplify it back.
+
 ## Testing standard
 
 Bot tests passing is not evidence that a browser works. Drive form pages **over

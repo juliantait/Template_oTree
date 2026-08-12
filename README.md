@@ -20,6 +20,7 @@ The project root holds the four oTree apps plus a small set of top-level items:
 | `skills_claude/` | authoring playbooks (e.g. writing instructions). |
 | `settings.py` | oTree settings: session configs, recruitment profiles, feature flags, completion codes. |
 | `common.py` | shared, oTree-free helpers — **must stay at the project root** (every app does `import common`). |
+| `identity.py` | participant-label identity: one row per external id, and the guard that stops a duplicate label 500-ing at entry. Also root-level, for the same reason. |
 | `README.md` `conventions.md` `CODEBOOK.md` `TODO.md` | project docs: overview, design principles, field/exit-code reference, and pending work. |
 | `MACMINI_HOSTING.md` | private Mac mini hosting runbook (gitignored — kept local). |
 | dotfiles | `.gitignore`, `.gitattributes`, etc. |
@@ -70,34 +71,250 @@ Modules (all off by default): `capture_participant_id`, `completion_redirects`,
 `tab_monitor`, `comprehension_dq`, `quiz_reread`, `passive_capture`,
 `device_capture`, `collect_bank_details`,
 `collect_demographics`, `pilot_feedback`. Thresholds (`comprehension_max_failures`,
-`tab_monitor_*`) and Prolific codes (`cc_code`, `noconsent_code`, `dq_code`,
-`error_code`) are config values too. Each participant records a numeric
+`tab_monitor_*`) and Prolific codes (`cc_code`, `noconsent_code`, `dq_code`)
+are config values too. Each participant records a numeric
 `exit_code` (see `CODEBOOK.md`). `C.NUM_ROUNDS` is fixed at import — a config may
 run fewer rounds, never more.
 
-**`allowed_devices` (default `['phone', 'tablet', 'computer', 'unknown']`)** is
-the entry DEVICE ALLOW-LIST: a study states the device types it accepts and
-everything else is screened out before consent. It lives in the Prolific block
-but is *not* in the prolific profile bundle — selecting the prolific study type
-does **not** narrow it. With the shipped list (all four types) the check has no
-participant-visible effect at all and every device proceeds normally. Narrow it
-and the entry request's User-Agent is classified **server-side, before the
-consent page is rendered**: an excluded device never sees consent, is recorded
-with exit code `-4` (`screened_out`) plus the DETECTED TYPE as its screen-out
-cause, and is sent straight to the outro ending (back to Prolific with
-`error_code`), which writes a sentence for that specific device. The
-client-side `is_mobile` / `device_type` values that `device_capture` fills are
-measurement only and block nobody.
-
-There are exactly four types, and **`computer` covers laptops AND desktops**: a
-browser cannot tell them apart — not from the User-Agent, not from client hints
-— so there is no `laptop` type and one cannot be added. `unknown` (no,
-blank or unrecognised User-Agent) is its own type, so admitting or excluding
-unidentifiable devices is a configuration choice, not a code change.
+**`allowed_devices`** (the entry device allow-list) and **`screenout_return_url`**
+(where a screened-out participant is sent, codeless) have their own reference
+section — **[The device check](#the-device-check-what-it-inspects-and-what-it-cannot)**
+— because the name promises more certainty than any User-Agent check can
+deliver. Read it before narrowing the list.
 
 Every participant field, exit code, stage timestamp and future-proofing spare
 column is documented in **`CODEBOOK.md`** (including the repurpose convention for
 spares: never rename in place).
+
+## The device check: what it inspects, and what it cannot
+
+`allowed_devices` is called a device check, and the name promises more than any
+browser can deliver. This section is the reference for what it actually does, so
+nobody has to read the classifier to find out.
+
+### What it inspects
+
+**The `User-Agent` header of the entry request. Nothing else.** It does **not**
+measure screen size, viewport width, touch capability, battery, or anything else
+that lives in the browser: the check runs server-side before the consent page
+exists, and none of that has been sent yet. Two consequences, both deliberate:
+
+- a **desktop browser in a narrow window is NOT screened out** (proved at 640px
+  by `tests/render_check.py`, leg AE);
+- a **phone held in landscape IS screened out**, because it is still a phone.
+
+`device_capture` separately records what the client says about itself
+(`is_mobile`, `device_type`, screen size) as **measurement**. It arrives later,
+on the consent form, it can be edited by anyone, and it gates nothing.
+
+### The four types
+
+| Type | Means |
+| --- | --- |
+| `phone` | iPhone/iPod, Android with `Mobile`, Windows Phone, BlackBerry, Opera Mini… |
+| `tablet` | iPad, Android without `Mobile`, Kindle/Silk, anything self-declaring `Tablet` |
+| `computer` | **laptops AND desktops** — Windows, macOS, X11/Linux, Chrome OS, BSD |
+| `unknown` | a real, readable User-Agent that matches none of the above |
+
+**There is no `laptop` type and one cannot be added.** A browser does not expose
+the form factor of a computer: neither the User-Agent nor the client hints
+(`Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform`, `navigator.userAgentData`)
+distinguish a laptop from a tower, and battery, touch and screen size do not
+either — a desktop can have a touch screen, a laptop can sit docked to a 27"
+monitor with the lid shut. A study that truly needs "laptop only" has to ask the
+participant.
+
+### The fifth state, which is not a type
+
+`unknown` means *we read a header and did not recognise it*. It is different
+from **no decision at all**, which is what the code calls `UNDETERMINED`: no
+request object (oTree instantiates pages without one while it walks the skip
+chain), no `User-Agent`, an empty or whitespace-only one, one carrying
+characters a header may not contain, one absurdly longer than any real browser
+sends, or an exception anywhere in the classifier.
+
+`UNDETERMINED` is never a member of `allowed_devices`, and the rule about it is
+**asymmetric — this is the part that is easy to get backwards**:
+
+- **on entry it ALWAYS allows**, and records nothing at all. The gate simply
+  re-decides on the next real request. A false positive turns a real
+  participant away; a miss costs one noisy row.
+- **it NEVER clears an existing screen-out.** A stripped header is not evidence
+  that somebody switched device. If it counted as one, anyone screened out
+  could lift their own screen-out by sending no `User-Agent`, which takes
+  seconds, and the check would be a suggestion.
+
+Clearing therefore requires the detected type to be **explicitly in**
+`allowed_devices` (`common.device_clears_screenout`), never "not rejected".
+
+**`unknown` and `UNDETERMINED` are not interchangeable, and the whole safety
+property rests on that.** `unknown` is a device type: a real header we could
+read and did not recognise. If a study has LISTED `unknown` as allowed, an
+`unknown` device *does* clear a screen-out — at that point it is positive
+evidence of a device the study accepts, and refusing it would contradict the
+allow-list. `UNDETERMINED` is not a device at all, is never in the list, and
+never clears.
+
+### The invariant (apply this to any device type you add)
+
+> **The clear predicate must be exactly the entry-allow predicate minus
+> `UNDETERMINED`.**
+
+Nothing else is safe or coherent. If clear allows **more** than entry there is a
+hole: somebody lifts a screen-out with a device that would not have been let in.
+If clear allows **less** than entry, the page is telling somebody that switching
+devices will work when for them it cannot — the mistake the implementation this
+was adapted from made, where `unknown` never cleared even in a study that
+admitted unknown devices. Their concrete victim: a laptop whose User-Agent is
+stripped by a privacy tool or a corporate proxy classifies as unknown and is
+admitted on a fresh visit, but if that person first opened the study on their
+phone they are screened, and switching to that very laptop does not lift it —
+while the page in front of them says to switch devices. Rare, and exactly the
+person the soft wall exists for.
+
+Ours cannot be exploited because of the property that is also the **test for any
+new type**: *anything that clears could equally have entered fresh on that same
+device*, so admitting it on the clear path takes nothing away from the gate. Add
+a fifth type tomorrow and ask that question of it — if a participant arriving on
+it for the first time would be let in, it must also lift an existing screen-out;
+if it would not, it must not. `UNDETERMINED` is the single carve-out, because
+"could they have entered fresh on it?" has no answer for a non-device, and
+treating it as a clear would let anyone lift their own screen-out by sending no
+header. The accepted cost, stated plainly: somebody screened on a phone who
+switches to a laptop that sends no usable header stays screened, and their
+remedy is the way off the page.
+
+### The default, and two worked configs
+
+Shipped: `allowed_devices=['phone', 'tablet', 'computer', 'unknown']` — every
+type permitted, so **the check has no participant-visible effect whatsoever**
+until a study opts in. It lives in the Prolific block but is *not* part of the
+prolific profile bundle: choosing the prolific study type never narrows it.
+
+```python
+# Computers only — the common case for a study with charts or a wide table.
+dict(name='prolific', recruitment='prolific', allowed_devices=['computer'], …)
+
+# Phones turned away, tablets fine.
+dict(name='prolific', recruitment='prolific',
+     allowed_devices=['tablet', 'computer', 'unknown'], …)
+```
+
+A comma-separated string works too (`allowed_devices='computer'`). Unknown words
+are dropped, and an empty list is treated as "no gate" rather than screening the
+whole sample out.
+
+### What happens to a screened-out participant (the soft wall)
+
+They are **held on the consent page's own index** and served
+`before/screened_out.html` instead of consent. They never see the consent
+question, and they never advance into the study.
+
+- **The verdict is written immediately**, at decision time: exit code `-4`,
+  `screened_out=True`, and the detected type as the cause. Somebody who reads
+  the page and closes the tab still exports as a screen-out, not an abandoner.
+- **It clears if they come back on an accepted device before consent.** The exit
+  code goes back to `0`, `screenout_cleared` is set to `True` for good, and every
+  verdict is appended to `participant_extra['screenout_history']`. They then do
+  the study as an ordinary participant. Each value is reverted only if it still
+  holds what the screen-out put there, so a clear cannot clobber another
+  mechanism's record.
+- **Accepted consequence:** the exit code is therefore no longer write-once. An
+  export taken while somebody is mid-switch shows a `-4` that later changes;
+  `screenout_cleared` and the history are how you tell those rows apart.
+- **After consent the check never applies again** — not to a participant who
+  switches to a phone mid-study, and not to anyone already running when a deploy
+  turns it on. The boundary is the durable `consent_submitted` flag, never a
+  page index.
+- **The way out carries NO completion code.** The button is a plain link to
+  `screenout_return_url` (the Prolific participant site). A completion code
+  would close their submission the moment they clicked, and a returned
+  submission can never be retaken — which forecloses the outcome the page is
+  asking for. There is deliberately no screened-out completion code, and none
+  must be added to the pre-launch required-codes guard. It is a real `<a href>`,
+  not a scripted button, so it works with JavaScript disabled.
+- **Re-entry depends on the participant label.** On a real Prolific link the id
+  arrives in the URL at entry, so a returning participant is rematched to the
+  same row. Somebody who was screened out after entering on a **bare link** has
+  no label, so nothing can rematch them and they get a fresh row on their next
+  visit. That is acceptable and visible in the data — see also *Rebinding a room
+  mid-study* below.
+
+### The limits, stated plainly
+
+- **User-Agent strings can be spoofed** by anyone who wants to. This stops
+  *accidental* entry on the wrong device; it does not stop determined
+  circumvention, and it is not a security control.
+- **Classification is pattern-matching** against strings that change as new
+  devices ship, so it will drift. Review the patterns in `common.py`
+  occasionally, and treat `unknown` verdicts in the export as the signal that it
+  is time.
+- **Prolific's own device restrictions are advisory** — they filter who is shown
+  the study, not who can open the link. That is why this exists in app code at
+  all.
+
+### What is actually verified (and where)
+
+Run these against a server on a **throwaway** database. The weighting is
+deliberate: most of the checks exist to prove that people are **not** screened
+out.
+
+| Test | What it proves |
+| --- | --- |
+| `tests/device_gate_test.py` §A1–A2 | desktop Chrome, Safari, Firefox, Edge, Chrome OS, a touchscreen Windows laptop, an iPad and an Android tablet are **never** screened — under the shipped list, and under a computers-only list |
+| `tests/device_gate_test.py` §A3 | a missing, empty, whitespace-only, absurdly long, or "long and says iPhone" User-Agent proceeds to consent with **no verdict recorded** |
+| `tests/device_gate_test.py` §A3b | control-character/`None`/non-string values classify as `UNDETERMINED` (uvicorn rejects control-character headers before app code, so there is no HTTP leg for that one) |
+| `tests/device_gate_test.py` §B–C | an excluded type never sees consent, gets exit `-4` with the DETECTED type as its cause and copy written for that type; any type can be excluded; `unknown` is configurable like the rest |
+| `tests/screenout_softwall_test.py` §1–4 | verdict written immediately (closed tab still exports `-4`); cleared on returning from an accepted device with **both** verdicts in the history; re-screened on going back; a cleared participant completes as an ordinary `exit_code=1` |
+| `tests/screenout_softwall_test.py` §5 | a participant who consented on a computer and then switches to a phone is **never** touched, whatever the allow-list says |
+| `tests/screenout_softwall_test.py` §6–7 | the way out is a real `<a href>` with no completion code and no `onclick`; re-entry after pressing it does not silently revive the row |
+| `tests/screenout_softwall_test.py` §8 | the asymmetry, both directions, side by side: the same unusable header allows a fresh participant and does **not** clear an already-screened one |
+| `tests/identity_test.py` | one row per id across re-entry, two tabs and case/whitespace variants; a clashing id claim is refused silently; a duplicate label that exists anyway does not 500; a rebound room orphans people |
+| `tests/render_check.py` leg L, AD | the screen-out page's copy and its two unequal paths; the way out measured **with JavaScript disabled** (present, visible, pressable, secondary) |
+| `tests/render_check.py` leg AE | a 640px-wide **desktop** window still reaches consent — width screens nobody out |
+
+## Rebinding a room mid-study orphans participants
+
+**Operational rule, not a bug we can fix.** oTree matches a participant label
+**within a session** (`session.pp_set`), so the moment a room is bound to a NEW
+session, anybody mid-study in the old one can no longer be rematched: their next
+visit lands on a fresh row in the new session and they start again, while their
+old row keeps their data and their id.
+
+So: **never rebind the room while participants are running.** `scripts/start.sh`
+deliberately reuses a room's already-bound session for this reason. If you must
+create a new session, treat everyone in the old one as finished, and expect
+duplicate ids **across** sessions (which is fine — the constraint is per
+session). Pinned by `tests/identity_test.py` §6.
+
+## Duplicate participant labels
+
+oTree resolves a returning participant by label, and its lookup calls `.one()`:
+**two rows sharing a label is an uncaught `MultipleResultsFound` — a 500 at the
+front door, for the id's real owner, permanently.** Re-entry is that lookup, and
+so is the device screen-out's soft wall, so this template defends it twice
+(`identity.py`):
+
+1. **It refuses to create one.** Every label write goes through
+   `identity.claim_label`, which will not stamp a label another row in the
+   session already holds. The participant is not blocked and is told nothing;
+   the owning row's code lands in `before.Player.prolific_label_conflict` for
+   payment triage.
+2. **It survives one that exists anyway** — a hand-edited row, a legacy
+   database. oTree's lookup is patched to join **the earliest row that has not
+   FINISHED** (a finished row is a dead end to join; a *screened-out* row is
+   terminal but must stay joinable, because joining it is what lifts the
+   screen-out). When it actually sees a duplicate it is **loud**: an ERROR line
+   in the server log naming every row, and a `duplicate_label_seen` record on
+   the joined participant. An ordinary lookup records nothing.
+
+**If the server refuses to boot with a `RuntimeError` from
+`identity.assert_duplicate_label_guard`, oTree has drifted** — its entry lookup
+has been renamed, moved, or has a different signature. That is deliberate: the
+guard is asserted once, at app import, where a failure costs a boot rather than
+a participant's page. Re-point `identity.py` at the new lookup; do not delete
+the assertion. (The *early* install from `settings.py` is expected to fail
+harmlessly — oTree's views are not importable that early — and never raises.)
 
 ## Participant flow by study type
 
@@ -120,11 +337,13 @@ flowchart TD
 
     Start(["Opens the Prolific study link"]) --> Gate
     subgraph BEFORE ["before — entry"]
-        Gate{"device in allowed_devices?<br>server-side User-Agent check,<br>runs before consent is rendered"}
+        Gate{"device in allowed_devices?<br>server-side User-Agent check,<br>runs on the consent page's own request"}
         Gate -- "default list (all devices), or a permitted type" --> Welcome
         Welcome["welcome + consent<br>explicit consent question,<br>Prolific ID + device capture"]
+        ScreenOut["screened_out — shown INSTEAD of consent,<br>at the same page index (exit code -4).<br>Codeless link back to Prolific."]
     end
-    Gate -. "a type the study excludes:<br>consent is never shown" .-> EndedSO
+    Gate -. "a type the study excludes:<br>consent is never shown" .-> ScreenOut
+    ScreenOut -. "returns on an accepted device<br>BEFORE consent: verdict CLEARED" .-> Welcome
     Welcome -- "does not consent" --> EndedNC
     Welcome -- "consents" --> Instr1
 
@@ -155,12 +374,11 @@ flowchart TD
     EndedNC["outro Ended — exit code -1 (no_consent)<br>'Back to Prolific' with noconsent_code"]
     EndedDQ["outro Ended — exit code -2 (comprehension)<br>'Back to Prolific' with dq_code"]
     EndedTM["outro Ended — exit code -3 (tab_monitor)<br>'Back to Prolific' with dq_code"]
-    EndedSO["outro Ended — exit code -4 (screened_out)<br>'Back to Prolific' with error_code"]
     Abandon["Closes the tab at any point —<br>no ending page, exit code stays 0 (abandoned)"]
 
     class Done success
-    class EndedNC,EndedDQ,EndedTM,EndedSO,Abandon terminal
-    class Fb,FbGate,Gate,EndedSO flagdep
+    class EndedNC,EndedDQ,EndedTM,ScreenOut,Abandon terminal
+    class Fb,FbGate,Gate,ScreenOut flagdep
 ```
 
 | Exit code | Terminal state | Ending the participant sees | Completion code |
@@ -170,7 +388,7 @@ flowchart TD
 | `-1` no_consent | Declined consent at entry | `outro` Ended → "Back to Prolific" | `noconsent_code` |
 | `-2` comprehension | Failed the quiz `comprehension_max_failures` times | `outro` Ended → "Back to Prolific" | `dq_code` |
 | `-3` tab_monitor | Tab-away violations reached the cap | `outro` Ended → "Back to Prolific" | `dq_code` |
-| `-4` screened_out | Device stopped by the entry allow-list (only when `allowed_devices` is narrowed) | `outro` Ended → "Back to Prolific" (their FIRST page — consent is never shown) | `error_code` |
+| `-4` screened_out | Device stopped by the entry allow-list (only when `allowed_devices` is narrowed) | `before` screened_out, in place of consent and their FIRST page — a plain link back to Prolific | **none, deliberately** ([why](#the-device-check-what-it-inspects-and-what-it-cannot)) |
 
 > **The table above is the whole table:** every code in `settings.EXIT_CODES` is
 > set by real code and appears here (`CODEBOOK.md` names the line that sets
@@ -312,7 +530,9 @@ configs, browser rendering checks) rather than just listing these files.
 |---|---|---|---|
 | **`tests/http_flow_test.py`** — walks every shipped config entry→ending over real HTTP, including a POST with the JS-produced hidden fields deliberately **empty** | a participant can complete the study in each config; no page 5xxs; the no-JS participant is not stranded | anything about how a page looks or reads; anything that only breaks for an EXISTING participant | after any change to a page, form field or flow |
 | **`tests/gated_flow_test.py`** — lab vs Prolific scenarios: the one-time re-read offer, comprehension DQ, pilot feedback, the two-variant consent rule | the three orthogonal controls actually route people where the design says | rendering; data written to the export | after touching `settings.py` profiles, gates, or the intro/outro flow |
-| **`tests/device_gate_test.py`** — the entry allow-list with phone, tablet, desktop and no-User-Agent requests, permitted and forbidden | a gate decided server-side from the entry REQUEST admits the listed types, screens out the rest with the DETECTED TYPE as the cause, and does nothing at all with the default list | client-side behaviour; anything past entry | after touching the entry gate or `allowed_devices` |
+| **`tests/device_gate_test.py`** — the entry allow-list, weighted towards FALSE POSITIVES: eleven real browsers (desktop Chrome/Safari/Firefox/Edge, Chrome OS, a touchscreen laptop, an iPad, an Android tablet, phones) plus every shape of unusable User-Agent | the listed types are admitted and nothing else is screened by accident: those browsers are never removed, an unusable User-Agent always proceeds recording nothing, an excluded type gets `-4` with the DETECTED type as its cause, and the default list does nothing at all | client-side behaviour; anything past entry | after touching the entry gate, the classifier or `allowed_devices` |
+| **`tests/screenout_softwall_test.py`** — the screen-out lifecycle over real HTTP: screened → cleared → re-screened → completes, the post-consent immunity, the way out, and the no-decision asymmetry | the verdict is written immediately (a closed tab still exports `-4`), clears only on POSITIVE evidence of an accepted device before consent, never touches anyone after consent, and the way out is a codeless real link | rendering; anything a browser does with the page | after touching the gate, the clear rules or the screen-out page |
+| **`tests/identity_test.py`** — in-process: re-entry, two tabs on one id, case/whitespace variants, a clashing id claim, a PLANTED duplicate label, and a room rebound to a new session | one participant row per id (which is what re-entry and the soft wall depend on); a clashing claim is refused silently with the owner's code recorded; a duplicate that exists anyway does not 500 | anything about the pages themselves | after touching label writes, `identity.py` or the entry sequence |
 | **`tests/xss_escaping_test.py`** — hostile participant- and URL-supplied values through the real entry URL, in production mode | every hand-interpolated value is HTML-escaped (oTree's ibis does **not** auto-escape) and round-trips un-truncated | injection through anything you did not render in the walk | after adding any template that prints a participant- or URL-supplied value |
 | **`tests/frozen_config_test.py`** — deletes parameters from a created session's stored config, then walks it | a session created BEFORE a parameter existed still completes; `common.cfg` falls back to the shipped default | a schema change (that needs a real database copy — see the pre-deploy gate) | whenever you add a session-config parameter (and add its name to the test's `STRIPPED` list) |
 | **`tests/render_check.py`** — real headless Chromium at three viewports; screenshots to `_ai/render_check/`, assertions on measured element geometry and on rendered pixels | the pages are actually laid out, visible, scrollable and clickable — the failures that produce no error at all | data correctness; anything server-side | after any CSS or template-structure change |
@@ -330,11 +550,13 @@ incapable of reproducing the failures the gate exists for. Pass `--require-db`
 (or `PREDEPLOY_REQUIRE_DB=1`) in any pipeline for a study with participants, so
 a missing database copy fails the deploy instead of quietly passing degraded.
 
-Running them: the first three want a server you started on a **throwaway**
-database (`OTREE_ADMIN_PASSWORD=admin otree devserver 8000`, then
-`python tests/http_flow_test.py http://localhost:8000`). The rest boot oTree
-in-process against their own temp database and need no server —
-`python tests/frozen_config_test.py`. `render_check.py` needs a headless
+Running them: the HTTP suites (`http_flow_test`, `gated_flow_test`,
+`device_gate_test`, `screenout_softwall_test`) want a server you started on a
+**throwaway** database (`OTREE_ADMIN_PASSWORD=admin otree devserver 8000`, then
+`python tests/http_flow_test.py http://localhost:8000`). The rest
+(`identity_test`, `frozen_config_test`, `xss_escaping_test`,
+`quiz_attempt_log_test`) boot oTree in-process against their own temp database
+and need no server — `python tests/frozen_config_test.py`. `render_check.py` needs a headless
 Chromium; on a box without root see `_ai/headless_chromium_recipe.md`.
 
 ### Two gates: pre-launch and pre-deploy (they check different things)
@@ -364,7 +586,27 @@ a participant whose state **predated** the change —
   session.
 
 A fresh session cannot reproduce either, so bots and fresh-DB HTTP tests are
-structurally blind to the whole class. This script boots the candidate build
+structurally blind to the whole class. It catches a **third** kind as well: a
+MODEL COLUMN this build adds that the live database does not have. oTree has no
+migrations, so that is a hard stop until the column is added by hand — see
+"Adding a model field to a running study" below.
+
+> **Adding a model field to a running study.** A new `models.*Field` on any
+> `Player`/`Group`/`Subsession` is a schema change, and `otree resetdb` (oTree's
+> only built-in answer) **wipes the data**. On a live SQLite database, add the
+> column instead — for example, the column this template's identity work adds:
+>
+> ```sql
+> ALTER TABLE before_player ADD COLUMN prolific_label_conflict VARCHAR(10000);
+> ```
+>
+> Then re-run `predeploy_check.sh` against the migrated copy and deploy only if
+> it passes. (Measured on this change: without the ALTER, checks 2, 4, 5 and 6
+> fail and the log names the missing column; with it, all eight pass, including
+> resuming a mid-flow participant whose vars predate the new participant fields.
+> Participant FIELDS — `screenout_cleared`, `consent_submitted` — need no
+> migration at all: they live in the pickled vars blob and read back as their
+> default through `participant.vars.get`.) This script boots the candidate build
 against a copy of the live database and drives, over real HTTP: an **existing
 mid-flow participant** several pages forward, a **fresh participant** entry to
 end for a lab-configured *and* a prolific-configured session, and a **no-JS
@@ -418,8 +660,9 @@ scheme" section and `settings.py`). That bundle turns on:
 - **`capture_participant_id`** — captures the external Prolific participant ID at
   entry (stored in the `participant_id_external` field).
 - **`completion_redirects`** — routes each ending to Prolific with the matching
-  completion code: normal completion, declined consent (no-consent),
-  disqualification (comprehension / tab monitor), and the entry screen-out.
+  completion code: normal completion, declined consent (no-consent) and
+  disqualification (comprehension / tab monitor). The entry screen-out is the
+  exception: it returns them with NO code, so their submission stays open.
 - the **integrity modules** — `tab_monitor`, `comprehension_dq`, plus
   `passive_capture` and `device_capture`.
 
@@ -429,10 +672,12 @@ so set e.g. `allowed_devices=['computer']` on the config if you want it.
 
 **Completion codes** are config values, set in `settings.py`: the
 `SESSION_CONFIG_DEFAULTS` placeholders `cc_code` (normal), `noconsent_code`
-(declined consent), `dq_code` (disqualified) and `error_code` (screened out at
-entry) — replace the `REPLACE_*` values, or override them per-config on your
-`prolific` session config. The prelaunch check refuses to run online while any
-code is still a `REPLACE_*` placeholder.
+(declined consent) and `dq_code` (disqualified) — replace the `REPLACE_*`
+values, or override them per-config on your `prolific` session config. The
+prelaunch check refuses to run online while any code is still a `REPLACE_*`
+placeholder. **There are three, not four:** a device screened out at entry gets
+a codeless link back to Prolific instead, so its submission stays open — see
+[The device check](#the-device-check-what-it-inspects-and-what-it-cannot).
 
 For the operational walkthrough — creating the Prolific study, wiring the URLs,
 and the finish-screen routing in practice — see **`prolific/Prolific_running.md`**.

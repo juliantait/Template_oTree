@@ -38,7 +38,15 @@ def declined_consent(player) -> bool:
 
 
 def was_screened_out(player) -> bool:
-    """True for a participant the entry device gate removed (exit code -4)."""
+    """True for a participant the entry device gate removed (exit code -4).
+
+    UNREACHABLE BY DESIGN in this template, and kept deliberately. The device
+    gate HOLDS a screened-out participant on the entry page
+    (`before.welcome`), where the screen-out is re-decidable, so they never
+    advance into the outro at all. This is the belt to that brace: it keeps such
+    a participant out of `is_completer` — no payment page, no completion code —
+    if any future gate sets the flag later in the flow.
+    """
     return common.is_screened_out(player.participant)
 
 
@@ -49,14 +57,19 @@ def is_completer(player) -> bool:
 
 
 def completion_link(player) -> str:
-    """Build the Prolific completion URL for this participant's outcome."""
+    """Build the Prolific completion URL for this participant's outcome.
+
+    THERE IS NO SCREENED-OUT BRANCH, and there must not be one: a screened-out
+    participant gets a CODELESS link back to Prolific (see
+    `common.screenout_return_url`), because a completion code closes their
+    submission and a returned submission can never be retaken. `Ended` renders
+    that link instead of this one for them.
+    """
     cfg = player.session.config
     if is_disqualified(player):
         code = cfg.get('dq_code')
     elif declined_consent(player):
         code = cfg.get('noconsent_code')
-    elif was_screened_out(player):
-        code = cfg.get('error_code')
     else:
         code = cfg.get('cc_code')
     return PROLIFIC_COMPLETE_URL + str(code)
@@ -173,13 +186,16 @@ class Ended(Page):
     def is_displayed(player):
         return not is_completer(player)
 
-    @staticmethod
-    def js_vars(player):
-        return dict(completionlink=completion_link(player))
+    # NO js_vars. The completion URL is a TEMPLATE var (below) because the
+    # button is a real link: a participant whose JavaScript never ran must still
+    # be able to leave. Passing it to the browser as a js_var that nothing reads
+    # would be dead weight — and it is what made the scripted button look
+    # necessary in the first place.
 
     @staticmethod
     def vars_for_template(player):
         return dict(
+            completionlink=completion_link(player),
             reason=('disqualified' if is_disqualified(player)
                     else 'no_consent' if declined_consent(player)
                     else 'screened_out' if was_screened_out(player) else 'other'),
@@ -196,6 +212,11 @@ class Ended(Page):
             screenout_cause=common.screenout_cause(player.participant),
             allowed_devices_phrase=common.device_types_phrase(
                 common.allowed_devices(player.session.config)),
+            # A screened-out participant is returned to Prolific WITHOUT a
+            # completion code (see completion_link). Only relevant on the
+            # unreachable-by-design fallback path — the entry gate holds such a
+            # participant on before.welcome and they never get here.
+            screenout_return_url=common.screenout_return_url(player.session.config),
             # Lab-only closing line ("raise your hand"); see is_lab().
             is_lab=is_lab(player),
             # WHICH integrity module removed them (change_requests item 16).
@@ -339,11 +360,9 @@ class Results(Page):
     def is_displayed(player):
         return is_completer(player)
 
-    @staticmethod
-    def js_vars(player):
-        # Completion redirect (Prolific): the participant clicks a button that
-        # sends them to this URL. Built server-side so the code is authoritative.
-        return dict(completionlink=completion_link(player))
+    # NO js_vars here either — same reason as on Ended: the completion redirect
+    # is a real link built server-side (so the code is authoritative) and
+    # rendered into the page, not handed to a script that has to run first.
 
     def vars_for_template(self):
         # REACHING THIS PAGE IS COMPLETION: the exit code becomes `finished`
@@ -388,6 +407,12 @@ class Results(Page):
         # `base_payment` is the show-up fee under the name the receipt uses;
         # `decision_bonus` is the sum of the randomly selected rounds.
         return{
+            # The completion URL, rendered into the page's own link. EVERY
+            # Prolific completer leaves through it, so it must not need a script
+            # to exist: a completer with JS blocked would otherwise finish the
+            # study, see this page, and have no way to submit their completion
+            # code — unpaid, and looking like an abandoner in the data.
+            'completionlink': completion_link(self),
             'earned': cu(self.earned),
             'showup': cu(common.cfg(self.session.config, 'showup')),
             'base_payment': cu(common.cfg(self.session.config, 'showup')),

@@ -47,18 +47,26 @@ session-configuration view shows exactly what ran:
 
 ## 2. Completion codes
 
-Four codes, per session config, all shipping as `REPLACE_*` placeholders:
+Three codes, per session config, all shipping as `REPLACE_*` placeholders:
 
 | Key | Used for | Exit code |
 |-----|----------|-----------|
 | `cc_code` | Normal completion | `1` |
 | `noconsent_code` | Declined consent | `-1` |
 | `dq_code` | Disqualified (comprehension or tab monitor) | `-2` / `-3` |
-| `error_code` | Screened out at entry | `-4` |
+
+**A device screened out at entry (`-4`) has NO completion code, deliberately.**
+It gets a plain link to `screenout_return_url` (the Prolific participant site)
+carrying nothing, so the submission stays OPEN and the participant can still
+reopen the study on an accepted device and finish it — which submitting a code
+would foreclose for good, since a returned submission can never be retaken. Do
+not add a fourth code, and do not add one to the pre-launch required-codes
+guard. See §4.
 
 `outro.completion_link()` picks the code from the participant's outcome; the
-ending pages render a **button**, never an automatic redirect, so oTree has
-committed the final data before the participant leaves.
+ending pages render a **link**, never an automatic redirect, so oTree has
+committed the final data before the participant leaves, and a participant whose
+JavaScript never ran can still leave.
 
 **The prelaunch check refuses to let a `REPLACE_*` placeholder reach a real
 launch** — `settings._check_prelaunch()` prints a MUST-BE banner at startup for
@@ -110,10 +118,12 @@ The four types are `phone`, `tablet`, `computer` and `unknown`. **`computer`
 covers laptops and desktops** — a browser exposes no way to tell them apart
 (not the User-Agent, not client hints, not battery/touch/screen size), so there
 is no `laptop` type and one must never be added; a study that truly needs that
-has to ask the participant. **`unknown`** means the device could not be
-identified — no User-Agent, a blank one, or one stripped by a privacy tool — and
-it is listed like any other type, so admitting those participants is a
-configuration decision rather than a code change.
+has to ask the participant. **`unknown`** means a real User-Agent was read and
+matched no family; it is listed like any other type, so admitting those
+participants is a configuration decision rather than a code change. A request
+with NO usable User-Agent at all is a different thing — no decision — and is
+always allowed in. **README's "The device check" section is the full reference**
+(what it inspects, the asymmetry, the limits); this is the operational summary.
 
 With the **default** list (all four) it does nothing at all — every device
 completes normally, and `device_capture` still *records* the device as
@@ -121,11 +131,13 @@ measurement that blocks nobody.
 
 When **narrowed**, the decision is made server-side in `before.welcome.get()`,
 from the entry request's User-Agent, **before a single byte of the consent page
-exists**. There is no inline error and no page of its own: the participant is
-flagged, given exit code `-4`, and every page between entry and the ending is
-gated on `common.is_screened_out()`, so they are walked straight to
-`outro/Ended.html`. **That ending is the first and only screen they ever see.**
-The client's own opinion of what it is (`device_info_json.device_type`) is
+exists**. The participant is flagged with exit code `-4` and HELD on that page,
+which serves `before/screened_out.html` instead of the consent question. **That
+is the first and only screen they ever see** — and, because they are held rather
+than walked to an ending, a later pre-consent request from an accepted device
+CLEARS the verdict and lets them carry on. Their way out is a plain link to
+`screenout_return_url` with **no completion code**, so their submission stays
+open. The client's own opinion of what it is (`device_info_json.device_type`) is
 recorded beside the server's for comparison and never enforced — a client-side
 check is trivially bypassed.
 
@@ -135,7 +147,8 @@ code. The gate records *which device type it detected* in
 `'unknown'`), and the ending picks its wording from that cause, naming what the
 study does accept. To add another entry screen-out reason, add a cause — not a
 new exit code. See `common.SCREENOUT_CAUSES` and the CODEBOOK section on
-screen-out causes.
+screen-out causes. `screenout_cleared` (participant field) and
+`participant_extra['screenout_history']` record device switches for the export.
 
 ## 5. Getting the participant id
 

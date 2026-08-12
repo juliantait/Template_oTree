@@ -39,7 +39,8 @@ So: **drive the real thing.** Everything below is about how.
 | Kind | Answers | Blind to |
 |---|---|---|
 | HTTP flow (`http_flow_test.py`, `gated_flow_test.py`) | can a participant get from entry to an ending in every config, without a 5xx? | anything about how the page LOOKS |
-| Server-side gates (`device_gate_test.py`) | does a gate decided from the REQUEST fire correctly? | client-side behaviour |
+| Server-side gates (`device_gate_test.py`, `screenout_softwall_test.py`) | does a gate decided from the REQUEST fire correctly — and, as importantly, never fire on somebody it should not? | client-side behaviour |
+| Identity/state over time (`identity_test.py`) | does a returning participant reach the SAME row, and does a duplicate id degrade instead of 500-ing? | anything about the pages themselves |
 | Content (`example_quiz_content_test.py`) | does the page SAY what the design says it says? | everything not asserted |
 | Rendering (`render_check.py`) | is it laid out, visible and clickable in a browser? | data correctness |
 | Frozen/upgrade (`frozen_config_test.py`, `scripts/predeploy_check.sh`) | does an EXISTING participant survive this build? | fresh-install bugs |
@@ -110,6 +111,27 @@ s.headers['User-Agent'] = PHONE_UA        # see device_gate_test.py
 
 Test the option **both ways round**: with the gate off, a phone must be entirely
 unaffected; with it on, the phone must never render the consent page at all.
+
+**Weight a gate's tests towards the FALSE POSITIVE.** The failure that costs you
+real participants is the laptop that gets turned away, not the phone that slips
+through, so most of `device_gate_test.py` is browsers that must NOT be screened:
+desktop Chrome/Safari/Firefox/Edge, Chrome OS, a touchscreen laptop, an iPad, an
+Android tablet, and every shape of unusable `User-Agent`. Two traps when you
+send a malformed one:
+
+- `requests` **refuses to send** a header value with leading whitespace or
+  control characters — it validates client-side, and a broken browser does not.
+  Patch it out (`requests.models.check_header_validity = lambda h: None`) or you
+  are testing your HTTP client, not your gate.
+- a control-character header never reaches application code anyway: **uvicorn
+  rejects the request at the protocol layer** and closes the connection. There
+  is no HTTP leg to write for that one, so assert it against the classifier
+  directly and say in the test why (`device_gate_test.py` §A3b).
+
+When a rule is ASYMMETRIC — this template's screen-out allows an unusable
+header on entry but never lets one CLEAR an existing screen-out — write the two
+assertions **next to each other**, so the asymmetry is visible to whoever reads
+the file next (`screenout_softwall_test.py` §8).
 
 ## Assert against rendered VISIBLE TEXT, not raw HTML
 
