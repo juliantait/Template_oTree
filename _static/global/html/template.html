@@ -113,6 +113,39 @@
 
             <p class="hint">A hint: small, quiet, for asides that must not compete with the body copy.</p>
 
+            <!-- TEMPLATE-NOTE: a muted italic aside addressed to the STUDY
+                 AUTHOR ("this is shipped example content, replace it"). A real
+                 study ends up with no users of this class. -->
+            <p class="template-note">
+                Template note — marks shipped example content a study is
+                expected to replace.
+            </p>
+
+            <!-- PAYOFF-MATRIX: the worked-example game/points table
+                 (instructions.css). .axis marks the who-chooses labels;
+                 .your-payoff highlights the participant's own number. The
+                 shipped Stag Hunt instructions are its real user. -->
+            <h3 class="section-title">Payoff matrix</h3>
+            <table class="payoff-matrix">
+                <thead>
+                    <tr><th></th><th></th><th colspan="2" class="axis">They choose</th></tr>
+                    <tr><th></th><th></th><th>Left</th><th>Right</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <th rowspan="2" class="axis">You<br>choose</th>
+                        <th>Left</th>
+                        <td>(<span class="your-payoff">4</span>, 4)</td>
+                        <td>(<span class="your-payoff">0</span>, 2)</td>
+                    </tr>
+                    <tr>
+                        <th>Right</th>
+                        <td>(<span class="your-payoff">2</span>, 0)</td>
+                        <td>(<span class="your-payoff">2</span>, 2)</td>
+                    </tr>
+                </tbody>
+            </table>
+
         </div>
 
         <!-- BUTTON ROW: pinned to the FOOT of the card. The secondary action is

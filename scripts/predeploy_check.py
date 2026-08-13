@@ -109,6 +109,14 @@ CHECKS (each independent; any FAIL -> exit non-zero)
                columns needs an explicit migration or RESET_DB decision).
                NOT TESTED in degraded mode: a fresh DB is by definition built
                from the new models, so comparing it proves nothing.
+  2b. FROZEN   every EXISTING session's frozen config is compared against the
+      CONFIGS  current settings. FAILS only on a key MISSING from the frozen
+               config or a value still holding a REPLACE_* placeholder; every
+               other difference is REPORTED as information, never failed (see
+               the two-severity note in check_frozen_session_configs). The
+               remedy for a failing session is to RECREATE it — a frozen config
+               cannot be repaired by editing settings.py. NOT TESTED in
+               degraded mode: a fresh DB has no pre-existing sessions to audit.
   3. RESUME    an EXISTING mid-flow participant from the live data (e.g.
                sitting on the quiz or a task round) is driven several more
                pages over real HTTP. THIS is the upgrade path that broke: their
@@ -869,6 +877,146 @@ def check_schema(log, degraded):
         record(name, False, f'comparison failed: {e!r}')
 
 
+def audit_frozen_session_configs(stored, current_configs, defaults):
+    """The pure analysis behind check 2b, separable so a test can drive it.
+
+    `stored`          iterable of (session_code, config_name, frozen_config)
+    `current_configs` {name: current SESSION_CONFIGS entry} (profile-resolved —
+                      resolve_recruitment_profile writes explicit keys at import)
+    `defaults`        current SESSION_CONFIG_DEFAULTS
+
+    Returns (problems, diffs).
+
+    `problems` — the ONLY two kinds that FAIL the check:
+      * MISSING     the key is absent from the frozen config: the session was
+                    created before the key existed. Its participants run
+                    without it — common.cfg falls back to the shipped default,
+                    a raw config.get reads None/off — while settings.py looks
+                    perfectly correct. This is CLAUDE.md's frozen-config rule
+                    surfacing operationally.
+      * PLACEHOLDER the frozen value still holds a REPLACE_* placeholder
+                    (settings ships REPLACE_CC / REPLACE_NC / REPLACE_DQ /
+                    REPLACE_SCREENOUT_RETURN_URL; the whole family begins
+                    REPLACE_). Catches the case prelaunch_check CANNOT: the
+                    codes were fixed in settings but the session was never
+                    recreated, so a live session still carries the placeholder.
+
+    `diffs` — every other difference, REPORTED as information and NEVER failed.
+    WHY TWO SEVERITIES (Julian, 2026-08-13 — do not later promote everything to
+    a failure): a session legitimately running an older threshold is normal,
+    and static_version alone changes on nearly every deploy, so a check that
+    fails on ANY difference fails every single time — within a fortnight it is
+    run with the failure ignored, at which point it catches nothing, including
+    the real cases. Two severities keep the loud failure meaningful while still
+    showing the operator everything.
+    """
+    problems, diffs = [], []
+    for code, name, frozen in stored:
+        entry = current_configs.get(name)
+        if entry is None:
+            diffs.append((code, f'(config {name!r})',
+                          '(this config name is no longer in settings — '
+                          'compared against the defaults alone)', ''))
+            entry = {}
+        current = {**defaults, **entry}
+        for key in sorted(current):
+            if key not in frozen:
+                problems.append((code, key, 'MISSING',
+                                 f'current setting {current[key]!r}'))
+                continue
+            frozen_value = frozen[key]
+            if isinstance(frozen_value, str) and frozen_value.startswith('REPLACE_'):
+                problems.append((code, key, 'PLACEHOLDER', repr(frozen_value)))
+            elif frozen_value != current[key]:
+                diffs.append((code, key, frozen_value, current[key]))
+        for key in sorted(set(frozen) - set(current)):
+            diffs.append((code, key, frozen[key],
+                          '(key no longer in the current settings)'))
+    return problems, diffs
+
+
+def check_frozen_session_configs(log, degraded):
+    """Check 2b: do any EXISTING sessions run a stale or broken frozen config?
+
+    A session config is frozen at creation, so ANY parameter added or corrected
+    after a session was created is missing or stale for that session while
+    settings.py looks perfectly correct. This check compares each existing
+    session's stored config against the current settings and reports every
+    difference — failing only on the two genuinely broken kinds (see
+    audit_frozen_session_configs).
+
+    NOT ALREADY TESTED ELSEWHERE, though it looks like it might be:
+    tests/frozen_config_test.py proves RESILIENCE — it strips keys from a
+    session's stored config and walks a participant to prove nothing 500s. It
+    never asks whether a stale session actually EXISTS in the live data.
+    Resilience to the problem and detection of it are different things, and
+    both are worth having.
+
+    DOCUMENTED LIMITATION: nothing triggers this automatically, because there
+    is no event to hang it on — editing settings.py is not an event the running
+    system can observe. It therefore runs at a deliberate moment (this
+    pre-deploy gate), NOT continuously; do not assume something is always
+    watching for stale sessions.
+
+    MUST RUN BEFORE run_http_checks, which creates fresh sessions in the staged
+    copy — those are this build's own and would pollute the audit.
+    """
+    name = '2b. FROZEN SESSION CONFIGS (existing sessions vs current settings)'
+    if degraded:
+        record(name, NOT_TESTED,
+               ['no live database was supplied; a fresh database has no '
+                'pre-existing sessions to audit.',
+                'A real audit needs a copy of the live database.'])
+        return
+    try:
+        from otree.database import DBSession
+        from otree.models import Session
+        from settings import SESSION_CONFIGS, SESSION_CONFIG_DEFAULTS
+        s = DBSession()
+        try:
+            stored = [(sess.code, (sess.config or {}).get('name'),
+                       dict(sess.config or {}))
+                      for sess in s.query(Session).all()]
+        finally:
+            s.close()
+        current_configs = {c['name']: dict(c) for c in SESSION_CONFIGS}
+        problems, diffs = audit_frozen_session_configs(
+            stored, current_configs, SESSION_CONFIG_DEFAULTS)
+
+        detail = [f'{len(stored)} existing session(s) audited against the '
+                  f'current settings']
+        if problems:
+            detail.append(
+                'BROKEN — a frozen session cannot be repaired by editing '
+                'settings.py: it has to be RECREATED (retire it, create a new '
+                'session from the corrected config):')
+            for code, key, kind, extra in problems:
+                detail.append(f'  - session {code}: {key} — {kind} ({extra})')
+                log.write(f'PREDEPLOY FROZEN CONFIG: session {code} '
+                          f'{key} {kind}')
+            detail.append(
+                '  MISSING => recreate the session (its participants run '
+                'without the key); PLACEHOLDER => fix the value in settings '
+                'AND recreate the session — editing settings alone changes '
+                'nothing for a session that already exists.')
+        if diffs:
+            detail.append(
+                f'info: {len(diffs)} value difference(s) — reported so nothing '
+                f'is hidden, but NOT failures (a session legitimately runs the '
+                f'values it was created with):')
+            for code, key, frozen_value, current_value in diffs:
+                detail.append(f'  ~ session {code}: {key} — session has '
+                              f'{frozen_value!r}, current setting is '
+                              f'{current_value!r}')
+        if not problems and not diffs:
+            detail.append('every existing session matches the current '
+                          'settings exactly')
+        record(name, not problems, detail)
+    except Exception as e:
+        log.write_exc('frozen-session config audit failed')
+        record(name, False, f'audit failed: {e!r}')
+
+
 def pick_configs(requested):
     """Which session configs to drive fresh participants through.
 
@@ -1169,6 +1317,9 @@ def main():
         booted = check_boot(server, log, db_path, args.degraded)
         if booted:
             check_schema(log, args.degraded)
+            # BEFORE run_http_checks: that creates fresh sessions, which are
+            # this build's own and must not pollute the frozen-config audit.
+            check_frozen_session_configs(log, args.degraded)
             config_names, missing = pick_configs(
                 [c.strip() for c in args.configs.split(',') if c.strip()])
             if missing:
@@ -1187,6 +1338,8 @@ def main():
 def finish(log_path, degraded, require_db, skip_rest=False):
     if skip_rest:
         for name in ('2. SCHEMA (new models vs live data)',
+                     '2b. FROZEN SESSION CONFIGS (existing sessions vs '
+                     'current settings)',
                      '3. RESUME an existing mid-flow participant (upgrade path)',
                      '4. FRESH participant (entry -> end)',
                      '5. NO-JS submits (JS-produced hidden fields EMPTY)'):

@@ -19,9 +19,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     let current = 0;
-    const sectionState = {
-        current: 'instructions',
-    };
 
     // Return to the top of the slide when the step changes. The card is height-
     // capped and .instruction-wrapper is the element that scrolls (see
@@ -75,13 +72,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const atFirst = current === 0;
         const atPrequiz = isAtPrequiz();
 
-        sectionState.current = atPrequiz ? 'prequiz' : 'instructions';
-
         // Disable Back only on the very first instruction, never on prequiz screen.
         setPrevDisabled(atFirst && !atPrequiz);
-
-        prevBtn.style.display = 'inline-block';
-        nextBtn.style.display = 'inline-block';
 
         // NB: this used to set wrapper.style.minHeight to the current slide's
         // scrollHeight, to stop the controls jumping between slides. Do NOT put
@@ -94,7 +86,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (atPrequiz) {
             prevBtn.textContent = 'Re-read instructions';
             nextBtn.textContent = 'Go to quiz';
-            nextBtn.dataset.action = 'submit';
 
             if (counter) {
                 counter.textContent = '';
@@ -103,7 +94,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             prevBtn.textContent = 'Back';
             nextBtn.textContent = 'Next';
-            nextBtn.dataset.action = 'next';
 
             if (counter) {
                 const total = instructionBlocks.length || 1;
@@ -143,18 +133,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         event.preventDefault();
+        // The click handlers above already carry the prequiz special cases
+        // (return-to-start, submit), so the arrow keys just press the buttons.
+        // A disabled Back no-ops, exactly as a click would.
         if (event.key === 'ArrowLeft') {
-            if (isAtPrequiz()) {
-                prevBtn.click();
-            } else {
-                goPrev();
-            }
+            prevBtn.click();
         } else {
-            if (isAtPrequiz()) {
-                nextBtn.click();
-            } else {
-                goNext();
-            }
+            nextBtn.click();
         }
     });
 

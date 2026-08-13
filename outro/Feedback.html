@@ -1,4 +1,4 @@
-{{ block content }}
+{% block content %}
 {% include '_static/global/html/css_bundle.html' %}
 
 <div class="experimental-screen">
@@ -14,6 +14,25 @@
                 freely — this question is optional and your answer is used only
                 to improve the study.
             </div>
+            {# EXCEPTION (Julian, 2026-08-13): this textarea is HAND-ROLLED, not
+               a formfield — a deliberate departure from the app's convention
+               (see Demographics.html, "EVERY INPUT HERE IS RENDERED BY THE
+               formfield TAG"; the tag name is written without braces on
+               purpose — ibis parses tags even inside comments). Why it is
+               allowed here: the page exists only for pilots and friend tests,
+               would never ship in a final study, the one field is optional and
+               placeholder-led, and nothing on the page can fail validation.
+
+               THE HAZARD THAT MAKES THIS SAFE BY CIRCUMSTANCE, NOT BY
+               CONSTRUCTION: a hand-rolled control does NOT repopulate on
+               re-render. Today that cannot bite — the single optional field
+               means the page never re-renders with an error. ADD A SECOND
+               FIELD HERE AND YOU HAVE JUST MADE IT LIVE: the moment any field
+               on this page can fail validation, a re-render silently discards
+               whatever feedback the participant typed. At that point convert
+               this to a formfield (and set preserve_unsubmitted_inputs on the
+               page, as Demographics does) rather than adding to the hand-rolled
+               markup. #}
             <div class="stacked-form">
                 <textarea name="feedback" id="feedback" rows="8" class="feedback-textarea"
                           placeholder="Your comments (optional)"></textarea>
@@ -28,4 +47,4 @@
 
 <script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
 
-{{ endblock }}
+{% endblock %}

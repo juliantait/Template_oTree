@@ -29,8 +29,8 @@ import requests
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 from http_flow_test import FormParser, build_payload, END_MARKERS
 
-WRONG = {'quiz1': 'NO', 'quiz2': 'You proceed automatically'}
-RIGHT = {'quiz1': 'YES', 'quiz2': 'You are asked to reread the instructions'}
+WRONG = {'quiz1': 'NO', 'quiz2': 'Metal'}
+RIGHT = {'quiz1': 'YES', 'quiz2': 'Water'}
 
 REREAD_MARKER = 'value="Re-read the instructions"'
 # Asserted against VISIBLE TEXT, never the raw HTML: the notice bolds "raise

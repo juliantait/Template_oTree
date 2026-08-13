@@ -144,7 +144,7 @@ def payload_for(page, quiz_answers):
 
 
 def walk(base, code, quiz_answers, stop_after=None, stop_after_n=1,
-         quiz_posts=None, ua=DESKTOP_UA, max_steps=200):
+         quiz_posts=None, ua=DESKTOP_UA, max_steps=200, overrides=None):
     """Walk a participant over real HTTP.
 
     stop_after / stop_after_n: stop once `stop_after` has been SUBMITTED
@@ -152,6 +152,8 @@ def walk(base, code, quiz_answers, stop_after=None, stop_after_n=1,
     `main` is [GameStart, payoff] per round, so submitting `payoff` N times
     leaves the participant on GameStart of round N+1. Without the count every
     walk could only ever stop in round 1.
+    overrides: {page_name: {field: value}} merged over payload_for's default
+    (e.g. a non-Dutch IBAN on Demographics for the Non-SEPA pill).
     """
     s = requests.Session()
     s.headers['User-Agent'] = ua
@@ -165,6 +167,8 @@ def walk(base, code, quiz_answers, stop_after=None, stop_after_n=1,
             break
         data = (quiz_posts.pop(0) if page == 'quiz' and quiz_posts
                 else payload_for(page, quiz_answers))
+        if overrides and page in overrides:
+            data = dict(data, **overrides[page])
         resp = s.post(resp.url, data=data)
         statuses.append(resp.status_code)
         if stop_after and page == stop_after:
@@ -221,6 +225,16 @@ def stage_intro_time(code, seconds):
             moved = True
     if moved:
         set_participant(code, **{'vars.stage_timestamps': stamps})
+
+
+def backdate_stamp(code, stage, seconds_ago):
+    """Move ONE stage stamp into the past (test-side write). The intro and
+    questionnaire stall phases, and the no-return-click grace, are judged on
+    elapsed-since-a-stamp — so ageing a participant there means ageing the
+    stamp, not the page timestamp (see _stall_elapsed / _participant_row)."""
+    stamps = dict(ot.participant_vars(code).get('stage_timestamps') or {})
+    stamps[stage] = time.time() - seconds_ago
+    set_participant(code, **{'vars.stage_timestamps': stamps})
 
 
 def stage_overview(base):
@@ -302,12 +316,14 @@ def stage_overview(base):
     #    to sit above the old global 300s (400 did) sits BELOW the intro's 480s —
     #    so this row would have quietly stopped being the amber row the overview
     #    exists to show, with every assertion still passing.
+    #    Aged via the INTRO STAMPS, not the page timestamp: the intro phase is
+    #    judged on elapsed-since-left_before_app (the pills change; see
+    #    _stall_elapsed), which stage_intro_time below shifts — the row's entry
+    #    in that list carries the derived over-threshold age.
     #    Stops after the AGREEMENT page, not after welcome: for Prolific the
     #    entry block is welcome -> ConfirmProlificID -> AISafetyAgree, so
     #    stopping earlier would leave this row still at Entry.
     walk(base, codes[1], correct, stop_after='AISafetyAgree')
-    set_participant(codes[1], _last_page_timestamp=int(time.time())
-                    - (ed.stall_seconds_for('instructions') + 100))
     # 3. on the quiz with one wrong attempt (below the DQ threshold of 3)
     walk(base, codes[2], correct, quiz_posts=[wrong], stop_after='quiz')
     # 4-5. mid-task, early and late
@@ -339,8 +355,10 @@ def stage_overview(base):
     # Realistic instructions times, INCLUDING ONE OVER TEN MINUTES so the
     # widest value a real session produces ("12:45") is in the measured picture
     # rather than only the "0:00" a scripted walk produces. See
-    # stage_intro_time.
-    for code, seconds in ((codes[1], 406), (codes[2], 340), (codes[3], 204),
+    # stage_intro_time. codes[1]'s age doubles as the overview's AMBER stall
+    # (derived from the intro threshold — see the staging comment above).
+    for code, seconds in ((codes[1], ed.stall_seconds_for('instructions')
+                           + 100), (codes[2], 340), (codes[3], 204),
                           (codes[4], 172), (codes[5], 195), (codes[6], 210),
                           (codes[7], 765), (codes[9], 380), (codes[11], 218)):
         stage_intro_time(code, seconds)
@@ -406,10 +424,10 @@ def check_overview(base, sess):
                   f'CENTRES — inset {line["left"]:.1f}/{line["right"]:.1f}px '
                   f'vs half a {line["cell"]:.1f}px track ({half:.1f}px)')
 
-            # nothing clips, at THIS width
+            # nothing clips, at THIS width — including every state PILL
             clipped = pg.evaluate('''() =>
                 [...document.querySelectorAll(
-                    'td.c-instr, td.c-earn, .stall-note, td.c-state')]
+                    'td.c-instr, td.c-earn, td.c-state .spill, td.c-state')]
                 .filter(e => e.scrollWidth > e.clientWidth + 1).length''')
             check(clipped == 0,
                   f'{width}px: no clipped time/earnings/state cell ({clipped})')
@@ -505,6 +523,25 @@ def check_overview(base, sess):
                     check(pg.eval_on_selector_all(sel, 'els => els.length') > 0,
                           f'the overview really contains {what}')
 
+                # THE TIMING PILL (the pills change, 2026-08-13): the amber
+                # row's state cell names the SECTION and the elapsed in it,
+                # not just "too long somewhere".
+                stall_txt = pg.eval_on_selector_all(
+                    '.spill-stall',
+                    'els => els.map(e => e.textContent.trim())')
+                check(len(stall_txt) >= 1
+                      and any(re.match(r'^⚠️ Intro \d+:\d\d$', t)
+                              for t in stall_txt),
+                      f'the timing pill reads "⚠️ Intro m:ss" — section and '
+                      f'elapsed together ({stall_txt})')
+                # THE ARRIVAL COUNT in the top line: 12 of the 13 rows arrived
+                # (the last never does), so the segment is exact, not a
+                # pattern-match on anything.
+                counts_txt = pg.text_content('#counts')
+                check('👤 12 of 13 arrived' in counts_txt,
+                      f'the top line carries the arrival count '
+                      f'("👤 12 of 13 arrived" in {counts_txt!r})')
+
             pg.screenshot(path=os.path.join(OVERVIEW_DIR, name),
                           full_page=True)
             print(f'   wrote {os.path.relpath(os.path.join(OVERVIEW_DIR, name), _APP_ROOT)}')
@@ -535,9 +572,11 @@ def stage_sessions(base):
     walk(base, codes[2], correct, stop_after='payoff')      # → round 2 opens
     walk(base, codes[3], correct)                           # finished
     walk(base, codes[4], correct, stop_after='welcome')
-    set_participant(codes[4],                               # AMBER: stalled
-                    _last_page_timestamp=int(time.time())
-                    - (ed.stall_seconds_for('instructions') + 100))
+    # AMBER: stalled in the INTRO — aged via the intro stamps, because that
+    # phase is judged on elapsed-since-left_before_app, not on page time
+    # (the pills change; see _stall_elapsed).
+    stage_intro_time(codes[4],
+                     ed.stall_seconds_for('instructions') + 100)
 
     pro = ot.create_session(
         'prolific', num_participants=4,
@@ -688,10 +727,10 @@ def check_browser(base, lab, pro):
         # exceeding clientWidth, which this measures).
         clipped = pg.evaluate('''() =>
             [...document.querySelectorAll(
-                'td.c-instr, td.c-earn, .stall-note')]
+                'td.c-instr, td.c-earn, td.c-state .spill')]
             .filter(e => e.scrollWidth > e.clientWidth + 1).length''')
         check(clipped == 0,
-              f'no clipped time/earnings/stall cell at 1280px ({clipped})')
+              f'no clipped time/earnings/pill cell at 1280px ({clipped})')
 
         pg.wait_for_selector('tbody tr td.c-label', timeout=15000)
         pg.screenshot(path=os.path.join(OUT_DIR, 'lab_1280x800.png'),
@@ -790,6 +829,149 @@ def check_row_order(base):
         browser.close()
 
 
+def check_pills(base):
+    """THE STATE-COLUMN PILLS (Julian, 2026-08-13), measured in a real browser.
+
+    Two small sessions stage the states the 13-row overview cannot:
+      * a LAB session — the Non-SEPA pill only exists there — with a finisher
+        whose row must carry BOTH the green finished pill AND the red Non-SEPA
+        pill at once (conditions survive outcomes: the accumulation rule), an
+        NL finisher as the no-pill control, and an intro staller for the
+        yellow timing pill;
+      * a PROLIFIC session for the two climbing/awaiting conditions: a
+        mid-task participant with tab-monitor violations below the limit, and
+        a finisher past the return-click grace with no click recorded.
+    """
+    from playwright.sync_api import sync_playwright
+    section('headless Chromium: the state-column pills')
+    correct = {i['field']: i['answer'] for i in QUIZ_ITEMS}
+
+    lab = ot.create_session('lab', num_participants=3, label='')
+    lcodes = ot.participant_codes(lab)
+    for i, code in enumerate(lcodes):
+        ot.set_label(code, f'Seat 0{i + 1}')
+    US_IBAN = 'US64SVBKUS6S3300958879'
+    walk(base, lcodes[0], correct, overrides={'Demographics': {
+        'bank': US_IBAN, 'bank_confirmation': US_IBAN, 'bic': 'SVBKUS6S'}})
+    walk(base, lcodes[1], correct)                       # NL IBAN (default)
+    walk(base, lcodes[2], correct, stop_after='welcome')  # on instructions
+    stage_intro_time(lcodes[2], ed.stall_seconds_for('instructions') + 123)
+
+    pro = ot.create_session('prolific', num_participants=2)
+    pcodes = ot.participant_codes(pro)
+    walk(base, pcodes[0], correct, stop_after='quiz')     # into the task
+    set_participant(pcodes[0], **{'vars.focus_loss_count': 2})
+    walk(base, pcodes[1], correct)                        # finished
+    backdate_stamp(pcodes[1], 'finished', 200)            # past the 90s grace
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(ignore_default_args=['--hide-scrollbars'])
+        pg = browser.new_page(viewport={'width': 1440, 'height': 900})
+        pg.goto(f'{base}/login')
+        pg.fill('input[name=username]', 'admin')
+        pg.fill('input[name=password]', 'admin')
+        pg.click('button[type=submit], input[type=submit]')
+
+        # --- the lab session: Non-SEPA, accumulation, timing --------------
+        pg.goto(f'{base}{ed.URL_BASE}/{lab.code}')
+        pg.wait_for_selector('tbody tr td.c-label', timeout=15000)
+        # THE ACCUMULATION RULE, measured: one row, both pills.
+        both = pg.evaluate('''() => {
+            const rows = [...document.querySelectorAll('tbody tr')];
+            return rows.filter(r => r.querySelector('.spill-finished')
+                                 && r.querySelector('.spill-nonsepa')).length;
+        }''')
+        check(both == 1,
+              f'ONE row carries the finished tick AND the Non-SEPA pill '
+              f'together — finishing does not clear a condition ({both})')
+        control = pg.evaluate('''() => {
+            const rows = [...document.querySelectorAll('tbody tr')];
+            return rows.filter(r => r.querySelector('.spill-finished')
+                                 && !r.querySelector('.spill-nonsepa')).length;
+        }''')
+        check(control == 1,
+              f'the NL finisher next to it shows the tick WITHOUT the pill '
+              f'({control}) — so the pill is the account, not the finishing')
+        # Red background, white text — Julian's spec, on PIXEL-adjacent
+        # computed style rather than a class name.
+        style = pg.eval_on_selector('.spill-nonsepa', '''e => {
+            const cs = getComputedStyle(e);
+            return {bg: cs.backgroundColor, fg: cs.color,
+                    text: e.textContent.trim()};
+        }''')
+        check(style['text'] == 'Non-SEPA'
+              and style['fg'] == 'rgb(255, 255, 255)'
+              and style['bg'] not in ('rgba(0, 0, 0, 0)', 'transparent',
+                                      'rgb(255, 255, 255)'),
+              f'the Non-SEPA pill reads "Non-SEPA", white on a filled '
+              f'background ({style})')
+        stall = pg.eval_on_selector_all(
+            '.spill-stall', 'els => els.map(e => e.textContent.trim())')
+        check(len(stall) == 1
+              and re.match(r'^⚠️ Intro \d+:\d\d$', stall[0]),
+              f'the timing pill names the section and the elapsed in it '
+              f'({stall})')
+        # ROW TINT IS OUTCOME (Julian, 2026-08-13, second pass): finished rows
+        # are green AT THE ROW level, distinct from the stalled amber, and the
+        # tint must not swallow the pills — measured, not eyeballed.
+        tints = pg.evaluate('''() => {
+            const bg = sel => { const e = document.querySelector(sel);
+                return e ? getComputedStyle(e).backgroundColor : null; };
+            return {finished: bg('tbody tr.finished-row td'),
+                    stalled: bg('tbody tr.stalled td'),
+                    pill: bg('tbody tr.finished-row .spill-finished'),
+                    nonsepa_fg: (() => { const e = document.querySelector(
+                        'tbody tr.finished-row .spill-nonsepa');
+                        return e ? getComputedStyle(e).color : null; })()};
+        }''')
+        check(tints['finished'] not in (None, 'rgba(0, 0, 0, 0)',
+                                        'transparent'),
+              f'finished rows carry a GREEN row tint — outcome readable at '
+              f'the row level ({tints["finished"]})')
+        check(tints['finished'] != tints['stalled'],
+              f'the finished tint is distinct from the stalled amber '
+              f'({tints["finished"]} vs {tints["stalled"]})')
+        check(tints['pill'] is not None
+              and tints['pill'] != tints['finished'],
+              f'the finished pill keeps its own background against the row '
+              f'tint — the green row is not monotone ({tints["pill"]} on '
+              f'{tints["finished"]})')
+        check(tints['nonsepa_fg'] == 'rgb(255, 255, 255)',
+              'the red Non-SEPA pill stays white-on-red ON the green row — '
+              'the combination an operator most needs to notice')
+        pg.screenshot(path=os.path.join(OUT_DIR, 'pills_lab.png'),
+                      full_page=True)
+
+        # --- the prolific session: monitor climb + no return click --------
+        pg.goto(f'{base}{ed.URL_BASE}/{pro.code}')
+        pg.wait_for_selector('tbody tr td.c-label', timeout=15000)
+        mon = pg.eval_on_selector_all(
+            '.spill-monitor', 'els => els.map(e => e.textContent.trim())')
+        check(len(mon) == 1 and re.match(r'^👀 2 of \d+$', mon[0]),
+              f'the monitor pill shows the CLIMBING count against the '
+              f'configured limit ({mon})')
+        ret = pg.eval_on_selector_all(
+            '.spill-return', 'els => els.map(e => e.textContent.trim())')
+        check(ret == ['↩ no return click'],
+              f'the finisher with no recorded click carries the return pill '
+              f'({ret})')
+        # …and it coexists with the finished tick on the same row.
+        both_ret = pg.evaluate('''() => {
+            const rows = [...document.querySelectorAll('tbody tr')];
+            return rows.filter(r => r.querySelector('.spill-finished')
+                                 && r.querySelector('.spill-return')).length;
+        }''')
+        check(both_ret == 1,
+              f'the return pill sits NEXT TO the finished tick, not instead '
+              f'of it ({both_ret})')
+        counts_txt = pg.text_content('#counts')
+        check('👤 2 of 2 arrived' in counts_txt,
+              f'the arrival count reads the room ({counts_txt!r})')
+        pg.screenshot(path=os.path.join(OUT_DIR, 'pills_prolific.png'),
+                      full_page=True)
+        browser.close()
+
+
 def main():
     server = Server()
     server.start()
@@ -798,6 +980,7 @@ def main():
         check_http(server.base, lab, pro)
         check_browser(server.base, lab, pro)
         check_row_order(server.base)
+        check_pills(server.base)
         # The overview last: it is the biggest staging job, and running it after
         # the assertions above means a failure there is not hidden behind it.
         check_overview(server.base, stage_overview(server.base))

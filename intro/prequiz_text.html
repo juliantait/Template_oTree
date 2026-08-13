@@ -16,7 +16,11 @@
 
    `is_reread_pass` comes from instructing.vars_for_template — a server-side
    value, not a round number typed into the template, so the two situations stay
-   distinguishable at exactly one place. #}
+   distinguishable at exactly one place.
+
+   THE BONUS RULE IS ALSO STATED in intro/instructions_text.html (the payment
+   overview) — deliberately (Julian, 2026-08-13): once there, once here as the
+   reminder right before the quiz. If the rule changes, edit BOTH. #}
 <div class="instruction-block prequiz-block">
     <h2>Before the quiz</h2>
     {% if is_reread_pass %}
@@ -25,8 +29,8 @@
     </p>
     {% else %}
     <p>
-        You will next see a quiz. If you get all questions correct on the first
-        attempt you get <strong>{{ quiz_bonus }}</strong>.
+        You will next see a quiz. If you get all questions on the instructions
+        correct on the first attempt you get <strong>{{ quiz_bonus }}</strong>.
     </p>
     {% endif %}
     <p>

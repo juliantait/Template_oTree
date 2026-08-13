@@ -222,6 +222,20 @@ INTRO_PAGE_STEPS = {'instructing': 'instructions', 'quiz': 'quiz'}
 # APP_STEPS above. DO NOT "simplify" this back into a step.
 UNMAPPED_STEP = 'unmapped'
 
+# What the TIMING PILL calls the phase (Julian, 2026-08-13: the warning names
+# the SECTION it applies to). Short, because it shares a pill with a time.
+# `instructions` and `quiz` are one phase here exactly as they share one
+# threshold in STALL_SETTING_BY_STEP; `task` says "round" because its
+# threshold and its elapsed are PER ROUND, not per task block (_stall_elapsed).
+STALL_SECTION_LABELS = {
+    'entry': 'Entry',
+    'instructions': 'Intro',
+    'quiz': 'Intro',
+    'task': 'Task round',
+    'questionnaire': 'Questionnaire',
+    UNMAPPED_STEP: 'Unplaced app',
+}
+
 # Terminal states OVERRIDE the timeline marker: the emoji + colour fill the
 # marker wherever it had reached, and the row's state cell names the state.
 # One emoji each, chosen to read across a room and to not look like each
@@ -484,6 +498,13 @@ def _session_context(session) -> dict:
         quiz_max = int(common.cfg(session.config, 'comprehension_max_failures'))
     except Exception:
         quiz_max = None
+    # Module flags read raw (.get — common.flag's rule); thresholds through
+    # the safe accessor, defensively.
+    try:
+        tab_monitor_max = int(common.cfg(session.config,
+                                         'tab_monitor_max_violations'))
+    except Exception:
+        tab_monitor_max = None
     return dict(
         rounds_total=rounds_total,
         quiz_max_failures=quiz_max,
@@ -491,6 +512,13 @@ def _session_context(session) -> dict:
         exit_codes=_exit_codes(),
         earnings=_earnings_map(session),
         quiz_outcomes=_quiz_outcome_map(session),
+        non_sepa=_non_sepa_ids(session),
+        completion_redirects=bool(
+            session.config.get('prolific_completion_redirects')),
+        tab_monitor_on=bool(session.config.get('tab_monitor')),
+        tab_monitor_max=tab_monitor_max,
+        return_grace=max(0, int(_setting('DASHBOARD_RETURN_GRACE_SECONDS',
+                                         90))),
     )
 
 
@@ -579,6 +607,46 @@ def _quiz_outcome_map(session) -> dict:
     return out
 
 
+def _non_sepa_ids(session) -> set:
+    """participant_ids whose SEPA check came back NEGATIVE — the Non-SEPA
+    CONDITION pill's data. **LAB SESSIONS ONLY** (Julian, 2026-08-13).
+
+    The pill exists because a non-SEPA transfer may not work at all, which the
+    operator wants to know BEFORE the participant leaves the room — including
+    on a finished row, which is why it is a condition, not an outcome.
+
+    Three deliberate narrowings, each Julian's call, none to be widened:
+      * `sepa == 0` ONLY. `sepa` is nullable and NULL means the check NEVER
+        RAN (every Prolific participant, and any config with
+        collect_bank_details off — see CODEBOOK.md's three-state note). Null
+        must read as NO PILL: absence of a check is not a payment problem.
+      * NO pill for a non-Dutch but in-SEPA account (`sepa == 1`). There is no
+        yellow payment state — the bank form's BIC rule already handled the
+        non-Dutch case (outro.Demographics.error_message), and that rule is a
+        DIFFERENT question from this one; do not collapse the two predicates.
+      * Lab sessions only. Prolific participants are never asked for bank
+        details, so even a hand-edited `sepa=0` row in a Prolific session gets
+        no pill — payment there goes through the platform, and the pill would
+        send an operator chasing a form that does not exist.
+
+    Defensive like _earnings_map: any failure degrades to "no pills", never a
+    dead dashboard."""
+    out = set()
+    try:
+        import common
+        if not common.is_lab(session.config):
+            return out
+        from otree.common import get_models_module
+        from otree.database import db
+        Player = get_models_module('outro').Player
+        for row in db.query(Player).filter(Player.session_id == session.id):
+            if row.field_maybe_none('sepa') == 0:
+                out.add(row.participant_id)
+    except Exception:
+        logger.exception('[dashboard] sepa read failed')
+    return out
+
+
 def _participant_row(pp, ctx, now) -> dict:
     """ONE ROW of the dashboard, as a plain dict. THE extension point:
     everything returned here reaches the /data JSON verbatim.
@@ -652,22 +720,65 @@ def _participant_row(pp, ctx, now) -> dict:
     # --- INTRO TIME: the whole intro app, both rounds -------------------------
     intro = _intro_seconds(stamps, step, terminal, finished, now)
 
-    # --- amber: too long on one page, AGAINST THIS PHASE'S THRESHOLD ---------
+    # --- amber: too long IN THIS PHASE, against the phase's threshold --------
     # _last_page_timestamp is stamped by oTree when the participant lands on a
     # page, so (now - it) is time on the CURRENT page. Only an ACTIVE row can
     # stall: terminal and finished rows are not waiting on anything, and a
     # never-arrived row has no page to be stuck on.
-    # The threshold now comes from the row's own step (round-2 item 6) — see
-    # STALL_SETTING_BY_STEP for why one number for the whole flow could not be
-    # right for both ends of it.
+    # The threshold comes from the row's own step (round-2 item 6); the ELAPSED
+    # it is compared against is per phase too (the pills change, 2026-08-13) —
+    # see _stall_elapsed for which phase counts a page, a round or the whole
+    # block, and why.
     seconds_on_page = None
     ts = pp._last_page_timestamp
     if pp.visited and isinstance(ts, int) and ts > 0:
         seconds_on_page = max(0, int(now) - ts)
     active = pp.visited and terminal is None and not finished
     stall_limit = ctx['stall_seconds'].get(step, DEFAULT_STALL_SECONDS)
-    stalled = bool(active and seconds_on_page is not None
-                   and seconds_on_page >= stall_limit)
+    stall_elapsed = _stall_elapsed(step, stamps, intro, seconds_on_page, now)
+    stalled = bool(active and stall_elapsed is not None
+                   and stall_elapsed >= stall_limit)
+
+    # --- finished HERE but never clicked back to the platform ----------------
+    # A participant who reached Results is `finished` in our data — but on
+    # Prolific their submission stays open until they click "Back to Prolific",
+    # and an open submission is an UNPAID one that this table otherwise renders
+    # as a normal finisher. The stamp is best-effort instrumentation
+    # (outro.results_live_method), so this pill is a prompt to look, never a
+    # verdict.
+    #
+    # GATED ON prolific_completion_redirects, EXPLICITLY, AND THE GATE IS THE
+    # POINT (Julian, 2026-08-13) — do not "simplify" this to
+    # finished-and-not-returned: with redirects off there is NO button to have
+    # clicked, so the flag would be meaningless and would fire on every lab
+    # participant forever. The grace period exists because a completer reading
+    # their receipt has legitimately not clicked yet (see
+    # DASHBOARD_RETURN_GRACE_SECONDS in settings.py). A legacy row whose
+    # `finished` was derived without a stamp never flags — no clock to judge.
+    awaiting_return = False
+    if finished and ctx['completion_redirects']:
+        fin_ts = stamps.get('finished')
+        awaiting_return = bool(
+            isinstance(fin_ts, (int, float))
+            and (now - fin_ts) >= ctx['return_grace']
+            and 'prolific_return_clicked' not in stamps)
+
+    # --- tab-monitor violations while they CLIMB -----------------------------
+    # Until now the operator saw only the disqualification, after it happened.
+    # Ship the server-authoritative count (common.focus_live_method's
+    # focus_loss_count) with the configured limit next to it, so somebody at 2
+    # of 3 can be spoken to BEFORE ejection. Active rows only: once terminal
+    # the DQ pill says it, and a finisher is past intervening — the count
+    # itself stays in the export either way. None (not 0) when there is
+    # nothing to show, so the client renders no pill at all.
+    monitor_count = None
+    if ctx['tab_monitor_on'] and terminal is None and not finished:
+        try:
+            c = int(v.get('focus_loss_count') or 0)
+        except Exception:
+            c = 0
+        if c >= 1:
+            monitor_count = c
 
     # --- entry-only: de-emphasised, and hideable by the header toggle --------
     # NOT-ARRIVED ONLY (changed 2026-08-12 on review, from "anyone whose step
@@ -702,6 +813,24 @@ def _participant_row(pp, ctx, now) -> dict:
         # Which threshold this row is judged against, so the state cell can name
         # it — "8:12 on page" means nothing without "…and the limit here is 3m".
         stall_limit=stall_limit,
+        # THE NUMBER THE THRESHOLD ACTUALLY JUDGED, which is also the number
+        # the timing pill SHOWS — one value for display and detection, so the
+        # pill can never say "Intro 12:00" about a verdict reached on some
+        # other quantity. stall_section is the phase name written next to it.
+        stall_elapsed=stall_elapsed,
+        stall_section=STALL_SECTION_LABELS.get(
+            step, STEP_LABELS.get(step, str(step))),
+        # Non-SEPA CONDITION pill (lab only; sepa == 0 only — see
+        # _non_sepa_ids for the three deliberate narrowings). A condition, not
+        # an outcome: it stays True on a finished row.
+        non_sepa=bool(pp.id in ctx['non_sepa']),
+        # Finished but no "Back to Prolific" click recorded (redirect sessions
+        # only — see the gate comment above, which is load-bearing).
+        awaiting_return=awaiting_return,
+        # Tab-monitor count while climbing, with the limit it climbs towards
+        # (config value, never a number in the markup).
+        monitor_count=monitor_count,
+        monitor_max=ctx['tab_monitor_max'],
         entry_only=entry_only,
         current_page=str(pp._current_page_name or ''),
         # The app name ONLY when it could not be placed on the timeline, so the
@@ -879,6 +1008,45 @@ def _intro_seconds(stamps, step, terminal, finished, now) -> dict:
     # consent never got there, and reporting 0 would be a claim about time they
     # never spent.
     return dict(seconds=None, live=False)
+
+
+def _stall_elapsed(step, stamps, intro, seconds_on_page, now):
+    """The elapsed time the phase threshold is judged against — and the number
+    the timing pill SHOWS, so display and detection cannot disagree (the pills
+    change, 2026-08-13: the warning names the SECTION and the elapsed IN it).
+
+    PER PHASE, matching what each threshold MEANS in settings.py — the elapsed
+    and the threshold must measure the same thing, or the colour is unreadable:
+
+      * entry — time on the CURRENT page. The 60s entry threshold is a
+        per-page number: cumulative time across the entry block includes
+        reading the consent text, which legitimately takes minutes, so a
+        block-level 60s would flag every careful reader.
+      * instructions/quiz — the WHOLE intro app so far (the live intro clock,
+        _intro_seconds — one implementation, not a second stopwatch). The 480s
+        threshold is documented as "instructions + quiz, whole intro app";
+        judging it against one page under-fired: somebody could sit 7 minutes
+        on each half and never trip a per-page check.
+      * task — time on the current page, because the threshold is PER SINGLE
+        ROUND ("A STUDY WITH A LONGER TASK PAGE MUST RAISE THIS",
+        settings.py) and a round has no start stamp; its decision page is
+        where the time goes, so page time is the round to within a click.
+      * questionnaire — since `task_done`, the block's start stamp. The 300s
+        threshold is written for the whole outro (demographics + bank form).
+
+    Falls back to page time wherever a stamp is missing (a participant already
+    mid-flow when the stamp was deployed), which is the pre-pills behaviour.
+    """
+    if step in ('instructions', 'quiz'):
+        if intro['live'] and intro['seconds'] is not None:
+            return intro['seconds']
+        return seconds_on_page
+    if step == 'questionnaire':
+        t = stamps.get('task_done')
+        if isinstance(t, (int, float)):
+            return max(0, int(now - t))
+        return seconds_on_page
+    return seconds_on_page
 
 
 # =============================================================================
@@ -1283,10 +1451,32 @@ table.dash td { padding: 6px 10px; border-bottom: 1px solid var(--line);
 table.dash tr:last-child td { border-bottom: none; }
 
 tr.entry-only td { opacity: .45; }        /* de-emphasised, still there */
-tr.stalled td { background: #fff3e0; }    /* AMBER: too long on one page */
+/* AMBER ROW TINT: KEPT alongside the yellow timing pill, deliberately (the
+   pills change, 2026-08-13). The two are complementary, not duplicate: the
+   tint is the across-the-room salience — what makes a stalled row findable in
+   a 20-row table without reading it — and the pill carries the FACTS (which
+   phase, how long). Dropping the tint would leave a small pill in the last
+   column as the only signal; dropping the pill would restore "something is
+   slow" with no what-or-how-much. If the pair ever reads as noisy on a real
+   lab monitor, the tint is the one to drop — the pill holds the information. */
+tr.stalled td { background: #fff3e0; }
 tr.stalled td.c-label { box-shadow: inset 4px 0 0 var(--dash-amber); }
 tr.terminal-row td { background: #fdf1f2; }
-tr.finished-row td.c-state { background: #eaf6ef; }
+/* ROW TINT IS OUTCOME, PILLS ARE CONDITIONS (Julian, 2026-08-13). The tint is
+   ONE consistent signal, readable across the room: GREEN finished, RED ended
+   early, AMBER stalled, untinted still going. The four are mutually exclusive
+   by construction (stalled requires an active row; finished requires no
+   terminal state), so there is no precedence to resolve — but the rule to
+   hold when adding the next state is the channel split: a CONDITION never
+   touches the row. A finished non-SEPA participant keeps the GREEN row and
+   the RED pill — the row says they completed, the pill says something about
+   them still needs attention. Turning that row red would collapse outcome and
+   condition back into one channel, which is exactly what the pills separated.
+   The green is deliberately LIGHTER than the green pills' own background
+   (#eaf6ef) so the finished tick, the earnings pill and the green quiz cell
+   keep their edges against it instead of dissolving into a monotone row —
+   the row colour only has to be scannable, not loud. */
+tr.finished-row td { background: #f1faf4; }
 tr.error-row td { color: var(--danger); }
 /* UNRECOGNISED APP: its own colour, not amber and not the terminal pink — it is
    neither a slow participant nor an ended one, it is a gap in APP_STEPS. */
@@ -1306,6 +1496,11 @@ tr.unmapped-row td.c-label { box-shadow: inset 4px 0 0 var(--dash-unmapped); }
    line starts and ends at the centre of the first and last markers. Hard-coding
    them was two more copies of "how many steps are there" — add a seventh step
    and a fixed 6-track grid would silently drop it off the end of the row. */
+/* 46%, NOT LESS: narrowing this (44% was tried when the state column became
+   pills) squeezes the header grid until the long step labels hit their
+   min-content floor and the six tracks stop being equal — measured as a 3.8px
+   spread by dashboard_render_check. The pills wrap inside their own cell
+   instead (.state-pills is flex-wrap), so they need no width ceded to them. */
 .c-timeline { width: 46%; }
 .tl-header, .tl { display: grid;
   grid-template-columns: repeat(__STEP_COUNT__, 1fr); }
@@ -1391,12 +1586,41 @@ tr.unmapped-row td.c-label { box-shadow: inset 4px 0 0 var(--dash-unmapped); }
 .th-info { cursor: help; color: var(--ink-mute); font-size: .95rem;
   margin-left: 4px; }
 .th-info:hover, .th-info:focus { color: var(--accent); }
+/* --- THE STATE COLUMN: A COLLECTION OF PILLS (Julian, 2026-08-13) ----------
+   Not a single state: OUTCOME pills (a terminal state, the green finished
+   tick) and CONDITION pills (the timing warning, the lab's Non-SEPA flag)
+   ACCUMULATE in one cell — a finished row keeps its condition pills, because
+   finishing does not make a condition go away. See stateHTML for the order.
+   flex-wrap, so several pills stack to a second line instead of clipping
+   (times and money must never truncate — the same rule as .pill above). */
 .c-state { width: 13%; font-size: .85rem; }
-.c-state .emoji { font-size: 1.15rem; margin-right: 5px; }
-.c-state .done-tick { color: var(--ok); font-weight: 650; }
-.c-state .stall-note { color: var(--dash-amber); font-weight: 650;
-  white-space: nowrap; }
-.c-state .unmapped-note { color: var(--dash-unmapped); font-weight: 650; }
+.state-pills { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.spill { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px;
+  border-radius: 999px; font-size: .78rem; font-weight: 650;
+  white-space: nowrap; border: 1px solid transparent;
+  font-variant-numeric: tabular-nums; }
+.spill .emoji { font-size: .95rem; }
+.spill-finished { background: #eaf6ef; border-color: #bfe3cd; color: #1f7a46; }
+.spill-terminal { background: #fdeaec; border-color: var(--danger);
+  color: var(--danger); }
+/* TIMING: yellow, filled. The pill names WHICH phase is slow and by how much;
+   the amber row tint (above) is what makes the row findable at a glance. */
+.spill-stall { background: #fff3c9; border-color: #eab308;
+  color: var(--dash-amber); }
+/* NON-SEPA: red background, white text (Julian's spec) — the one pill about
+   money possibly not arriving, so it outshouts everything else in the cell. */
+.spill-nonsepa { background: var(--danger); border-color: var(--danger);
+  color: #fff; }
+/* MONITOR CLIMBING: outlined red — the DQ's own colour and its own 👀, at
+   reduced weight, because it is that state approaching rather than arrived. */
+.spill-monitor { background: var(--card-bg); border-color: var(--danger);
+  color: var(--danger); }
+/* NO RETURN CLICK: outlined amber — a payment-flow worry, not a certainty
+   (the stamp is best-effort), so quieter than the filled pills. */
+.spill-return { background: var(--card-bg); border-color: var(--dash-amber);
+  color: var(--dash-amber); }
+.spill-unmapped { background: #f5f1fd; border-color: var(--dash-unmapped);
+  color: var(--dash-unmapped); }
 
 /* The two colours base.css has no token for: an operator-screen amber and the
    unrecognised-app violet. Declared as tokens rather than inlined so the row
@@ -1491,34 +1715,80 @@ function quizHTML(q) {
          (title ? ' title="' + esc(title) + '"' : '') + '>' + body + '</div>';
 }
 
+/* THE STATE COLUMN IS A COLLECTION OF PILLS (Julian, 2026-08-13), not one
+   state. Two kinds share the cell and ACCUMULATE:
+     * OUTCOME pills — how the row ended: a terminal state, or the green
+       finished tick. At most one of these.
+     * CONDITION pills — facts that persist REGARDLESS of outcome: the yellow
+       timing warning while a phase runs long, the lab's red Non-SEPA payment
+       flag, the violet unplaced-app notice. A FINISHED participant with a
+       flagged condition shows BOTH the tick and the condition pill — finishing
+       does not make the condition go away.
+   Order: outcome first, then conditions, so a row reads "what happened, then
+   what to know about it". */
 function stateHTML(row) {
+  var pills = [];
   if (row.terminal)
-    return '<span class="emoji">' + row.terminal_emoji + '</span>' +
-           esc(row.terminal_label);
-  if (row.finished) return '<span class="done-tick">✓ finished</span>';
-  /* UNRECOGNISED APP: the timeline shows no marker for this row, so the state
-     cell has to say WHY — otherwise a row with no marker reads as a glitch.
-     Names the app, because that is what somebody types into APP_STEPS. The
-     stall time is appended rather than replaced: both facts matter. */
+    pills.push('<span class="spill spill-terminal"><span class="emoji">' +
+               row.terminal_emoji + '</span>' + esc(row.terminal_label) +
+               '</span>');
+  else if (row.finished)
+    pills.push('<span class="spill spill-finished">✓ finished</span>');
+  /* UNRECOGNISED APP: the timeline shows no marker for this row, so this cell
+     has to say WHY — otherwise a row with no marker reads as a glitch. Names
+     the app, because that is what somebody types into APP_STEPS. Other pills
+     accumulate next to it: both facts matter. */
   if (row.step === 'unmapped')
-    return '<span class="emoji">⁉️</span>' +
-           '<span class="unmapped-note">app “' + esc(row.unmapped_app) +
-           '” not on the timeline</span>' +
-           (row.stalled ? '<span class="stall-note"> · ' +
-                          fmtSecs(row.seconds_on_page) + ' on page</span>' : '');
-  /* The stall note names THE THRESHOLD IT TRIPPED as well as the time on the
-     page. With one global threshold the number spoke for itself; with a
-     per-phase threshold (round-2 item 6) "4:10 on page" is amber during entry
-     and unremarkable during the task, so the row has to say which rule it is
-     being judged by or the colour becomes unreadable. */
+    pills.push('<span class="spill spill-unmapped" title="add this app to ' +
+               'APP_STEPS in experimenter_dashboard.py">⁉️ app “' +
+               esc(row.unmapped_app) + '” not on the timeline</span>');
+  /* THE TIMING PILL names WHICH phase is slow and by how much: the section,
+     and the elapsed IN that section — which is exactly the number the
+     per-phase threshold judged (row.stall_elapsed, see _stall_elapsed), never
+     a second measurement that could disagree with the verdict. The threshold
+     it tripped is in the tooltip; the header's ⓘ lists all four. */
   if (row.stalled)
-    return '<span class="stall-note">⚠️ ' + fmtSecs(row.seconds_on_page) +
-           ' on page</span>' +
-           (row.stall_limit != null
-             ? '<span style="color:var(--ink-mute)"> · limit ' +
-               fmtSecs(row.stall_limit) + '</span>' : '');
-  if (!row.arrived) return '<span style="color:var(--ink-mute)">not arrived</span>';
-  return '';
+    pills.push('<span class="spill spill-stall" title="' +
+               fmtSecs(row.stall_elapsed) + ' in this phase — amber past ' +
+               fmtSecs(row.stall_limit) + ' (tune in settings.py; all ' +
+               'thresholds under the State header’s ⓘ)">⚠️ ' +
+               esc(row.stall_section) + ' ' + fmtSecs(row.stall_elapsed) +
+               '</span>');
+  /* TAB-MONITOR COUNT WHILE IT CLIMBS: count and limit TOGETHER (a bare "2"
+     is unreadable; "2 of 3" is somebody about to be ejected). The limit is
+     the configured tab_monitor_max_violations, shipped in the row — never a
+     number written into this markup. Active rows only: after the DQ the
+     terminal pill says it. */
+  if (row.monitor_count != null)
+    pills.push('<span class="spill spill-monitor" title="Tab/focus losses ' +
+               'counted by the server monitor — disqualified on reaching ' +
+               'the limit (tab_monitor_max_violations). Someone to speak to ' +
+               'BEFORE that happens.">👀 ' + row.monitor_count +
+               (row.monitor_max != null ? ' of ' + row.monitor_max : '') +
+               '</span>');
+  /* FINISHED BUT NO RETURN CLICK (redirect sessions only — the server sends
+     awaiting_return only when prolific_completion_redirects is on, because
+     with no button there is nothing to have clicked; see _participant_row's
+     gate comment). Best-effort: the stamp rides the live socket, so treat as
+     "go look", not proof. */
+  if (row.awaiting_return)
+    pills.push('<span class="spill spill-return" title="Finished the study ' +
+               'but no “Back to Prolific” click was recorded — their ' +
+               'submission may still be open (unpaid) on the platform">' +
+               '↩ no return click</span>');
+  /* NON-SEPA (lab only): the bank form's SEPA check recorded a NO. The server
+     sends non_sepa only for sepa === 0 in a lab session — null (the check
+     never ran: every Prolific row, and any lab config not collecting bank
+     details) is NO pill, and a non-Dutch but in-SEPA account is NO pill
+     either (see _non_sepa_ids for all three narrowings). */
+  if (row.non_sepa)
+    pills.push('<span class="spill spill-nonsepa" title="This participant’s ' +
+               'IBAN is outside the SEPA area — check the transfer will work ' +
+               'before they leave">Non-SEPA</span>');
+  if (!pills.length)
+    return row.arrived ? ''
+         : '<span style="color:var(--ink-mute)">not arrived</span>';
+  return '<div class="state-pills">' + pills.join('') + '</div>';
 }
 
 function renderRow(row, meta) {
@@ -1635,8 +1905,9 @@ function paintStallLegend(data) {
      never runs and the table never paints at all. (Measured: it did exactly
      that on the first attempt.) */
   var NL = '\\n';
-  el.title = 'A row turns amber after too long on ONE page. The limit is per ' +
-    'phase:' + NL + data.stall_legend.map(function (p) {
+  el.title = 'A row turns amber after too long in one PHASE. Entry and Task ' +
+    'count the current page/round; Intro and Questionnaire count the whole ' +
+    'phase. The limits:' + NL + data.stall_legend.map(function (p) {
       return '  • ' + p.label + ': ' + fmtSecs(p.seconds);
     }).join(NL) +
     NL + 'Tune them in settings.py (DASHBOARD_STALL_SECONDS_*).';
@@ -1653,6 +1924,13 @@ function repaint(data) {
   document.getElementById('summary').innerHTML = summaryHTML(data);
   paintStallLegend(data);
   var n = data.rows.length,
+      /* ARRIVAL COUNT (Julian, 2026-08-13): how full the room is, at a
+         glance. 👤 (bust-in-silhouette) rather than a person emoji: it
+         renders as a solid neutral glyph with no face and no skin tone, so
+         it stays legible at header size — with the standing caveat that
+         emoji rendering depends on the operator machine's fonts
+         (_ai/dashboard_notes.md). */
+      arrived = data.rows.filter(function (r) { return r.arrived; }).length,
       fin = data.rows.filter(function (r) { return r.finished; }).length,
       term = data.rows.filter(function (r) { return r.terminal; }).length,
       stalled = data.rows.filter(function (r) { return r.stalled; }).length,
@@ -1662,7 +1940,8 @@ function repaint(data) {
       unmapped = data.rows.filter(function (r) {
         return r.step === 'unmapped'; }).length;
   document.getElementById('counts').textContent =
-    n + ' participants · ' + fin + ' finished · ' + term + ' ended early' +
+    n + ' participants · 👤 ' + arrived + ' of ' + n + ' arrived · ' +
+    fin + ' finished · ' + term + ' ended early' +
     (stalled ? ' · ' + stalled + ' stalled' : '') +
     (unmapped ? ' · ⁉️ ' + unmapped + ' in an app not on the timeline' : '');
 }

@@ -178,6 +178,46 @@ def main():
         check(visited[-1] in TERMINAL,
               f'and the participant still reached an ending ({visited[-1]})')
 
+    section('prolific: completion codes frozen out — the URL carries the '
+            'PLACEHOLDER, never None')
+    # Julian, 2026-08-13. A session created before the prolific_*_code keys
+    # existed genuinely LACKS them while the current settings look correct, and
+    # settings._prelaunch_problems checks the CURRENT config at launch, so it
+    # cannot catch this — the wrong URL appears at RUNTIME for that participant.
+    # outro.completion_link therefore reads the codes through common.cfg: the
+    # frozen session falls back to the shipped REPLACE_* placeholder, so both
+    # failure modes ("never set a real code" and "fixed the codes but forgot to
+    # recreate the session") present the SAME recognisable symptom. Somebody
+    # seeing REPLACE_CC in a completion URL knows instantly what it means;
+    # '?cc=None' looks like a bug in our own code and tells them nothing.
+    # ONLY the code keys are stripped here — prolific_completion_redirects stays
+    # on, or the link would (correctly) not render at all.
+    import settings as _settings
+    session = ot.create_session('prolific', num_participants=1)
+    removed = ot.strip_config_keys(
+        session,
+        ['prolific_cc_code', 'prolific_noconsent_code', 'prolific_dq_code'])
+    check(sorted(removed) == sorted(
+        ['prolific_cc_code', 'prolific_noconsent_code', 'prolific_dq_code']),
+        f'exactly the three code keys stripped ({sorted(removed)})')
+    pcode = ot.participant_codes(session)[0]
+    visited, statuses = drive(client, pcode, correct)
+    check(all(s < 500 for s in statuses),
+          f'no page 5xx with the code keys missing (max status {max(statuses)})')
+    if check(bool(visited) and visited[-1] == 'Results',
+             f'the participant reached Results (ended on '
+             f'{visited[-1] if visited else None})'):
+        # Re-fetch the participant's current page (Results) and assert on the
+        # RAW HTML — the href is structure, not copy.
+        resp = client.get(f'/InitializeParticipant/{pcode}', allow_redirects=True)
+        placeholder = _settings.SESSION_CONFIG_DEFAULTS['prolific_cc_code']
+        check(f'?cc={placeholder}' in resp.text,
+              f'the completion link carries the shipped placeholder '
+              f'({placeholder!r}) — the instantly recognisable symptom')
+        check('cc=None' not in resp.text,
+              "and never the string 'None' (which reads as a bug of ours and "
+              'tells the operator nothing)')
+
     section('common.cfg: shipped default for a known key, NAMED error otherwise')
     check(hasattr(common, 'cfg'),
           'common.cfg exists (the safe accessor CLAUDE.md requires)')

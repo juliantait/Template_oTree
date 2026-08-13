@@ -88,15 +88,14 @@
    to shrink below its content; miss one link and the page silently stops
    scrolling and overflows instead.
 
-   THE CHAIN IS ONLY TWO LINKS, and that is not an oversight. instructing.html
-   writes a <form method="post"> inside .experimental-content, but oTree has
-   ALREADY wrapped the whole page in <form class="otree-form">, and the HTML5
-   parsing spec drops a nested form start tag. Verified against the rendered page
-   with a spec-compliant parser: the real DOM is
+   THE CHAIN IS ONLY TWO LINKS, and that is not an oversight. The DOM is
        .experimental-content > .instructions > .instruction-wrapper
-   with no form element in between. So there is deliberately no `> form` rule
-   here — it would match nothing. If that nesting is ever cleaned up, this chain
-   needs a form link adding. */
+   with no form element in between: oTree wraps the whole PAGE in
+   <form class="otree-form">, and instructing.html deliberately writes no form
+   of its own. (A nested <form method="post"> start tag used to sit there — the
+   HTML5 parsing spec DROPS it, so it never reached the DOM; it was removed
+   2026-08-13 so the markup matches this chain.) If an element is ever
+   introduced between these links, it needs `min-height: 0` adding here. */
 .instructions { flex: 1 1 auto; min-height: 0; }
 
 .instruction-wrapper {
@@ -232,6 +231,49 @@
     margin-top: 6px;
 }
 .instruction-figure svg { display: block; width: 100%; height: auto; }
+
+/* COMPONENT — payoff matrix. INTENTION: a worked-example game/points table
+   inside the instructions (the shipped Stag Hunt uses it; any two-way payoff
+   or outcome table can). Centred in the reading band, tabular numerals, header
+   cells on the sunken ground. `.axis` marks the who-chooses labels;
+   `.your-payoff` highlights the participant's own number inside a cell.
+   Colours come from the design tokens (base.css), not hardcoded hex — a table
+   that hardcodes its greys drifts away from the rest of the study the first
+   time the palette is touched. Moved here from a <style> block in
+   intro/instructions_text.html (2026-08-13): content files carry no styling
+   (CLAUDE.md), and that block was also re-injected inside the quiz's re-read
+   dialog. Specimen in _static/global/html/template.html. */
+.payoff-matrix {
+    margin: 12px auto;
+    border-collapse: collapse;
+    font-size: .92em;
+}
+.payoff-matrix th,
+.payoff-matrix td {
+    border: 1px solid var(--line-strong);
+    padding: 10px 16px;
+    text-align: center;
+    min-width: 92px;
+}
+.payoff-matrix thead th,
+.payoff-matrix tbody th {
+    background: var(--sunken);
+    font-weight: 600;
+    color: var(--ink);
+}
+.payoff-matrix td {
+    font-feature-settings: "tnum";
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-soft);
+}
+.payoff-matrix .axis {
+    font-style: italic;
+    color: var(--ink-mute);
+}
+.your-payoff {
+    font-weight: 700;
+    color: var(--accent);
+}
 
 /* The step counter: quiet chrome, not body copy. It sits BETWEEN the two pager
    buttons (change_requests item 3) instead of on a row of its own above them,

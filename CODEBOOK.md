@@ -120,9 +120,14 @@ own guess, recorded for comparison and never enforced.
 1. add it to `common.SCREENOUT_CAUSES` (the registry + its export meaning);
 2. set it at your gate via `common.set_screened_out(participant, '<cause>')`,
    which records the flag, the `-4` code and the cause together;
-3. add an `{% elif %}` branch with its own sentence in
-   `before/screened_out.html` (the page a screened-out participant is held on),
-   and in `outro/Ended.html` if your gate fires after entry.
+3. give it its own sentence. The three physical device types share ONE template
+   branch, worded from `detected_device_label` (`common.DEVICE_TYPE_LABELS`, via
+   `common.screenout_vars` — the one cause→noun mapping, so the two pages cannot
+   drift); a NEW cause gets no label and therefore falls to the neutral fallback
+   until you either add its own `{% elif %}` branch in
+   `before/screened_out.html` (the page a screened-out participant is held on)
+   and in `outro/Ended.html` (if your gate fires after entry), or — only if it
+   really is a fifth device type — add its label to `DEVICE_TYPE_LABELS`.
 
 The ending picks its copy from the **cause**, never from the bare exit code.
 `mobile` currently says "This study needs a computer" — if a new gate were to
@@ -151,6 +156,7 @@ A dict `{stage_name: epoch_seconds}` filled as the participant clears each stage
 | `instructions_reread_done` | Lab only: leaving the re-read instructions page (intro round 2). |
 | `task_done` | Completing the last displayed round of `main`. |
 | `finished` | Reaching the final results page. |
+| `prolific_return_clicked` | Prolific-redirect sessions only, **best-effort**: the first click on the results page's "Back to Prolific" link (`outro.results_live_method`). It rides the page's live socket just before the browser navigates away, so JS off or a dropped socket leaves it ABSENT for somebody who really did return — absence means "no click recorded", never "did not return". Feeds the dashboard's "no return click" pill (a prompt to look, not a verdict); never read by anything participant-facing. |
 
 **Measuring from the end of the entry block.** Use **`left_before_app`**. Which
 page actually ends that block is CONFIG-DEPENDENT — `consent` in the lab,
@@ -350,8 +356,11 @@ Fill in per-study fields as you build the task. The template ships with:
     entry never dropped); the flat facts to filter on are the participant fields
     `screened_out` and `screenout_cleared`.
 - `intro.Player`: the quiz fields from `intro/quiz_items.py`,
-  `num_failed_attempts`, and `quiz_attempt_log` (every graded submission — see
-  the section above). Two rounds: round 2 is the lab re-read pass, so for
+  `num_failed_attempts`, `quiz_attempt_log` (every graded submission — see
+  the section above), and `redoinstructions` (`1` on the quiz submission that
+  took the lab's one-time re-read offer, else `0`/empty; a quiz-page form
+  field, so it is only ever written by the quiz POST).
+  Two rounds: round 2 is the lab re-read pass, so for
   every participant who never takes the re-read offer (all Prolific and most
   lab participants) the round-2 row is empty — expected, not data loss.
   `participant.instructions_reread_used` records whether the pass was taken;
@@ -362,6 +371,17 @@ Fill in per-study fields as you build the task. The template ships with:
 - `outro.Player`: demographics + payment fields (`age`, `gender`, `bank`,
   `bic`, `sepa`, `earned`, `payouts`, …), and `feedback` (free text, collected
   only when the `pilot_feedback` flag is on).
+  - **`sepa` has three states (CHANGED 2026-08-13): `1` = IBAN checked, inside
+    SEPA; `0` = IBAN checked, OUTSIDE SEPA; empty = the check never ran** — no
+    bank details were collected (every Prolific participant, and any config with
+    `collect_bank_details` off). Until this date the field shipped `initial=1`,
+    which collapsed "checked, fine" with "never asked": every Prolific row
+    exported `sepa=1` as if a SEPA check had passed. A lab participant whose row
+    holds `1` or `0` means exactly what it did before; only the never-asked rows
+    change, from a false `1` to empty. The Results-page warning fires on
+    `sepa == 0` and empty is not `0`, so participants who were never asked stop
+    matching a warning that was never about them. The field is nullable: code
+    reads it with `field_maybe_none`, never bare (CLAUDE.md).
 - `participant`: see `PARTICIPANT_FIELDS` in `settings.py`.
 
 **Removed columns (2026-08-12).** Six columns that no code path ever wrote or

@@ -55,11 +55,11 @@ function dismissQuizModal() {
     } catch (e) { /* never block the quiz */ }
 }
 
+// Taking the lab re-read offer. No answer fill here: the server skips grading
+// on a redoinstructions=1 POST while the offer is open (quiz.error_message),
+// and outside DEBUG window.quizSolutions is empty anyway.
 function redoInstructions() {
     submitFormBehindVeil(null, function () {
-        if (Array.isArray(window.quizSolutions)) {
-            setFormValues(window.quizSolutions);
-        }
         setValue('redoinstructions', 1);
     });
 }

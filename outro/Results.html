@@ -7,7 +7,6 @@
     <div class="screen-card">
         <div class="experimental-header">
             <h2 class="header-title">Results</h2>
-            <p class="header-text"></p>
         </div>
         <div class="experimental-content">
             {# THE RECEIPT (change_requests item 11): a compact centred block —
@@ -149,68 +148,44 @@
 
         </div>
 
-        <!-- Pinned at the foot of the card, NOT inside .experimental-content.
-             This is the longest page in the study (the per-round table), so it is
-             the one most likely to scroll — the completion button must stay on
-             screen rather than scrolling away with the table. -->
-        {# A REAL LINK, NOT A SCRIPTED BUTTON. It used to be
-           `<button onclick="backToProlific()">` with the URL only in js_vars, so
-           a completer whose JavaScript was blocked or broken had NO way to
-           return to Prolific: they finished the whole study, read their payment
-           total, and then could not submit their completion code — unpaid, and
-           indistinguishable in the data from somebody who abandoned on the last
-           page. (Their DATA was never at risk: the exit code is written when
-           this page loads, not when the button is clicked.) An <a href> needs no
-           script. ESCAPED because ibis does not auto-escape and the URL carries
-           a config-supplied completion code. Pinned by tests/render_check.py
-           leg AF, which measures it with JavaScript DISABLED. #}
-        {% if prolific_completion_redirects %}
-        <div class="button-row">
-            <a class="next-button" href="{{ completionlink|escape }}">
-                Back to Prolific
-            </a>
-        </div>
-        {% endif %}
-
-        <!-- THE LOGO FOOTER: a direct child of the card, always. This page was
-             the FIRST to do it (Julian, 2026-08-11, round-1 item 19) and is now
-             simply one of the pages following the general rule — see THE LOGO
-             FOOTER RULE in base.css and the include's own header. -->
-        {% include '_static/global/html/logo_section.html' %}
+        {# THE ENDING FOOTER — the way back to Prolific (a real link needing no
+           script; the reasoning and the no-JS render_check pin are in the
+           include's own header) and the logo strip, one shared component,
+           pinned at the foot of the card. This is the longest page in the
+           study (the per-round table), so it is the one most likely to scroll
+           — the completion button must stay on screen rather than scrolling
+           away with the table. This page passes reason='' so the include takes
+           its completion-link branch. #}
+        {% include '_static/global/html/prolific_return_footer.html' %}
     </div>
 </div>
 
+{# The payout-table toggle lives in the shared, versioned results.js (the
+   instructions.js pattern), not inline — the page composes named things. Both
+   scripts here are ENHANCEMENT ONLY: there is deliberately no
+   completion-redirect function anywhere, the "Back to Prolific" control is a
+   plain link, and the page works with JavaScript off (pinned by
+   render_check leg AF). #}
+<script src="{% static 'global/js/results.js' %}?v={{ C.STATIC_VERSION }}"></script>
 <script>
-    // NB there is no completion-redirect function here any more, deliberately:
-    // the "Back to Prolific" control is a plain link (see the comment above it),
-    // so nothing on the way out of this study depends on JavaScript. Everything
-    // below is enhancement — cookie clearing and the payout-table toggle — and
-    // the page works without it.
-    window.onload = function() {
-        clearAllCookies()
-
-        const toggle = document.getElementById('results-toggle')
-        const wrapper = document.getElementById('results-table-wrapper')
-        const arrow = document.getElementById('results-arrow')
-
-        if (toggle && wrapper) {
-            const handleToggle = () => {
-                const nowHidden = wrapper.classList.toggle('is-hidden')
-                toggle.setAttribute('aria-expanded', (!nowHidden).toString())
-                if (arrow) {
-                    arrow.classList.toggle('open', !nowHidden)
-                }
-            }
-
-            toggle.addEventListener('click', handleToggle)
-            toggle.addEventListener('keydown', (event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault()
-                    handleToggle()
-                }
-            })
-        }
-    }
+    window.addEventListener('load', clearAllCookies);
 </script>
+
+{% if prolific_completion_redirects %}
+<script>
+    // INSTRUMENTATION ONLY: report the "Back to Prolific" click over the live
+    // socket (results_live_method stamps it for the dashboard's "no return
+    // click" pill), then let the navigation proceed untouched. The link is a
+    // real href and must keep working with every line of this dead — never
+    // preventDefault here, never make leaving depend on this script.
+    (function () {
+        var link = document.querySelector('.button-row a.next-button');
+        if (!link || typeof liveSend !== 'function') { return; }
+        link.addEventListener('click', function () {
+            try { liveSend({type: 'prolific_return_click'}); } catch (e) {}
+        });
+    })();
+</script>
+{% endif %}
 
 {% endblock %}

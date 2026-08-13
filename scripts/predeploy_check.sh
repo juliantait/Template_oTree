@@ -23,10 +23,14 @@
 # PREDATED the change (an unset participant-vars key; a session config frozen
 # before a parameter existed). A fresh session cannot reproduce either. This
 # script tests the UPGRADE, not the install: it boots the candidate build
-# against a copy of the live database and drives, over real HTTP, (a) an
-# EXISTING mid-flow participant several pages forward, (b) a FRESH participant
-# entry -> end, (c) a no-JS participant whose JS-produced hidden fields all post
-# EMPTY — then greps the server log for 5xx / tracebacks / KeyError / TypeError.
+# against a copy of the live database, audits every EXISTING session's frozen
+# config against the current settings (failing on missing keys and REPLACE_*
+# placeholders, reporting all other differences as information — a stale
+# session cannot be repaired by editing settings, it has to be recreated), and
+# drives, over real HTTP, (a) an EXISTING mid-flow participant several pages
+# forward, (b) a FRESH participant entry -> end, (c) a no-JS participant whose
+# JS-produced hidden fields all post EMPTY — then greps the server log for
+# 5xx / tracebacks / KeyError / TypeError.
 # Any failure exits non-zero, so this can gate a deploy.
 #
 # DEGRADED MODE (a template, or a study before its first session, has no live

@@ -145,7 +145,8 @@ def main():
               f'{item["field"]}: options render in the written order')
 
     # STUDY-SPECIFIC EXPECTATIONS START HERE. Everything above is generic;
-    # everything below is about the shipped Stag Hunt placeholder quiz and is
+    # everything below is about the shipped placeholder quiz (deliberately
+    # trivial machinery-exercising items, see intro/quiz_items.py) and is
     # SUPPOSED to fail once you write your own items.
     section('3. Study-specific: what THIS quiz is about (rewrite per study)')
     check(len(QUIZ_ITEMS) == 2,
@@ -153,8 +154,8 @@ def main():
           f'(got {len(QUIZ_ITEMS)}) — change this number when you write yours')
     check(any('read and understand' in i['prompt'].lower() for i in QUIZ_ITEMS),
           'one item checks the participant read the instructions')
-    check(any('fail the quiz' in i['prompt'].lower() for i in QUIZ_ITEMS),
-          'one item checks what happens on failure')
+    check(any('ice' in i['prompt'].lower() for i in QUIZ_ITEMS),
+          'one item is the trivial machinery placeholder (ice/water)')
     # A real study replaces the two above with its own load-bearing
     # comprehension items (prior, round independence, payment mechanics — see
     # skills_claude/writing_quiz.md) and checks the WORDING that matters, e.g.
