@@ -397,31 +397,70 @@ a { color: var(--accent); }
                                 #000 calc(100% - var(--scroll-fade)), rgba(0, 0, 0, 0));
 }
 
-/* THE LOGO STRIP SITS AT THE FOOT OF THE SCROLL REGION, and the rest of the
-   content is centred in the space ABOVE it. Two `margin-top: auto` in one flex
-   column share the free space equally, so a short narrative page (the lab gate
-   is one sentence) reads as centred copy with the institutional marks along the
-   bottom of the card, instead of copy and logos clumped together in the middle
-   with a bigger hole underneath. When the content overflows there is no free
-   space, both autos collapse to nothing, and nothing moves — so this costs the
-   consent page (the reason the strip was unpinned at all) exactly zero. The
-   `:has()` guard keeps it off pages with no logo strip, where a `margin-top:
-   auto` on the first child would push the content DOWN instead. */
-.experimental-content:has(> .logo-section) > *:first-child,
-.experimental-content:has(> .logo-section) > .logo-section {
-    margin-top: auto;
+/* Pinned regions: never shrink, never scroll away. EXACTLY THREE — the header
+   strip, the forward action, and the logo footer (see THE LOGO FOOTER RULE
+   below, which is what makes the third one correct rather than the ~90px tax it
+   used to be). */
+.experimental-header,
+.screen-card > .button-row,
+.screen-card > .logo-section {
+    flex: 0 0 auto;
 }
 
-/* Pinned regions: never shrink, never scroll away. EXACTLY TWO — the header
-   strip and the forward action. The logo strip is deliberately NOT here: pinned,
-   it cost ~90px of every card's height for institutional marks nobody needs
-   on screen at all times, and on a 1280x720 laptop that was the difference
-   between the consent options being visible and being entirely below the fold.
-   It now lives INSIDE .experimental-content in every template and scrolls with
-   the content. */
-.experimental-header,
-.screen-card > .button-row {
-    flex: 0 0 auto;
+/* =============================================================================
+   THE LOGO FOOTER RULE  (Julian, 2026-08-13, change_requests_round2 item 9)
+   =============================================================================
+   THE RULE, in one sentence: the logo footer sits at the BOTTOM OF THE WHITE
+   CARD, BELOW the divider line that separates it from the content, and it is
+   the SAME on every page that shows it.
+
+   It is A RULE, not a per-page decision, and it is enforced HERE rather than by
+   each template getting its markup right — because a per-page arrangement is
+   exactly the kind of thing a new page copies from whichever page its author
+   happened to open. Two guarantees:
+
+     * `order: 999` puts the strip LAST among the card's flex children whatever
+       order the markup is in, so a template that includes it before the button
+       row still renders it below the button row;
+     * `margin-top: auto` pushes it to the card's bottom edge when the content
+       does not fill the card, so a one-sentence page (the lab gate) reads as
+       copy with the marks along the foot rather than copy and marks clumped
+       together in the middle.
+
+   THE DIVIDER is `border-top` on `.logo-section` itself (see the logos section
+   further down), so it travels with the strip and cannot be forgotten.
+
+   WHAT A TEMPLATE MUST DO: include `_static/global/html/logo_section.html` as a
+   DIRECT CHILD OF `.screen-card`. That is the whole contract, and the include
+   says so at the top of itself.
+
+   HISTORY, because this reverses an earlier decision and the earlier reasoning
+   was sound at the time: the strip used to live inside `.experimental-content`
+   on every page but Results, because as a PINNED sibling it reserved ~90px of
+   every card and pushed the consent options below the fold at 1280x720. What
+   changed is that it is no longer a reserved band ABOVE the fold — it is the
+   last thing on the card, after the action, so a short page gets it for free and
+   a long page pushes it down with everything else. Re-measured at three
+   viewports by tests/render_check.py. If a future edit makes the strip taller,
+   MEASURE AGAIN: a layout regression here produces no error and no red test.
+
+   THE PRIORITY, and it decides future arguments rather than describing a past
+   one (Julian, 2026-08-13): THE LOGO STRIP IS EXTRA, AND MUST NOT TAKE
+   PRECEDENCE OVER IMPORTANT FEATURES. It is an institutional footer, not
+   something a participant came here to read or act on, so ON A SHORT SCREEN IT
+   GIVES WAY BEFORE PARTICIPANT-FACING CONTENT DOES — see the `max-height: 820px`
+   block further down, which shrinks the marks to the phone size.
+
+   SO WHEN VERTICAL SPACE IS SHORT AGAIN, THIS STRIP IS THE FIRST THING THAT
+   YIELDS: shrink it (or, if it ever comes to it, drop it on that breakpoint)
+   before tightening a control, and never before cutting copy a participant is
+   agreeing to. That ordering is the rule; the pixel counts are just where it
+   landed this time. What must NOT change to buy space is the strip's PLACEMENT —
+   the order, the bottom-edge push and the divider above are what Julian asked
+   for and are not the flexible part. */
+.screen-card > .logo-section {
+    order: 999;
+    margin-top: auto;
 }
 
 .experimental-header {
@@ -558,6 +597,29 @@ a { color: var(--accent); }
    `display:table` shrink-wraps the content; `margin-inline:auto` centres it
    regardless of the parent's text-align. Opt in with class="panel panel--hug". */
 .panel--hug { display: table; max-width: var(--read-measure); margin-inline: auto; }
+
+/* COMPONENT — warning panel (variant of .panel). INTENTION: a panel that says
+   SOMETHING MAY GO WRONG AND YOU MUST ACT, as opposed to the quiet grey .panel,
+   which says "here is some secondary information". The two are different
+   intentions and so are two classes, not one class with a colour override.
+   Opt in with class="panel panel--warning" (composes with panel--hug).
+
+   Its only user today is the non-SEPA bank warning on outro/Results.html —
+   "speak to the experimenter before leaving to ensure payment will be
+   successful" — which shipped in the grey panel and therefore looked like a
+   footnote (Julian, 2026-08-13, change_requests_round2 item 4). It is the last
+   chance to fix a payment that will otherwise fail, and it has to look like it.
+
+   Colour comes from --danger, the same token the error panel and the warning
+   modal use, so a study that retunes the palette retunes this too. The tint is
+   a light wash rather than a solid fill: solid --danger behind body copy fails
+   contrast at this text size, and the panel must stay READABLE, not just
+   alarming. The left bar is what carries the alarm at a glance. */
+.panel--warning {
+    background: #fdeaec;
+    border-color: var(--danger);
+    box-shadow: inset 3px 0 0 var(--danger);
+}
 
 .hint { color: var(--ink-mute); font-size: 0.86em; }
 
@@ -980,7 +1042,70 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
     .experimental-header { gap: 8px; }
     .experimental-content { gap: 12px; }
     .panel { padding: 14px 16px; }
-    .logo-section { margin-top: 0; padding-top: 12px; }
+    .logo-section { margin-top: 0; padding-top: 8px; }
+
+    /* THE CONSENT CHOICE MUST CLEAR THE FOLD WHOLE — BOTH OPTIONS, NOT ONE.
+       (Julian, 2026-08-13.) Measured at 1280x720 before this block: the DECLINE
+       option ran 484..550 while the scroll region ended at 514, so exactly half
+       of it (30px of 66px) was visible and a participant saw a full "I consent"
+       card above a sliced one. The fold falling BETWEEN two options is worse
+       than it falling below both: it reads as a complete list.
+
+       WHY IT REGRESSED, and why the fix is here rather than there: THE LOGO
+       FOOTER RULE (above) pins the strip as a card-level band, which is what
+       Julian asked for and is not in question — this block pays for it out of
+       SPACING instead, the same trade base.css already makes for the card and
+       results.css makes for the payment summary. Nothing about the copy, the
+       font sizes or the components changes.
+
+       SCOPED TO `.stacked-form`, so it is the consent group only: the quiz
+       renders the same `.mc-option`/`.form-check` component through a different
+       wrapper and has its own (taller) budget, and one page's shortfall must not
+       silently retune every choice in the study.
+
+       THE TOUCH TARGET SURVIVES, which is the constraint that decides how far
+       this can go: .85em -> .5em block padding leaves each row 52px tall,
+       comfortably over the 44px Apple/WCAG minimum that `min-height` guarantees
+       anyway.
+
+       WHAT IS LEFT, MEASURED (2026-08-13) — because the next person to trip
+       this will be adding a sentence to the consent copy, not reading CSS:
+
+         headroom below the last option today ............  7px @ 1280x720
+                                                          182px @ 1512x1200
+                                                          111px @ 375x667
+         option rows to the 44px touch floor ............. +16px  (the floor;
+                                                    below it min-height wins and
+                                                    further padding buys nothing)
+         logo marks 32px -> 24px ......................... +8px
+         panel padding 14px -> 10px ...................... +8px
+         ------------------------------------------------------------------
+         realistically available in total ................ ~32px
+         cost of ONE more line of consent copy ........... ~31px
+
+       SO THE FOLD ABSORBS ABOUT ONE EXTRA LINE, and then it is out. Two things
+       follow. Do NOT set the inter-option gap to 0 to find another 6px: the two
+       options would touch and read as one block, which is the last thing a
+       consent choice may do. And when the budget runs out, STOP TIGHTENING —
+       shorten the copy, or accept that the card scrolls. The scroll affordance
+       is real and is asserted (conditionally, both ways, in
+       tests/render_check.py), and the guarantee that actually stops somebody
+       consenting blind is elsewhere: the radio ships un-pre-checked and an
+       untouched submit is REJECTED. The fold is a courtesy, not the control. */
+    .stacked-form .mc-option,
+    .stacked-form .form-check { padding-block: .5em; }
+    .stacked-form .mc-option + .mc-option,
+    .stacked-form .form-check + .form-check { margin-top: 6px; }
+    /* AND THE STRIP YIELDS — both levers, deliberately, not whichever one
+       reached the number first (Julian, 2026-08-13). It gets the phone
+       breakpoint's smaller marks for the same reason it gets them on a narrow
+       screen, and the reason is a PRIORITY, not a pixel count: the logo strip is
+       EXTRA and must not take precedence over important features, so on a short
+       screen it gives way before participant-facing content does. The full
+       statement is at THE LOGO FOOTER RULE above; if vertical space is ever
+       short again, this strip is the first thing that should shrink. The RULE
+       itself (placement, order, divider) is untouched — only the mark height. */
+    .logo-row img { height: 32px; }
 }
 
 /* --- respect reduced-motion preference -------------------------------------- */
@@ -1459,10 +1584,11 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
 
 .modal-ok-button:hover { background: var(--accent-hover); }
 
-/* A logo strip that is a DIRECT CHILD of the card (the results page only — see
-   the note in outro/Results.html) must not be squeezed by the scroll region's
-   flex fill. Everywhere else the strip is inside .experimental-content. */
-.screen-card > .logo-section { flex: 0 0 auto; }
+/* (The old rule that lived here — "a logo strip that is a direct child of the
+   card, the results page only" — is gone: being a direct child of the card is
+   now THE arrangement on every page, not the results page's exception. See THE
+   LOGO FOOTER RULE near the top of this file, which carries the flex, the
+   order and the bottom-edge push in one place.) */
 
 /* Pilot feedback textarea: a control, so it keeps the full card width (never
    clamped to the reading measure). */

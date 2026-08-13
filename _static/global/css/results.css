@@ -106,28 +106,90 @@
     -webkit-overflow-scrolling: touch;
 }
 
+/* COMPONENT — per-round payoff table. The look is ported from the exp_pilots
+   pilot (Julian, 2026-08-13, change_requests_round2 item 8; reference kept at
+   _ai/ref_exp_pilots/_static/global/css/results.css). PORTED BY REASON, NOT BY
+   PASTE — each rule below is here for the effect it produces, and the pilot's
+   coconut/allocation columns and its win / no-win vocabulary are deliberately
+   NOT imported, because this table is Round + Payoff and has no win state.
+
+   What actually makes it read as tidy, in rough order of how much it does:
+
+   1. TABULAR NUMERALS on the body cells. Proportional digits make a column of
+      money jitter left and right by a fraction of a character per row; tabular
+      figures put every digit on the same advance width, so the column aligns
+      down the page. This is most of the improvement and it is invisible until
+      you look at two builds side by side.
+   2. THE HEADER IS QUIET, NOT BOXED. Uppercase, letter-spaced, muted ink, and a
+      STRONGER bottom border than the body rows carry — so the header is read as
+      a boundary rather than as a filled band competing with the data. The old
+      rules boxed every cell in #ddd and filled the header with a background,
+      which draws a grid the reader has to look through.
+   3. HORIZONTAL RULES ONLY, and the LAST ROW DROPS ITS BORDER, so the table
+      ends on the card instead of on a stray line.
+   4. PAID ROUNDS GET TWO SIGNALS: an accent-soft row wash AND an inset left bar
+      (box-shadow inset 3px 0 0). The wash alone is easy to lose when scanning a
+      long list; the bar gives the eye a hard edge to run down. Weight is no
+      longer used for this — bold digits defeat point 1 by changing their
+      widths.
+
+   The table is wrapped in .table-scroll (above) so a wider table scrolls inside
+   itself instead of widening the page. UNCHANGED BY THIS ITEM: the accordion
+   (.results-toggle / .results-arrow / .results-collapsible) — Julian was
+   explicit that it stays, and the pilot has no equivalent to copy from. */
 .results-table {
     width: 100%;
     max-width: 700px;
     margin: 20px auto;
     border-collapse: collapse;
+    font-size: .92em;
 }
 
 .results-table th,
 .results-table td {
-    border: 1px solid #ddd;
-    padding: 12px 20px; /* add horizontal breathing room */
-    text-align: center;
+    padding: .62em .8em;
+    text-align: left;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
 }
 
 .results-table th {
-    background-color: var(--color-table-header);
+    font-weight: 650;
+    font-size: .88em;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    border-bottom: 1px solid var(--line-strong);
 }
 
-.results-table .selected-row {
-    background-color: var(--color-table-selected);
-    font-weight: 600;
+.results-table td {
+    color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
 }
+
+.results-table tr:last-child td { border-bottom: 0; }
+
+/* The paid rounds, findable in a long list: wash + inset bar (see 4 above). */
+.results-table tbody tr.selected-row td { background: var(--accent-soft); }
+.results-table tbody tr.selected-row td:first-child {
+    box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* COMPONENT — table tag. A pill, ported from the pilot's .tag. The pilot used
+   it for won / no-win; this table's one state is PAID, so that is the one
+   modifier defined. A pill rather than the word alone because the round number
+   and its status then read as one cell instead of a sentence. */
+.results-table .tag {
+    display: inline-block;
+    padding: .1em .55em;
+    border-radius: 999px;
+    font-size: .78em;
+    font-weight: 620;
+    letter-spacing: .02em;
+    vertical-align: 1px;
+    margin-left: .35em;
+}
+.results-table .tag.paid-tag { background: var(--accent); color: #fff; }
 
 .results-section {
     width: 100%;

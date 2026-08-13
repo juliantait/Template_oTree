@@ -42,6 +42,7 @@ NB AUTH_LEVEL is set to STUDY before boot — oTree reads OTREE_AUTH_LEVEL at
 import, so the whole file runs in the locked-down mode a real launch uses.
 Participant pages are ALWAYS_UNRESTRICTED in oTree, so the walks still work.
 """
+import json
 import os
 import re
 import sys
@@ -426,18 +427,22 @@ def main():
     check(r1['step'] == 'instructions' and r1['entry_only'] is False,
           f"participant on instructions shows step=instructions "
           f"(got {r1['step']})")
-    check(r1['instructions_live'] is True
-          and isinstance(r1['instructions_seconds'], int),
-          'time-on-instructions runs LIVE while they read')
+    check(r1['intro_live'] is True
+          and isinstance(r1['intro_seconds'], int),
+          'INTRO TIME runs LIVE while they are still in the intro app')
     r2 = rows[codes[2]]
     check(r2['step'] == 'task' and r2['task_round'] == 1,
           f"participant in the task carries the round in the marker "
           f"(1 of 3; got step={r2['step']}, round={r2['task_round']})")
     check(r2['quiz']['state'] == 'green' and r2['quiz']['display'] == 1,
           "first-try quiz shows GREEN 1 (1 = passed first attempt)")
-    check(isinstance(r2['instructions_seconds'], int)
-          and r2['instructions_live'] is False,
-          'instructions time is fixed once instructions_done is stamped')
+    # NOT "fixed once instructions_done is stamped" any more (round-2 item 5):
+    # the clock stops when the participant is OUT OF THE INTRO APP, which is
+    # what lets a lab re-read after a failed quiz keep counting. r2 is in the
+    # task, so it is stopped.
+    check(isinstance(r2['intro_seconds'], int)
+          and r2['intro_live'] is False,
+          'intro time stops once the participant has left the intro app')
     r3 = rows[codes[3]]
     check(r3['step'] == 'done' and r3['finished'] is True,
           f"finished participant: step=done (got {r3['step']})")
@@ -499,27 +504,98 @@ def main():
     emojis = {rows[pcodes[i]]['terminal_emoji'] for i in range(4)}
     check(len(emojis) == 4, 'four terminal states, four distinct emojis')
 
-    section('D3. amber (stall) — configurable threshold')
-    check(ed.stall_seconds() == 300,
-          'stall threshold defaults to 300s (5 minutes)')
+    section('D3. amber (stall) — PER-PHASE thresholds (round-2 item 6)')
+    # The whole point of the change: the SAME time on a page is amber in one
+    # phase and unremarkable in another. One global number could not be both,
+    # and the failure was silent either way (see STALL_SETTING_BY_STEP).
+    check(ed.stall_seconds_for('entry') == 60
+          and ed.stall_seconds_for('instructions') == 480
+          and ed.stall_seconds_for('quiz') == 480
+          and ed.stall_seconds_for('task') == 180
+          and ed.stall_seconds_for('questionnaire') == 300,
+          'each phase has its own threshold from settings.py '
+          '(entry 60, intro 480, task 180, outro 300)')
+    check(ed.stall_seconds_for('instructions') == ed.stall_seconds_for('quiz'),
+          'the two halves of intro share ONE threshold (Julian asked for a '
+          'threshold on INTRO, not on each half)')
     import time as _time
-    set_participant(codes[1],
-                    _last_page_timestamp=int(_time.time()) - 400)
+    # 400s: OVER the entry threshold, UNDER the intro one. codes[1] is on the
+    # instructions, codes[6] is at entry — same dwell, different verdicts, which
+    # is the behaviour a single threshold could not produce.
+    set_participant(codes[1], _last_page_timestamp=int(_time.time()) - 400)
+    set_participant(codes[6], _last_page_timestamp=int(_time.time()) - 400)
     data, rows = rows_by_code(admin, lab)
-    check(rows[codes[1]]['stalled'] is True
-          and rows[codes[1]]['seconds_on_page'] >= 400,
-          '400s on one page turns the row amber (stalled)')
+    check(rows[codes[6]]['stalled'] is True
+          and rows[codes[6]]['seconds_on_page'] >= 400,
+          '400s at ENTRY is amber (over the 60s entry threshold)')
+    check(rows[codes[1]]['stalled'] is False,
+          'the SAME 400s on the INSTRUCTIONS is not (under the 480s intro '
+          'threshold) — one number could not have said both')
+    check(rows[codes[1]]['stall_limit'] == 480
+          and rows[codes[6]]['stall_limit'] == 60,
+          'each row carries the threshold it is judged against, so the screen '
+          'can name it')
+    set_participant(codes[1], _last_page_timestamp=int(_time.time()) - 600)
+    data, rows = rows_by_code(admin, lab)
+    check(rows[codes[1]]['stalled'] is True,
+          '600s on the instructions IS amber (over the intro threshold)')
     check(rows[codes[3]]['stalled'] is False,
           'a finished row can never stall')
     import settings as user_settings
-    user_settings.DASHBOARD_STALL_SECONDS = 1000
+    user_settings.DASHBOARD_STALL_SECONDS_INTRO = 1000
     try:
         data, rows = rows_by_code(admin, lab)
         check(rows[codes[1]]['stalled'] is False,
-              'raising DASHBOARD_STALL_SECONDS in settings takes effect '
-              'without touching dashboard code')
+              'raising the INTRO threshold in settings takes effect without '
+              'touching dashboard code')
+        check(rows[codes[6]]['stalled'] is True,
+              '…and does NOT move the entry threshold with it (the phases are '
+              'independent — that is the whole change)')
     finally:
-        del user_settings.DASHBOARD_STALL_SECONDS
+        user_settings.DASHBOARD_STALL_SECONDS_INTRO = 480
+    # Deleting every DASHBOARD_STALL_* line must still leave working defaults.
+    _saved = {k: getattr(user_settings, k) for k in dir(user_settings)
+              if k.startswith('DASHBOARD_STALL_SECONDS')}
+    try:
+        for k in _saved:
+            delattr(user_settings, k)
+        check(ed.stall_seconds_for('entry') == 60
+              and ed.stall_seconds_for('task') == 180,
+              'deleting every DASHBOARD_STALL_* line falls back to the same '
+              'defaults inside the dashboard module')
+    finally:
+        for k, v in _saved.items():
+            setattr(user_settings, k, v)
+    # REFETCH: `data` above was taken while the intro threshold was temporarily
+    # 1000, so the assertions below would read a snapshot from inside that
+    # override rather than the shipped defaults.
+    data, rows = rows_by_code(admin, lab)
+    # The snapshot ships the whole map, so the operator screen and this test
+    # read the thresholds from one place.
+    check(isinstance(data['stall_seconds'], dict)
+          and data['stall_seconds']['entry'] == 60,
+          'the snapshot ships the per-phase threshold map, not one number')
+    # THE HEADER LEGEND (round-2 item 17): "so we can see what the thresholds
+    # are" without opening settings.py. Served as data, never as markup, so a
+    # tuned threshold reaches the screen on the next poll.
+    legend = data['stall_legend']
+    check([p['label'] for p in legend]
+          == ['Entry', 'Intro (instructions + quiz)', 'Task (one round)',
+              'Questionnaire'],
+          f'the legend names the four PHASES an operator thinks in '
+          f'(got {[p["label"] for p in legend]})')
+    check([p['seconds'] for p in legend] == [60, 480, 180, 300],
+          f'…with the live values, not a hardcoded string '
+          f'(got {[p["seconds"] for p in legend]})')
+    user_settings.DASHBOARD_STALL_SECONDS_TASK = 240
+    try:
+        data2, _ = rows_by_code(admin, lab)
+        check([p['seconds'] for p in data2['stall_legend']]
+              == [60, 480, 240, 300],
+              'tuning a threshold in settings.py changes what the legend '
+              'shows, with no dashboard edit')
+    finally:
+        user_settings.DASHBOARD_STALL_SECONDS_TASK = 180
 
     section('D4. the entry-block boundary (instructions time)')
     # THE AI-SAFETY AGREEMENT PAGE MUST NOT BE BILLED TO THE INSTRUCTIONS.
@@ -553,11 +629,15 @@ def main():
                                  .get('stage_timestamps') or {}),
           'leaving the agreement page stamps ai_safety_agreed')
     _, drows = rows_by_code(admin, pro2)
-    instr = drows[dwell_code]['instructions_seconds']
+    check('left_before_app' in (ot.participant_vars(dwell_code)
+                                .get('stage_timestamps') or {}),
+          'leaving the LAST page of the before app stamps left_before_app '
+          '(the start of INTRO TIME)')
+    instr = drows[dwell_code]['intro_seconds']
     check(instr is not None and instr < DWELL,
-          f'{DWELL}s on the AGREEMENT page and ~0s on the instructions reports '
-          f'< {DWELL}s of instructions time (got {instr}s) — the agreement '
-          f'page is no longer billed to the instructions')
+          f'{DWELL}s on the AGREEMENT page and ~0s in the intro app reports '
+          f'< {DWELL}s of intro time (got {instr}s) — the agreement page is '
+          f'part of the ENTRY block and is not billed to the intro')
 
     section('D5. an app the dashboard has never heard of is VISIBLE')
     # A study copied from this template WILL add an app, and until 2026-08-12
@@ -588,6 +668,113 @@ def main():
           and krows[codes[2]]['unmapped_app'] is None,
           f"a KNOWN app still maps to its step with no unmapped flag "
           f"(got {krows[codes[2]]['step']!r})")
+
+    section('D5b. ADVANCE SLOWEST PARTICIPANTS is not reported as a quiz pass')
+    # QUESTION B, 2026-08-13. Julian force-advanced a session through the
+    # template with the admin panel's "advance slowest participants" and every
+    # participant then showed as having PASSED the quiz on the second attempt.
+    #
+    # What oTree actually does (measured; otree/models/participant.py
+    # _submit_current_page): it POSTs an EMPTY form flagged as a timeout with
+    # the admin secret code. oTree calls error_message anyway
+    # (otree/views/abstract.py, the _process_auto_submitted_form branch), our
+    # grading marks every item wrong and increments failed_attempts, and the
+    # page then ADVANCES REGARDLESS because a timeout submission discards the
+    # error. So `quiz_done` is stamped by somebody who never answered.
+    #
+    # That made two different situations reach one predicate — the collapsed
+    # distinction rule in CLAUDE.md — and the cell called both of them a pass.
+    # This section is the regression guard on keeping them apart.
+    fa = ot.create_session('lab', num_participants=2)
+    from otree.database import db as _db
+    from otree.models import Session as _Session
+    _fa = _db.query(_Session).filter_by(code=fa.code).one()
+    for _ in range(12):
+        _fa.advance_last_place_participants()
+        _db.commit()
+        if all(p._current_page_name == 'quiz' for p in _fa.pp_set):
+            break
+    _, farows = rows_by_code(admin, fa)
+    check(all(r['quiz']['state'] == 'idle' for r in farows.values()),
+          'before the forced advance, nobody has attempted the quiz')
+    _fa.advance_last_place_participants()      # the force-advance ON the quiz
+    _db.commit()
+    _, farows = rows_by_code(admin, fa)
+    one = list(farows.values())[0]
+    check(one['step'] == 'task',
+          f"the forced advance really did push them past the quiz "
+          f"(step={one['step']!r}) — otherwise this section proves nothing")
+    check(one['quiz']['state'] == 'forced',
+          f"a force-advanced participant reads FORCED, not passed "
+          f"(got {one['quiz']['state']!r})")
+    check(one['quiz']['state'] != 'green',
+          'and specifically NOT the green "✓ 2" that started this question')
+    check(one['quiz']['state'] != 'red',
+          'and NOT a failure either — an experimenter did this deliberately, '
+          'nothing is wrong with the participant')
+    # The data itself was never corrupted, which is the half of the answer that
+    # matters for the export. Pin it so a future change cannot make it untrue.
+    from otree.common import get_models_module as _gmm
+    _IntroPlayer = _gmm('intro').Player
+    _pl = [r for r in _db.query(_IntroPlayer).filter(
+        _IntroPlayer.session_id == _fa.id, _IntroPlayer.round_number == 1)]
+    check(all(json.loads(p.field_maybe_none('quiz_attempt_log') or '[]')[-1]['wrong']
+              for p in _pl),
+          'the attempt log records the forced submission as WRONG, so no '
+          'export column claims a pass')
+    check(all(int(p.field_maybe_none('num_failed_attempts') or 0) == 1
+              for p in _pl),
+          'and it counts as a failed attempt, so the quiz bonus is forfeited')
+    # A GENUINE pass in the same session type must still read green — the new
+    # state must not have swallowed the ordinary case.
+    check(rows[codes[2]]['quiz']['state'] in ('green', 'idle', 'progress'),
+          'a normally-walked participant is unaffected by the forced state')
+
+    section('D5c. rows are ordered by the DISPLAYED NAME, sorted naturally')
+    # Julian, 2026-08-13: rows used to come out in participant-id order, i.e.
+    # roughly ARRIVAL order, so the screen and the lab room disagreed.
+    #
+    # The natural sort is the part worth testing rather than the alphabetical
+    # one: `Seat 01`-style labels are zero-padded and would sort correctly as
+    # plain strings, so a plain-string bug would be INVISIBLE against the
+    # template's own labels. `a2`/`a10` is the case that exposes it, and it is
+    # the case a real study produces the moment it stops padding.
+    ordering = ot.create_session('lab', num_participants=6)
+    ocodes = ot.participant_codes(ordering)
+    planted = ['a10', 'a2', 'Seat 03', '', 'a1', 'seat 1']
+    for code, lbl in zip(ocodes, planted):
+        if lbl:
+            ot.set_label(code, lbl)
+    data_o, _ = rows_by_code(admin, ordering)
+    shown = [r['label'] or f'<{r["code"]}>' for r in data_o['rows']]
+    # NB `seat 1` before `Seat 03`: the text runs casefold to the same thing, so
+    # the DIGITS decide and 1 < 3. That is the natural sort doing its job, not a
+    # padding accident — the first draft of this expectation had them the other
+    # way round because it was still reading them as strings.
+    check(shown[:5] == ['a1', 'a2', 'a10', 'seat 1', 'Seat 03'],
+          f'labels sort NATURALLY — a2 before a10, not after it, and case is '
+          f'ignored (got {shown})')
+    check(shown[0] != 'a10',
+          'and specifically NOT the plain-string order a10 < a2 would give')
+    check(shown[-1].startswith('<'),
+          f'the UNLABELLED row sorts LAST, not first — an empty label sorts '
+          f'first as a string and would push never-arrived rows to the top of '
+          f'the screen (got {shown})')
+    # The key really is the DISPLAYED string, not the row id: the planted labels
+    # are deliberately not in id order, so passing means id order was discarded.
+    check([s.strip('<>') for s in shown][:3] != planted[:3],
+          'the id (arrival) order was NOT preserved — the table is sorted')
+    # THE FLIP JULIAN MAY ASK FOR must stay one line: with UNLABELLED_LAST off,
+    # the table is exactly the displayed names in natural order, no special case.
+    ed.UNLABELLED_LAST = False
+    try:
+        flipped_data, _ = rows_by_code(admin, ordering)
+        flipped = [ed.displayed_name(r) for r in flipped_data['rows']]
+        check(flipped == sorted(flipped, key=ed.natural_label_key),
+              f'UNLABELLED_LAST=False interleaves the unlabelled row by its '
+              f'displayed code — the one-line flip still works ({flipped})')
+    finally:
+        ed.UNLABELLED_LAST = True
 
     section('D6. the six steps are defined ONCE and everything derives from it')
     # THE ANTI-DRIFT GUARD (added 2026-08-12 with the single-sourcing). The step

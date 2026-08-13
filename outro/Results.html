@@ -62,15 +62,19 @@
                     tells you that you can leave.
                 </p>
                 {% endif %}
+                {# RED, NOT GREY (Julian, 2026-08-13, item 4): this is the last
+                   moment anyone can stop a payment from failing, so it takes the
+                   warning variant of the panel component rather than the quiet
+                   grey one it shipped in. See .panel--warning in base.css. #}
                 {% if sepa == 0 %}
-                    <div class="panel panel--hug">
+                    <div class="panel panel--hug panel--warning">
                         Your bank account is not in SEPA.<br>
                         <strong>Speak to the experimenter before leaving</strong> to ensure payment will be successful!
                     </div>
                 {% endif %}
             </div>
 
-            {% if completion_redirects %}
+            {% if prolific_completion_redirects %}
             <div class="section-text">
                 Please click the button below to complete the study and return to Prolific.
             </div>
@@ -86,11 +90,20 @@
                     random to count for payment; they are highlighted below.
                 </p>
                 {% endif %}
+                {# OPEN FROM THE START IN THE LAB (item 10). The accordion is
+                   unchanged and still works in both study types — this sets its
+                   INITIAL state only, and the three things that describe that
+                   state (aria-expanded, the caret's .open class and the
+                   wrapper's .is-hidden) are all driven from the one
+                   `results_open` value so they cannot disagree. A disclosure
+                   whose aria state contradicts what is on screen is worse than
+                   no aria at all: a screen reader then announces the opposite
+                   of the truth. #}
                 <button
                     type="button"
                     id="results-toggle"
                     class="section-header results-toggle"
-                    aria-expanded="false"
+                    aria-expanded="{% if results_open %}true{% else %}false{% endif %}"
                     aria-controls="results-table-wrapper"
                 >
                     <!-- The caret is DRAWN IN CSS, not typed. It used to be the
@@ -99,10 +112,10 @@
                          does not carry, so it came out as an empty tofu box next
                          to the label. A control's affordance must not depend on
                          the participant's font stack. -->
-                    <span id="results-arrow" class="results-arrow" aria-hidden="true"></span>
+                    <span id="results-arrow" class="results-arrow{% if results_open %} open{% endif %}" aria-hidden="true"></span>
                     <span>See Payoff by Round</span>
                 </button>
-                <div id="results-table-wrapper" class="results-collapsible is-hidden">
+                <div id="results-table-wrapper" class="results-collapsible{% if not results_open %} is-hidden{% endif %}">
                     <div class="table-scroll">
                         <table class="results-table">
                             <thead>
@@ -112,9 +125,15 @@
                                 </tr>
                             </thead>
                             <tbody>
+                                {# The paid rounds carry a PILL as well as the row
+                                   highlight (item 8): the wash and the inset bar
+                                   are found by scanning, the pill is what names
+                                   what was found. The pilot used pills for
+                                   won / no-win; this table has no win state, so
+                                   "paid" is the only modifier. #}
                                 {% for row in payout_rows %}
                                 <tr class="{% if row.selected %}selected-row{% endif %}">
-                                    <td>Round {{ row.round }}</td>
+                                    <td>Round {{ row.round }}{% if row.selected %}<span class="tag paid-tag">paid</span>{% endif %}</td>
                                     <td>{{ row.payoff }}</td>
                                 </tr>
                                 {% empty %}
@@ -145,7 +164,7 @@
            script. ESCAPED because ibis does not auto-escape and the URL carries
            a config-supplied completion code. Pinned by tests/render_check.py
            leg AF, which measures it with JavaScript DISABLED. #}
-        {% if completion_redirects %}
+        {% if prolific_completion_redirects %}
         <div class="button-row">
             <a class="next-button" href="{{ completionlink|escape }}">
                 Back to Prolific
@@ -153,14 +172,10 @@
         </div>
         {% endif %}
 
-        <!-- THE ONE PAGE WHERE THE LOGO STRIP SITS BELOW THE BUTTON (Julian,
-             2026-08-11, change_requests item 19), in BOTH study types so the two
-             results pages look the same. Everywhere else the strip lives inside
-             the scroll region, because pinned it cost ~90px of card height and
-             pushed the consent options below the fold. Here that argument does
-             not apply: this page's action is already pinned, so the strip simply
-             sits under it, outside the scroll region — and in the lab, where
-             there is no button at all, it is just the foot of the card. -->
+        <!-- THE LOGO FOOTER: a direct child of the card, always. This page was
+             the FIRST to do it (Julian, 2026-08-11, round-1 item 19) and is now
+             simply one of the pages following the general rule — see THE LOGO
+             FOOTER RULE in base.css and the include's own header. -->
         {% include '_static/global/html/logo_section.html' %}
     </div>
 </div>

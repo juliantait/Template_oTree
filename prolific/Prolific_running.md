@@ -35,8 +35,8 @@ session-configuration view shows exactly what ran:
 
 | Flag | Prolific | Lab | What it does |
 |------|---------|-----|--------------|
-| `capture_participant_id` | on | off | Captures the platform id at entry and shows the confirmation page |
-| `completion_redirects` | on | off | Explicit consent radio + return-to-Prolific buttons with completion codes |
+| `prolific_capture_participant_id` | on | off | Captures the platform id at entry and shows the confirmation page |
+| `prolific_completion_redirects` | on | off | Explicit consent radio + return-to-Prolific buttons with completion codes |
 | `tab_monitor` | on | off | Tab-switch / AI-safety monitor |
 | `comprehension_dq` | on | off | Disqualify after too many quiz failures |
 | `device_capture`, `passive_capture` | on | off | Device/screen and on-page measurement |
@@ -51,12 +51,12 @@ Three codes, per session config, all shipping as `REPLACE_*` placeholders:
 
 | Key | Used for | Exit code |
 |-----|----------|-----------|
-| `cc_code` | Normal completion | `1` |
-| `noconsent_code` | Declined consent | `-1` |
-| `dq_code` | Disqualified (comprehension or tab monitor) | `-2` / `-3` |
+| `prolific_cc_code` | Normal completion | `1` |
+| `prolific_noconsent_code` | Declined consent | `-1` |
+| `prolific_dq_code` | Disqualified (comprehension or tab monitor) | `-2` / `-3` |
 
 **A device screened out at entry (`-4`) has NO completion code, deliberately.**
-It gets a plain link to `screenout_return_url` (the Prolific participant site)
+It gets a plain link to `prolific_screenout_return_url` (the Prolific participant site)
 carrying nothing, so the submission stays OPEN and the participant can still
 reopen the study on an accepted device and finish it — which submitting a code
 would foreclose for good, since a returned submission can never be retaken. Do
@@ -98,7 +98,7 @@ not — never both, and never CREED plus Prolific. There is no hybrid entry page
   wording only (`collect_bank_details`), because the same page renders in a lab
   where Prolific is meaningless.
 - `before/confirm_prolific_id.html` is the **only page in the study that mentions
-  Prolific**. Gated on `capture_participant_id`, so a lab session never sees it.
+  Prolific**. Gated on `prolific_capture_participant_id`, so a lab session never sees it.
 
 `tests/gated_flow_test.py` asserts all of this against the rendered visible text
 of both variants, so a regression fails the build rather than reaching a
@@ -136,7 +136,7 @@ which serves `before/screened_out.html` instead of the consent question. **That
 is the first and only screen they ever see** — and, because they are held rather
 than walked to an ending, a later pre-consent request from an accepted device
 CLEARS the verdict and lets them carry on. Their way out is a plain link to
-`screenout_return_url` with **no completion code**, so their submission stays
+`prolific_screenout_return_url` with **no completion code**, so their submission stays
 open. The client's own opinion of what it is (`device_info_json.device_type`) is
 recorded beside the server's for comparison and never enforced — a client-side
 check is trivially bypassed.
@@ -190,7 +190,7 @@ dead end for a friend-tester on a bare room link.
 `outro/Ended.html` is the shared terminal page for everyone who did not complete
 normally, with four branches: `no_consent`, `disqualified`, `screened_out` and a
 default. `outro/Results.html` is the normal completion ending. Both render a
-"Back to Prolific" button only when `completion_redirects` is on, so the lab
+"Back to Prolific" button only when `prolific_completion_redirects` is on, so the lab
 never sees platform wording.
 
 ## 7. Before you launch

@@ -34,7 +34,7 @@
         .next-button on the page, and an irreversible exit must never be one
         keystroke away by accident.
       * NO CODE: the destination is the platform's own site
-        (`screenout_return_url`), so their submission stays OPEN and returning it
+        (`prolific_screenout_return_url`), so their submission stays OPEN and returning it
         stays THEIR decision. A completion code would close it the instant they
         clicked, contradicting the sentence above it.
       * ESCAPED: ibis does not auto-escape, so the URL goes through |escape even
@@ -94,6 +94,37 @@
                 </p>
             </div>
 
+            {# WHAT TO DO IF THEY CANNOT SWITCH. THERE IS A BRANCH FOR EVERY
+                PARTICIPANT — this section must never be absent, which it was
+                until 2026-08-13: it offered only the link and the lab's raised
+                hand, so a `recruitment='prolific'` session with
+                `prolific_completion_redirects` OFF (a friend test, say) served a page
+                whose only remaining content told them to switch device, with no
+                answer at all for someone who cannot. A DEAD END, silent —
+                nothing 500s and no test went red.
+
+                THE COMBINATION IS NOW UNCONSTRUCTABLE, not merely handled: a
+                PROLIFIC study must offer an exit, because its participants have
+                no experimenter to ask, so `settings._prelaunch_problems` FAILS
+                any prolific config whose `prolific_screenout_return_url` is blank or
+                unreplaced — it can no longer reach a participant at all. The
+                branches below are what a participant meets, in this order:
+
+                  1. `show_return_link` — a prolific study WITH its return URL,
+                     i.e. every launchable one: the real link, carrying no
+                     completion code so their submission stays open;
+                  2. `is_lab` — there is an experimenter in the room, and no
+                     platform to return to;
+                  3. `is_prolific` — a prolific session that somehow has no URL
+                     (a config frozen before the guard existed). Still not a
+                     dead end: they can return the submission from Prolific
+                     itself without a link from us;
+                  4. neutral fallback, so a study that is neither still reads
+                     correctly.
+
+                Pinned both ways by tests/copy_routing_test.py: every shape of
+                study renders an answer here, AND the config that would not is
+                refused by the guard. #}
             {% if show_return_link %}
             <div class="read-band">
                 <h3 class="section-title">If you cannot switch devices</h3>
@@ -112,20 +143,41 @@
                     can come to you.
                 </p>
             </div>
+            {% elif is_prolific %}
+            <div class="read-band">
+                <h3 class="section-title">If you cannot switch devices</h3>
+                <p class="section-text">
+                    Please go back to Prolific and return your submission there.
+                    You do not need to do anything else on this page. If you have
+                    any questions, message the researchers through Prolific.
+                </p>
+            </div>
+            {% else %}
+            <div class="read-band">
+                <h3 class="section-title">If you cannot switch devices</h3>
+                <p class="section-text">
+                    You do not need to do anything else on this page — you can
+                    simply close it. If you have any questions, please contact
+                    the researchers.
+                </p>
+            </div>
             {% endif %}
 
-            {% include '_static/global/html/logo_section.html' %}
         </div>
 
         {% if show_return_link %}
         {# Direct child of the card, so it stays pinned at the foot when the
             content region scrolls (see .screen-card in base.css). #}
         <div class="button-row">
-            <a class="exit-button" href="{{ return_url|escape }}">
+            <a class="exit-button" href="{{ prolific_screenout_return_url|escape }}">
                 End the study and go back to Prolific
             </a>
         </div>
         {% endif %}
+
+        <!-- THE LOGO FOOTER: a direct child of the card, always (see the
+             include's own header and THE LOGO FOOTER RULE in base.css). -->
+        {% include '_static/global/html/logo_section.html' %}
     </div>
 </div>
 

@@ -72,7 +72,7 @@ ROOM = 'experiment'
 DESKTOP_UA = ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
               '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36')
 
-# A study that has configured its way out. `screenout_return_url` ships as a
+# A study that has configured its way out. `prolific_screenout_return_url` ships as a
 # REPLACE_* placeholder on purpose (settings.SCREENOUT_RETURN_URL_PLACEHOLDER);
 # no participant on this journey is ever screened out, but a real study has it
 # set, so the journey is driven as a real study would be configured.
@@ -144,7 +144,7 @@ def create_room_session(base, config, label):
         'num_participants': 1,
         'room_name': ROOM,
         'modified_session_config_fields': {
-            'screenout_return_url': CONFIGURED_RETURN_URL},
+            'prolific_screenout_return_url': CONFIGURED_RETURN_URL},
     })
     r.raise_for_status()
     return r.json()

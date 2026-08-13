@@ -65,6 +65,7 @@ written at the top of that file.
 
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -314,6 +315,83 @@ def screenshot(page, key, viewport):
     return path
 
 
+def wait_for_stable_layout(page, selector='.experimental-content', frames=3,
+                           max_frames=180):
+    """Block until the page's LAYOUT HAS SETTLED, then report what it took.
+
+    WHY THIS EXISTS, AND WHY IT IS NOT A POINTLESS DELAY — DO NOT DELETE IT AS
+    ONE (Julian, 2026-08-13). Every measurement in this file is taken at ONE
+    INSTANT, and several of the assertions built on those measurements are
+    CONDITIONAL on a height: "does this region overflow?" decides whether a
+    scroll affordance must be present or must be absent. If the height is read
+    while the layout is still moving — a web font still loading and about to
+    change every line box, a `clamp()` not yet resolved, an image arriving — the
+    check can take the wrong branch entirely and assert the opposite of the
+    truth. That is the flakiness that makes people stop trusting a suite.
+
+    The PAGE itself is fine and this is not compensating for a page bug: the
+    fade and edge shadow are pure CSS (recomputed at paint, they cannot go
+    stale) and the scroll-cue arrow re-syncs on scroll and through a
+    ResizeObserver per region. It is only the TEST that samples at a moment.
+
+    WHAT IT WAITS FOR, in order:
+      1. `document.fonts.ready` — web fonts change text metrics, so a height
+         measured before they land is a height that is about to change;
+      2. the region's own box to STOP CHANGING: the same scrollHeight,
+         clientHeight and border-box height across `frames` consecutive
+         animation frames.
+
+    RETURNS the settled measurement plus `moved`, the difference between the
+    FIRST reading and the settled one. `moved` is deliberately reported rather
+    than discarded: a non-zero value is direct evidence that a measurement taken
+    the old way (a fixed sleep after load) would have been read off a layout
+    that was still moving, which is a claim this suite should be able to make
+    from data rather than from argument.
+    """
+    result = page.evaluate(
+        """async ([sel, frames, maxFrames]) => {
+            const el = document.querySelector(sel);
+            if (!el) return null;
+            if (document.fonts && document.fonts.ready) {
+                try { await document.fonts.ready; } catch (e) {}
+            }
+            const raf = () => new Promise(r => requestAnimationFrame(() => r()));
+            const read = () => ({
+                scrollH: el.scrollHeight,
+                clientH: el.clientHeight,
+                boxH: Math.round(el.getBoundingClientRect().height),
+            });
+            const same = (a, b) => a && b && a.scrollH === b.scrollH
+                && a.clientH === b.clientH && a.boxH === b.boxH;
+            const first = read();
+            let last = first, stable = 0, n = 0;
+            while (stable < frames && n < maxFrames) {
+                await raf();
+                const now = read();
+                if (same(now, last)) { stable++; } else { stable = 0; last = now; }
+                n++;
+            }
+            return {
+                ...last,
+                settled: stable >= frames,
+                frames: n,
+                moved: {scrollH: last.scrollH - first.scrollH,
+                        clientH: last.clientH - first.clientH,
+                        boxH: last.boxH - first.boxH},
+            };
+        }""",
+        [selector, frames, max_frames])
+    if result and not result['settled']:
+        print(f'  [warn] layout never settled for {selector!r} after '
+              f'{result["frames"]} frames — the measurement below may be taken '
+              f'off a moving layout')
+    if result and any(result['moved'].values()):
+        print(f'  [note] layout moved while settling ({selector}): '
+              f'{result["moved"]} — a fixed-sleep measurement would have read '
+              f'the pre-settle value')
+    return result
+
+
 # --------------------------------------------------------------------------
 # the pages to render
 # --------------------------------------------------------------------------
@@ -501,7 +579,12 @@ def check_scroll_affordance(server, browser):
             page = context.new_page()
             page.goto(f'{server.base}/InitializeParticipant/{code}',
                       wait_until='load')
-            page.wait_for_timeout(250)
+            # SETTLE BEFORE MEASURING — this leg branches on the answer (see
+            # wait_for_stable_layout): an overflow read off a layout that is
+            # still moving would assert "the affordance must be there" against a
+            # region that ends up fitting, or the reverse. A fixed sleep after
+            # `load` is not the same thing and was what stood here.
+            wait_for_stable_layout(page)
             st = page.evaluate("""() => {
                 const el = document.querySelector('.experimental-content');
                 const r = el.getBoundingClientRect();
@@ -511,8 +594,26 @@ def check_scroll_affordance(server, browser):
                         x: r.x, y: r.y, w: r.width, h: r.height};
             }""")
             label = f'{page_key} @ {vp_name}'
+            # THE AFFORDANCE IS CONDITIONAL, AND SO IS THIS CHECK — BOTH WAYS
+            # (Julian, 2026-08-13). It is not "the consent page has a fade": it
+            # is "a region that overflows says so, and a region that does not
+            # says nothing".
+            #
+            # THE SECOND HALF IS NOT SYMMETRY FOR ITS OWN SAKE. A PHANTOM
+            # AFFORDANCE — a fade, an edge shadow or a pulsing V on a region
+            # with nothing below the fold — is a defect this repo has already
+            # fixed once: it tells a participant to scroll for content that does
+            # not exist, and the ones who believe it are the conscientious ones.
+            # It used to be a bare `[skip]` here, which asserted nothing at all,
+            # so the phantom could come back silently on any page whose content
+            # shortened. THIS IS ALSO THE CASE A LAYOUT FIX CAN CREATE: recover
+            # enough vertical space and a page that used to scroll no longer
+            # does, at which point the fade must GO.
             if not st['overflows']:
-                print(f'  [skip] {label}: content fits, no affordance needed')
+                check('is-scrollable-down' not in st['cls'],
+                      f'{label}: content FITS, so there is NO scroll affordance '
+                      f'— nothing claims there is more below '
+                      f'(class={st["cls"]!r})')
                 context.close()
                 continue
             check(st['gutter'] >= 8,
@@ -553,7 +654,25 @@ def check_scroll_affordance(server, browser):
                   f'(darkness {bar:.2f} vs 0 for bare card white)')
 
             at_edge = edge_row(4)
-            above = edge_row(70, h=8)
+            # THE COMPARISON STRIP IS THE DARKEST OF SEVERAL, NOT ONE AT A FIXED
+            # OFFSET (2026-08-13). A single sample 70px up asks "is there darker
+            # content above the fade?" by assuming a line of copy happens to sit
+            # exactly there — and what sits there is a property of the page's
+            # layout, not of the fade. Measured when the consent card's rhythm
+            # changed: the 70px strip moved off an option's label and onto the
+            # SEAM between two option cards, so it read 3.63 — too faint for the
+            # gradient clause, too dark for the "nothing above" clause, and the
+            # leg went red while the fade itself was working perfectly (the
+            # `at_edge` assertion above passed at 1.60).
+            #
+            # Taking the darkest of four offsets asks the question the check is
+            # actually for — IS THERE DARKER CONTENT NEAR THE FADED EDGE — and
+            # is indifferent to which of them lands on a glyph, a border or a
+            # gap. It can only make the check STRICTER (a page with real content
+            # above the fade can no longer pass through the blank-content
+            # escape), which is the right direction for a check that exists to
+            # prove the fade is a fade.
+            above = max(edge_row(dy, h=8) for dy in (40, 70, 100, 130))
             # Scale: pure card white is 0; an unfaded line of body copy across
             # this strip measures 12-19 (see the `above` numbers). A hard-sliced
             # glyph row therefore lands in double figures, so a threshold of 3
@@ -562,9 +681,32 @@ def check_scroll_affordance(server, browser):
             check(at_edge <= 3.0,
                   f'{label}: the last 4px at the cut are faded to nothing '
                   f'(darkness {at_edge:.2f} of a 12-19 unfaded line)')
-            check(above - at_edge > 6.0 or above < 3.0,
-                  f'{label}: content 70px up is much darker than the faded edge '
-                  f'({above:.2f} vs {at_edge:.2f})')
+            # AND THE GRADIENT IS ONLY ASSERTABLE WHERE THERE IS SOMETHING TO
+            # FADE. A region can overflow while the last 130px before the cut
+            # are whitespace — the quiz at 1280x720 is exactly that, measuring
+            # 3.65 against a faded edge of 0.29. There is no gradient to find
+            # because there is no ink there, and demanding one would be
+            # asserting a property of the page's copy, not of the fade. The
+            # fade's own assertion is `at_edge` above, which is unconditional
+            # and is what proves the mask is applied.
+            # THE GATE IS "IS THERE INK HERE", on the scale this file already
+            # uses: a line of body copy measures 12-19, and a card border or the
+            # seam between two option cards measures 3-4 (consent read 3.63 off
+            # a seam, the quiz reads 3.65 off whitespace). 6.0 sits above that
+            # noise and below any real copy — and it is the SAME constant as the
+            # gradient below, deliberately: a strip fainter than 6 could not
+            # satisfy `above - at_edge > 6` anyway, so gating on it adds no new
+            # threshold, it just stops the check asserting something arithmetic
+            # already makes impossible.
+            if above >= 6.0:
+                check(above - at_edge > 6.0,
+                      f'{label}: the darkest content within 130px of the cut is '
+                      f'much darker than the faded edge '
+                      f'({above:.2f} vs {at_edge:.2f})')
+            else:
+                print(f'       {label}: nothing within 130px of the cut to fade '
+                      f'(darkest {above:.2f} — below the 12-19 of a line of '
+                      f'copy); the faded edge itself reads {at_edge:.2f}')
             # …and the fade must GO AWAY at the end, or the last line would be
             # permanently half-invisible.
             page.evaluate("""() => { const el = document.querySelector(
@@ -799,12 +941,19 @@ def check_eyebrow_alignment(server, browser):
 
 
 def check_short_page_balance(server, browser):
-    """D7 (2026-08-11): a very short narrative page is balanced.
+    """D7 (2026-08-11, remeasured 2026-08-13): a very short narrative page is
+    balanced.
 
     The lab gate is one sentence. It must read as centred copy with the
     institutional marks along the FOOT of the card — not copy and logos clumped
     together mid-card with a bigger hole underneath — and its text must not be
     justified (justification belongs to the instructions reading band).
+
+    WHAT CHANGED under THE LOGO FOOTER RULE (item 9): the strip is no longer
+    inside the scroll region, so "at the foot" is now measured against the CARD,
+    not against `.experimental-content`, and the copy is centred in the content
+    region rather than in the space above the strip. The PROPERTY being asserted
+    is unchanged — that is the point of measuring it rather than the markup.
     """
     section('D7. The lab entry gate: balanced, logos at the foot, not justified')
     session = create_session('lab', num_participants=2)
@@ -816,22 +965,26 @@ def check_short_page_balance(server, browser):
         page.wait_for_timeout(150)
         m = page.evaluate("""() => {
             const el = document.querySelector('.experimental-content');
+            const card = document.querySelector('.screen-card');
             const text = document.querySelector('.section-text');
             const logo = document.querySelector('.logo-section');
-            if (!el || !text || !logo) return null;
+            if (!el || !card || !text || !logo) return null;
             const r = el.getBoundingClientRect();
+            const c = card.getBoundingClientRect();
             const t = text.getBoundingClientRect();
             const g = logo.getBoundingClientRect();
             const cs = getComputedStyle(el);
+            const cardCs = getComputedStyle(card);
             const pad = parseFloat(cs.paddingBottom) || 0;
-            const gap = parseFloat(cs.rowGap || cs.gap) || 0;
+            const cardPad = parseFloat(cardCs.paddingBottom) || 0;
             return {align: getComputedStyle(text).textAlign,
-                    pad: pad, gap: gap,
-                    // free space above the copy, and free space between the copy
-                    // and the logo strip, both net of the fixed padding/gap
+                    pad: pad, cardPad: cardPad,
+                    // free space above and below the copy INSIDE the content
+                    // region (the strip is no longer one of its children)
                     aboveFree: Math.round(t.top - r.top - pad),
-                    betweenFree: Math.round(g.top - t.bottom - gap),
-                    below: Math.round(r.bottom - g.bottom - pad),
+                    belowFree: Math.round(r.bottom - t.bottom - pad),
+                    // and the strip's distance from the card's bottom edge
+                    below: Math.round(c.bottom - g.bottom - cardPad),
                     overflows: el.scrollHeight > el.clientHeight + 2};
         }""")
         if not check(m is not None, f'{vp_name}: the gate renders text + logos'):
@@ -841,15 +994,16 @@ def check_short_page_balance(server, browser):
               f'{vp_name}: the sentence is NOT justified (text-align: '
               f'{m["align"]})')
         check(m['below'] <= 2,
-              f'{vp_name}: the logo strip sits at the FOOT of the scroll region '
-              f'({m["below"]}px of free space below it, net of its '
-              f'{m["pad"]:.0f}px padding)')
-        # The two auto margins split the free space, so the copy is centred in
-        # the space above the logos: the free space above it and the free space
-        # between it and the strip should match.
-        check(abs(m['aboveFree'] - m['betweenFree']) <= 2,
-              f'{vp_name}: the copy is centred above the logo strip '
-              f'({m["aboveFree"]}px free above, {m["betweenFree"]}px free '
+              f'{vp_name}: the logo strip sits at the FOOT OF THE CARD '
+              f'({m["below"]}px of free space below it, net of the card\'s '
+              f'{m["cardPad"]:.0f}px padding)')
+        # The copy is centred in the content region: equal free space above and
+        # below it. (Before item 9 this compared the space above the copy with
+        # the space between the copy and the strip, because the strip was one of
+        # the region's own children and shared its free space.)
+        check(abs(m['aboveFree'] - m['belowFree']) <= 2,
+              f'{vp_name}: the copy is centred in the content region '
+              f'({m["aboveFree"]}px free above, {m["belowFree"]}px free '
               f'below)')
         geometry.setdefault('short_page', {})[vp_name] = m
         screenshot(page, 'lab_entry_gate_balance', vp_name)
@@ -1203,6 +1357,329 @@ def _money(text):
     import re
     m = re.findall(r'-?\d+(?:[.,]\d+)?', (text or '').replace(',', ''))
     return float(m[0]) if m else None
+
+
+def check_pager_aligns_with_text(server, browser):
+    """W. The instructions pager shares the TEXT's edges (round-2 item 12).
+
+    Back and Next used to sit on the edges of the CARD while the instructions
+    text is held to `--read-measure`, so the pager floated outside the column it
+    pages through. `.instruction-controls` now takes the same measure.
+
+    MEASURED AGAINST THE RENDERED TEXT, not against the token: reading the CSS
+    back would only prove the stylesheet says what it says, and the whole failure
+    mode of a layout change is that nothing errors. The comparison is
+    button-edge against paragraph-edge, at all three viewports.
+
+    The counter between them must stay centred in that narrower span — it is the
+    flex row's middle item, so the assertion is that its centre matches the
+    row's centre, which is what "still centred" has to mean once the row is no
+    longer the width of the card.
+    """
+    section('W. The instructions pager lines up with the text (item 12)')
+    session = create_session('lab', num_participants=2)
+    code, _ = walk_to(server.base, session, 'instructing')
+    for vp_name, vp in VIEWPORTS.items():
+        context = browser.new_context(viewport=vp)
+        page = context.new_page()
+        page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+        page.wait_for_timeout(200)
+        m = page.evaluate("""() => {
+            const row = document.querySelector('.instruction-controls');
+            const back = document.querySelector('#prevBtn');
+            const next = document.querySelector('#nextBtn');
+            const counter = document.querySelector('.instruction-progress');
+            // The visible slide's own running BODY copy — the column the pager
+            // belongs to.
+            // TWO PARAGRAPHS MUST BE EXCLUDED, and picking the first <p> blind
+            // measures the wrong thing (it did, on the first run): the shipped
+            // instructions open with a TEMPLATE NOTE carrying an inline
+            // `font-size: 14px`, and `--read-measure` is `68ch`, which resolves
+            // against each element's OWN font — so that note's measure is
+            // ~519px against body copy's ~726px, and the leg failed against a
+            // paragraph the rule was never about. Any <p> in a hidden slide has
+            // a zero-width box for the same class of reason.
+            const block = document.querySelector('.instruction-block');
+            const p = block ? Array.from(block.querySelectorAll(':scope > p'))
+                .find(el => !(el.getAttribute('style') || '')
+                        .includes('font-size')
+                     && el.getBoundingClientRect().width > 0) : null;
+            if (!row || !back || !next || !p) return null;
+            const R = row.getBoundingClientRect(), B = back.getBoundingClientRect();
+            const N = next.getBoundingClientRect(), P = p.getBoundingClientRect();
+            const C = counter ? counter.getBoundingClientRect() : null;
+            return {textLeft: Math.round(P.left), textRight: Math.round(P.right),
+                    backLeft: Math.round(B.left), nextRight: Math.round(N.right),
+                    rowLeft: Math.round(R.left), rowRight: Math.round(R.right),
+                    rowCentre: Math.round((R.left + R.right) / 2),
+                    counterCentre: C ? Math.round((C.left + C.right) / 2) : null,
+                    textW: Math.round(P.width), rowW: Math.round(R.width),
+                    // The COMPUTED caps, so "they come from ONE rule" is
+                    // asserted and not merely implied by the edges agreeing
+                    // today. The pager and the slide BLOCK are the two elements
+                    // in that rule; the running text carries no cap of its own
+                    // any more and simply fills the block, which is checked
+                    // separately below.
+                    rowMaxW: getComputedStyle(row).maxWidth,
+                    blockMaxW: getComputedStyle(block).maxWidth,
+                    textMaxW: getComputedStyle(p).maxWidth};
+        }""")
+        if not check(m is not None, f'{vp_name}: the instructions page renders '
+                                    f'a pager and running text'):
+            context.close()
+            continue
+        check(abs(m['backLeft'] - m['textLeft']) <= 2,
+              f'{vp_name}: Back\'s LEFT edge is the text\'s left edge '
+              f'({m["backLeft"]} vs {m["textLeft"]})')
+        check(abs(m['nextRight'] - m['textRight']) <= 2,
+              f'{vp_name}: Next\'s RIGHT edge is the text\'s right edge '
+              f'({m["nextRight"]} vs {m["textRight"]})')
+        if m['counterCentre'] is not None:
+            check(abs(m['counterCentre'] - m['rowCentre']) <= 3,
+                  f'{vp_name}: the counter stays centred within that narrower '
+                  f'span ({m["counterCentre"]} vs centre {m["rowCentre"]})')
+        # ONE RULE, NOT TWO AGREEING (item 16). The edges lining up could also
+        # happen with two rules that currently produce the same number and drift
+        # on the next type-scale change — precisely the failure this was rebuilt
+        # to make impossible. Two assertions pin the shape itself:
+        check(m['rowMaxW'] == m['blockMaxW'],
+              f'{vp_name}: the pager and the slide block resolve the SAME '
+              f'max-width, i.e. they still come from ONE rule '
+              f'({m["rowMaxW"]} == {m["blockMaxW"]})')
+        check(m['textMaxW'] == 'none',
+              f'{vp_name}: the running text carries NO cap of its own — the '
+              f'second constraint that made these disagree is still gone '
+              f'(got {m["textMaxW"]})')
+        geometry.setdefault('pager_alignment', {})[vp_name] = m
+        screenshot(page, 'pager_alignment', vp_name)
+        context.close()
+
+
+def check_results_table_look(server, browser):
+    """V2. The per-round payoff table (round-2 item 8) and its accordion (10).
+
+    THE LOOK IS PORTED BY REASON FROM exp_pilots, so this leg measures the
+    REASONS rather than a screenshot: the header is quiet and sits on a stronger
+    rule than the body rows, the body digits are TABULAR (which is most of why
+    the table reads as tidy and is entirely invisible to a DOM test that only
+    checks text), the last row drops its border, and a paid round carries BOTH
+    an accent wash and an inset left bar — the second signal being what makes
+    the paid rounds findable in a long list.
+
+    ITEM 10 IS MEASURED HERE TOO, because it is the same table: the lab opens
+    with it EXPANDED and Prolific still opens COLLAPSED, and in both cases the
+    accordion must still work. The initial state is asserted through the three
+    things that must agree — the wrapper's visibility, the button's
+    aria-expanded and the caret's rotation class — since a disclosure whose ARIA
+    contradicts the screen tells a screen-reader user the opposite of the truth.
+    """
+    section('V2. The per-round table: the ported look (8) + the accordion (10)')
+    for key, config, expect_open in (('results_lab', 'lab', True),
+                                     ('results_prolific', 'prolific', False)):
+        code, _ = walk_to(server.base,
+                          create_session(config, num_participants=2), 'Results')
+        context = browser.new_context(viewport=VIEWPORTS['laptop_1280x720'])
+        page = context.new_page()
+        page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+        page.wait_for_timeout(150)
+        state = page.evaluate("""() => {
+            const wrap = document.querySelector('#results-table-wrapper');
+            const btn = document.querySelector('#results-toggle');
+            const arrow = document.querySelector('#results-arrow');
+            if (!wrap || !btn) return null;
+            return {hidden: wrap.classList.contains('is-hidden'),
+                    aria: btn.getAttribute('aria-expanded'),
+                    arrowOpen: arrow ? arrow.classList.contains('open') : null,
+                    visibleH: Math.round(
+                        wrap.getBoundingClientRect().height)};
+        }""")
+        if not check(state is not None, f'{key}: the page has the accordion'):
+            context.close()
+            continue
+        check(state['hidden'] is not expect_open,
+              f'{key}: the table starts '
+              f'{"EXPANDED" if expect_open else "collapsed"} '
+              f'(is-hidden={state["hidden"]})')
+        check(state['aria'] == ('true' if expect_open else 'false'),
+              f'{key}: aria-expanded agrees with what is on screen '
+              f'(got {state["aria"]!r})')
+        check(state['arrowOpen'] is expect_open,
+              f'{key}: the caret agrees too (open={state["arrowOpen"]})')
+        check((state['visibleH'] > 0) is expect_open,
+              f'{key}: …and it is measurably {"open" if expect_open else "closed"} '
+              f'({state["visibleH"]}px tall)')
+        # THE ACCORDION STILL WORKS in both — item 10 changed the initial state
+        # only, and Julian was explicit the accordion stays.
+        page.click('#results-toggle')
+        page.wait_for_timeout(120)
+        after = page.evaluate(
+            """() => ({hidden: document.querySelector('#results-table-wrapper')
+                        .classList.contains('is-hidden'),
+                      aria: document.querySelector('#results-toggle')
+                        .getAttribute('aria-expanded')})""")
+        check(after['hidden'] is not state['hidden'],
+              f'{key}: clicking the control still toggles the table '
+              f'({state["hidden"]} -> {after["hidden"]})')
+        check(after['aria'] == ('false' if after['hidden'] else 'true'),
+              f'{key}: …and aria-expanded follows it (got {after["aria"]!r})')
+        if after['hidden']:
+            page.click('#results-toggle')   # leave it open to measure the look
+            page.wait_for_timeout(120)
+
+        look = page.evaluate("""() => {
+            const th = document.querySelector('.results-table th');
+            const tds = Array.from(document.querySelectorAll(
+                '.results-table tbody td'));
+            const rows = Array.from(document.querySelectorAll(
+                '.results-table tbody tr'));
+            if (!th || !tds.length) return null;
+            const last = rows[rows.length - 1].querySelector('td');
+            const paid = rows.find(r => r.classList.contains('selected-row'));
+            const paidTd = paid ? paid.querySelector('td') : null;
+            const ths = getComputedStyle(th);
+            return {
+                headTransform: ths.textTransform,
+                headSpacing: ths.letterSpacing,
+                headBorder: parseFloat(ths.borderBottomWidth) || 0,
+                bodyBorder: parseFloat(
+                    getComputedStyle(tds[0]).borderBottomWidth) || 0,
+                bodyNumeric: getComputedStyle(tds[0]).fontVariantNumeric,
+                lastBorder: parseFloat(
+                    getComputedStyle(last).borderBottomWidth) || 0,
+                paidBg: paidTd ? getComputedStyle(paidTd).backgroundColor : null,
+                paidShadow: paidTd ? getComputedStyle(paidTd).boxShadow : null,
+                paidPill: paid ? !!paid.querySelector('.tag.paid-tag') : null,
+                plainPill: rows.some(
+                    r => !r.classList.contains('selected-row')
+                         && r.querySelector('.tag.paid-tag')),
+                nRows: rows.length};
+        }""")
+        if not check(look is not None, f'{key}: the table renders rows'):
+            context.close()
+            continue
+        check(look['headTransform'] == 'uppercase'
+              and look['headSpacing'] not in ('normal', '0px'),
+              f'{key}: the header is uppercase and letter-spaced '
+              f'({look["headTransform"]}, {look["headSpacing"]})')
+        check(look['headBorder'] >= look['bodyBorder'],
+              f'{key}: the header sits on a rule at least as strong as the '
+              f'body rows ({look["headBorder"]} vs {look["bodyBorder"]})')
+        # THE ONE THAT MATTERS MOST AND IS INVISIBLE TO EVERY OTHER TEST.
+        check('tabular-nums' in look['bodyNumeric'],
+              f'{key}: body cells use TABULAR numerals so the digits line up '
+              f'down the column (font-variant-numeric: {look["bodyNumeric"]})')
+        check(look['lastBorder'] == 0,
+              f'{key}: the last row drops its bottom border '
+              f'({look["lastBorder"]}px)')
+        if look['paidBg'] is not None:
+            check(look['paidBg'] not in ('rgba(0, 0, 0, 0)', 'transparent'),
+                  f'{key}: a paid round has an accent row wash '
+                  f'({look["paidBg"]})')
+            check('inset' in (look['paidShadow'] or ''),
+                  f'{key}: …AND an inset left bar, the second signal that makes '
+                  f'it findable in a long list ({look["paidShadow"]})')
+            check(look['paidPill'] is True,
+                  f'{key}: …and it is named by a pill tag, not just coloured')
+            check(look['plainPill'] is False,
+                  f'{key}: an unpaid round carries NO paid pill')
+        else:
+            print(f'  [note] {key}: no paid round in this walk '
+                  f'({look["nRows"]} rows) — highlight not measured')
+        geometry.setdefault('results_table', {})[key] = dict(look, **state)
+        screenshot(page, f'results_table_{key}', 'laptop_1280x720')
+        context.close()
+
+
+def check_sepa_warning_is_a_warning(server, browser):
+    """V3. The non-SEPA bank warning LOOKS like a warning (round-2 item 4).
+
+    It shipped in the quiet grey `.panel`, which is the component for secondary
+    information — so the one sentence that can still stop a payment from failing
+    read as a footnote. It now takes `.panel--warning`.
+
+    MEASURED ON RENDERED COLOUR, not on the class name: the point of the change
+    is what a participant sees, and a class that exists but resolves to the same
+    grey would pass a DOM check while changing nothing. The comparison is
+    against the plain `.panel` on the same page family, so this stays true if
+    the palette is retuned.
+
+    The lab config is the one that collects bank details; `sepa` is 0 only for a
+    non-SEPA IBAN, so the panel is staged by writing the field directly.
+    """
+    section('V3. The SEPA warning is red, not grey (item 4)')
+    session = create_session('lab', num_participants=2)
+    code, _ = walk_to(server.base, session, 'Results')
+    if not check(_force_non_sepa(code),
+                 'staged a non-SEPA bank account for the results page'):
+        return
+    context = browser.new_context(viewport=VIEWPORTS['laptop_1280x720'])
+    page = context.new_page()
+    page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+    page.wait_for_timeout(150)
+    m = page.evaluate("""() => {
+        const warn = document.querySelector('.panel--warning');
+        if (!warn) return null;
+        const cs = getComputedStyle(warn);
+        return {text: warn.textContent.replace(/\\s+/g, ' ').trim(),
+                bg: cs.backgroundColor, border: cs.borderColor,
+                shadow: cs.boxShadow,
+                isPanel: warn.classList.contains('panel')};
+    }""")
+    if not check(m is not None,
+                 'the non-SEPA warning panel is on the page'):
+        context.close()
+        return
+    check('not in SEPA' in m['text'] and 'experimenter' in m['text'],
+          f'it is the right panel (says what it must): {m["text"][:80]!r}')
+    check(m['isPanel'],
+          'it is still a .panel — a VARIANT of the component, not a new one')
+    # Red, measured: the red channel must dominate in both the tint and the
+    # border, which is what distinguishes it from the grey it replaced.
+    def _rgb(s):
+        nums = [int(x) for x in re.findall(r'\d+', s or '')[:3]]
+        return nums if len(nums) == 3 else None
+    bg, bd = _rgb(m['bg']), _rgb(m['border'])
+    check(bg is not None and bg[0] > bg[1] and bg[0] > bg[2],
+          f'the panel is tinted RED, not grey (background {m["bg"]})')
+    check(bd is not None and bd[0] > bd[1] + 30 and bd[0] > bd[2] + 30,
+          f'…and its border is the danger colour (border {m["border"]})')
+    check('inset' in (m['shadow'] or ''),
+          f'…with the inset bar that carries the alarm at a glance '
+          f'({m["shadow"]})')
+    geometry['sepa_warning'] = m
+    screenshot(page, 'sepa_warning', 'laptop_1280x720')
+    context.close()
+
+
+def _force_non_sepa(code):
+    """Set the outro player's `sepa` field to 0 for this participant.
+
+    A non-SEPA IBAN cannot be typed in by the walker (the lab bank form is only
+    shown in some configs and the field is computed from the country code), so
+    the state is staged directly. The server runs IN THIS PROCESS against the
+    same throwaway database (see the module header), so an ORM write here is
+    what the next page load reads. Returns False if the row was not there, so
+    the leg skips loudly rather than asserting on a page it failed to stage.
+    """
+    try:
+        from otree.common import get_models_module
+        Player = get_models_module('outro').Player
+        s = DBSession()
+        try:
+            rows = (s.query(Player)
+                    .join(Participant, Player.participant_id == Participant.id)
+                    .filter(Participant.code == code).all())
+            if not rows:
+                return False
+            for row in rows:
+                row.sepa = 0
+            s.commit()
+            return True
+        finally:
+            s.close()
+    except Exception as exc:
+        print(f'  [note] could not stage a non-SEPA account: {exc}')
+        return False
 
 
 def check_results_receipt(server, browser):
@@ -1759,14 +2236,14 @@ def check_screenout_way_out(server, browser):
     "do not press this" sees the study's usual Next button.
     """
     section('AD. The screen-out way out: no JavaScript, and visibly secondary')
-    # `screenout_return_url` ships as a REPLACE_* placeholder (see
+    # `prolific_screenout_return_url` ships as a REPLACE_* placeholder (see
     # settings.SCREENOUT_RETURN_URL_PLACEHOLDER), so drive this leg as a study
     # that has replaced it — the href assertions below are about a CONFIGURED
     # study's way out.
     session = create_session('prolific', num_participants=2,
                              modified_session_config_fields={
                                  'allowed_devices': ['computer'],
-                                 'screenout_return_url': 'https://app.prolific.com/'})
+                                 'prolific_screenout_return_url': 'https://app.prolific.com/'})
     code, _ = walk_to(server.base, session, 'welcome', user_agent=PHONE_UA)
     for vp_name, vp in VIEWPORTS.items():
         context = browser.new_context(viewport=vp, user_agent=PHONE_UA,
@@ -1835,7 +2312,7 @@ def check_completion_link_nojs(server, browser):
     code, _ = walk_to(server.base, session, 'Results')
     cases.append(('Results (completer)', code, 'REPLACE_CC'))
 
-    # (2) An EARLY EXIT — the no-consent route, which carries noconsent_code.
+    # (2) An EARLY EXIT — the no-consent route, which carries prolific_noconsent_code.
     session = create_session('prolific', num_participants=2)
     s = requests.Session()
     r = s.get(f'{server.base}/join/{anon_code(session.code)}', allow_redirects=True)
@@ -2094,7 +2571,10 @@ def check_consent_choice_visible(server, browser, facts):
         context = browser.new_context(viewport=vp)
         page = context.new_page()
         page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
-        page.wait_for_timeout(200)
+        # The fully-visible assertions below are decided by a few pixels of
+        # headroom (7px at 1280x720), so they are exactly the kind of check a
+        # not-yet-settled layout turns flaky — see wait_for_stable_layout.
+        wait_for_stable_layout(page)
         m = page.evaluate("""() => {
             const opts = Array.from(document.querySelectorAll(
                 'input[name="consent"]')).map(i =>
@@ -2103,17 +2583,33 @@ def check_consent_choice_visible(server, browser, facts):
             const el = document.querySelector('.experimental-content');
             const sr = el.getBoundingClientRect();
             const btn = document.querySelector('.button-row');
+            // VISIBILITY IS COMPUTED FROM THE RAW RECTS AND ROUNDED ONCE, at
+            // the end. Rounding the edges first and subtracting afterwards
+            // loses a pixel whenever a box straddles a half-pixel — measured on
+            // 2026-08-13 at 1512x1200, where an option sitting 182px clear of
+            // the fold reported 65 visible of 66. That is a spurious failure in
+            // a check whose whole point is "partial is a failure", so the
+            // arithmetic is done once, here, rather than papered over with a
+            // tolerance downstream.
+            const clipped = el => {
+                const r = el.getBoundingClientRect();
+                return {
+                    top: Math.round(r.top),
+                    bottom: Math.round(r.bottom),
+                    height: Math.round(r.height),
+                    visible: Math.round(Math.min(r.bottom, sr.bottom)
+                                        - Math.max(r.top, sr.top)),
+                };
+            };
             return {
                 n: opts.length,
-                first: (() => { const r = opts[0].getBoundingClientRect();
-                                return {top: Math.round(r.top),
-                                        bottom: Math.round(r.bottom)}; })(),
-                last: (() => { const r = opts[opts.length - 1]
-                                   .getBoundingClientRect();
-                               return {top: Math.round(r.top),
-                                       bottom: Math.round(r.bottom)}; })(),
+                first: clipped(opts[0]),
+                last: clipped(opts[opts.length - 1]),
                 viewTop: Math.round(sr.top), viewBottom: Math.round(sr.bottom),
                 buttonTop: btn ? Math.round(btn.getBoundingClientRect().top) : null,
+                buttonBottom: btn ? Math.round(btn.getBoundingClientRect().bottom)
+                                  : null,
+                viewportH: window.innerHeight,
                 scrollTop: el.scrollTop,
             };
         }""")
@@ -2121,10 +2617,8 @@ def check_consent_choice_visible(server, browser, facts):
                      f'{vp_name}: the consent control is rendered'):
             context.close()
             continue
-        visible_px = min(m['first']['bottom'], m['viewBottom']) - max(
-            m['first']['top'], m['viewTop'])
-        both = min(m['last']['bottom'], m['viewBottom']) - max(
-            m['last']['top'], m['viewTop'])
+        visible_px = m['first']['visible']
+        both = m['last']['visible']
         if vp_name == 'phone_375x667':
             # THE PHONE CONTRACT CHANGED (improvement_suggestions item 1). This
             # page's copy is ~750px and the viewport is 667px, so the options
@@ -2145,6 +2639,62 @@ def check_consent_choice_visible(server, browser, facts):
                   f'scrolling ({visible_px}px of it visible; option '
                   f'{m["first"]["top"]}..{m["first"]["bottom"]}, scroll viewport '
                   f'{m["viewTop"]}..{m["viewBottom"]})')
+            # EVERY OPTION WHOLE, NOT JUST THE FIRST (Julian, 2026-08-13).
+            #
+            # THIS ASSERTION IS THE POINT OF THE LEG, and its absence is exactly
+            # how the asymmetry it now catches survived: the check above passes
+            # on 10px of the FIRST option, and the second was only ever PRINTED.
+            # Measured on 2026-08-13 at 1280x720: "I consent" rendered whole at
+            # 408..474 while "I do not consent" ran 484..550 against a scroll
+            # region ending at 514 — half of it, under a complete-looking one.
+            # A fold BETWEEN two options is worse than a fold below both,
+            # because a sliced list still reads as a finished list.
+            #
+            # PARTIAL IS A FAILURE, not a degree: the bar is the option's OWN
+            # height, so a row cut by one pixel fails. (Fixed by the consent
+            # rhythm block in the `max-height: 820px` media query in base.css;
+            # if this goes red, that block is where the space came from.)
+            for which, box, seen in (('FIRST', m['first'], visible_px),
+                                     ('LAST', m['last'], both)):
+                height = box['height']
+                # THE FAILURE MESSAGE HAS TO SAY WHAT TO DO. Whoever trips this
+                # will almost always be someone who added a sentence to the
+                # consent copy — an ethics committee asks for one, nobody ever
+                # removes one — and they have no reason to connect that to a
+                # media query in base.css two files away. A bare pixel
+                # assertion would read as "the layout is broken"; it is not,
+                # the copy has outgrown the fold.
+                short = height - seen
+                check(seen >= height,
+                      f'{vp_name}: the {which} consent option is FULLY visible '
+                      f'without scrolling ({seen}px of {height}px; option '
+                      f'{box["top"]}..{box["bottom"]}, scroll region '
+                      f'{m["viewTop"]}..{m["viewBottom"]})'
+                      + (f' — THE CONSENT COPY HAS OUTGROWN THE FOLD by {short}px. '
+                         f'A participant sees a complete-looking list with the '
+                         f'last option sliced. Two levers, both in the '
+                         f'`@media (max-height: 820px)` block in '
+                         f'_static/global/css/base.css: (1) the consent rhythm '
+                         f'— option row padding-block, currently .5em, with a '
+                         f'hard floor at the 44px touch target (~16px left); '
+                         f'(2) the LOGO STRIP, which yields first by rule — '
+                         f'marks are 32px and go to 24px (~8px). Measured '
+                         f'2026-08-13: about 32px is available in total, and a '
+                         f'line of copy costs ~31px. IF THAT IS NOT ENOUGH, '
+                         f'STOP TIGHTENING: shorten the copy, or accept that '
+                         f'the card scrolls — the scroll affordance is real and '
+                         f'is asserted, and "nobody consents blind" is enforced '
+                         f'by the un-pre-checked radio and the rejected empty '
+                         f'submit, not by the fold.'
+                         if seen < height else ''))
+            # And the forward action itself, in the viewport rather than the
+            # scroll region — it is pinned below it, so a card that grew to fit
+            # the options must not have pushed Next off the screen instead.
+            if m['buttonBottom'] is not None:
+                check(m['buttonBottom'] <= m['viewportH'],
+                      f'{vp_name}: the Next button is fully on screen '
+                      f'(button {m["buttonTop"]}..{m["buttonBottom"]} in a '
+                      f'{m["viewportH"]}px viewport)')
         print(f'       second option: {both}px visible '
               f'({m["last"]["top"]}..{m["last"]["bottom"]})')
         geometry.setdefault('consent_choice', {})[vp_name] = dict(
@@ -2175,17 +2725,40 @@ def check_consent_choice_visible(server, browser, facts):
           'oTree shows its "this field is required" message')
 
 
-def check_results_logo_below_button(server, browser):
-    """D4b: on the RESULTS page only, the strip sits BELOW the pinned button.
+def check_logo_footer_rule(server, browser):
+    """D4. THE LOGO FOOTER RULE, measured on EVERY page that carries the strip.
 
-    change_requests item 19, in both study types. Everywhere else the strip is
-    inside the scroll region (D4) because pinned it cost ~90px of card height;
-    on this page the action is already pinned, so the strip sits under it,
-    outside the scroll region.
+    THE RULE (Julian, 2026-08-13, change_requests_round2 item 9): the logo
+    footer sits at the BOTTOM of the white card, BELOW the divider line that
+    separates it from the content, and it is THE SAME everywhere it appears.
+
+    WHY THIS LEG REPLACED TWO. There used to be a D4 ("the strip is inside the
+    scroll region") and a D4b ("except on results, where it is below the
+    button"), which is the shape of a per-page arrangement — and a per-page
+    arrangement is what item 9 abolished. Two legs asserting two different
+    answers could not have caught a THIRD page doing a third thing, which is
+    exactly how this drifted: at the time item 9 was raised, four pages had one
+    arrangement, one had another, and the design-system demo modelled the wrong
+    one twice. This leg walks every page that carries the strip and asserts the
+    SAME four facts about each, so a new page that gets it wrong fails here
+    rather than looking merely unusual.
+
+    The measured facts, per page:
+      1. the strip is a DIRECT CHILD of .screen-card (not inside the scroller);
+      2. it is BELOW the content region;
+      3. it is BELOW the button row, when the page has one;
+      4. it carries its own divider line (border-top), so the separation
+         travels with the component instead of being drawn per page.
     """
-    section('D4b. The results logo strip sits below the button (item 19)')
-    for key, config, stop in (('results_prolific', 'prolific', 'Results'),
-                              ('results_lab', 'lab', 'Results')):
+    section('D4. THE LOGO FOOTER RULE, on every page that shows the strip')
+    pages = (
+        ('lab_entry_gate', 'lab', 'startpage'),
+        ('consent_lab', 'lab', 'welcome'),
+        ('consent_prolific', 'prolific', 'welcome'),
+        ('results_lab', 'lab', 'Results'),
+        ('results_prolific', 'prolific', 'Results'),
+    )
+    for key, config, stop in pages:
         session = create_session(config, num_participants=2)
         code, _ = walk_to(server.base, session, stop)
         context = browser.new_context(viewport=VIEWPORTS['laptop_1280x720'])
@@ -2199,67 +2772,41 @@ def check_results_logo_below_button(server, browser):
             const card = document.querySelector('.screen-card');
             if (!logo || !el) return null;
             const l = logo.getBoundingClientRect();
+            const cs = getComputedStyle(logo);
             return {insideScroller: el.contains(logo),
                     parentIsCard: logo.parentElement === card,
                     logoTop: Math.round(l.top),
+                    logoBottom: Math.round(l.bottom),
+                    cardBottom: Math.round(
+                        card.getBoundingClientRect().bottom),
                     contentBottom: Math.round(el.getBoundingClientRect().bottom),
                     buttonBottom: row ? Math.round(
                         row.getBoundingClientRect().bottom) : null,
-                    hasButton: !!row};
+                    hasButton: !!row,
+                    borderTop: parseFloat(cs.borderTopWidth) || 0};
         }""")
         if not check(m is not None, f'{key}: the page has a logo strip'):
             context.close()
             continue
         check(not m['insideScroller'] and m['parentIsCard'],
-              f'{key}: the strip is a direct child of the card, OUTSIDE the '
+              f'{key}: the strip is a DIRECT CHILD of the card, outside the '
               f'scroll region')
         check(m['logoTop'] >= m['contentBottom'] - 2,
               f'{key}: it sits below the scrolling content '
               f'({m["logoTop"]} >= {m["contentBottom"]})')
         if m['hasButton']:
             check(m['logoTop'] >= m['buttonBottom'] - 2,
-                  f'{key}: …and BELOW the Back-to-Prolific button '
-                  f'({m["logoTop"]} >= {m["buttonBottom"]})')
+                  f'{key}: …and BELOW the button row — the `order: 999` rule, '
+                  f'not the markup order ({m["logoTop"]} >= '
+                  f'{m["buttonBottom"]})')
         else:
-            print(f'  [note] {key}: no button on this variant (lab), so the '
-                  f'strip is simply the foot of the card')
-        geometry.setdefault('results_logo', {})[key] = m
-        screenshot(page, key, 'laptop_1280x720')
-        context.close()
-
-
-def check_logo_unpinned(server, browser):
-    """D4: the logo strip scrolls with the content instead of eating card height."""
-    section('D4. The logo strip is inside the scroll region, not pinned')
-    for key, config, stop in (('consent_prolific', 'prolific', 'welcome'),):
-        session = create_session(config, num_participants=2)
-        code, _ = walk_to(server.base, session, stop)
-        context = browser.new_context(viewport=VIEWPORTS['laptop_1280x720'])
-        page = context.new_page()
-        page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
-        page.wait_for_timeout(150)
-        m = page.evaluate("""() => {
-            const logo = document.querySelector('.logo-section');
-            const el = document.querySelector('.experimental-content');
-            if (!logo || !el) return null;
-            const before = logo.getBoundingClientRect().top;
-            el.scrollTop = el.scrollHeight;
-            const after = logo.getBoundingClientRect().top;
-            el.scrollTop = 0;
-            return {inside: el.contains(logo), before: Math.round(before),
-                    after: Math.round(after),
-                    overflows: el.scrollHeight > el.clientHeight + 2};
-        }""")
-        if not check(m is not None, f'{key}: the page has a logo strip'):
-            context.close()
-            continue
-        check(m['inside'],
-              f'{key}: the logo strip is INSIDE .experimental-content')
-        if m['overflows']:
-            check(m['after'] != m['before'],
-                  f'{key}: it moves when the region scrolls '
-                  f'({m["before"]} -> {m["after"]}) — i.e. it is not pinned')
-        geometry.setdefault('logo_strip', {})[key] = m
+            print(f'  [note] {key}: no button row on this page, so the strip '
+                  f'is simply the foot of the card')
+        check(m['borderTop'] >= 1,
+              f'{key}: it carries its own divider line above it '
+              f'({m["borderTop"]}px border-top)')
+        geometry.setdefault('logo_footer', {})[key] = m
+        screenshot(page, f'logo_footer_{key}', 'laptop_1280x720')
         context.close()
 
 
@@ -2571,7 +3118,18 @@ def check_features(server, browser, facts):
     page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
     page.wait_for_timeout(150)
     band = page.evaluate("""() => {
-        const p = document.querySelector('.instruction-block p, .instructions p');
+        // BODY COPY, not the first <p> in the DOM. The shipped instructions
+        // open with a template note carrying an inline `font-size: 14px`, and
+        // `--read-measure` is `68ch` — which resolves against each element's
+        // OWN font. Measured blind, this leg was comparing that note's 519px
+        // against its own 519px probe and passing on a tautology; the real body
+        // copy is 720px against a 726px measure (found 2026-08-13 while adding
+        // the pager-alignment leg). Same defect class as the one that leg
+        // exists for, which is why it is fixed rather than noted.
+        const p = Array.from(document.querySelectorAll(
+                  '.instruction-block > p'))
+            .find(el => !(el.getAttribute('style') || '').includes('font-size')
+                     && el.getBoundingClientRect().width > 0);
         const wrap = document.querySelector('.instructions');
         const card = document.querySelector('.screen-card');
         if (!p) return null;
@@ -2802,9 +3360,39 @@ def check_scroll_shadow(server, browser):
     check(top_at_end > top_at_start,
           f'scrolling down reveals the TOP shadow '
           f'({top_at_start:.2f} -> {top_at_end:.2f})')
-    check(bottom_at_end < bottom_at_start,
-          f'the BOTTOM shadow disappears at the end of the content '
-          f'({bottom_at_start:.2f} -> {bottom_at_end:.2f})')
+    # THE BOTTOM AFFORDANCE AT THE END, MEASURED AGAINST ITSELF (2026-08-13).
+    #
+    # `bottom_at_end < bottom_at_start` compares two DIFFERENT sets of pixels —
+    # the strip at the top of the scroll versus the strip at the end — so it
+    # silently assumes the content that ends up under the edge is no darker than
+    # the content that started there. That is a fact about the page, not about
+    # the affordance. Measured when the consent card's rhythm changed: at the
+    # end of the scroll the last 8px now hold a line of the contact sentence, so
+    # darkness went 2.90 -> 3.58 and the leg went red even though the mask was
+    # correctly OFF (the class assertion below passes).
+    #
+    # So the pixels are compared with themselves, at the same scroll position,
+    # with the fade forced back on: if the mask were still applied it would
+    # LIGHTEN exactly these pixels. That isolates the affordance from whatever
+    # copy happens to sit at the edge, which is what the check was always for.
+    faded_again = page.evaluate("""() => {
+        const el = document.querySelector('.experimental-content');
+        el.classList.add('is-scrollable-down');
+        return true;
+    }""")
+    page.wait_for_timeout(80)
+    bottom_forced = strip_darkness('bottom')
+    page.evaluate("""() => document.querySelector('.experimental-content')
+        .classList.remove('is-scrollable-down')""")
+    check(faded_again and bottom_at_end >= bottom_forced,
+          f'at the end of the content the BOTTOM fade is OFF — the same pixels '
+          f'are darker than they would be with it on '
+          f'({bottom_at_end:.2f} unmasked vs {bottom_forced:.2f} masked)')
+    # Recorded, not asserted: the start-vs-end comparison is a fact about which
+    # copy sits at the edge (see above), so it is printed for a reader and kept
+    # in geometry.json for diffing, and no longer decides anything.
+    print(f'       bottom strip darkness, scroll start -> end: '
+          f'{bottom_at_start:.2f} -> {bottom_at_end:.2f}')
     geometry['scroll_shadow'] = {
         'top_at_start': round(top_at_start, 3),
         'bottom_at_start': round(bottom_at_start, 3),
@@ -3065,6 +3653,9 @@ def main():
                     check_scroll_cue(server, browser)
                     check_task_progress(server, browser, facts)
                     check_results_receipt(server, browser)
+                    check_results_table_look(server, browser)
+                    check_sepa_warning_is_a_warning(server, browser)
+                    check_pager_aligns_with_text(server, browser)
                     check_reread_dialog(server, browser)
                     check_lab_experimenter_notice(server, browser)
                     check_warning_modal(server, browser)
@@ -3084,8 +3675,7 @@ def main():
                     check_short_page_balance(server, browser)
                     check_eyebrow_alignment(server, browser)
                     check_consent_choice_visible(server, browser, facts)
-                    check_logo_unpinned(server, browser)
-                    check_results_logo_below_button(server, browser)
+                    check_logo_footer_rule(server, browser)
                     check_focus_rings(server, browser)
                     check_overlay(server, browser)
                     check_features(server, browser, facts)

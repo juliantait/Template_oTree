@@ -18,6 +18,33 @@
 # - ConfirmProlificID: confirm the platform id. Its free-text field is the one
 #   route in this template that can produce a DUPLICATE participant label, which
 #   is a permanent lockout in oTree — see identity.py.
+#
+# ADDING A PAGE HERE? THE ONE RULE THIS APP KEEPS RE-LEARNING:
+#
+#       **FLAGS DECIDE MECHANICS, `recruitment` DECIDES COPY.**
+#
+# A module flag says what machinery exists — `prolific_completion_redirects` means we
+# hold a completion code, `prolific_capture_participant_id` means we collect a platform
+# id. Neither means "the participant is on Prolific", and neither may be used as
+# a stand-in for it. Every sentence a participant READS that names the platform,
+# or the room, or how to reach a human, branches on `common.is_lab` /
+# `common.is_prolific`; only the machinery itself (does a link exist? is there a
+# field to fill?) branches on a flag.
+#
+# This app broke that rule twice at once and it cost a participant DEAD END: the
+# consent page guessed "Prolific" from `prolific_capture_participant_id` while the
+# screen-out page guessed it from `prolific_completion_redirects`, so a
+# `recruitment='prolific'` session with `prolific_completion_redirects` off told people
+# to contact the researchers *through Prolific* and then served them a
+# screen-out page with no way out at all.
+#
+# AND WHERE A STUDY TYPE OWES SOMETHING, IT IS ENFORCED, NOT DOCUMENTED. A
+# Prolific participant has no experimenter to ask, so a Prolific study must
+# offer a screened-out participant an exit; `settings._prelaunch_problems`
+# refuses a prolific config that has no `prolific_screenout_return_url`, so the broken
+# combination cannot reach a participant at all. A rule in prose is one somebody
+# can configure their way past. The full argument is above `common.is_lab`;
+# tests/copy_routing_test.py asserts the impossibility.
 
 from otree.api import *
 import common
@@ -69,7 +96,7 @@ class Player(BasePlayer):
     #     the pre-ticked True anyway.
     # Required + unset means an untouched submit is REJECTED with oTree's own
     # validation message, so the choice cannot be skipped. It is only ever in
-    # form_fields when completion_redirects is on (see get_form_fields), so the
+    # form_fields when prolific_completion_redirects is on (see get_form_fields), so the
     # lab variant is unaffected and leaves it null — read it with
     # field_maybe_none anywhere outside that branch.
     consent = models.BooleanField(
@@ -237,21 +264,66 @@ def _screenout_vars(player):
     the gate enforces, so the sentence cannot drift from the rule).
 
     The way out is a PLAIN LINK to the recruitment platform carrying NO
-    completion code (common.screenout_return_url explains why there is no such
+    completion code (common.prolific_screenout_return_url explains why there is no such
     code). It is offered only where it means something — a study with
-    `completion_redirects` off has no platform to return to — and never as a
+    `prolific_completion_redirects` off has no platform to return to — and never as a
     broken link when the URL is blank.
     """
     cfg = player.session.config
-    return_url = common.screenout_return_url(cfg)
+    # The three device facts come from common.screenout_vars, which the outro
+    # ending uses too — the two pages say deliberately different things, but not
+    # about the participant's device.
+    vars_ = common.screenout_vars(player.participant, cfg)
     return dict(
-        screenout_cause=common.screenout_cause(player.participant),
-        allowed_devices_phrase=common.device_types_phrase(
-            common.allowed_devices(cfg)),
-        return_url=return_url,
-        show_return_link=bool(return_url and _flag(player, 'completion_redirects')),
-        is_lab=(common.cfg(cfg, 'recruitment') == 'lab'),
+        vars_,
+        # THE WAY OUT IS OWED TO A PROLIFIC PARTICIPANT, and it is the STUDY
+        # TYPE that owes it — not `prolific_completion_redirects` (Julian, 2026-08-13).
+        #
+        # It used to be `return_url and prolific_completion_redirects`, and that was the
+        # dead end: the return URL carries NO completion code (that is the whole
+        # design — their submission must stay open), so gating it on the
+        # completion-CODE flag conflated two unrelated things and left a
+        # `recruitment='prolific'` session with redirects off serving a
+        # screened-out participant a page with no exit at all.
+        #
+        # A Prolific participant has no experimenter to raise a hand to, so
+        # being a Prolific study IS the obligation to offer an exit. The
+        # combination that had no exit is now unconstructable rather than
+        # documented: `settings._prelaunch_problems` FAILS a prolific config
+        # whose `prolific_screenout_return_url` is blank or still the placeholder, so it
+        # cannot reach a participant. The `is_prolific` branch in the template
+        # is the runtime belt to that braces — a frozen session predating the
+        # guard still reads correctly rather than dead-ending.
+        show_return_link=bool(common.is_prolific(cfg)
+                              and vars_['prolific_screenout_return_url']),
+        is_lab=common.is_lab(cfg),
+        is_prolific=common.is_prolific(cfg),
     )
+
+
+def _declined_consent(player) -> bool:
+    """Did this participant answer the consent question with "no"?
+
+    ONE implementation. The routing decision (`welcome.app_after_this_page`),
+    the exit code (`welcome.before_next_page`) and every later page's gate
+    (`_leaving_study`) are the same question, and three copies of a two-clause
+    predicate get edited one at a time.
+
+    THE FLAG TEST IS THE SHORT-CIRCUIT, NOT A STYLE CHOICE: `consent` is only
+    ever a form field — and therefore only ever set — when
+    `prolific_completion_redirects` is on (see `welcome.get_form_fields`), so it must not
+    be read when that flag is off. In the lab the first operand is False and
+    `player.consent` is never touched.
+
+    AND THE READ IS DELIBERATELY BARE, not `field_maybe_none`. Unset consent is
+    NOT "declined": it is "never asked", and the two must not collapse into one
+    answer. `field_maybe_none` would quietly route somebody who never saw the
+    question to the ending; a bare read makes that state a loud TypeError
+    instead. The one place consent is legitimately unset — a screened-out
+    participant, whose form has no fields at all — is short-circuited by the
+    screen-out test in `_leaving_study` before this is ever reached.
+    """
+    return bool(_flag(player, 'prolific_completion_redirects')) and not player.consent
 
 
 def _leaving_study(player) -> bool:
@@ -264,16 +336,32 @@ def _leaving_study(player) -> bool:
     routes them past `intro` and `main`, but it only takes effect once this app
     finishes, so every later page in `before` has to gate itself.)
 
-    THE SHORT-CIRCUIT IS LOAD-BEARING: `consent` is only ever a form field — and
-    therefore only ever set — when `completion_redirects` is on (see
-    `welcome.get_form_fields`), so it must not be read when that flag is off.
-    In the lab the first operand is False and `player.consent` is never touched.
+    ORDER IS LOAD-BEARING: the screen-out test comes first because it is what
+    keeps `_declined_consent` from reading a consent field that was never on the
+    screened-out participant's form (see its docstring).
     """
-    if common.is_screened_out(player.participant):
-        return True
-    if _flag(player, 'completion_redirects') and not player.consent:
-        return True
-    return False
+    return common.is_screened_out(player.participant) or _declined_consent(player)
+
+
+# DEVICE CAPTURE IS DECIDED BY `device_capture` ALONE (Julian, 2026-08-13).
+#
+# It used to be `prolific_capture_participant_id or device_capture`, so turning
+# on Prolific ID capture SILENTLY also turned on device capture — one flag
+# quietly doing a second flag's job, and changing what an export column records.
+# Nobody reading either flag name would expect that. One flag, one job.
+#
+# THE THREE SITES THAT MUST AGREE, all now reading `device_capture`:
+# `welcome.get_form_fields` (which fields exist), `welcome.js_vars` (the
+# server's UA rules for the script) and welcome+consent.html (the hidden inputs
+# and the <script> tag). oTree renders any form field the template does not
+# place as a VISIBLE LABELLED BOX, so a field switched on in one place and not
+# the other puts a raw "Is mobile" control on the consent page — with no error
+# and no failing bot test to say so.
+#
+# WHAT THIS CHANGES IN THE DATA: a config with `prolific_capture_participant_id`
+# ON and `device_capture` OFF used to record device info and no longer does.
+# Neither shipped profile is affected (both set the two together), but an export
+# compared across this change must be read with it in mind — see CODEBOOK.md.
 
 
 def _claim_participant_label(player, raw_id):
@@ -283,16 +371,28 @@ def _claim_participant_label(player, raw_id):
     identity.py). A conflict lands in `prolific_label_conflict` — the OWNING
     ROW's participant code — which is what payment triage needs to see both
     sides of a mistyped or borrowed id.
+
+    THE OUTCOME IS RECORDED, and that is what makes the `except` below
+    verifiable: 'error' was previously a value NOTHING anywhere could observe —
+    returned to two call sites that both ignored it — so the defensive path
+    could not be told apart from a successful claim in any export. The key holds
+    the LAST claim's outcome (this page's URL capture, then the confirmation
+    page's typed id, if both run); the conflict detail is in
+    `prolific_label_conflict` and `participant_extra` either way.
     """
     try:
         outcome, owner_code = identity.claim_label(player.participant, raw_id)
         if outcome == 'conflict':
             player.prolific_label_conflict = owner_code or ''
-        return outcome
     except Exception:
         # A label that cannot be stamped is a data problem; a page that 500s on
         # the way to consent is a lost participant.
-        return 'error'
+        outcome = 'error'
+    try:
+        common.extra_set(player.participant, 'label_claim', outcome)
+    except Exception:
+        pass          # instrumentation must never break a page
+    return outcome
 
 
 # PAGES
@@ -394,18 +494,35 @@ class welcome(Page):
         fields = []
         # Explicit consent (with no-consent routing) only when we redirect people
         # back to a platform; lab consent is implicit in clicking Next.
-        if _flag(player, 'completion_redirects'):
+        if _flag(player, 'prolific_completion_redirects'):
             fields.append('consent')
         # NB: the participant id is NOT collected here. It has its own page
         # (ConfirmProlificID) so this page stays platform-neutral and renders
         # identically in the lab. Only the invisible URL capture rides along.
-        if _flag(player, 'capture_participant_id'):
+        if _flag(player, 'prolific_capture_participant_id'):
             fields.append('participant_id_url')
-        if _flag(player, 'capture_participant_id') or _flag(player, 'device_capture'):
-            fields.append('is_mobile')
+        # BOTH device fields under the ONE flag that owns them (see the note
+        # above `_claim_participant_label`'s section): they are filled by the
+        # same script, so they appear and disappear together.
         if _flag(player, 'device_capture'):
-            fields.append('device_info_json')
+            fields += ['is_mobile', 'device_info_json']
         return fields
+
+    @staticmethod
+    def js_vars(player):
+        """The server's User-Agent rules, for the client-side twin.
+
+        The browser classifies with THE SERVER'S list rather than a copy of it,
+        so the two cannot drift — see `common.device_ua_rules`, which explains
+        what the client does with them and how a genuine client/server
+        disagreement is kept separable from an artefact of ours. Sent only when
+        the capture script is actually on the page; when it is not sent, the
+        client records `ua_rules: 'unavailable'` and classifies nothing rather
+        than falling back to a private list.
+        """
+        if not _flag(player, 'device_capture'):
+            return {}
+        return dict(DEVICE_UA_RULES=common.device_ua_rules())
 
     @staticmethod
     def vars_for_template(player):
@@ -413,11 +530,11 @@ class welcome(Page):
         if common.is_screened_out(player.participant):
             return _screenout_vars(player)
         return dict(
-            capture_participant_id=_flag(player, 'capture_participant_id'),
+            prolific_capture_participant_id=_flag(player, 'prolific_capture_participant_id'),
             device_capture=_flag(player, 'device_capture'),
-            completion_redirects=_flag(player, 'completion_redirects'),
+            prolific_completion_redirects=_flag(player, 'prolific_completion_redirects'),
             # Payment-mechanics wording only. Branching on collect_bank_details
-            # (not on capture_participant_id) because the sentence is about HOW
+            # (not on prolific_capture_participant_id) because the sentence is about HOW
             # the participant is paid — and it keeps this page from having any
             # notion of a recruitment platform.
             collect_bank_details=_flag(player, 'collect_bank_details'),
@@ -427,15 +544,21 @@ class welcome(Page):
             show_duration_and_fee=bool(common.cfg(cfg, 'show_duration_and_fee')),
             expected_duration_minutes=common.cfg(cfg, 'expected_duration_minutes'),
             showup_fee=cu(common.cfg(cfg, 'showup') or 0),
-            # WHICH CONTACT ROUTE the closing sentence offers. `recruitment` is
-            # an explicit resolved config key (settings.resolve_recruitment_
-            # profile), read through common.cfg so a session created before the
-            # key existed still renders. `capture_participant_id` is the flag
-            # that means "this study runs on Prolific" — the same one that gates
-            # the ID page — so exactly the studies that have a Prolific message
-            # channel name it.
-            is_lab=(common.cfg(cfg, 'recruitment') == 'lab'),
-            names_prolific=_flag(player, 'capture_participant_id'),
+            # WHICH CONTACT ROUTE the closing sentence offers. BOTH branches
+            # come from the STUDY TYPE, never from a module flag: this is copy,
+            # and copy is `recruitment`'s to decide (the rule is written out in
+            # full above `common.is_lab`).
+            #
+            # It used to read `names_prolific=_flag(player,
+            # 'prolific_capture_participant_id')`, on the argument that the id-capture
+            # flag "means this study runs on Prolific". It does not: a Prolific
+            # study may capture no id and still be a study where the platform's
+            # messaging is the participant's only channel. Worse, the screen-out
+            # page next door was making the same guess from a DIFFERENT flag
+            # (`prolific_completion_redirects`), so one config could name Prolific here
+            # and offer no way out there — see tests/copy_routing_test.py.
+            is_lab=common.is_lab(cfg),
+            names_prolific=common.is_prolific(cfg),
         )
 
     # NB: there is deliberately no error_message here blocking `is_mobile`.
@@ -461,7 +584,7 @@ class welcome(Page):
         # The id arrived in the URL (if at all). Keep it on the player for the
         # audit trail and seed participant.label from it when oTree has not
         # already resolved one, so the confirmation page can pre-fill.
-        if _flag(player, 'capture_participant_id'):
+        if _flag(player, 'prolific_capture_participant_id'):
             url_id = (player.field_maybe_none('participant_id_url') or '').strip()
             if url_id:
                 player.participant_id_url = url_id
@@ -474,17 +597,20 @@ class welcome(Page):
             common.extra_set(player.participant, 'device_info_json', player.device_info_json)
 
         common.stamp_stage(player.participant, 'consent')
+        # And the entry-block exit stamp, written by EVERY page of this app and
+        # deliberately overwritten each time — see common.stamp_left_before_app.
+        common.stamp_left_before_app(player.participant)
 
         # No-consent short-circuit: record the outcome; routing happens in
         # app_after_this_page so the participant never enters the task apps.
-        if _flag(player, 'completion_redirects') and not player.consent:
+        if _declined_consent(player):
             common.set_exit_code(player.participant, common.EXIT_CODES['no_consent'])
 
     @staticmethod
     def app_after_this_page(player, upcoming_apps):
         # Send non-consenters straight to the final app (outro), skipping intro
         # and main entirely.
-        if _flag(player, 'completion_redirects') and not player.consent:
+        if _declined_consent(player):
             return upcoming_apps[-1]
 
 
@@ -493,7 +619,7 @@ class ConfirmProlificID(Page):
 
     Everything platform-specific was moved off the shared consent page onto this
     one, so consent can render identically in the lab and online. Gated on
-    `capture_participant_id`, so a lab session never sees it.
+    `prolific_capture_participant_id`, so a lab session never sees it.
 
     The id normally arrives in the URL (oTree's ?participant_label=, or the
     consent page's hidden ?PROLIFIC_PID= capture) and is shown PRE-FILLED in an
@@ -516,7 +642,7 @@ class ConfirmProlificID(Page):
     @staticmethod
     def is_displayed(player):
         # Never in the lab; never for a participant on their way to an ending.
-        if not _flag(player, 'capture_participant_id'):
+        if not _flag(player, 'prolific_capture_participant_id'):
             return False
         return not _leaving_study(player)
 
@@ -545,6 +671,7 @@ class ConfirmProlificID(Page):
             _claim_participant_label(player, confirmed)
             player.participant.participant_id_external = confirmed
         common.stamp_stage(player.participant, 'confirm_id')
+        common.stamp_left_before_app(player.participant)
 
 
 class AISafetyAgree(Page):
@@ -614,10 +741,15 @@ class AISafetyAgree(Page):
         # spent 5s here and none there (found by the conformance audit,
         # `_ai/dashboard_conformance_audit.md`).
         #
-        # Consumers must therefore treat this as the LAST stamp of the entry
-        # block when it is present — see `_instructions_seconds` in
-        # experimenter_dashboard.py, which takes the max of the three.
+        # Consumers do NOT need to special-case this page, and must not start:
+        # every page of this app calls `common.stamp_left_before_app`, which
+        # OVERWRITES, so the end of the entry block is that one stamp whichever
+        # pages a config happens to show. The max of `consent` / `confirm_id` /
+        # `ai_safety_agreed` survives only as the fallback in
+        # `experimenter_dashboard._intro_seconds`, for participants who were
+        # already mid-flow when `left_before_app` was deployed.
         common.stamp_stage(player.participant, 'ai_safety_agreed')
+        common.stamp_left_before_app(player.participant)
 
 
 # LAB      : startpage (the CREED gate) -> welcome/consent

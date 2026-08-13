@@ -148,7 +148,12 @@ class instructing(Page):
         # Round 1: everyone. Round 2: only a lab participant who took the
         # one-time re-read offer (Prolific never reaches it).
         if common.is_screened_out(player.participant):
-            return False  # mobile screen-out: walked straight to the ending
+            # Screened out at entry. The belt to the soft wall's brace: the gate
+            # HOLDS such a participant on before.welcome, so they never reach
+            # this app at all — this is here for a future gate that could set
+            # the flag later in the flow. (Not "mobile": the cause is a device
+            # TYPE, and a study may exclude computers.)
+            return False
         return player.round_number == 1 or in_reread_pass(player)
 
     def vars_for_template(player):
@@ -176,6 +181,14 @@ class instructing(Page):
             'stag_payoff': C.STAG_PAYOFF,
             'hare_payoff': C.HARE_PAYOFF,
             'stag_alone': C.STAG_ALONE,
+            # WHICH PASS THIS IS, for intro/prequiz_text.html (Julian,
+            # 2026-08-13). The re-read pass must not repeat the bonus/first-
+            # attempt sentence: whoever reaches it has already failed, so the
+            # bonus is gone and there is no second "first attempt". Passed as a
+            # server-side fact rather than letting the template compare round
+            # numbers — in_reread_pass is the one definition of "this is the
+            # second pass" and every reader of it must go through it.
+            'is_reread_pass': in_reread_pass(player),
             # Testing-only skip button; False whenever OTREE_PRODUCTION is set.
             'is_debug': otree_settings.DEBUG,
         }
@@ -199,7 +212,7 @@ class quiz(Page):
     def is_displayed(player):
         # Round 1: everyone. Round 2: only the lab re-read pass.
         if common.is_screened_out(player.participant):
-            return False  # mobile screen-out: walked straight to the ending
+            return False  # screened out at entry; see instructing.is_displayed
         return player.round_number == 1 or in_reread_pass(player)
 
     def error_message(player, values):
@@ -279,7 +292,7 @@ class quiz(Page):
         failed_total = self.participant.vars.get('failed_attempts', 0) or 0
         show_experimenter = (
             failed_this_round
-            and common.cfg(cfg, 'recruitment') == 'lab'
+            and common.is_lab(cfg)
             and failed_total >= threshold
             and not offer_reread
         )
@@ -297,7 +310,7 @@ class quiz(Page):
         # raises their hand. Two re-read mechanisms on one page would also read
         # as a contradiction. Keyed on the study type, not on quiz_reread, so a
         # lab session that never enabled that module still gets the lab rule.
-        show_reread_dialog = common.cfg(cfg, 'recruitment') != 'lab'
+        show_reread_dialog = not common.is_lab(cfg)
         return {
             'quiz_solutions_json': json.dumps(solution_pairs),
             'is_debug': is_debug,

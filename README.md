@@ -69,16 +69,16 @@ always overrides the profile. (There is no `testing` study type — clickthrough
 loosenings belong to the DEBUG axis; see the `test` session config for the
 pattern.)
 
-Modules (all off by default): `capture_participant_id`, `completion_redirects`,
+Modules (all off by default): `prolific_capture_participant_id`, `prolific_completion_redirects`,
 `tab_monitor`, `comprehension_dq`, `quiz_reread`, `passive_capture`,
 `device_capture`, `collect_bank_details`,
 `collect_demographics`, `pilot_feedback`. Thresholds (`comprehension_max_failures`,
-`tab_monitor_*`) and Prolific codes (`cc_code`, `noconsent_code`, `dq_code`)
+`tab_monitor_*`) and Prolific codes (`prolific_cc_code`, `prolific_noconsent_code`, `prolific_dq_code`)
 are config values too. Each participant records a numeric
 `exit_code` (see `CODEBOOK.md`). `C.NUM_ROUNDS` is fixed at import — a config may
 run fewer rounds, never more.
 
-**`allowed_devices`** (the entry device allow-list) and **`screenout_return_url`**
+**`allowed_devices`** (the entry device allow-list) and **`prolific_screenout_return_url`**
 (where a screened-out participant is sent, codeless) have their own reference
 section — **[The device check](#the-device-check-what-it-inspects-and-what-it-cannot)**
 — because the name promises more certainty than any User-Agent check can
@@ -229,7 +229,7 @@ question, and they never advance into the study.
   turns it on. The boundary is the durable `consent_submitted` flag, never a
   page index.
 - **The way out carries NO completion code.** The button is a plain link to
-  `screenout_return_url` (the Prolific participant site). A completion code
+  `prolific_screenout_return_url` (the Prolific participant site). A completion code
   would close their submission the moment they clicked, and a returned
   submission can never be retaken — which forecloses the outcome the page is
   asking for. There is deliberately no screened-out completion code, and none
@@ -379,10 +379,10 @@ flowchart TD
         Results["Results — payment summary"]
     end
 
-    Results --> Done["FINISHED — exit code 1<br>'Back to Prolific' button with cc_code"]
-    EndedNC["outro Ended — exit code -1 (no_consent)<br>'Back to Prolific' with noconsent_code"]
-    EndedDQ["outro Ended — exit code -2 (comprehension)<br>'Back to Prolific' with dq_code"]
-    EndedTM["outro Ended — exit code -3 (tab_monitor)<br>'Back to Prolific' with dq_code"]
+    Results --> Done["FINISHED — exit code 1<br>'Back to Prolific' button with prolific_cc_code"]
+    EndedNC["outro Ended — exit code -1 (no_consent)<br>'Back to Prolific' with prolific_noconsent_code"]
+    EndedDQ["outro Ended — exit code -2 (comprehension)<br>'Back to Prolific' with prolific_dq_code"]
+    EndedTM["outro Ended — exit code -3 (tab_monitor)<br>'Back to Prolific' with prolific_dq_code"]
     Abandon["Closes the tab at any point —<br>no ending page, exit code stays 0 (abandoned)"]
 
     class Done success
@@ -392,11 +392,11 @@ flowchart TD
 
 | Exit code | Terminal state | Ending the participant sees | Completion code |
 |----------:|----------------|-----------------------------|-----------------|
-| `1` finished | Completed the study | `outro` Results → "Back to Prolific" | `cc_code` |
+| `1` finished | Completed the study | `outro` Results → "Back to Prolific" | `prolific_cc_code` |
 | `0` abandoned | Closed the tab, never reached the end | none (handled by Prolific as timed-out/returned) | none |
-| `-1` no_consent | Declined consent at entry | `outro` Ended → "Back to Prolific" | `noconsent_code` |
-| `-2` comprehension | Failed the quiz `comprehension_max_failures` times | `outro` Ended → "Back to Prolific" | `dq_code` |
-| `-3` tab_monitor | Tab-away violations reached the cap | `outro` Ended → "Back to Prolific" | `dq_code` |
+| `-1` no_consent | Declined consent at entry | `outro` Ended → "Back to Prolific" | `prolific_noconsent_code` |
+| `-2` comprehension | Failed the quiz `comprehension_max_failures` times | `outro` Ended → "Back to Prolific" | `prolific_dq_code` |
+| `-3` tab_monitor | Tab-away violations reached the cap | `outro` Ended → "Back to Prolific" | `prolific_dq_code` |
 | `-4` screened_out | Device stopped by the entry allow-list (only when `allowed_devices` is narrowed) | `before` screened_out, in place of consent and their FIRST page — a plain link back to Prolific | **none, deliberately** ([why](#the-device-check-what-it-inspects-and-what-it-cannot)) |
 
 > **The table above is the whole table:** every code in `settings.EXIT_CODES` is
@@ -554,13 +554,40 @@ admin page, this one included — so `scripts/prelaunch_check.py` fails a launch
 that has not set it to `STUDY`. This page shows earnings and per-participant
 conduct; treat it like the data exports.
 
-**Two settings, both read at request time** (so tuning them needs only a server
-restart, and deleting either line falls back to the same default):
-`DASHBOARD_STALL_SECONDS` (default 300 — the amber threshold) and
-`DASHBOARD_POLL_SECONDS` (default 2, and 2 is also a floor enforced
-server-side). They are module-level settings rather than session-config
-parameters on purpose: operator-screen behaviour must not appear in the admin's
-session-config view or in the experimental record.
+**The settings, all read at request time** (so tuning them needs only a server
+restart, and deleting any line falls back to the same default). They are
+module-level settings rather than session-config parameters on purpose:
+operator-screen behaviour must not appear in the admin's session-config view or
+in the experimental record.
+
+**The amber threshold is PER PHASE**, because "too long" on the consent page and
+"too long" reading the instructions differ by an order of magnitude and one
+number could not be right for both — set it low enough for entry and every
+reader turns amber; high enough for the instructions and nobody stuck at entry
+is ever flagged. Both failures are silent, and the operator simply learns to
+ignore the colour.
+
+| setting | default | governs |
+|---|---|---|
+| `DASHBOARD_STALL_SECONDS_BEFORE` | 60 | the entry block (startpage, consent, ID, AI-safety) |
+| `DASHBOARD_STALL_SECONDS_INTRO` | 480 | the whole `intro` app — instructions and quiz share one |
+| `DASHBOARD_STALL_SECONDS_TASK` | 180 | ONE task round (raise it for a longer task page) |
+| `DASHBOARD_STALL_SECONDS_OUTRO` | 300 | the outro, before being marked complete |
+| `DASHBOARD_STALL_SECONDS_DEFAULT` | 300 | any phase not named above |
+| `DASHBOARD_POLL_SECONDS` | 2 | poll interval; 2 is also a floor, enforced server-side |
+
+The thresholds in force are **shown on the page itself**: the ⓘ in the **State**
+column header lists all four, read from these settings on every poll, so an
+operator can see what counts as too long without opening `settings.py`. An amber
+row additionally names the limit it tripped.
+
+**The two summary pills at the foot average over DIFFERENT populations**, and
+each says which: **intro time** over everyone who has *completed the intro*
+(whatever they are doing now — a participant in round 4 finished the intro long
+ago, so their measurement is complete), and **earnings** over *finished*
+participants only, because `earned` does not exist until the results page
+computes it. A still-running intro timer is excluded from the first: averaging a
+number that is still going up would move the mean every two seconds.
 
 **Adding a column** is three marked places and nothing else — compute the value
 in `_participant_row` (`ADD A COLUMN HERE`), add a `<th>` to `_COLGROUP_HTML`,
@@ -767,9 +794,9 @@ config, as the shipped `prolific` config does) and the profile resolves the
 relevant feature flags into explicit config keys at import (see the "Parameter
 scheme" section and `settings.py`). That bundle turns on:
 
-- **`capture_participant_id`** — captures the external Prolific participant ID at
+- **`prolific_capture_participant_id`** — captures the external Prolific participant ID at
   entry (stored in the `participant_id_external` field).
-- **`completion_redirects`** — routes each ending to Prolific with the matching
+- **`prolific_completion_redirects`** — routes each ending to Prolific with the matching
   completion code: normal completion, declined consent (no-consent) and
   disqualification (comprehension / tab monitor). The entry screen-out is the
   exception: it returns them with NO code, so their submission stays open.
@@ -781,8 +808,8 @@ parameter scheme above): screening devices out is a separate, explicit decision,
 so set e.g. `allowed_devices=['computer']` on the config if you want it.
 
 **Completion codes** are config values, set in `settings.py`: the
-`SESSION_CONFIG_DEFAULTS` placeholders `cc_code` (normal), `noconsent_code`
-(declined consent) and `dq_code` (disqualified) — replace the `REPLACE_*`
+`SESSION_CONFIG_DEFAULTS` placeholders `prolific_cc_code` (normal), `prolific_noconsent_code`
+(declined consent) and `prolific_dq_code` (disqualified) — replace the `REPLACE_*`
 values, or override them per-config on your `prolific` session config. The
 prelaunch check refuses to run online while any code is still a `REPLACE_*`
 placeholder. **There are three, not four:** a device screened out at entry gets

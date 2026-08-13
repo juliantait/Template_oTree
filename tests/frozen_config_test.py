@@ -75,9 +75,9 @@ STRIPPED = [
     # consent-page copy switches
     'show_duration_and_fee',
     # recruitment plumbing
-    'capture_participant_id', 'completion_redirects', 'allowed_devices',
-    'screenout_return_url',
-    'cc_code', 'noconsent_code', 'dq_code',
+    'prolific_capture_participant_id', 'prolific_completion_redirects', 'allowed_devices',
+    'prolific_screenout_return_url',
+    'prolific_cc_code', 'prolific_noconsent_code', 'prolific_dq_code',
     # misc
     'pilot_feedback', 'static_version',
 ]
@@ -193,11 +193,11 @@ def main():
         # its way out comes from a parameter added in a later deploy. A session
         # frozen before it existed must still render a working link.
         import settings as _s
-        check(common.screenout_return_url({}) ==
-              _s.SESSION_CONFIG_DEFAULTS['screenout_return_url'],
-              'a session frozen before screenout_return_url existed still gets '
+        check(common.prolific_screenout_return_url({}) ==
+              _s.SESSION_CONFIG_DEFAULTS['prolific_screenout_return_url'],
+              'a session frozen before prolific_screenout_return_url existed still gets '
               'the shipped URL (the screen-out page cannot be a dead end)')
-        check(common.screenout_return_url({'screenout_return_url': ''}) == '',
+        check(common.prolific_screenout_return_url({'prolific_screenout_return_url': ''}) == '',
               'and a study that deliberately blanks it gets no link, not a broken one')
         try:
             common.cfg({}, 'a_totally_unknown_param')

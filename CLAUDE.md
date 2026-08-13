@@ -93,6 +93,35 @@ audit question is: *does any concept in this codebase get decided in two places,
 and does one of them delegate to something the environment controls* (a
 database, a locale, a browser, a clock)?
 
+## Styling: shared components, never page-local patches
+
+**Style with reusable components in `_static/global/css/`. A page template
+composes existing classes; it does not carry its own tweaks.** No inline
+`style=`, no one-off rule added to make a single page look right, no
+page-specific override of a shared component.
+
+This is the collapsed-distinction rule wearing a stylesheet. Every CSS bug in
+this template came from the same shape:
+
+- `.welcome-card` was referenced by three templates and **defined nowhere** — it
+  came from a snapshot without its rule, so those pages simply had no centring.
+- The instructions page carried **two widths for one concept** (a band *and* a
+  reading measure), so the text, the eyebrow and the pager each landed on a
+  different number and the pager could not be aligned.
+- `logo_section.html` set `height` **inline**, which beats any stylesheet, so
+  the component's own rule was inert until the attribute was removed.
+
+**When a page needs something new:** add a component, give it an INTENTION
+comment saying what it is for, and add a specimen to
+`_static/global/html/template.html` so it is demonstrated rather than orphaned.
+When two pages need the same thing, they use the **same class** — the same
+component obeying different rules in different places is a defect even when each
+instance looks reasonable on its own.
+
+**Genuine exceptions exist** (a page-level rule that truly belongs to one
+screen). Mark them `EXCEPTION` with the reason, so the next reader can tell a
+deliberate departure from an accreted patch.
+
 ## Testing standard
 
 Bot tests passing is not evidence that a browser works. Drive form pages **over
