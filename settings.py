@@ -234,7 +234,7 @@ DASHBOARD_RETURN_GRACE_SECONDS = 90
 # Appended as ?v=... to every CSS/JS href so a redeploy is never served a stale
 # cached asset. BUMP THIS ON EVERY CHANGE to a file under _static/. Each app
 # exposes it as C.STATIC_VERSION, which is what the templates read.
-STATIC_VERSION = '11'
+STATIC_VERSION = '12'
 
 
 SESSION_CONFIG_DEFAULTS = dict(
@@ -640,6 +640,21 @@ LANGUAGE_CODE = 'en'
 # e.g. EUR, GBP, CNY, JPY
 REAL_WORLD_CURRENCY_CODE = 'EUR'
 USE_POINTS = False
+
+# ONE PAYMENT LEDGER (J1, Julian 2026-08-13). oTree's per-round player.payoff
+# is NOT used: the game records each round in its own field
+# (main.Player.round_payoff), the template pays from participant.payoff_vector,
+# and oTree's participant.payoff is written ONCE — from `earned`, when the
+# results page computes payment (outro.compute_final_payoff) — so the admin
+# Payments page shows exactly the figure the participant was shown. With this
+# False, oTree makes the old habit IMPOSSIBLE rather than merely discouraged:
+# any write to player.payoff raises, and the per-round payoff column is
+# omitted from the export entirely (deliberately ABSENT, not silently empty —
+# see the payment-record note in CODEBOOK.md; no data is lost, every round is
+# in payoff_vector). Flip this back to True only together with a decision
+# about which ledger is the record, or the two-numbers disagreement this
+# removed comes straight back.
+AUTO_TABULATE_PAYOFFS = False
 
 DEMO_PAGE_INTRO_HTML = """ """
 

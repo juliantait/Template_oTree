@@ -32,9 +32,6 @@
 </div>
 
 <script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
-<script>
-    window.addEventListener('load', clearAllCookies);
-</script>
 
 {% if tab_monitor %}
 <script>window.AI_SAFETY_CONFIG = js_vars.AI_SAFETY_CONFIG;</script>

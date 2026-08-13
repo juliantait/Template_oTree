@@ -238,6 +238,50 @@ An empty string means "nothing was ever logged", not "no attempts".
 
 ---
 
+## The payment record — ONE ledger (J1, 2026-08-13)
+
+**`outro.Player.earned` IS the payment record**: show-up fee + the
+`num_rewarded` randomly selected rounds + the quiz bonus, exactly as the
+participant's receipt states it. Since 2026-08-13 it is mirrored — once, when
+the results page computes payment (`outro.compute_final_payoff`) — into
+oTree's own **`participant.payoff`**, so the admin Payments page and the wide
+export's `participant.payoff` column show the same figure the participant was
+shown. (Precisely: `participant.payoff` is stored as `earned −
+participation_fee`, de-converted from points when `USE_POINTS` is on, because
+the admin page displays `payoff × conversion + participation_fee`; this
+template ships `USE_POINTS=False` and `participation_fee=0`, where the stored
+value is `earned` itself.)
+
+**What is NOT a payment record:**
+
+- **`main.Player.round_payoff`** — the game's per-round result (the value the
+  payoff page shows). It feeds `participant.payoff_vector`, from which only
+  `num_rewarded` rounds are actually paid; summing it tells you what the
+  session *generated*, not what anyone was paid.
+- **`participant.payoff_vector`** — the per-round record across the task, one
+  entry per round, missing-value sentinels included. The raw material of
+  payment, not its result.
+- **oTree's per-round `payoff` column — DELIBERATELY GONE from the export**
+  (`AUTO_TABULATE_PAYOFFS=False` in settings.py; oTree omits the column
+  entirely and any write to `player.payoff` raises). **An export from before
+  2026-08-13 carries `main.Player.payoff`; one from after does not. NO DATA
+  WAS LOST**: the same values now live in `round_payoff` and, as ever, in
+  `payoff_vector`. Before this change `participant.payoff` was the running SUM
+  of every round's raw value — a number that matched nothing anybody was paid
+  — while `earned` held the real figure: two ledgers, and the admin page read
+  the wrong one.
+- A **non-completer's `participant.payoff` is 0** (they never reached the
+  results page, so the one write never ran). Before this change it held the
+  meaningless running sum; 0-until-paid is the honest value. Early-exit
+  participants are handled outside this pipeline (Prolific pays through the
+  platform).
+
+Pinned by `tests/payoff_ledger_test.py`: the admin-visible figure equals
+`earned`, the value survives a Results re-render, `player.payoff` writes
+raise, and the per-round column is absent from the export.
+
+---
+
 ## Spare columns (future-proofing)
 
 Each app's `Player` ships with unused spare columns, and every participant has a
@@ -368,6 +412,10 @@ Fill in per-study fields as you build the task. The template ships with:
   recorded for the "raise your hand" notice, nor for its escalated form — both
   are implied by `failed_attempts` against `comprehension_max_failures`; see the
   exit-code section above).
+- `main.Player`: `round_payoff` (the game's per-round result — the value the
+  payoff page shows and `payoff_vector` collects; NOT the payment record, see
+  "The payment record" above) and `client_ms` (passive time-on-page capture,
+  `passive_capture` flag).
 - `outro.Player`: demographics + payment fields (`age`, `gender`, `bank`,
   `bic`, `sepa`, `earned`, `payouts`, …), and `feedback` (free text, collected
   only when the `pilot_feedback` flag is on).
@@ -394,9 +442,13 @@ skiptoquiz`, and `outro.Player.selected_round1` / `selected_round2` / `pay1` /
 applied while the template has no live data; an export from before that date
 carries the six columns, blank.
 
-**Deploying this over a study that HAS data needs `otree resetdb`** — the same
-build also ADDS `before.Player.prolific_label_conflict`, and oTree has no
-migrations, so a database without that column 500s on every page that loads the
-model. Retiring the in-flight sessions is not sufficient. See the warning box
+**Added column (2026-08-13):** `main.Player.round_payoff` — the game's
+per-round result, replacing the use of oTree's `player.payoff` (see "The
+payment record" above).
+
+**Deploying this over a study that HAS data needs `otree resetdb`** — the
+build ADDS `before.Player.prolific_label_conflict` and (since 2026-08-13)
+`main.Player.round_payoff`, and oTree has no migrations, so a database without
+those columns 500s on every page that loads the model. Retiring the in-flight sessions is not sufficient. See the warning box
 under "Before a deploy" in README.md for the full procedure and the one
 hand-migration alternative.

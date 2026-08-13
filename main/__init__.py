@@ -37,6 +37,15 @@ class Group(BaseGroup):
     pass
 
 class Player(BasePlayer):
+    # THE GAME'S OWN per-round result — deliberately NOT oTree's player.payoff
+    # (J1, Julian 2026-08-13). The template pays from participant.payoff_vector
+    # (collected from this field on the last round), and oTree's own ledger
+    # (participant.payoff) is written ONCE, from `earned`, when the results
+    # page computes payment — so the admin Payments page and the participant's
+    # receipt show the same figure with nothing to disagree. Writing oTree's
+    # player.payoff instead now RAISES (settings.AUTO_TABULATE_PAYOFFS=False),
+    # so a study cannot drift back into two ledgers by habit.
+    round_payoff = models.CurrencyField(blank=True)
     # Passive measurement: time on page in ms, filled by a hidden field on the
     # page's OWN form (no side request). blank=True so an EMPTY submission (JS
     # disabled/blocked) is stored, not rejected. Only collected when the
@@ -116,10 +125,13 @@ def ai_safety_js_vars(player):
 
 # PAGES
 
-# Group matching helpers (previously RoundStartWaitPage) are now located in main/group_matching.py.
-# class RoundStartWaitPage(WaitPage):
-#     # Example group matching code is provided in main/group_matching.py
-#     pass
+# GROUP MATCHING: this template ships NONE. Reference code from a DIFFERENT
+# study (a RoundStartWaitPage with perfect-stranger matching) lives in
+# _ai/group_matching_reference.py — read its header first: it references names
+# this template does not have, so it is a shape to learn from, not a block to
+# uncomment. The design questions around it (matching cannot be designed
+# independently of WHEN treatment/role assignment happens) are in TODO.md
+# under "Group matching".
 
 # INSERT YOUR GAME PAGES HERE
 
@@ -146,8 +158,9 @@ class GameStart(Page):
         )
 
     def before_next_page(player, timeout_happened):
-        # Generate a payoff for this round before showing the payoff page
-        player.payoff = random.randint(1, 100)
+        # Generate a payoff for this round before showing the payoff page.
+        # Into round_payoff, NEVER player.payoff — see the field's comment.
+        player.round_payoff = random.randint(1, 100)
         # Passive measurement: store the client-captured hidden fields (empty if
         # JS didn't run). No-op unless passive_capture is on.
         if player.session.config.get('passive_capture'):
@@ -164,7 +177,9 @@ class payoff(Page):
     def vars_for_template(self):
         return dict(
             progress_vars(self),
-            payoff=cu(self.payoff),
+            # round_payoff is nullable, so field_maybe_none, never bare
+            # (CLAUDE.md) — though GameStart always writes it first.
+            payoff=cu(self.field_maybe_none('round_payoff') or 0),
             tab_monitor=bool(self.session.config.get('tab_monitor')),
         )
 
@@ -173,7 +188,8 @@ class payoff(Page):
         # On the LAST DISPLAYED round (which may be earlier than C.NUM_ROUNDS for
         # a shorter config), collect all payoffs into the participant vector.
         if player.round_number == rounds_for(player.session):
-            payoff_vector = [pr.payoff for pr in player.in_rounds(1, player.round_number)]
+            payoff_vector = [pr.field_maybe_none('round_payoff') or cu(0)
+                             for pr in player.in_rounds(1, player.round_number)]
             existing = common.pvar(player.participant, 'payoff_vector', None)
             if existing is None:
                 existing = []

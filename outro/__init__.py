@@ -415,6 +415,36 @@ def compute_final_payoff(p):
     p.payouts = json.dumps(payouts)
     p.all_round_payoffs = json.dumps(round_payoffs)
 
+    # ONE LEDGER (J1, option 2 — Julian, 2026-08-13): oTree's own
+    # participant.payoff is written HERE, once, from `earned`, so the admin
+    # Payments page shows exactly the figure this participant's receipt shows.
+    # It is oTree's ONLY payoff entry: nothing writes player.payoff any more
+    # (settings.AUTO_TABULATE_PAYOFFS=False makes that raise), and nothing in
+    # oTree recomputes participant.payoff afterwards (verified against oTree
+    # 6.0.15: the player.payoff setter's delta is the only other writer;
+    # tests/payoff_ledger_test.py pins that this value sticks).
+    #
+    # The admin page displays payoff.to_real_world_currency(session) +
+    # participation_fee, so the value stored is (earned − participation_fee),
+    # de-converted from points when USE_POINTS is on — the one formula that
+    # lands the ADMIN-VISIBLE real-world figure exactly on `earned` under any
+    # currency config. (This template ships USE_POINTS=False and
+    # participation_fee=0, where it reduces to `earned` itself. `showup` is
+    # already inside `earned`; participation_fee is oTree's own separate
+    # add-on, shipped 0.00.)
+    # Guarded by the `earned` idempotence check above, so a Results re-render
+    # never writes twice. Deliberately UNWRAPPED, like the rest of this
+    # function: this is the payment record, not instrumentation — failing
+    # loudly beats recording the wrong number quietly.
+    from otree import settings as otree_settings
+    fee = float(common.cfg(p.session.config, 'participation_fee') or 0)
+    target = float(p.earned) - fee
+    if otree_settings.USE_POINTS:
+        rate = float(common.cfg(p.session.config,
+                                'real_world_currency_per_point') or 0) or 1.0
+        target = target / rate
+    p.participant.payoff = cu(target)
+
 
 class Feedback(Page):
     """Free-text pilot feedback (pilot_feedback axis).
