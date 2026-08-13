@@ -1,0 +1,39 @@
+{# THE EXPERIMENTER DASHBOARD AS AN ADMIN TAB (Julian, 2026-08-13).
+
+   HOW THIS WORKS — a SUPPORTED oTree extension point, not an injection: at
+   session creation oTree scans every app in the sequence for a template named
+   <app>/admin_report.html (otree/models/session.py, _set_admin_report_app_
+   names) and, if one exists, renders a "Report" tab in ITS OWN session tab
+   bar (otree/templates/otree/Session.html) whose page includes this file
+   (otree/views/admin.py, AdminReport). Nothing here templates over or
+   patches oTree's pages, so an oTree upgrade that keeps the documented
+   admin-report feature keeps this tab.
+
+   A CONVENIENCE LAYER, DELIBERATELY THAT WAY ROUND: the dashboard's own URL
+   (/experimenter_dashboard/<session_code>) is the primary surface and must
+   keep working unchanged with this file deleted, broken, or invisible. If
+   the iframe below ever renders nothing, the link above it — and the URL
+   typed by hand — still work; nothing about the dashboard lives here.
+
+   dashboard_url comes from outro.vars_for_admin_report, which reads
+   experimenter_dashboard.URL_BASE (one implementation of the path) and is
+   internally defensive because oTree calls it UNGUARDED — a raise there
+   would 500 this tab.
+
+   NB the tab appears on sessions CREATED after this template shipped:
+   oTree freezes the app-report scan into the session row at creation. Older
+   sessions use the standalone URL, which is the primary surface anyway. #}
+
+<p>
+    <a href="{{ dashboard_url|escape }}" target="_blank">
+        Open the experimenter dashboard in its own tab
+    </a>
+    — the same live view is embedded below.
+</p>
+
+{# EXCEPTION (styling rule): inline size on the iframe — this renders inside
+   oTree's OWN admin page, where the template's stylesheets are deliberately
+   not loaded, so there is no shared component to compose. #}
+<iframe src="{{ dashboard_url|escape }}" title="Experimenter dashboard"
+        style="width: 100%; height: 78vh; border: 1px solid #ccc;
+               border-radius: 6px; background: #fff;"></iframe>

@@ -234,7 +234,7 @@ DASHBOARD_RETURN_GRACE_SECONDS = 90
 # Appended as ?v=... to every CSS/JS href so a redeploy is never served a stale
 # cached asset. BUMP THIS ON EVERY CHANGE to a file under _static/. Each app
 # exposes it as C.STATIC_VERSION, which is what the templates read.
-STATIC_VERSION = '12'
+STATIC_VERSION = '13'
 
 
 SESSION_CONFIG_DEFAULTS = dict(

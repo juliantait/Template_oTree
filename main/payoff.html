@@ -1,23 +1,14 @@
 {{ block content }}
 {% include '_static/global/html/css_bundle.html' %}
-{# Monitor chrome, linked HERE and not in the shared css_bundle: this page
-   binds common.focus_live_method, so it is one of the only pages where the
-   overlay/modal can ever appear. #}
-<link rel="stylesheet" href="{% static 'global/css/tabmonitor.css' %}?v={{ C.STATIC_VERSION }}">
 
 <div class="experimental-screen">
     <div class="screen-card">
         <div class="experimental-header">
-            {# The same progress strip as the task screen (change_requests
-               item 7) — the two task pages of a round must not disagree about
-               where the participant is. The title keeps only the word the strip
-               does not say. #}
-            <div class="progress-strip">
-                <div class="progress-count">Round {{ round_count }} of {{ rounds_total }}</div>
-                <div class="progress-track">
-                    <div class="progress-fill" style="width: {{ progress_pct }}%;"></div>
-                </div>
-            </div>
+            {# The same strip as the task screen, via the shared include — the
+               two task pages of a round must not disagree about where the
+               participant is. The title keeps only the word the strip does
+               not say. #}
+            {% include '_static/global/html/task_progress_strip.html' %}
             <h2 class="header-title">Payoff</h2>
         </div>
         <div class="experimental-content">
@@ -33,9 +24,6 @@
 
 <script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
 
-{% if tab_monitor %}
-<script>window.AI_SAFETY_CONFIG = js_vars.AI_SAFETY_CONFIG;</script>
-<script src="{% static 'global/js/ai_safety_monitor.js' %}?v={{ C.STATIC_VERSION }}"></script>
-{% endif %}
+{% include '_static/global/html/tabmonitor_assets.html' %}
 
 {{ endblock }}

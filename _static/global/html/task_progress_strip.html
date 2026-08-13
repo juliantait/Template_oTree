@@ -1,0 +1,20 @@
+{# THE ROUND-OF-TOTAL PROGRESS STRIP — the task pages' one progress indicator
+   (change_requests item 7). Included by every task-page template's header
+   (review item J2 turned the two verbatim copies into this include), so the
+   two pages of a round cannot drift apart about where the participant is.
+
+   Both halves — the text line and the bar — are driven by ONE server-side
+   computation (main.progress_vars, delivered via main.task_template_vars),
+   and the total is the SESSION's round count, so a config running fewer
+   rounds counts truthfully. The .progress-strip component itself lives in
+   _static/global/css/base.css.
+
+   EXCEPTION (the styling rule's marker): the fill width is an inline style
+   because it is a server-computed dynamic value — it cannot live in the
+   stylesheet. #}
+<div class="progress-strip">
+    <div class="progress-count">Round {{ round_count }} of {{ rounds_total }}</div>
+    <div class="progress-track">
+        <div class="progress-fill" style="width: {{ progress_pct }}%;"></div>
+    </div>
+</div>

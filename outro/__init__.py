@@ -602,6 +602,33 @@ class Results(Page):
             'prolific_completion_redirects': _flag(player, 'prolific_completion_redirects'),
         }
 
+def vars_for_admin_report(subsession):
+    """Context for outro/admin_report.html — the admin "Report" TAB that
+    embeds the experimenter dashboard (Julian, 2026-08-13).
+
+    A CONVENIENCE LAYER over the dashboard's own URL, never a replacement:
+    the standalone /experimenter_dashboard/<code> must keep working unchanged
+    with this whole mechanism deleted. The tab exists purely so an operator
+    who opens the session admin page FINDS the dashboard without being told a
+    URL (see the template's header for how oTree's supported admin-report
+    extension point carries it — no oTree page is templated over or patched).
+
+    INTERNALLY DEFENSIVE, deliberately: oTree calls this UNGUARDED
+    (otree/views/admin.py, AdminReport.get_context_data), so a raise here
+    500s the Report tab. The only thing that can fail is the import, so that
+    is the only thing caught — no bare except across the function. The
+    fallback literal duplicates URL_BASE on purpose: it is the belt for the
+    one state where the shared constant is unreachable, and a tab that still
+    links to the right place beats one that is down because an import broke.
+    """
+    try:
+        import experimenter_dashboard
+        base = experimenter_dashboard.URL_BASE
+    except ImportError:
+        base = '/experimenter_dashboard'
+    return dict(dashboard_url=f'{base}/{subsession.session.code}')
+
+
 page_sequence = [Ended, Demographics, Feedback, Results]
 
 # EXPERIMENTER DASHBOARD INSTALL — deliberately the LAST lines of the LAST app
@@ -625,3 +652,7 @@ page_sequence = [Ended, Demographics, Feedback, Results]
 import experimenter_dashboard
 
 experimenter_dashboard.install_dashboard_route_or_note()
+# The admin "Report" tab's drift check (loud when the machinery it rides has
+# moved, quiet when oTree is legitimately absent, never a raise) — see
+# note_admin_tab_problems and outro/admin_report.html.
+experimenter_dashboard.note_admin_tab_problems()
