@@ -11,6 +11,43 @@ working.
 
 ---
 
+## One payment ledger: per-round `player.payoff` is not used, `participant.payoff` is written once from `earned` — 2026-08-13
+
+Review item J1 (Julian; sub-decision also his). The game records each round in
+its own `main.Player.round_payoff`; the template pays from
+`participant.payoff_vector`; and oTree's `participant.payoff` gets exactly ONE
+entry — `earned` (less `participation_fee`, de-converted when `USE_POINTS` is
+on), written when the results page computes payment — so the admin Payments
+page shows the figure the participant was shown, and there is nothing left to
+disagree. `AUTO_TABULATE_PAYOFFS=False` makes the old habit RAISE rather than
+drift back silently, and removes oTree's per-round payoff column from the
+export (deliberately absent, not accidentally empty — no data lost, every
+round is in `round_payoff` and `payoff_vector`; CODEBOOK "The payment record").
+Facts established before shipping: nothing in oTree 6.0.15 recomputes
+`participant.payoff` after that write (the `player.payoff` setter's delta is
+the only other writer), and nothing in the template or its tests read the
+per-round column except the placeholder itself.
+**Rejected:** zeroing `participant.payoff` so the admin page is obviously
+wrong (option 1 — Julian chose agreement over conspicuous wrongness); and
+keeping the per-round writes while overwriting the total at the end, which
+leaves a round column summing to a number nobody was paid.
+**Enforced:** `tests/payoff_ledger_test.py` (the two figures agree on the
+admin page itself; the value survives re-renders; `player.payoff` writes
+raise; the export column is absent while `round_payoff` is present).
+
+## The end-of-page cookie reset is gone — 2026-08-13
+
+`clearAllCookies` (run on load by the payoff, Ended and Results pages) was
+removed with its three call sites and its helper — Julian: no longer needed.
+It cleared every path=/ cookie each round and at the endings, including an
+admin's own session cookie when previewing; oTree identifies participants by
+URL code, not cookies, so nothing participant-facing depended on it. The other
+dead cookie helpers an earlier review flagged (getCookie, setCookie,
+printCookies, cl) were already gone. Do not re-add a cookie sweep without a
+stated reason — the last one ran for years with nobody able to say what it was
+for, which is why the review flagged it.
+**Enforced:** nothing but grep — there is no cookie code left to guard.
+
 ## The dashboard's state column is a collection of pills, and conditions survive outcomes — 2026-08-13
 
 Two kinds accumulate in one cell (Julian): OUTCOME pills (a terminal state, or
