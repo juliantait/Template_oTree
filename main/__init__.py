@@ -125,6 +125,69 @@ def ai_safety_js_vars(player):
 
 # PAGES
 
+def task_template_vars(player) -> dict:
+    """The template vars EVERY task page needs: the progress strip's numbers
+    (main.progress_vars — one source for the text line and the bar) and the
+    tab_monitor gate the shared script include branches on. A TaskPage
+    subclass that overrides vars_for_template must SPREAD this dict in (see
+    GameStart / payoff) rather than retype the keys."""
+    return dict(
+        progress_vars(player),
+        tab_monitor=bool(player.session.config.get('tab_monitor')),
+    )
+
+
+class TaskPage(Page):
+    """THE BASE EVERY TASK PAGE SUBCLASSES — the task wiring lives here, once.
+
+    WHY INHERITANCE — recorded because it is the justification for the
+    indirection (Julian, 2026-08-13, review item J2): a task page that is
+    SILENTLY NOT ARMED for the tab monitor is a worse outcome than the cost of
+    a base class. Somebody adding a page and forgetting the wiring gets no
+    error anywhere — the failure is monitoring that simply never fires on that
+    page, discovered from the data rather than from a test. With the wiring
+    here, "add a task page" is subclass-and-write-content, and forgetting is
+    structurally impossible.
+
+    WHAT IT CARRIES — the monitor CONTRACT is untouched; this changes who
+    TYPES the wiring, not what it is (same bindings, names and thresholds):
+      * ``is_displayed = task_page_visible`` — round capping plus the
+        disqualified / screened-out gate;
+      * ``live_method = common.focus_live_method`` — the server-authoritative
+        violation counter (a no-op unless the tab_monitor flag is on);
+      * ``js_vars = ai_safety_js_vars`` — the client monitor's thresholds;
+      * ``vars_for_template`` -> task_template_vars — the progress strip's
+        numbers and the tab_monitor gate. A page needing MORE vars overrides
+        it and spreads ``task_template_vars(self)`` in.
+    The template side has its own two shared pieces: include
+    ``_static/global/html/task_progress_strip.html`` in the header and
+    ``_static/global/html/tabmonitor_assets.html`` at the end of the template.
+
+    TWO GOTCHAS THAT MAKE THIS PATTERN BITE LATER — read before adding pages:
+      * oTree resolves page attributes AT IMPORT. A future page that must NOT
+        bind the monitor cannot just omit something — it INHERITS the binding,
+        and needs an explicit override (``live_method = None`` and
+        ``js_vars = None``, with a comment saying why) to unbind.
+      * SUBCLASS THIS; never copy its attributes into a new page class.
+        Copying reintroduces exactly the per-page drift this removes — the
+        page whose copy goes stale is the silently-unarmed page again.
+
+    Page-class inheritance is NOT an idiom this template uses anywhere else —
+    every other page is written out explicitly. It is deliberate HERE, and
+    only here, for the reason above: the task block is the one place where a
+    missing binding fails silently and costs monitoring data.
+    ``tests/task_page_test.py`` proves the arming structurally — a fresh
+    subclass is armed by subclassing alone, and the served page carries the
+    monitor config end-to-end.
+    """
+    is_displayed = staticmethod(task_page_visible)
+    live_method = staticmethod(common.focus_live_method)
+    js_vars = staticmethod(ai_safety_js_vars)
+
+    def vars_for_template(self):
+        return task_template_vars(self)
+
+
 # GROUP MATCHING: this template ships NONE. Reference code from a DIFFERENT
 # study (a RoundStartWaitPage with perfect-stranger matching) lives in
 # _ai/group_matching_reference.py — read its header first: it references names
@@ -135,15 +198,12 @@ def ai_safety_js_vars(player):
 
 # INSERT YOUR GAME PAGES HERE
 
-class GameStart(Page):
+class GameStart(TaskPage):
+    # The task wiring (gating, monitor binding, js_vars, base template vars)
+    # is INHERITED from TaskPage — subclass it, never copy it (see its
+    # docstring for the two gotchas).
     template_name = 'main/game.html'
     form_model = 'player'   # for the optional passive-capture hidden field
-    # Skip rounds beyond this session's count AND skip once disqualified.
-    is_displayed = staticmethod(task_page_visible)
-    # Tab-switch monitor: the live handler records violations server-side. No-op
-    # unless the tab_monitor flag is on (see common.focus_live_method).
-    live_method = staticmethod(common.focus_live_method)
-    js_vars = staticmethod(ai_safety_js_vars)
 
     @staticmethod
     def get_form_fields(player):
@@ -152,8 +212,7 @@ class GameStart(Page):
 
     def vars_for_template(self):
         return dict(
-            progress_vars(self),
-            tab_monitor=bool(self.session.config.get('tab_monitor')),
+            task_template_vars(self),
             passive_capture=bool(self.session.config.get('passive_capture')),
         )
 
@@ -168,19 +227,16 @@ class GameStart(Page):
                              player.field_maybe_none('client_ms') or '')
 
 
-class payoff(Page):
+class payoff(TaskPage):
+    # Wiring inherited from TaskPage — subclass, never copy (its docstring).
     template_name = 'main/payoff.html'
-    is_displayed = staticmethod(task_page_visible)
-    live_method = staticmethod(common.focus_live_method)
-    js_vars = staticmethod(ai_safety_js_vars)
 
     def vars_for_template(self):
         return dict(
-            progress_vars(self),
+            task_template_vars(self),
             # round_payoff is nullable, so field_maybe_none, never bare
             # (CLAUDE.md) — though GameStart always writes it first.
             payoff=cu(self.field_maybe_none('round_payoff') or 0),
-            tab_monitor=bool(self.session.config.get('tab_monitor')),
         )
 
     @staticmethod

@@ -11,6 +11,58 @@ working.
 
 ---
 
+## Task pages inherit their wiring from `TaskPage` — the template's one use of page inheritance — 2026-08-13
+
+Review item J2, approved with Julian's reasoning (recorded at the class, which
+is where the next reader meets the indirection): a task page that is SILENTLY
+NOT ARMED for the tab monitor is worse than the cost of a base class —
+forgetting the wiring produces no error, only monitoring that never fires,
+discovered from the data. `main.TaskPage` carries `is_displayed` /
+`live_method` / `js_vars` / the base template vars; `GameStart` and `payoff`
+subclass it; the two repeated template blocks became includes
+(`task_progress_strip.html`, `tabmonitor_assets.html`). THE MONITOR CONTRACT
+IS UNTOUCHED — same bindings, names and thresholds; only who types them
+changed. Two gotchas live in the docstring: oTree resolves page attributes at
+IMPORT, so unbinding needs an explicit override, never an omission; and
+subclass, never copy, or the drift returns. Page inheritance is used nowhere
+else in the template, deliberately.
+**Rejected:** staying explicit-per-page with a checklist — the checklist
+cannot make forgetting impossible, and the failure it guards is silent.
+**Enforced:** `tests/task_page_test.py` — structurally (an empty-bodied
+subclass is fully armed; identity of the bindings, not lookalikes) and
+end-to-end (the served page carries the monitor config; the inherited
+live_method counts a violation), plus the unbind-by-override gotcha proven in
+both directions.
+
+## The dashboard's admin "Report" tab rides oTree's supported extension point, as a layer over the standalone URL — 2026-08-13
+
+Julian promoted the TODO investigation to a build. The investigation's answer:
+oTree 6.0.15 has a first-class extension point — at session creation,
+`Session._set_admin_report_app_names` (otree/models/session.py:250) scans each
+app for `<app>/admin_report.html`; oTree's OWN session tab bar
+(otree/templates/otree/Session.html:84) renders a "Report" tab when found; the
+`AdminReport` view (otree/views/admin.py:482) renders our template with
+optional `vars_for_admin_report`. So the tab (`outro/admin_report.html`,
+embedding the dashboard in an iframe with an open-standalone link) depends on
+a documented feature, not on oTree's page structure. **The standalone URL is
+the primary surface and works unchanged with the tab deleted or broken** —
+built that way round deliberately. `vars_for_admin_report` is internally
+defensive (oTree calls it unguarded) and catches ONLY the import, with a
+literal fallback URL as the belt.
+`experimenter_dashboard.note_admin_tab_problems` applies the identity.py
+discipline to the one silent failure mode: quiet when oTree is legitimately
+absent, LOUD (logged, never raised) when the admin-report symbols or the
+template lookup have drifted — because drift here means the tab quietly stops
+appearing. Known limitation: sessions created before the template shipped
+carry no tab (the scan is frozen into the session row).
+**Rejected:** injecting into oTree's admin page structure (templating over /
+DOM patching) — far more upgrade-exposed than our routing-level install, and
+unnecessary given the supported point.
+**Enforced:** `tests/dashboard_test.py` §D9 — the tab appears in oTree's own
+tab bar, the standalone URL works with it present, a broken dashboard leaves
+the admin pages serving, a broken import leaves the tab serving via the
+fallback, and the drift check reports ok against the installed oTree.
+
 ## One payment ledger: per-round `player.payoff` is not used, `participant.payoff` is written once from `earned` — 2026-08-13
 
 Review item J1 (Julian; sub-decision also his). The game records each round in

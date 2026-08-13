@@ -1048,6 +1048,67 @@ def main():
     check('👤' in page and 'arrived' in page,
           'the served page ships the arrival-count segment (👤 X of Y)')
 
+    section('D9. the admin Report TAB — a convenience layer over the '
+            'standalone URL')
+    # oTree's SUPPORTED admin-report extension point (Session._set_admin_
+    # report_app_names scans for outro/admin_report.html at session creation;
+    # Session.html renders the Report tab when found) carries the dashboard
+    # into the session admin's own tab bar. THE CONSTRAINT THAT MATTERS: the
+    # standalone URL is the primary surface and must keep working unchanged,
+    # and a failure in either layer must not take down the other.
+    from otree.models import Session as _S3
+    _lab3 = _db2.query(_S3).filter_by(code=lab.code).one()
+    check(_lab3.has_admin_report() is True,
+          'a session registers the admin report at creation '
+          '(outro/admin_report.html was found by oTree)')
+    r = admin.get(f'/SessionMonitor/{lab.code}')
+    check(r.status_code == 200 and 'AdminReport' in r.text,
+          "oTree's OWN session tab bar shows the Report tab (no page of "
+          "oTree's was templated over to get it there)")
+    r = admin.get(f'/AdminReport/{lab.code}')
+    check(r.status_code == 200 and f'{URL}/{lab.code}' in r.text,
+          'the Report tab links AND embeds the dashboard at its real URL')
+    d = admin.get(f'{URL}/{lab.code}/data').json()
+    check(d.get('ok') is True,
+          'the standalone dashboard URL works unchanged with the tab present')
+    # Layer independence, both directions: a broken DASHBOARD leaves the
+    # admin pages serving (the iframe would show the dashboard's own error
+    # panel — its fail-soft, already proven in section C).
+    real_snapshot3 = ed.session_snapshot
+    ed.session_snapshot = lambda session: (_ for _ in ()).throw(
+        RuntimeError('injected dashboard bug'))
+    try:
+        check(admin.get(f'/AdminReport/{lab.code}').status_code == 200,
+              'a broken dashboard data layer leaves the Report tab serving')
+        check(admin.get(f'/SessionMonitor/{lab.code}').status_code == 200,
+              '…and the session Monitor page untouched')
+    finally:
+        ed.session_snapshot = real_snapshot3
+    # …and a broken TAB layer cannot 500 the tab: vars_for_admin_report is
+    # internally defensive, because oTree calls it unguarded. Break the one
+    # thing it depends on (the module import) and it must fall back, not
+    # raise.
+    import outro as _outro3
+    import sys as _sys3
+    _saved_mod = _sys3.modules.get('experimenter_dashboard')
+    _sys3.modules['experimenter_dashboard'] = None   # makes import raise
+    try:
+        _OutroSub = _gmm2('outro').Subsession
+        _sub = (_db2.query(_OutroSub)
+                .filter(_OutroSub.session_id == _lab3.id).first())
+        v = _outro3.vars_for_admin_report(_sub)
+        check(v['dashboard_url'] == f'/experimenter_dashboard/{lab.code}',
+              'vars_for_admin_report survives a broken module import '
+              f'(fallback URL, no raise: {v["dashboard_url"]})')
+    finally:
+        if _saved_mod is None:
+            _sys3.modules.pop('experimenter_dashboard', None)
+        else:
+            _sys3.modules['experimenter_dashboard'] = _saved_mod
+    # The drift check (quiet / loud discipline): green against this oTree.
+    check(ed.note_admin_tab_problems() == 'ok',
+          'note_admin_tab_problems reports ok against the installed oTree')
+
     # ------------------------------------------------------------------ E
     section('E. strictly read-only')
     before = participant_dump()

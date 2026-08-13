@@ -1202,6 +1202,68 @@ def install_dashboard_route_or_note():
         return 'drift'
 
 
+def note_admin_tab_problems():
+    """THE ADMIN-TAB SHAPE CHECK (the identity.py discipline, applied to the
+    dashboard's admin "Report" tab; called from the end of outro/__init__.py
+    right after the route install).
+
+    The tab rides oTree's SUPPORTED admin-report extension point: at session
+    creation, Session._set_admin_report_app_names scans each app for
+    <app>/admin_report.html and Session.html renders a Report tab when one is
+    found. That is data-driven — nothing is patched — which also means the
+    failure mode is SILENT: if oTree renames the lookup or drops the feature,
+    the tab just stops appearing and nobody notices. This check makes that
+    drift LOUD (logged and printed, never raised — the tab is an operator
+    convenience, and the standalone URL keeps working regardless), while
+    staying QUIET when oTree is legitimately not importable yet.
+
+    DELIBERATELY NO bare `except Exception` around the whole thing: the
+    import failure (quiet), the missing symbols (loud drift) and the
+    invisible template (loud) are three different situations and are handled
+    apart — collapsing them is how a missing tab becomes something nobody can
+    see (CLAUDE.md, the guard example).
+    """
+    try:
+        from otree.models.session import Session
+        from otree.templating import get_template_name_if_exists
+        from otree.templating.errors import TemplateLoadError
+    except ImportError as exc:
+        # Legitimately not available (a bare import of this module outside
+        # oTree). Not drift — note it and move on.
+        logger.info('[dashboard] admin-tab check skipped: %s', exc)
+        return 'not_importable'
+
+    if not callable(getattr(Session, 'has_admin_report', None)) or not callable(
+            getattr(Session, '_set_admin_report_app_names', None)):
+        message = (
+            '[dashboard] ADMIN TAB WILL NOT APPEAR (version drift): '
+            'otree.models.session.Session no longer carries has_admin_report/'
+            '_set_admin_report_app_names, the admin-report machinery the '
+            'Report tab rides (verified against oTree 6.0.15). The dashboard '
+            f'itself is unaffected and stays at {URL_BASE}/<session_code>; '
+            'update outro/admin_report.html and this check for the installed '
+            'oTree.')
+        logger.error(message)
+        print(message, flush=True)
+        return 'drift'
+
+    try:
+        get_template_name_if_exists(['outro/admin_report.html',
+                                     'outro/AdminReport.html'])
+    except TemplateLoadError:
+        message = (
+            '[dashboard] ADMIN TAB WILL NOT APPEAR: oTree\'s template lookup '
+            'cannot see outro/admin_report.html, so sessions created now get '
+            'no Report tab. Either the file moved or the lookup convention '
+            'drifted. The dashboard itself is unaffected and stays at '
+            f'{URL_BASE}/<session_code>.')
+        logger.error(message)
+        print(message, flush=True)
+        return 'template_invisible'
+
+    return 'ok'
+
+
 def assert_dashboard_route():
     """THE SINGLE PLACE A MISSING DASHBOARD IS A FAILURE — for TESTS, which
     boot oTree and must fail loudly if the install silently regressed.
