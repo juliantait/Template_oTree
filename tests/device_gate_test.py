@@ -160,7 +160,7 @@ def participant_code(url):
     return m.group(1) if m else None
 
 
-# The return URL a CONFIGURED study has. `screenout_return_url` ships as a
+# The return URL a CONFIGURED study has. `prolific_screenout_return_url` ships as a
 # REPLACE_* placeholder on purpose (settings.SCREENOUT_RETURN_URL_PLACEHOLDER:
 # a working default never gets verified, and this is the one way off the
 # screen-out page), and the pre-launch guard refuses to launch while it is
@@ -172,7 +172,7 @@ CONFIGURED_RETURN_URL = 'https://app.prolific.com/'
 
 def create(base, allowed, config='prolific', **modified):
     fields = {'allowed_devices': allowed,
-              'screenout_return_url': CONFIGURED_RETURN_URL}
+              'prolific_screenout_return_url': CONFIGURED_RETURN_URL}
     fields.update(modified)
     return requests.post(
         base + '/api/sessions',

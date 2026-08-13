@@ -113,10 +113,6 @@
 
             <p class="hint">A hint: small, quiet, for asides that must not compete with the body copy.</p>
 
-            <!-- LOGO STRIP: the last thing IN the scroll region, never a pinned
-                 sibling of it. Pinned it costs ~90px of every card for marks
-                 that need not be on screen at all times. -->
-            {% include '_static/global/html/logo_section.html' %}
         </div>
 
         <!-- BUTTON ROW: pinned to the FOOT of the card. The secondary action is
@@ -126,6 +122,12 @@
             <button type="button" class="next-button ghost" onclick="window.history.back();">Back</button>
             <input type="submit" value="Next" class="next-button">
         </div>
+
+        <!-- THE LOGO FOOTER: a direct child of the card, BELOW the button row
+             and below its own divider line — the same on every page that shows
+             it. This demo page is where a new page gets copied from, so it must
+             model the rule exactly. See THE LOGO FOOTER RULE in base.css. -->
+        {% include '_static/global/html/logo_section.html' %}
 
     </div>
 </div>
@@ -175,12 +177,14 @@
                 </div>
             </div>
 
-            {% include '_static/global/html/logo_section.html' %}
         </div>
 
         <div class="button-row">
             <input type="submit" value="Next" class="next-button">
         </div>
+
+        <!-- THE LOGO FOOTER: card-level, below the button row (see above). -->
+        {% include '_static/global/html/logo_section.html' %}
     </div>
 </div>
 

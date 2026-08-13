@@ -238,6 +238,22 @@ def post_form(client, resp, data):
     return client.post(path_of(resp), data=payload, allow_redirects=True)
 
 
+def before_player_label(code):
+    """`before.Player.participant_label` for one participant — the EXPORT copy
+    of the label, written unconditionally in `before.welcome.before_next_page`
+    (i.e. not behind any Prolific flag)."""
+    from otree.database import DBSession
+    from otree.models import Participant
+    s = DBSession()
+    try:
+        row = s.query(Participant).filter_by(code=code).one()
+        import before
+        player = s.query(before.Player).filter_by(participant_id=row.id).one()
+        return player.field_maybe_none('participant_label')
+    finally:
+        s.close()
+
+
 def main():
     import common
     import identity
@@ -573,6 +589,98 @@ def main():
           'the id is now held by a row in the new session')
     check('mover0001' in labels_in(session),
           'and the old row still holds it, in the old session, with their data')
+
+    section('7. LAB SEAT LABELS ARE NATIVE oTree, AND NEED NO PROLIFIC FLAG')
+    # -------------------------------------------------------------------------
+    # Julian's lab room links carry a SEAT as the participant label
+    # (`/room/experiment?participant_label=a2`), and the question is whether
+    # `prolific_capture_participant_id` has anything to do with that. It does
+    # not, and this section is here so that stays true — the label machinery was
+    # touched twice recently (identity.py's duplicate guard, and the
+    # 2026-08-13 `prolific_` rename), and lab seating is not what either was
+    # about.
+    #
+    # THE TWO ARE INDEPENDENT MECHANISMS:
+    #   * the LABEL is oTree's own. `AssignVisitorToRoom` reads
+    #     `?participant_label=` from the query string and `InitializeParticipant`
+    #     calls `participant.set_label(label)` (otree/views/participant.py, oTree
+    #     6.0.15) — no flag of ours is consulted anywhere on that path;
+    #   * `prolific_capture_participant_id` gates only the PROLIFIC id plumbing:
+    #     the ConfirmProlificID page, the hidden `participant_id_url` field, and
+    #     the script that reads `?PROLIFIC_PID=` (or `?participant_label=`) into
+    #     it. With the flag off, none of that renders — and the label is already
+    #     set regardless, by oTree, before our code sees the request.
+    lab = ot.create_session('lab', num_participants=4, room_name='experiment')
+    check(lab.config.get('prolific_capture_participant_id') is False,
+          'the lab profile really does ship prolific_capture_participant_id OFF '
+          '(so this section is evidence about the flag being off, not a config '
+          'that quietly turned it on)')
+
+    seat = browser()
+    r = enter_room(seat, label='a2')
+    seat_code = code_of(r)
+    check(r.status_code < 500 and seat_code is not None,
+          f'a lab participant enters on a seat link (row {seat_code})')
+    check(labels_in(lab) == ['a2'],
+          f'the row carries the SEAT as its label (got {labels_in(lab)})')
+
+    # Walk them off the entry pages, so `before.welcome.before_next_page` runs:
+    # the seat must reach the EXPORT column too, not only participant.label.
+    for _ in range(4):
+        if page_name_of(path_of(r)) not in ('startpage', 'welcome'):
+            break
+        r = post_form(seat, r, {})
+    check(r.status_code < 500, 'the entry pages submit without a 5xx')
+    seat_export = before_player_label(seat_code)
+    check(seat_export == 'a2',
+          'and before.Player.participant_label holds the seat as well, so the '
+          f'seat reaches the EXPORT (got {seat_export!r})')
+
+    # RE-ENTRY on the same seat link — a lab participant whose browser was
+    # closed, or who was moved to another machine, must land back on THEIR row.
+    again = browser()
+    r2 = enter_room(again, label='a2')
+    check(code_of(r2) == seat_code,
+          'the same seat link re-enters the SAME row, not a fresh one')
+    check(labels_in(lab) == ['a2'],
+          'and no second row has taken the seat label')
+
+    # THE DASHBOARD ROW SHOWS THE SEAT. It keys its rows on participant.label
+    # and falls back to the participant CODE when there is none, so a broken
+    # seat label would show as an opaque code — which is exactly what an
+    # experimenter scanning a room must not get.
+    try:
+        import experimenter_dashboard
+        snapshot = experimenter_dashboard.session_snapshot(lab)
+        row = next((x for x in snapshot['rows'] if x.get('code') == seat_code),
+                   None)
+        check(row is not None and row.get('label') == 'a2',
+              'the dashboard row shows the SEAT (a2), not a fallback code '
+              f'(got {row.get("label")!r} / code {row.get("code")!r})'
+              if row else 'the dashboard has a row for the seated participant')
+    except Exception as exc:
+        # NOT silently skipped: a check that cannot run is not a check that
+        # passed. If another worker is mid-edit in experimenter_dashboard.py,
+        # re-run this suite rather than reading this as a real failure.
+        check(False, f'could not read the dashboard snapshot ({type(exc).__name__}: '
+                     f'{exc}) — re-run if experimenter_dashboard.py is mid-edit')
+
+    # AND THE OTHER DIRECTION, so this is evidence of INDEPENDENCE rather than
+    # of "the lab happens to work": the same kind of seat link into a session
+    # with `prolific_capture_participant_id` turned ON gets the same label. The
+    # flag moves the Prolific ID plumbing; it never moves the seat.
+    #
+    # LAST IN THIS SECTION because there is only one room and binding a session
+    # to it REBINDS it (see section 6) — everything asserted above is already
+    # done, and the dashboard snapshot above reads its session directly from the
+    # database rather than through the room.
+    flag_on = ot.create_session(
+        'lab', num_participants=2, room_name='experiment',
+        modified_session_config_fields={'prolific_capture_participant_id': True})
+    r3 = enter_room(browser(), label='b7')
+    check(r3.status_code < 500 and labels_in(flag_on) == ['b7'],
+          'with prolific_capture_participant_id ON, a seat link still labels the '
+          f'row with the seat (got {labels_in(flag_on)})')
 
     section('SUMMARY')
     if _failures:

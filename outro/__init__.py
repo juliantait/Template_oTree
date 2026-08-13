@@ -16,16 +16,19 @@ def is_lab(player) -> bool:
     """True in an experimenter-run session.
 
     Used ONLY for copy that is meaningless outside a physical lab — "stay
-    seated" on the results page, "raise your hand" on the early-exit page. Read
-    through common.cfg so a session config frozen before `recruitment` existed
-    still renders.
+    seated" on the results page, "raise your hand" on the early-exit page.
+
+    A thin wrapper on `common.is_lab`, which is the ONE implementation (the
+    question is asked in three apps and must not be decided by two different
+    config accessors — see the study-type rule there, and note that COPY like
+    this is exactly what `recruitment` is for, never a module flag).
 
     KEEP THIS LIST SHORT. Divergence between the lab and Prolific variants is a
     cost paid on every future change, so a branch has to earn its place: it is
     for things that cannot be true in both rooms, not for things that merely
     read differently. See the note on completion in Results.vars_for_template.
     """
-    return common.cfg(player.session.config, 'recruitment') == 'lab'
+    return common.is_lab(player.session.config)
 
 
 def is_disqualified(player) -> bool:
@@ -35,6 +38,15 @@ def is_disqualified(player) -> bool:
 
 
 def declined_consent(player) -> bool:
+    """True for a participant who answered the consent question with "no".
+
+    THE POST-WRITE READING of the same fact `before._declined_consent` decides.
+    The two are deliberately in different currencies and neither can replace the
+    other: `before` must answer on the consent page's OWN request, from the form
+    field, before any exit code has been written; every later app can only see
+    the durable record, which is the exit code. If you change how a declined
+    consent is recorded, both move together.
+    """
     return player.participant.vars.get('exit_code') == common.EXIT_CODES['no_consent']
 
 
@@ -62,17 +74,17 @@ def completion_link(player) -> str:
 
     THERE IS NO SCREENED-OUT BRANCH, and there must not be one: a screened-out
     participant gets a CODELESS link back to Prolific (see
-    `common.screenout_return_url`), because a completion code closes their
+    `common.prolific_screenout_return_url`), because a completion code closes their
     submission and a returned submission can never be retaken. `Ended` renders
     that link instead of this one for them.
     """
     cfg = player.session.config
     if is_disqualified(player):
-        code = cfg.get('dq_code')
+        code = cfg.get('prolific_dq_code')
     elif declined_consent(player):
-        code = cfg.get('noconsent_code')
+        code = cfg.get('prolific_noconsent_code')
     else:
-        code = cfg.get('cc_code')
+        code = cfg.get('prolific_cc_code')
     return PROLIFIC_COMPLETE_URL + str(code)
 
 doc = """
@@ -167,12 +179,17 @@ def extract_round_payoffs(payoffs_vector, missing_values):
 # PAGES
 
 class Ended(Page):
-    """Finish screen for participants who did NOT complete normally.
+    """Finish screen for participants who did NOT complete normally: the two
+    integrity disqualifications and a declined consent. When completion
+    redirects are on it sends them back to Prolific with the matching code.
 
-    Shown to disqualified, non-consenting and screened-out participants (a phone
-    stopped by the allowed_devices gate lands here as its FIRST page — it never
-    saw consent). When completion redirects are on it sends them back to
-    Prolific with the matching code.
+    A SCREENED-OUT PARTICIPANT DOES NOT NORMALLY REACH IT. (Corrected
+    2026-08-13: this used to say a phone stopped by the allowed_devices gate
+    "lands here as its FIRST page", which contradicted `was_screened_out` twelve
+    lines above and described the behaviour the soft wall replaced.) The gate
+    HOLDS them on `before.welcome` instead, because the verdict has to stay
+    re-decidable. The screened-out branch below is the unreachable-by-design
+    fallback for any future gate that sets the flag later in the flow.
     """
     template_name = 'outro/Ended.html'
 
@@ -189,28 +206,24 @@ class Ended(Page):
     @staticmethod
     def vars_for_template(player):
         return dict(
+            # The device facts (`screenout_cause`, `allowed_devices_phrase`,
+            # `prolific_screenout_return_url`) come from common.screenout_vars, the same
+            # builder before/screened_out.html uses. The two pages say
+            # deliberately different things — "your place is still open" there,
+            # "this has ended" here — but they must not describe the same
+            # participant's DEVICE differently, and the phrase for what the
+            # study accepts is built from the list the gate enforces so copy
+            # cannot drift from the rule.
+            common.screenout_vars(player.participant, player.session.config),
             completionlink=completion_link(player),
             reason=('disqualified' if is_disqualified(player)
                     else 'no_consent' if declined_consent(player)
                     else 'screened_out' if was_screened_out(player) else 'other'),
-            # WHICH DEVICE TYPE the entry gate detected ('phone' / 'tablet' /
-            # 'computer' / 'unknown'), or '' if a study set exit code -4 without
-            # recording a cause. `reason` alone is too coarse to write copy
-            # from: -4 is the general screened-out bucket, so the template picks
-            # its sentence from this — the participant is told something true
-            # about their own case instead of everyone being told the study
-            # needs a computer. `allowed_devices_phrase` says what the study DOES
-            # accept, built from the same list the gate enforces so the two
-            # cannot drift apart. (There is no 'laptop' type and cannot be one —
-            # see the allow-list note in settings.py.)
-            screenout_cause=common.screenout_cause(player.participant),
-            allowed_devices_phrase=common.device_types_phrase(
-                common.allowed_devices(player.session.config)),
-            # A screened-out participant is returned to Prolific WITHOUT a
-            # completion code (see completion_link). Only relevant on the
-            # unreachable-by-design fallback path — the entry gate holds such a
-            # participant on before.welcome and they never get here.
-            screenout_return_url=common.screenout_return_url(player.session.config),
+            # (`screenout_cause` — the DETECTED device type — is what the
+            # template writes its sentence from, never `reason`, which is the
+            # general -4 bucket; and the screened-out way out carries NO
+            # completion code, see completion_link. Both arrive above, from
+            # common.screenout_vars.)
             # Lab-only closing line ("raise your hand"); see is_lab().
             is_lab=is_lab(player),
             # WHICH integrity module removed them (change_requests item 16).
@@ -226,7 +239,7 @@ class Ended(Page):
                 else 'comprehension'
                 if player.participant.vars.get('comprehension_disqualified')
                 else ''),
-            completion_redirects=_flag(player, 'completion_redirects'),
+            prolific_completion_redirects=_flag(player, 'prolific_completion_redirects'),
         )
 
 
@@ -423,7 +436,20 @@ class Results(Page):
             'num_rewarded': common.cfg(self.session.config, 'num_rewarded'),
             # Lab-only closing line ("stay seated"); see is_lab().
             'is_lab': is_lab(self),
-            'completion_redirects': bool(self.session.config.get('completion_redirects')),
+            # THE PER-ROUND TABLE IS OPEN FROM THE START IN THE LAB (Julian,
+            # 2026-08-13, round-2 item 10): there is an experimenter in the
+            # room, the screens are the lab's own, and a participant asked to
+            # check what they earned should not have to find a disclosure
+            # control first. Online it stays collapsed — a phone screen is the
+            # argument for the accordion, and only the online study meets one.
+            #
+            # DERIVED FROM THE STUDY TYPE, not from a new flag: this is a
+            # property of where the study runs, and a flag would be a fourth
+            # thing to remember to set. The accordion itself is UNCHANGED and
+            # still present in both — this decides its initial state only, so
+            # a lab participant can still collapse the table if they want to.
+            'results_open': is_lab(self),
+            'prolific_completion_redirects': bool(self.session.config.get('prolific_completion_redirects')),
         }
 
 page_sequence = [Ended, Demographics, Feedback, Results]

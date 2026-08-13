@@ -15,10 +15,6 @@
             <div class="section-text">
                 The experiment will start when everyone has taken their places.
             </div>
-
-            <!-- Inside the scroll region, not pinned — see base.css "Pinned
-                 regions": only the header strip and the button row are pinned. -->
-            {% include '_static/global/html/logo_section.html' %}
         </div>
 
         <!-- OPTIONAL NEXT BUTTON   -->
@@ -26,6 +22,10 @@
             <input type="submit" value="Next" class="next-button">
         </div> -->
 
+        <!-- THE LOGO FOOTER: a direct child of the card, always. Position,
+             divider and spacing come from THE LOGO FOOTER RULE in base.css —
+             see the include's own header. -->
+        {% include '_static/global/html/logo_section.html' %}
     </div>
 </div>
 

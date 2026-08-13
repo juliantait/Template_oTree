@@ -53,7 +53,7 @@ same value in both study types. What differs is the consequence of crossing it:
 | | Prolific | Lab |
 |---|---|---|
 | Crossing the threshold is | the point of **ejection** | the point at which the study **starts helping** |
-| What happens | `comprehension_dq` flags the participant, exit code `-2`, straight to the ending, back to Prolific with `dq_code` | the one-time re-read offer (`quiz_reread`), then a dismissible "raise your hand" notice; at **twice** the threshold that notice also names the attempt count. Attempts are never capped and nobody is ejected |
+| What happens | `comprehension_dq` flags the participant, exit code `-2`, straight to the ending, back to Prolific with `prolific_dq_code` | the one-time re-read offer (`quiz_reread`), then a dismissible "raise your hand" notice; at **twice** the threshold that notice also names the attempt count. Attempts are never capped and nobody is ejected |
 | Exit code | `-2` | **`1` (finished)** — they completed the study |
 
 **So `-2` never appears in a lab export, and its absence is not evidence that
@@ -142,8 +142,9 @@ A dict `{stage_name: epoch_seconds}` filled as the participant clears each stage
 | `screened_out` | The entry device gate removed the participant (their device type is not in `allowed_devices`). |
 | `screenout_cleared` | A screen-out was LIFTED: they came back on an accepted device before consent. |
 | `consent` | Leaving the welcome/consent page. |
-| `confirm_id` | Prolific only: leaving the Prolific-ID confirmation page (`capture_participant_id` on). |
+| `confirm_id` | Prolific only: leaving the Prolific-ID confirmation page (`prolific_capture_participant_id` on). |
 | `ai_safety_agreed` | Leaving the AI-safety agreement page, i.e. when the tab monitor was armed. Only where that page is shown (`tab_monitor` on, so Prolific by default and never the lab). |
+| `left_before_app` | Leaving ANY page of the `before` app — deliberately **overwritten** by each one, so its final value is the moment the participant left the entry block, whichever pages that config showed (`common.stamp_left_before_app`). |
 | `instructions_done` | Leaving the instructions page (round 1). |
 | `quiz_done` | Leaving the quiz page (overwritten by the re-read pass, if any). |
 | `reread_taken` | Lab only: taking the one-time re-read offer (entering intro round 2). |
@@ -151,15 +152,23 @@ A dict `{stage_name: epoch_seconds}` filled as the participant clears each stage
 | `task_done` | Completing the last displayed round of `main`. |
 | `finished` | Reaching the final results page. |
 
-**Computing "time on the instructions" from these.** It is
-`instructions_done` minus the **last stamp of the entry block**, and which stamp
-that is depends on the config: `consent` in the lab, `ai_safety_agreed` for
-Prolific (with `confirm_id` in between). Take the **maximum of the three that are
-present** — subtracting `consent` unconditionally silently adds the ID-page and
-agreement-page dwell to a Prolific participant's reading time, and nothing to a
-lab participant's, so the two are not comparable. `experimenter_dashboard._instructions_seconds`
-does it this way; a study that adds a page to the entry block must stamp it and
-include it in that maximum.
+**Measuring from the end of the entry block.** Use **`left_before_app`**. Which
+page actually ends that block is CONFIG-DEPENDENT — `consent` in the lab,
+`ai_safety_agreed` for Prolific (with `confirm_id` in between), something else
+again for a study that adds an entry page — so anything that names one page is
+wrong for some configuration, silently, and shows up as dwell time billed to the
+wrong phase. That has already happened once here: the agreement page's dwell was
+counted as instructions time, and only for Prolific. Every `before` page calls
+`common.stamp_left_before_app`, which overwrites, so the stamp is correct for
+every configuration including ones not written yet; a new entry page only has to
+call it.
+
+The older recipe — take the **maximum** of `consent` / `confirm_id` /
+`ai_safety_agreed` — survives only as a fallback for participants who were
+already mid-flow when `left_before_app` was deployed and will never have it.
+`experimenter_dashboard._intro_seconds` does exactly this (and measures to
+`quiz_done`, i.e. the whole intro block including a re-read, not to
+`instructions_done`).
 
 ---
 
@@ -294,6 +303,42 @@ Fill in per-study fields as you build the task. The template ships with:
     guard_missing']` appears only if the guard itself was not installed at
     entry, which should be impossible (it is asserted at boot) — treat either
     key as "read the server log before paying anybody in this session".
+  - **`participant_extra['label_claim']`** records the outcome of the LAST
+    attempt to stamp a participant label (`before._claim_participant_label`):
+    `'set'`, `'unchanged'` (they already held that id, perhaps spelled
+    differently), `'empty'`, `'conflict'` (refused — another row holds it) or
+    `'error'` (the claim raised and was swallowed so the page could not 500).
+    `'error'` is the one worth grepping for: it means a label was NOT written
+    for a reason nobody anticipated, and it was previously invisible — the
+    outcome was returned to two call sites that both ignored it.
+  - **The client/server device disagreement, in `device_info_json`.** The server
+    classifies the entry request's User-Agent (`participant_extra
+    ['entry_device_type']`); the browser also classifies itself, and the two
+    sitting side by side is the point. Read them in this order:
+    `ua_rules` — `'server'` means the browser applied the SERVER's rules (there
+    is only one pattern list, shipped to the page via `js_vars`);
+    `'unavailable'` means they never arrived and the client classified nothing,
+    so that row says nothing about agreement either way.
+    `device_type_ua` — this browser's own User-Agent under those rules. It
+    should equal `entry_device_type`; if it does not, the browser is reporting a
+    different User-Agent than the request header carried (an extension, a proxy,
+    client hints) — not a device disagreement.
+    `device_type` — the client's final answer, `device_type_ua` refined by
+    signals the server cannot see, with `device_type_signals` naming the ones
+    that fired (today: `ipados_touch`, an iPad claiming to be a Macintosh).
+    A difference between `device_type_ua` and `device_type` is the GENUINE
+    disagreement this measurement exists for, and it is attributable to a named
+    signal. Nothing here ever gates: the gate is the server's alone.
+  - **CHANGED 2026-08-13 — what switches device capture on.** `is_mobile` and
+    `device_info_json` are now filled if and only if **`device_capture`** is on.
+    Until this date the two fields were also switched on by
+    `prolific_capture_participant_id` (then named `capture_participant_id`), so
+    turning on Prolific ID capture silently turned on device capture as well.
+    **A config with `prolific_capture_participant_id` ON and `device_capture`
+    OFF recorded device info before this change and records none after it.**
+    Neither shipped recruitment profile is affected — `lab` has both off and
+    `prolific` has both on — and the template had no live studies, so no data is
+    lost; but an export compared ACROSS this date must be read with it in mind.
   - `is_mobile` is the client-side device measurement only — it blocks nobody;
     the screen-out is the server-side `allowed_devices` gate, whose User-Agent
     evidence is in `participant_extra['screenout_user_agent']`, whose detected

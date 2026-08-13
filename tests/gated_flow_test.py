@@ -95,6 +95,31 @@ def visible_text(html):
     return re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', ' ', html)).strip()
 
 
+def prequiz_text(html):
+    """The visible text of the PRE-QUIZ PROMPT block alone.
+
+    SCOPED, and that is the whole point of the helper. The instructions page
+    carries every slide in one document, and `intro/instructions_text.html`
+    legitimately states the payment rule — "a bonus of X if you answer every
+    quiz question correctly on your first attempt". Asserting "round 2 does not
+    mention a first attempt" against the WHOLE page therefore fails on the
+    instructions' own sentence, which is a different statement in a different
+    place and was never what Julian asked to change (round-2 item 2 is about the
+    prompt that implies another first attempt is coming). Measured: the
+    unscoped version failed exactly there.
+
+    NON-GREEDY TO THE FIRST `</div>`, which is exactly this block's own closing
+    tag because the prequiz block contains only <h2> and <p> — no nested divs.
+    Reading to the END of the document instead (the first attempt) swept up
+    oTree's DEBUG INFO panel, which dumps `vars_for_template` and therefore
+    prints the literal string `quiz_bonus`, failing a "does not mention the
+    bonus" assertion on a debug panel no participant sees in production.
+    """
+    m = re.search(r'<div class="[^"]*prequiz-block[^"]*">(.*?)</div>', html,
+                  flags=re.S)
+    return visible_text(m.group(1)) if m else ''
+
+
 def page_index(url):
     """The trailing page index in an oTree participant URL (/App/Page/<i>).
 
@@ -153,6 +178,19 @@ def scenario_lab_reread(base):
           'lab consent: no participant-ID field')
     r = advance_until(s, r, '/instructing/')           # instructing, round 1
     i_instr1 = page_index(r.url)
+    # THE PRE-QUIZ PROMPT, ROUND 1 (round-2 items 2 + 3). The round-1 wording
+    # stays as it was, and the AMOUNT is bold. Asserted on the raw HTML for the
+    # <strong>, and on the visible text for the sentence, so a change to either
+    # is caught. (The block is in the document from the start; instructions.js
+    # only reveals it as the last step, so no JS is needed to read it.)
+    r1_text = prequiz_text(r.text)
+    check('on the first attempt you get' in r1_text,
+          'round 1: the pre-quiz prompt still states the first-attempt bonus')
+    check(re.search(r'first\s+attempt\s+you\s+get\s*<strong>[^<]+</strong>',
+                    r.text) is not None,
+          'round 1: …and the AMOUNT is bold (item 3)')
+    check('Would you like to reread the instructions first?' in r1_text,
+          'round 1: …and it still asks whether to reread')
     r = submit(s, r)                                   # leave instructions r1
     check('/quiz/' in r.url, 'quiz round 1 reached')
     i_quiz1 = page_index(r.url)
@@ -176,6 +214,22 @@ def scenario_lab_reread(base):
     r = submit(s, r, answers=WRONG, overrides={'redoinstructions': '1'})  # take it
     check('/instructing/' in r.url and page_index(r.url) > i_instr1,
           f'taking the offer returns to the instructions (round 2) [{page_name(r.url)}]')
+    # THE PRE-QUIZ PROMPT, ROUND 2 (round-2 item 2). By this point the
+    # participant has failed, so the quiz bonus is already gone —
+    # compute_final_payoff pays it only when failed_attempts == 0 — and the
+    # round-1 sentence would both state a condition that can no longer be met
+    # and imply a second "first attempt". Neither the bonus nor the phrase may
+    # appear here, and asserting on VISIBLE TEXT is the point: a template that
+    # branched on the wrong thing would still ship the sentence.
+    r2_text = prequiz_text(r.text)
+    check('first attempt' not in r2_text,
+          'round 2: the pre-quiz prompt does NOT mention a first attempt')
+    check('bonus' not in r2_text.lower() and 'you get' not in r2_text,
+          'round 2: …and does NOT mention the bonus, which is already lost')
+    check('Would you like to reread the instructions first?' in r2_text,
+          'round 2: …but still asks whether they want to reread')
+    check('You will next see the quiz again.' in r2_text,
+          'round 2: …and still says a quiz is coming')
     r = submit(s, r)                                   # leave instructions r2
     check('/quiz/' in r.url and page_index(r.url) > i_quiz1,
           'then back to the quiz (round 2)')

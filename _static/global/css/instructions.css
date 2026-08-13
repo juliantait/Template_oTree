@@ -25,11 +25,35 @@
     width: 100%;
 }
 
-/* The band width lives on the CARD, so the eyebrow in the header strip can
-   follow the exact same measure and sit flush with the slide text it
-   introduces (base.css, .eyebrow). One value, two consumers — they cannot
-   drift apart. */
-.screen-card:has(.instructions) { --instructions-band: 720px; }
+/* THE BAND IS THE READING MEASURE. ONE definition, on the card, for every
+   consumer on this page (Julian, 2026-08-13, round-2 item 16).
+   =============================================================================
+   It used to be a flat `720px`, which made this page carry TWO widths for one
+   concept: the band (720px, on `.instruction-block`) and the reading measure
+   (`--read-measure`, `68ch`, on each running-text element inside it). The text
+   was therefore capped TWICE and landed on whichever bound — 720px in practice
+   — while anything given only the band, such as the Back/Next pager, landed on
+   720px, and anything given only the measure landed on ~726px. That is the
+   one-concept-two-implementations pattern in CLAUDE.md, and it is what made the
+   pager alignment fiddly: matching the second constraint to the first meant
+   copying a number, and `68ch` resolves against each element's OWN font, so the
+   copy was wrong by 3px per side and no stylesheet reading would show it.
+
+   MEASURED BEFORE COLLAPSING THEM (headless Chromium, 2026-08-13):
+     `.instructions`          1082px @1280 and @1512, 743px @900, 305px @375
+                              — i.e. the full card content width, NOT the band
+     the reading measure      726.119px for the instruction text (68ch @19px)
+     the band                 720px, and it is what actually bound the text
+   So adopting the measure changes line length by **+6.1px, about +0.85%** —
+   roughly half a character. Small enough to take, which is the route chosen.
+
+   THREE CONSUMERS NOW SHARE THIS ONE VALUE and cannot drift: the slide text and
+   the pager (the single rule below), and the header strip, whose max-width is
+   `band + 4 gutters` so the EYEBROW lands exactly on the slide text's edge.
+   Changing the type scale moves all three together. Both alignments are pinned
+   by measured render checks (the eyebrow leg and leg W), so a future change
+   that breaks either fails there rather than drifting quietly. */
+.screen-card:has(.instructions) { --instructions-band: var(--read-measure); }
 /* The header strip takes the same band as the slide body, so the eyebrow lines
    up with the text it introduces.
    RE-DERIVED 2026-08-11 for the full-width scroller (item 6). The text band is
@@ -99,31 +123,50 @@
     margin: -6px;
 }
 
-/* THE READING BAND. It is the BLOCK that is capped and centred, not the
-   scrolling wrapper around it (see the note on .instructions above): the text
-   keeps exactly the width it had, while the scroll catchment is the whole card.
-   Tables, figures and the payoff matrix still get this band's full width; only
-   the running text inside narrows further, to --read-measure, below. */
-.instruction-block {
-    display: none;
-    width: 100%;
-    max-width: var(--instructions-band, 720px);
-    margin-inline: auto;
-}
-.instruction-block:first-of-type { display: block; }
+/* THE INSTRUCTIONS COLUMN — where this page's text column begins and ends,
+   defined ONCE and shared by everything that must line up with it.
+   =============================================================================
+   `.instruction-block` is the slide's box; `.instruction-controls` is the
+   Back/counter/Next pager beneath it. THEY ARE IN ONE SELECTOR LIST ON PURPOSE
+   (Julian, 2026-08-13, round-2 items 12 + 16): Back and Next used to sit on the
+   edges of the CARD while the text sat in this column, so the pager floated
+   well outside the text it pages through. They now take the column's edges from
+   THE SAME RULE, reading THE SAME token, so they cannot be given two numbers
+   that agree today and drift on the next type-scale change. That is the
+   one-concept-one-definition rule the dashboard's step list follows, applied to
+   a width.
 
-/* The reading measure: direct-child running text of each block, centred in the
-   card. Tables and figures are NOT direct text children, so they stay full
-   width. */
-.instruction-block > h2,
-.instruction-block > h3,
-.instruction-block > p,
-.instruction-block > ul,
-.instruction-block > ol,
-.instruction-block > .panel {
-    max-width: var(--read-measure);
+   THE SECOND CAP IS GONE, and its absence is the point. The running text used
+   to carry `max-width: var(--read-measure)` of its own, on top of this box —
+   two constraints for one concept, which is what made the pager hard to align
+   (see the note on --instructions-band above, and the measured numbers there).
+   The band now IS the measure, so the text simply fills this box. DO NOT
+   re-add a max-width to the text elements, to `.instruction-controls`, or to
+   `.instruction-block p`: the column is decided here.
+
+   WHAT STILL DIFFERS INSIDE, deliberately: an element that sets its OWN
+   font-size — the shipped template note is `font-size: 14px` inline — is
+   unaffected by this box and simply fills it too. Tables, figures and the
+   payoff matrix also fill it; they used to get a band 6px wider than the text,
+   which no longer exists as a distinction because the two values collapsed.
+
+   WHY NOT A SINGLE WRAPPER ELEMENT CONTAINING BOTH — asked for, and it does not
+   fit this page (reported to Julian, 2026-08-13). Such a wrapper would have to
+   contain the running text and the pager, and those two are deliberately in
+   DIFFERENT boxes: the text lives inside `.instruction-wrapper`, which is the
+   SCROLLER and is deliberately the full width of the card so the scroll
+   catchment is the whole card, while the pager is deliberately OUTSIDE it so it
+   stays pinned as the slide scrolls. A wrapper around both would narrow the
+   scroll catchment and unpin the pager. Nothing was duplicated to avoid that:
+   the column is defined once as a RULE rather than once as an ELEMENT. */
+.instruction-block,
+.instruction-controls {
+    width: 100%;
+    max-width: var(--instructions-band);
     margin-inline: auto;
 }
+.instruction-block { display: none; }
+.instruction-block:first-of-type { display: block; }
 
 /* Body copy is justified; direct children only, so nested widget text is left
    as authored. */
@@ -149,7 +192,6 @@
     font-weight: 660;
 }
 
-.instruction-block p { max-width: var(--read-measure); }
 
 /* Skim emphasis inside instructions: a touch heavier than body <strong> so the
    load-bearing phrases catch the eye, still the same ink (no colour shouting). */
@@ -160,7 +202,6 @@
     /* inline margin auto keeps the list within the centred reading measure */
     margin: 0 auto 1em;
     padding-left: 1.25em;
-    max-width: var(--read-measure);
 }
 .instruction-block li + li { margin-top: .55em; }
 
@@ -211,13 +252,34 @@
 
 /* Back far left, counter in the middle, Next far right — the pager reads as
    movement through the sequence rather than as a pair of equal choices.
-   Pinned. */
+   Pinned.
+
+   IT SPANS THE READING MEASURE, NOT THE CARD (Julian, 2026-08-13,
+   change_requests_round2 item 12). `justify-content: space-between` puts the
+   two buttons on the edges of whatever box it is given, and that box used to be
+   the full card — while the instructions text is held to `--read-measure`. So
+   Back and Next floated well outside the column of text they page through, and
+   the pager read as chrome belonging to the card rather than as the control for
+   that column.
+   ITS WIDTH IS NOT SET HERE. The row's edges are the INSTRUCTIONS COLUMN's
+   edges, and that column is defined ONCE, further up this file, in the same
+   rule as `.instruction-block` — see THE INSTRUCTIONS COLUMN. Do not add a
+   max-width to this rule: two places deciding one width is exactly what that
+   note exists to prevent, and is the bug this replaced.
+
+   The counter sits between them as the flex row's middle item, so it stays
+   centred in the narrower span with nothing extra. All of it is asserted from
+   rendered geometry at three viewports by tests/render_check.py leg W, never
+   from this stylesheet.
+   The phone breakpoint below is unaffected: at <=520px both this and the text
+   are the full width of the card anyway. */
 .instruction-controls {
     flex: 0 0 auto;
     display: flex;
     gap: 12px;
     justify-content: space-between;
     align-items: center;
+    width: 100%;
     /* RESERVED STRIP for the scroll cue (base.css): the V is centred on this
        row's TOP EDGE, so it needs empty space on both sides of that edge — the
        column gap above it, and this padding below it. Permanent, not applied

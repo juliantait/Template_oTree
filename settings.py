@@ -106,8 +106,8 @@ RECRUITMENT_PROFILES = {
     # Physical lab (CREED): experimenter-run, paid by bank transfer. No Prolific
     # plumbing, no tab monitor.
     'lab': dict(
-        capture_participant_id=False,
-        completion_redirects=False,
+        prolific_capture_participant_id=False,
+        prolific_completion_redirects=False,
         tab_monitor=False,
         comprehension_dq=False,
         passive_capture=False,
@@ -120,8 +120,8 @@ RECRUITMENT_PROFILES = {
     # participant-ID capture, completion-code redirects and the integrity
     # modules.
     'prolific': dict(
-        capture_participant_id=True,
-        completion_redirects=True,
+        prolific_capture_participant_id=True,
+        prolific_completion_redirects=True,
         tab_monitor=True,
         comprehension_dq=True,
         passive_capture=True,
@@ -129,9 +129,10 @@ RECRUITMENT_PROFILES = {
         collect_bank_details=False,  # Prolific pays through the platform
         collect_demographics=False,  # Prolific supplies demographics in its own export
         quiz_reread=False,           # no re-read pass online; comprehension_dq instead
-        # NB: `allowed_devices` is deliberately NOT listed here. It sits in the
-        # Prolific block but is its own decision: selecting the prolific study
-        # type must never start screening devices out on its own. It falls
+        # NB: `allowed_devices` is deliberately NOT listed here, and is not a
+        # Prolific parameter at all (it has its own ENTRY section): selecting
+        # the prolific study type must never start screening devices out on its
+        # own. It falls
         # through to the SESSION_CONFIG_DEFAULTS baseline (all four types = no
         # gate) and is narrowed explicitly on a config.
     ),
@@ -147,7 +148,7 @@ RECRUITMENT_PROFILES = {
 #
 # THERE IS NO SCREENED-OUT COMPLETION CODE, and none must be added here. A
 # device screened out at entry is sent back to Prolific by a PLAIN LINK with no
-# code at all (`screenout_return_url`), because submitting a code closes the
+# code at all (`prolific_screenout_return_url`), because submitting a code closes the
 # participant's submission, and a returned submission can never be retaken —
 # which forecloses the very thing the screen-out page asks them to do, namely
 # come back on a computer and finish. The old `error_code` / 'REPLACE_ERR' pair
@@ -184,14 +185,50 @@ SCREENOUT_RETURN_URL_PLACEHOLDER = 'REPLACE_SCREENOUT_RETURN_URL'
 # defaults, defined in that module. NOT session config parameters, deliberately:
 # they are operator-screen behaviour, not experimental design, so they must not
 # show up in the admin's session-config view or the experimental record.
-DASHBOARD_STALL_SECONDS = 300   # a row turns AMBER after this long on one page
+#
+# THE STALL THRESHOLDS ARE PER PHASE, NOT ONE NUMBER (Julian, 2026-08-13,
+# change_requests_round2 item 6). There used to be a single
+# DASHBOARD_STALL_SECONDS covering the whole flow, which is the
+# collapsed-distinction rule in CLAUDE.md applied to a threshold: "too long" on
+# the consent page and "too long" reading the instructions are different
+# durations by an order of magnitude, and one number cannot be both. Set it low
+# enough to catch a stuck consent page and every reader trips it; set it high
+# enough for the instructions and nobody stuck at entry is ever flagged.
+#
+# Each phase below is its own line, tuned independently. The amber row treatment
+# is unchanged — only which number decides it. A phase with no threshold here
+# falls back to DASHBOARD_STALL_SECONDS_DEFAULT.
+DASHBOARD_STALL_SECONDS_BEFORE = 60    # entry block (startpage, consent, ID, AI-safety)
+DASHBOARD_STALL_SECONDS_INTRO = 480    # instructions + quiz, whole intro app
+# TASK: 180s per ROUND, and this one is a judgement call rather than Julian's
+# number — recorded here because he asked to be told what I picked. Reasoning:
+# the task page is a single decision in this template's Stag Hunt, which takes
+# seconds, and a session runs num_experimental_rounds of them back to back; the
+# operator's question during the task is "has someone stopped?", so the
+# threshold wants to be short enough that one stalled round is visible while the
+# room is still working. 3 minutes is roughly an order of magnitude above a
+# considered decision and well below "the participant has gone to sleep". A
+# STUDY WITH A LONGER TASK PAGE MUST RAISE THIS — it is per single round, not
+# per task block.
+DASHBOARD_STALL_SECONDS_TASK = 180
+# OUTRO: 300s before being marked complete, also my pick. The outro can contain
+# a demographics questionnaire and the lab's IBAN/BIC form — typing bank details
+# from a card is genuinely slow, and flagging that as a stall would cry wolf at
+# the exact moment the operator wants a quiet screen. 5 minutes is long enough
+# for the longest legitimate outro this template ships and short enough to catch
+# somebody who has walked away without finishing.
+DASHBOARD_STALL_SECONDS_OUTRO = 300
+# Fallback for any phase not named above (an unmapped app, or a step added to
+# the dashboard without a threshold). Deliberately the old global value, so a
+# study that never touches these lines behaves as before.
+DASHBOARD_STALL_SECONDS_DEFAULT = 300
 DASHBOARD_POLL_SECONDS = 2      # dashboard refresh; 2s is a floor, enforced server-side
 
 # --- static asset version ----------------------------------------------------
 # Appended as ?v=... to every CSS/JS href so a redeploy is never served a stale
 # cached asset. BUMP THIS ON EVERY CHANGE to a file under _static/. Each app
 # exposes it as C.STATIC_VERSION, which is what the templates read.
-STATIC_VERSION = '6'
+STATIC_VERSION = '11'
 
 
 SESSION_CONFIG_DEFAULTS = dict(
@@ -215,6 +252,15 @@ SESSION_CONFIG_DEFAULTS = dict(
     pilot_feedback=PILOT_FEEDBACK,
 
     # =========================================================================
+    # GAME AND DESIGN
+    # =========================================================================
+    # Structural quantities of the experiment itself: round counts and any
+    # stimulus/treatment quantities a study adds.
+    # NUM_ROUNDS is fixed at import from this value (the MAX). A config may set
+    # it LOWER to run fewer rounds, never higher.
+    num_experimental_rounds=10,
+
+    # =========================================================================
     # PAYMENT AND INCENTIVES
     # =========================================================================
     # Everything money: base/show-up pay, bonuses, how many rounds are paid,
@@ -236,15 +282,6 @@ SESSION_CONFIG_DEFAULTS = dict(
     show_duration_and_fee=False,
 
     # =========================================================================
-    # GAME AND DESIGN
-    # =========================================================================
-    # Structural quantities of the experiment itself: round counts and any
-    # stimulus/treatment quantities a study adds.
-    # NUM_ROUNDS is fixed at import from this value (the MAX). A config may set
-    # it LOWER to run fewer rounds, never higher.
-    num_experimental_rounds=10,
-
-    # =========================================================================
     # COMPREHENSION
     # =========================================================================
     # Quiz behaviour: how many wrong attempts count as "failed" (the threshold
@@ -258,7 +295,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     # study types — what differs is the CONSEQUENCE of crossing it:
     #   * ONLINE (prolific): the point of EJECTION. comprehension_dq is on, so
     #     crossing it flags the participant, records exit code -2 and sends them
-    #     to the ending and back to Prolific with dq_code.
+    #     to the ending and back to Prolific with prolific_dq_code.
     #   * IN THE LAB: the point at which the study STARTS HELPING. Nobody is
     #     ejected and attempts are never capped — the participant is sitting in
     #     the room, has been promised the show-up fee, and there is an
@@ -281,12 +318,26 @@ SESSION_CONFIG_DEFAULTS = dict(
     # participant without help: the experimenter notice is keyed on the
     # threshold and the study type, not on this module.
     quiz_reread=False,              # offer a one-time instructions re-read on failure
+    # The ONLINE consequence of crossing the same threshold: disqualify, record
+    # exit code -2 and route to the ending. Mutually exclusive in practice with
+    # quiz_reread (the lab rule) — and NOT supported in a lab session at all,
+    # for which see the INTEGRITY MODULES note below; scripts/prelaunch_check.py
+    # fails a lab config that turns it on.
+    #
+    # IT LIVES HERE, WITH THE THRESHOLD IT ACTS ON AND THE OTHER HALF OF THE
+    # SAME DECISION (moved 2026-08-13, Julian). It used to sit in the integrity
+    # block BETWEEN `tab_monitor` and tab_monitor's own thresholds, purely by
+    # accretion — which read, in the admin's session-config form, as though it
+    # were one of them. It is not: it is what comprehension_max_failures does
+    # online, and the choice a study makes here is quiz_reread vs this.
+    comprehension_dq=False,         # disqualify past comprehension_max_failures
 
     # =========================================================================
     # INTEGRITY MODULES
     # =========================================================================
-    # Enforcement: the tab-switch monitor and comprehension disqualification,
-    # plus their thresholds (thresholds only matter when the module is on).
+    # Enforcement: the tab-switch monitor and its thresholds (which only matter
+    # when the module is on). The other integrity module, `comprehension_dq`,
+    # is declared with the comprehension threshold it acts on, above.
     #
     # BOTH MODULES ARE NOT SUPPORTED IN A LAB SESSION (Julian, 2026-08-12), and
     # scripts/prelaunch_check.py FAILS on a lab config that turns either on.
@@ -300,7 +351,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     # rather than a comment on its own: a disqualified participant is not a
     # completer (outro.is_completer), so they skip Demographics — the page that
     # collects the lab's IBAN/BIC — and the payment summary, and land on an
-    # ending with no redirect (lab has completion_redirects off). That is a
+    # ending with no redirect (lab has prolific_completion_redirects off). That is a
     # participant stranded at a machine with no record of where to send their
     # fee. The lab's comprehension rule is the re-read pass plus the
     # experimenter notice; see comprehension_max_failures above.
@@ -315,7 +366,6 @@ SESSION_CONFIG_DEFAULTS = dict(
     # verify_quiz, NEVER by editing the resolved study values (see the
     # guarantee on resolve_recruitment_profile).
     tab_monitor=False,              # tab-switch / AI-safety monitor
-    comprehension_dq=False,         # disqualify past comprehension_max_failures
     tab_monitor_max_violations=2,   # disqualify on the Nth recorded tab-away
     tab_monitor_threshold_ms=4000,  # continuous away-time that counts as a violation
     tab_monitor_overlay_delay_ms=400,  # grace before the warning overlay appears
@@ -331,21 +381,15 @@ SESSION_CONFIG_DEFAULTS = dict(
     collect_demographics=False,     # explicit demographics questionnaire (outro)
 
     # =========================================================================
-    # TIMING
+    # ENTRY — THE DEVICE ALLOW-LIST
     # =========================================================================
-    # View locks and forced-wait values. None exist yet — when a study adds a
-    # timed page or a minimum reading time, its parameter belongs here.
-
-    # =========================================================================
-    # PROLIFIC
-    # =========================================================================
-    # Every Prolific-specific parameter lives here. The study's ENTRY URL is
-    # configured on Prolific's side (see prolific/Prolific_running.md); the
-    # completion codes below are created in the Prolific study UI and pasted
-    # per config — the prelaunch banner flags any REPLACE_* placeholder that
-    # survives to launch.
-    capture_participant_id=False,   # capture an external (Prolific) ID at entry
-    completion_redirects=False,     # send participants back to Prolific with a code
+    # NOT a Prolific parameter, and no longer filed as one (moved 2026-08-13):
+    # the gate is decided from the entry request in every study type, it is
+    # deliberately absent from both recruitment profiles, and a lab study may
+    # narrow it too. What IS Prolific-specific is where a screened-out
+    # participant is SENT, which is why `prolific_screenout_return_url` sits in
+    # the Prolific block at the end and this does not.
+    #
     # DEVICE ALLOW-LIST — which device types may take part. A study STATES the
     # devices it accepts ('phone', 'tablet', 'computer', 'unknown'); anything
     # else is screened out at entry and held on the consent page's index, where
@@ -368,25 +412,12 @@ SESSION_CONFIG_DEFAULTS = dict(
     # never start screening devices out on its own. A comma-separated string is
     # accepted as well as a list, e.g. allowed_devices='computer'.
     allowed_devices=['phone', 'tablet', 'computer', 'unknown'],
-    # WHERE A SCREENED-OUT PARTICIPANT IS SENT, as a plain link carrying NO
-    # completion code: the Prolific participant site itself. Their submission
-    # therefore stays OPEN, so they can still reopen the study on an accepted
-    # device and finish it — which is the outcome the screen-out page asks for,
-    # and which a completion code would foreclose for good. See "The device
-    # check" in README.md, and common.screenout_return_url.
-    # Blank it to render no link at all (a study with no platform to return to).
-    #
-    # SHIPPED AS A REPLACE_* PLACEHOLDER, deliberately — see
-    # SCREENOUT_RETURN_URL_PLACEHOLDER above for why a working default is worse
-    # than a broken one here. Replace it with the platform URL your participants
-    # should be sent back to (for Prolific that is https://app.prolific.com/),
-    # or blank it if the study has no platform to return to. The pre-launch
-    # guard fails while this is still the placeholder AND the study redirects.
-    screenout_return_url=SCREENOUT_RETURN_URL_PLACEHOLDER,
-    cc_code='REPLACE_CC',        # normal completion
-    noconsent_code='REPLACE_NC', # declined consent
-    dq_code='REPLACE_DQ',        # disqualified (comprehension / tab monitor)
-    # NB: no screened-out code. See PROLIFIC_CODE_PLACEHOLDERS above.
+
+    # =========================================================================
+    # TIMING
+    # =========================================================================
+    # View locks and forced-wait values. None exist yet — when a study adds a
+    # timed page or a minimum reading time, its parameter belongs here.
 
     # =========================================================================
     # TESTING AND DEV  (the DEBUG axis' config-side values)
@@ -405,6 +436,61 @@ SESSION_CONFIG_DEFAULTS = dict(
     # tests/frozen_config_test.py), and a cache-busting token should follow the
     # build anyway, not the session.
     static_version=STATIC_VERSION,
+
+    # =========================================================================
+    # PROLIFIC  —  LAST, AND EVERY KEY HERE IS PREFIXED `prolific_`
+    # =========================================================================
+    # Every exclusively-Prolific parameter, together at the end (Julian,
+    # 2026-08-13). Two things make this block worth keeping contiguous:
+    #
+    #   * THE ORDER OF THIS DICT IS THE ORDER OF THE ADMIN'S SESSION-CONFIG
+    #     FORM. oTree renders SESSION_CONFIG_DEFAULTS in INSERTION ORDER, and it
+    #     gives that form no section headings at all — so a contiguous block plus
+    #     the shared `prolific_` prefix is the ONLY grouping available to us.
+    #     Anything filed here is out of the way of somebody configuring a lab
+    #     session, and anything a lab session does need is above.
+    #   * THE PREFIX IS THE OTHER HALF OF THAT. A key named `prolific_cc_code` or
+    #     `prolific_completion_redirects` reads as general machinery; `prolific_cc_code`
+    #     says who it belongs to at the point of use, in a template, in an
+    #     export header and in this form. Renamed 2026-08-13 while the template
+    #     has NO live studies — the same rename later would be a schema change
+    #     across running sessions.
+    #
+    # WHAT IS NOT HERE, deliberately: `allowed_devices` (the entry gate applies
+    # to every study type — see the ENTRY section above) and `recruitment`
+    # itself (the axis, not a Prolific parameter).
+    #
+    # The study's ENTRY URL is configured on Prolific's side (see
+    # prolific/Prolific_running.md); the completion codes below are created in
+    # the Prolific study UI and pasted per config — the prelaunch banner flags
+    # any REPLACE_* placeholder that survives to launch.
+    prolific_capture_participant_id=False,  # capture the Prolific ID at entry
+    prolific_completion_redirects=False,    # send them back with a completion code
+    # WHERE A SCREENED-OUT PARTICIPANT IS SENT, as a plain link carrying NO
+    # completion code: the Prolific participant site itself. Their submission
+    # therefore stays OPEN, so they can still reopen the study on an accepted
+    # device and finish it — which is the outcome the screen-out page asks for,
+    # and which a completion code would foreclose for good. See "The device
+    # check" in README.md, and common.prolific_screenout_return_url.
+    #
+    # REQUIRED FOR A PROLIFIC STUDY, which is why it is filed here rather than
+    # with the device allow-list it serves: a Prolific participant has no
+    # experimenter to ask, so a study that screens somebody out MUST leave them
+    # a way off that page. scripts/prelaunch_check.py FAILS a prolific config
+    # whose value here is blank or still the placeholder — that combination is
+    # not a configuration choice, it is a dead end (see
+    # settings._prelaunch_problems). Blank is legitimate only for a study type
+    # that is not prolific.
+    #
+    # SHIPPED AS A REPLACE_* PLACEHOLDER, deliberately — see
+    # SCREENOUT_RETURN_URL_PLACEHOLDER above for why a working default is worse
+    # than a broken one here. Replace it with the platform URL your participants
+    # should be sent back to (for Prolific that is https://app.prolific.com/).
+    prolific_screenout_return_url=SCREENOUT_RETURN_URL_PLACEHOLDER,
+    prolific_cc_code='REPLACE_CC',        # normal completion
+    prolific_noconsent_code='REPLACE_NC', # declined consent
+    prolific_dq_code='REPLACE_DQ',        # disqualified (comprehension / tab monitor)
+    # NB: no screened-out code. See PROLIFIC_CODE_PLACEHOLDERS above.
 )
 
 
@@ -479,7 +565,7 @@ SESSION_CONFIGS = [
         app_sequence=['before', 'intro', 'main', 'outro'],
         num_demo_participants=100,
         recruitment='prolific',
-        # cc_code / noconsent_code / dq_code default to REPLACE_* placeholders;
+        # prolific_cc_code / prolific_noconsent_code / prolific_dq_code default to REPLACE_* placeholders;
         # paste the real codes from your Prolific study before launch.
     ),
 ]
@@ -617,7 +703,7 @@ def _prelaunch_problems():
         problems.append(('DEBUG (set OTREE_PRODUCTION=1)', True, False))
 
     for cfg in SESSION_CONFIGS:
-        # Check the EFFECTIVE config (defaults + entry), since keys like cc_code
+        # Check the EFFECTIVE config (defaults + entry), since keys like prolific_cc_code
         # live in SESSION_CONFIG_DEFAULTS and are merged by oTree at runtime.
         eff = {**SESSION_CONFIG_DEFAULTS, **cfg}
         # verify_quiz=False is a DEBUG loosening; it is IGNORED in production,
@@ -631,30 +717,46 @@ def _prelaunch_problems():
         # redirects to Prolific.
         # NB three codes, not four: there is deliberately NO screened-out code
         # (see PROLIFIC_CODE_PLACEHOLDERS). Do not add one back here.
-        if eff.get('completion_redirects'):
-            for code_key in ('cc_code', 'noconsent_code', 'dq_code'):
+        if eff.get('prolific_completion_redirects'):
+            for code_key in ('prolific_cc_code', 'prolific_noconsent_code', 'prolific_dq_code'):
                 value = eff.get(code_key)
                 if value in PROLIFIC_CODE_PLACEHOLDERS:
                     problems.append(
                         (f"config {cfg['name']!r} {code_key}", value,
                          'a real Prolific completion code (not a REPLACE_* placeholder)'))
-            # THE SCREEN-OUT RETURN URL, guarded in the same family as the codes
-            # but for the opposite reason to the code we deliberately do NOT
-            # have: this one is really used (it is the whole way off the
-            # screen-out page), so an unreplaced placeholder is a participant
-            # stranded with no route back to the platform. Gated on
-            # `completion_redirects` for the same reason the codes are — that
-            # flag is what means "this study sends people back to a platform";
-            # a lab session has nowhere to return to and is never asked.
-            # A DELIBERATELY BLANK value is a legitimate choice (render no link
-            # at all) and is not flagged — only the untouched placeholder is.
-            if eff.get('screenout_return_url') == SCREENOUT_RETURN_URL_PLACEHOLDER:
+        # THE SCREEN-OUT RETURN URL — REQUIRED FOR A PROLIFIC STUDY, AND THE ONE
+        # PLACE THIS GUARD ENFORCES A DEPENDENCY RATHER THAN SPOTTING A
+        # PLACEHOLDER (Julian, 2026-08-13).
+        #
+        # A participant screened out at entry is on the one page whose entire
+        # job is to give them a way out. In the lab they raise a hand. ON
+        # PROLIFIC THERE IS NOBODY TO ASK, so the exit is owed to them by the
+        # study type itself — being a Prolific study and offering an exit are
+        # the same commitment, and a config that separates them is not a
+        # configuration choice, it is a broken study.
+        #
+        # SO THIS IS CHECKED ON `recruitment`, NOT ON `prolific_completion_redirects`
+        # (which gates the codes above, and is a different mechanism entirely:
+        # the return URL deliberately carries NO completion code, so that their
+        # submission stays open). Gating it on that flag is what produced the
+        # dead end this now forbids: a prolific session with redirects off
+        # served a screened-out participant a page with no exit at all, silently
+        # — no error, no failing test. See before/screened_out.html.
+        #
+        # AND A BLANK VALUE IS NO LONGER A LEGITIMATE CHOICE FOR PROLIFIC. It
+        # remains one for any other study type, which is why the test is here
+        # and not on every config.
+        if eff.get('recruitment') == 'prolific':
+            url = str(eff.get('prolific_screenout_return_url') or '').strip()
+            if not url or url == SCREENOUT_RETURN_URL_PLACEHOLDER:
                 problems.append(
-                    (f"config {cfg['name']!r} screenout_return_url",
-                     SCREENOUT_RETURN_URL_PLACEHOLDER,
+                    (f"config {cfg['name']!r} prolific_screenout_return_url",
+                     eff.get('prolific_screenout_return_url'),
                      'the real URL a screened-out participant is sent back to '
-                     '(e.g. https://app.prolific.com/), or blank for no link — '
-                     'NOT the REPLACE_* placeholder'))
+                     '(e.g. https://app.prolific.com/). REQUIRED for a prolific '
+                     'study — blank or the REPLACE_* placeholder would leave a '
+                     'screened-out participant with no way out and nobody to '
+                     'ask'))
     return problems
 
 

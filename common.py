@@ -116,6 +116,86 @@ COMPUTER_UA_RE = re.compile(
     re.IGNORECASE,
 )
 
+# THE ORDERED RULE LIST — THE ONE PLACE THE THREE FAMILIES ARE DEFINED.
+#
+# `classify_device` walks this, and `device_ua_rules()` SHIPS IT TO THE BROWSER
+# (below) so the client-side twin in `_static/global/js/device_capture.js`
+# applies these same patterns instead of keeping its own copy. There is
+# therefore no second list to drift — which is the point, and the fix for a real
+# defect: while the client kept its own patterns, they had already drifted
+# (`Mobile/\d`, `BB10`, `Nexus 7|9|10` server-only; an unanchored `Linux`
+# client-side), so an iOS in-app browser was recorded as "server says phone,
+# client says unknown" — INDISTINGUISHABLE from the genuine client/server
+# disagreement the client's classification exists to expose. See
+# `device_ua_rules` for what the client does with these and how the remaining
+# states are kept apart.
+#
+# Order matters: tablets first (an iPad's UA says "Mobile"), then phones, then
+# computers. Keep it a tuple of (type, compiled regex) pairs — the JS builds its
+# RegExps from `.pattern`, so every pattern must stay valid in BOTH engines
+# (lookaheads and \d are fine; named groups and \Z would not be).
+DEVICE_UA_RULES = (
+    ('tablet', TABLET_UA_RE),
+    ('phone', PHONE_UA_RE),
+    ('computer', COMPUTER_UA_RE),
+)
+
+
+def device_ua_rules() -> dict:
+    """The server's User-Agent rules, as plain data, for the client-side twin.
+
+    Handed to the entry page through `before.welcome.js_vars` and applied by
+    `device_capture.js`, so the browser classifies with THE SERVER'S list rather
+    than a copy of it.
+
+    WHY THIS EXISTS — a collapsed distinction inside the instrument built to
+    detect one. The client's `device_type` is measurement: it is recorded, never
+    enforced, and its whole value is that a DISAGREEMENT with the server's
+    classification is visible in the export (an iPadOS tablet claiming to be a
+    Mac, a stripped User-Agent). But while the client kept its own patterns, a
+    disagreement had two possible causes that looked identical:
+
+      * the device's own signals contradict its User-Agent — REAL, and the thing
+        the column is for;
+      * our two pattern lists simply differed — an artefact of ours, saying
+        nothing about the device.
+
+    One list removes the second cause entirely. What is left is kept APART
+    rather than merged, and each state is named in the recorded JSON:
+
+      `ua_rules`        'server'      these rules arrived and were applied
+                        'unavailable' they did not (no js_vars on this page, or
+                                      a malformed payload). The client then
+                                      classifies NOTHING and says so — it does
+                                      NOT fall back to a private copy of the
+                                      list, because a silent fallback is exactly
+                                      the second list this removes.
+      `device_type_ua`  the client's classification of ITS OWN
+                        navigator.userAgent under these rules. It should equal
+                        the server's `entry_device_type`; when it does not, the
+                        browser is reporting a different User-Agent than the one
+                        in the request header (an extension, a proxy, UA client
+                        hints) — a third state, and now a separable one.
+      `device_type`     the client's FINAL answer: `device_type_ua` refined by
+                        signals the server cannot see (touch points, viewport).
+      `device_type_signals`  which of those signals fired, so a disagreement
+                        between the last two is attributable rather than
+                        mysterious.
+
+    So: `device_type` != server  →  read `ua_rules`, then compare
+    `device_type_ua` with the server's type. Equal means the client's own
+    signals moved it (genuine); different means the User-Agents differ; and
+    'unavailable' means we learnt nothing this time.
+    """
+    return dict(
+        order=[name for name, _ in DEVICE_UA_RULES],
+        patterns={name: rx.pattern for name, rx in DEVICE_UA_RULES},
+        max_len=MAX_USABLE_UA_LEN,
+        illegal=_ILLEGAL_UA_CHARS_RE.pattern,
+        unknown='unknown',
+        undetermined=UNDETERMINED,
+    )
+
 
 def pvar(participant, name, default=None):
     """Safe read of a participant field.
@@ -175,6 +255,69 @@ def flag(player, name) -> bool:
     return bool(player.session.config.get(name))
 
 
+# =============================================================================
+# STUDY TYPE — **FLAGS DECIDE MECHANICS, `recruitment` DECIDES COPY**
+# =============================================================================
+# THE RULE, because this is the one that gets re-tangled by the next person
+# adding a page:
+#
+#   A MODULE FLAG answers "do we have the machinery to do this?" —
+#   `prolific_completion_redirects` means "we hold a completion code to send them back
+#   with", `prolific_capture_participant_id` means "we collect a platform id", and either
+#   may legitimately be off in a study that still runs on Prolific.
+#
+#   `recruitment` answers "WHERE IS THIS PARTICIPANT?" — in a room with an
+#   experimenter, or alone on a recruitment platform. **Every sentence a
+#   participant reads that names the platform, or the room, or tells them how to
+#   reach a human, branches on THIS** — never on a module flag standing in for
+#   it.
+#
+# WHAT WENT WRONG WITHOUT THE RULE (found 2026-08-13, and the reason these two
+# functions exist). "Is this participant on Prolific?" was answered by whichever
+# flag was nearest: the consent page's contact sentence used
+# `prolific_capture_participant_id`, the screen-out page's way out used
+# `prolific_completion_redirects`, and everything else used `recruitment`. A
+# `recruitment='prolific'` session with `prolific_completion_redirects` OFF — the natural
+# config for a friend test — therefore told a participant on the consent page to
+# contact the researchers *through Prolific*, and then served a screen-out page
+# with no way-out section at all: a DEAD END, with nothing on screen to say so,
+# no error and no failing test. Pinned now by tests/copy_routing_test.py.
+#
+# Read through `cfg`, never a raw `.get`: `recruitment` is a study-type axis with
+# a shipped default, NOT a module flag (see `flag` for why that distinction
+# decides the accessor), so a session config frozen before the key existed must
+# fall back to that default rather than silently answering "not lab".
+
+def recruitment(config) -> str:
+    """This session's study type ('lab' | 'prolific'), via the safe accessor."""
+    return cfg(config, 'recruitment')
+
+
+def is_lab(config) -> bool:
+    """Is this an experimenter-run (lab) session?
+
+    THE ONE implementation: the answer picks participant-facing copy in three
+    apps and a page in a fourth, and must not be decided by two different config
+    accessors. KEEP THE CALLER LIST SHORT — every lab/online divergence is a
+    thing that can be true in one variant and quietly wrong in the other,
+    forever, so a branch has to earn its place: it is for things that cannot be
+    true in both rooms, not for things that merely read differently.
+    """
+    return recruitment(config) == 'lab'
+
+
+def is_prolific(config) -> bool:
+    """Is this participant on the recruitment platform (i.e. not in the lab)?
+
+    THE PREDICATE FOR COPY THAT NAMES PROLIFIC — not `prolific_capture_participant_id`
+    and not `prolific_completion_redirects`, which are mechanics (see the rule above).
+    A study that runs on Prolific with the id capture or the completion
+    redirects switched off is still a study on Prolific, and the participant
+    still has no experimenter to raise a hand to.
+    """
+    return recruitment(config) == 'prolific'
+
+
 def init_participant(participant):
     """Initialise every participant field at session creation.
 
@@ -213,6 +356,34 @@ def stamp_stage(participant, stage):
     stamps = participant.vars.get('stage_timestamps') or {}
     stamps[stage] = time.time()
     participant.stage_timestamps = stamps
+
+
+# THE NAME OF THE "LEFT THE ENTRY BLOCK" STAMP, defined once so the writer
+# (before/__init__.py) and the reader (experimenter_dashboard._intro_seconds)
+# cannot drift apart on the spelling.
+LEFT_BEFORE_APP_STAGE = 'left_before_app'
+
+
+def stamp_left_before_app(participant):
+    """Record that the participant has just left a page of the `before` app.
+
+    CALLED FROM EVERY `before` PAGE'S ``before_next_page``, and DELIBERATELY
+    OVERWRITES — the last call to fire is the one that matters, and that is
+    exactly the moment the participant left the entry block for `intro`.
+
+    Why it is written this way rather than stamped once on "the last page":
+    WHICH page is last is CONFIG-DEPENDENT. The lab ends the block at consent;
+    Prolific adds the ID confirmation and the AI-safety agreement; a study that
+    adds an entry page moves it again. Anything that names one page as the end
+    is wrong for some configuration, silently, and the error shows up as a
+    dwell time billed to the wrong phase — which has already happened once here
+    (see the note on AISafetyAgree.before_next_page). Overwriting on every page
+    is correct for every configuration including ones not written yet, and a new
+    entry page only has to call this to stay measured.
+
+    It is the START of the dashboard's INTRO TIME (Julian, 2026-08-13).
+    """
+    stamp_stage(participant, LEFT_BEFORE_APP_STAGE)
 
 
 def set_exit_code(participant, code):
@@ -261,12 +432,11 @@ def classify_device(user_agent) -> str:
             return UNDETERMINED
         if _ILLEGAL_UA_CHARS_RE.search(ua):
             return UNDETERMINED
-        if TABLET_UA_RE.search(ua):
-            return 'tablet'
-        if PHONE_UA_RE.search(ua):
-            return 'phone'
-        if COMPUTER_UA_RE.search(ua):
-            return 'computer'
+        # DEVICE_UA_RULES is the one ordered list, and it is the same one the
+        # browser is given (device_ua_rules) — not a copy of it.
+        for device_type, pattern in DEVICE_UA_RULES:
+            if pattern.search(ua):
+                return device_type
         return 'unknown'
     except Exception:
         # A classifier that raises must not decide anything, and above all must
@@ -287,12 +457,20 @@ def is_mobile_user_agent(user_agent) -> bool:
 
 
 def is_screened_out(participant) -> bool:
-    """True once an entry screen-out gate has removed this participant.
+    """True while an entry screen-out gate is holding this participant.
 
-    Every page between entry and the ending consults this (like the tab
-    monitor's ``ai_safety_disqualified``), so a screened-out participant is
-    walked straight past consent, the instructions, the quiz and the task to the
-    outro ending. Reads participant vars with .vars.get() — never getattr().
+    (Corrected 2026-08-13: this used to say a screened-out participant is
+    "walked straight past consent … to the outro ending", which is the
+    behaviour the SOFT WALL replaced. They are not walked anywhere.)
+
+    The entry device gate HOLDS such a participant on `before.welcome`, which
+    serves `before/screened_out.html` on that same page index, so under this
+    template they never advance at all — that is what keeps the verdict
+    re-decidable. The flag is read by that page to pick its template, by the
+    later `before` pages to skip themselves (`before._leaving_study`), and by
+    `intro` and `outro` as the belt to that brace, for any future gate that sets
+    it later in the flow. Reads participant vars with .vars.get() — never
+    getattr().
     """
     return bool(participant.vars.get('screened_out'))
 
@@ -463,7 +641,7 @@ def device_types_phrase(types) -> str:
     return ', '.join(labels[:-1]) + ' or ' + labels[-1]
 
 
-def screenout_return_url(config) -> str:
+def prolific_screenout_return_url(config) -> str:
     """The way OUT for a screened-out participant: the recruitment platform's
     own site, carrying NO completion code.
 
@@ -481,7 +659,7 @@ def screenout_return_url(config) -> str:
     point of use, in the template.
     """
     try:
-        return str(cfg(config, 'screenout_return_url') or '').strip()
+        return str(cfg(config, 'prolific_screenout_return_url') or '').strip()
     except Exception:
         return ''
 
@@ -593,6 +771,35 @@ def clear_screened_out(participant):
 def screenout_cleared(participant) -> bool:
     """True if a screen-out has ever been lifted for this participant."""
     return bool(participant.vars.get('screenout_cleared'))
+
+
+def screenout_vars(participant, config) -> dict:
+    """The three facts every screen-out screen needs, built ONCE.
+
+    Two pages describe the same screened-out participant: the entry hold page
+    (`before/screened_out.html`, where the wall is soft and reversible) and the
+    outro ending (`outro/Ended.html`, the unreachable-by-design fallback for a
+    future gate that screens somebody out later in the flow). The two say
+    deliberately different things — "your place is still open" vs "this has
+    ended" — but they must not describe the same participant's DEVICE
+    differently, so what happened, what the study accepts and the codeless way
+    out are derived here rather than assembled twice.
+
+      screenout_cause        the DETECTED type ('phone'/'tablet'/'computer'/
+                             'unknown'), or '' — the templates pick their
+                             sentence from it, never from the exit code, which
+                             is the general -4 bucket.
+      allowed_devices_phrase what the study DOES accept, built from the same
+                             list the gate enforces so copy cannot drift from
+                             the rule.
+      prolific_screenout_return_url   the way out, carrying NO completion code (see
+                             `prolific_screenout_return_url` for why there is none).
+    """
+    return dict(
+        screenout_cause=screenout_cause(participant),
+        allowed_devices_phrase=device_types_phrase(allowed_devices(config)),
+        prolific_screenout_return_url=prolific_screenout_return_url(config),
+    )
 
 
 # --- the screen-out audit history --------------------------------------------

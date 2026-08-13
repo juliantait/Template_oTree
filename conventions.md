@@ -95,6 +95,41 @@ An explicit per-config value always overrides the profile.
 (oTree builds its round tables from it): a config may run FEWER rounds, never
 more (`main.creating_session` raises otherwise).
 
+## Flags decide mechanics, `recruitment` decides copy
+
+A module flag answers *"do we have the machinery to do this?"* —
+`prolific_completion_redirects` means a completion code exists to send somebody back
+with, `prolific_capture_participant_id` means a platform id is collected. **Neither means
+"this participant is on Prolific", and neither may stand in for it.** Where the
+participant *is* — alone on a platform, or in a room with an experimenter — is
+`recruitment`, and **every sentence they read that names the platform, or the
+room, or how to reach a human, branches on that**. Only the machinery itself
+(does a link exist? is there a field to fill?) branches on a flag.
+
+The rule is written down because breaking it is silent. When the consent page
+inferred "Prolific" from `prolific_capture_participant_id` while the screen-out page next
+door inferred it from `prolific_completion_redirects`, a `recruitment='prolific'` session
+with `prolific_completion_redirects` off told a participant to contact the researchers
+*through Prolific* and then served them a screen-out page with **no way out at
+all** — a dead end that produced no error and failed no test. A page that must
+say something to everybody needs a branch for everybody, ending in a neutral
+fallback, not a chain of flags that can all be false.
+
+**But this rule is the reasoning, not the mechanism.** Where a study type
+*obliges* something, the obligation is enforced rather than documented, because
+a rule written in prose is one somebody can still configure their way past. The
+worked case: a Prolific participant has no experimenter to ask, so **a Prolific
+study must offer a screened-out participant an exit** — being one and offering
+one are the same commitment. That dependency is therefore enforced in
+`settings._prelaunch_problems`, which refuses a `recruitment='prolific'` config
+whose `prolific_screenout_return_url` is blank or unreplaced. The broken combination
+cannot reach a participant, so the copy branch that would have had to apologise
+for it is a runtime belt, not the fix.
+*Where:* `common.is_lab` / `common.is_prolific` (the only two implementations,
+read through `common.cfg`); the routing note at the top of `before/__init__.py`;
+the guard in `settings._prelaunch_problems`; `tests/copy_routing_test.py`, which
+asserts the impossibility and not merely the routing.
+
 ## Hidden-field measurement — on the page's own form, tolerant of empty
 
 Client-captured data (device info, time-on-page, the tab monitor's arming) rides
@@ -122,8 +157,8 @@ documented. See `settings.EXIT_CODES` and the CODEBOOK.md exit-code table.
 
 ## Modules (all OFF by default)
 
-- **capture_participant_id** — capture an external (Prolific) ID at entry (`before`).
-- **completion_redirects** — explicit consent + "Back to Prolific" endings keyed
+- **prolific_capture_participant_id** — capture an external (Prolific) ID at entry (`before`).
+- **prolific_completion_redirects** — explicit consent + "Back to Prolific" endings keyed
   by exit code (`before`, `outro`).
 - **tab_monitor** — server-authoritative tab-switch / AI-safety monitor: an
   arming page (`intro`), a live handler counting deduped violations

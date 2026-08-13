@@ -152,21 +152,18 @@
             </p>
             {% endif %}
 
-            {% if completion_redirects %}
+            {% if prolific_completion_redirects %}
             <p class="section-text">
                 Please click the button below to return to Prolific.
             </p>
             {% endif %}
-            {% if reason == 'screened_out' and completion_redirects %}
+            {% if reason == 'screened_out' and prolific_completion_redirects %}
             <p class="section-text">
                 Your submission is not completed by this: you will be asked to
                 return it on Prolific.
             </p>
             {% endif %}
 
-            <!-- Inside the scroll region, not pinned — see base.css "Pinned
-                 regions": only the header strip and the button row are pinned. -->
-            {% include '_static/global/html/logo_section.html' %}
         </div>
 
         <!-- Direct child of the card, so it stays pinned at the foot when the
@@ -182,10 +179,10 @@
              THE SCREENED-OUT VARIANT CARRIES NO CODE: it goes to the Prolific
              participant site itself, so the submission stays open (see
              outro.completion_link). -->
-        {% if completion_redirects %}
+        {% if prolific_completion_redirects %}
         <div class="button-row">
             {% if reason == 'screened_out' %}
-            <a class="exit-button" href="{{ screenout_return_url|escape }}">
+            <a class="exit-button" href="{{ prolific_screenout_return_url|escape }}">
                 Back to Prolific
             </a>
             {% else %}
@@ -195,6 +192,10 @@
             {% endif %}
         </div>
         {% endif %}
+
+        <!-- THE LOGO FOOTER: a direct child of the card, always (see the
+             include's own header and THE LOGO FOOTER RULE in base.css). -->
+        {% include '_static/global/html/logo_section.html' %}
     </div>
 </div>
 

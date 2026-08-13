@@ -193,24 +193,29 @@ def set_participant(code, **fields):
         s.close()
 
 
-def stage_instructions_time(code, seconds):
-    """Backdate a participant's ENTRY-BLOCK stamps so the instructions column
+def stage_intro_time(code, seconds):
+    """Backdate a participant's ENTRY-BLOCK stamps so the INTRO TIME column
     shows a realistic duration.
 
     TEST-SIDE WRITE, like the stall timestamp — the dashboard itself never
     writes. It is not decoration: a scripted walk submits instantly, so without
-    this every instructions time is `0:00`, and a column of zeros makes the
-    "nothing clips" assertion VACUOUS for the one column whose value can grow
-    to four characters and a colon. Planting real durations (including one over
-    ten minutes) is what gives that measurement something to measure.
+    this every intro time is `0:00`, and a column of zeros makes the "nothing
+    clips" assertion VACUOUS for the one column whose value can grow to four
+    characters and a colon. Planting real durations (including one over ten
+    minutes) is what gives that measurement something to measure.
 
-    Shifts the START stamps rather than `instructions_done`, so the interval is
-    the only thing that changes and no stamp lands in the future.
+    Shifts the START stamps rather than the end, so the interval is the only
+    thing that changes and no stamp lands in the future. The START is now
+    `left_before_app` (round-2 item 5) and the END is the LAST `quiz_done`, so
+    the anchor moved with them; the three older entry stamps are shifted too,
+    because they are the fallback the dashboard uses for a participant who was
+    already mid-flow when this measure was deployed, and a test that left them
+    inconsistent would be staging a state no real participant can be in.
     """
     stamps = dict(ot.participant_vars(code).get('stage_timestamps') or {})
-    anchor = stamps.get('instructions_done') or int(time.time())
+    anchor = stamps.get('quiz_done') or int(time.time())
     moved = False
-    for key in ('consent', 'confirm_id', 'ai_safety_agreed'):
+    for key in ('consent', 'confirm_id', 'ai_safety_agreed', 'left_before_app'):
         if key in stamps:
             stamps[key] = anchor - seconds
             moved = True
@@ -291,12 +296,18 @@ def stage_overview(base):
     #    "at Entry" is no longer dimmed — a present person must not look absent.
     requests.get(f'{base}/InitializeParticipant/{codes[0]}',
                  headers={'User-Agent': DESKTOP_UA})
-    # 2. on the instructions, then aged so the stall threshold has passed.
+    # 2. on the instructions, then aged past THE INTRO PHASE'S OWN stall
+    #    threshold. The age is DERIVED from that threshold, not typed: since
+    #    round-2 item 6 the thresholds are per phase, and a literal that happened
+    #    to sit above the old global 300s (400 did) sits BELOW the intro's 480s —
+    #    so this row would have quietly stopped being the amber row the overview
+    #    exists to show, with every assertion still passing.
     #    Stops after the AGREEMENT page, not after welcome: for Prolific the
     #    entry block is welcome -> ConfirmProlificID -> AISafetyAgree, so
     #    stopping earlier would leave this row still at Entry.
     walk(base, codes[1], correct, stop_after='AISafetyAgree')
-    set_participant(codes[1], _last_page_timestamp=int(time.time()) - 400)
+    set_participant(codes[1], _last_page_timestamp=int(time.time())
+                    - (ed.stall_seconds_for('instructions') + 100))
     # 3. on the quiz with one wrong attempt (below the DQ threshold of 3)
     walk(base, codes[2], correct, quiz_posts=[wrong], stop_after='quiz')
     # 4-5. mid-task, early and late
@@ -328,11 +339,11 @@ def stage_overview(base):
     # Realistic instructions times, INCLUDING ONE OVER TEN MINUTES so the
     # widest value a real session produces ("12:45") is in the measured picture
     # rather than only the "0:00" a scripted walk produces. See
-    # stage_instructions_time.
+    # stage_intro_time.
     for code, seconds in ((codes[1], 406), (codes[2], 340), (codes[3], 204),
                           (codes[4], 172), (codes[5], 195), (codes[6], 210),
                           (codes[7], 765), (codes[9], 380), (codes[11], 218)):
-        stage_instructions_time(code, seconds)
+        stage_intro_time(code, seconds)
     return sess
 
 
@@ -420,7 +431,7 @@ def check_overview(base, sess):
                       f'table ({emojis})')
                 # The instructions column must carry REAL times, not a column
                 # of 0:00 — otherwise the clipping measurement above has
-                # nothing to bite on (see stage_instructions_time).
+                # nothing to bite on (see stage_intro_time).
                 times = [t.strip() for t in pg.eval_on_selector_all(
                     'td.c-instr', 'els => els.map(e => e.textContent)')
                     if t.strip()]
@@ -432,6 +443,58 @@ def check_overview(base, sess):
                       f'and at least one is over ten minutes, so the WIDEST '
                       f'value a session produces is in the measured picture '
                       f'({real})')
+                # --- round-2 items 7, 17, 18: the pills, the averages and the
+                #     threshold legend, measured in the real browser.
+                pills = pg.eval_on_selector_all(
+                    'td.c-instr .pill, td.c-earn .pill',
+                    'els => els.length')
+                check(pills > 0,
+                      f'intro time and earnings render as PILLS, not bare '
+                      f'cells ({pills} found)')
+                sums = pg.eval_on_selector_all(
+                    '#summary .sum-item',
+                    'els => els.map(e => e.textContent.replace(/\\s+/g," ")'
+                    '.trim())')
+                check(len(sums) == 2,
+                      f'the summary strip shows BOTH averages ({sums})')
+                check(all('avg' in s for s in sums),
+                      f'…and each says it is an AVERAGE in words, so it cannot '
+                      f'be read as another participant ({sums})')
+                # THE TWO DENOMINATORS ARE DIFFERENT AND MUST SAY SO (item 18):
+                # intro time averages everyone PAST INTRO, earnings only the
+                # FINISHED, because earnings do not exist before the results
+                # page. Two pills side by side with unstated denominators would
+                # be read as sharing one.
+                check(any('past intro' in s for s in sums)
+                      and any('finished' in s for s in sums),
+                      f'…and each names its own population, because they are '
+                      f'not the same one ({sums})')
+                # The intro-time average must count people still IN THE TASK —
+                # they finished the intro, so their measurement is complete.
+                # The staged session has exactly one finished participant, so a
+                # denominator above one proves the wider population is used.
+                n_intro = pg.evaluate(
+                    '''() => { const m = document.querySelector(
+                        '#summary .sum-item .sum-n');
+                       return m ? parseInt(m.textContent.replace(/\\D/g,''))
+                                : 0; }''')
+                check(n_intro > 1,
+                      f'the intro-time average counts everyone past intro, not '
+                      f'only participants who finished the STUDY '
+                      f'(denominator {n_intro})')
+                # Not a row of the table (Julian was explicit).
+                check(pg.eval_on_selector_all(
+                        'table.dash #summary', 'els => els.length') == 0,
+                      'the summary is NOT a row inside the table')
+                legend = pg.eval_on_selector(
+                    '#stall-info', 'e => e.title')
+                for phase in ('Entry', 'Intro', 'Task', 'Questionnaire'):
+                    check(phase in legend,
+                          f'the STATE header legend names the {phase} phase')
+                check('1:00' in legend and '8:00' in legend,
+                      f'…with the configured values, from settings.py rather '
+                      f'than the markup ({legend!r})')
+
                 for sel, what in ((
                         'tbody tr.stalled', 'an amber (stalled) row'), (
                         'tbody tr.entry-only', 'a dimmed never-arrived row'), (
@@ -473,7 +536,8 @@ def stage_sessions(base):
     walk(base, codes[3], correct)                           # finished
     walk(base, codes[4], correct, stop_after='welcome')
     set_participant(codes[4],                               # AMBER: stalled
-                    _last_page_timestamp=int(time.time()) - 400)
+                    _last_page_timestamp=int(time.time())
+                    - (ed.stall_seconds_for('instructions') + 100))
 
     pro = ot.create_session(
         'prolific', num_participants=4,
@@ -660,6 +724,72 @@ def check_browser(base, lab, pro):
         browser.close()
 
 
+def check_row_order(base):
+    """THE TABLE READS DOWN THE ROOM, not in arrival order (Julian 2026-08-13).
+
+    Measured in the real browser on the RENDERED Participant column, because
+    that column is what the sort is defined against — a server-side check on the
+    JSON would pass even if `renderRow` reordered or relabelled anything.
+
+    THE SESSION IS STAGED WITH LABELS DELIBERATELY OUT OF ARRIVAL ORDER, and
+    with a natural-sort trap in it. `Seat 01`-style labels are zero-padded and
+    sort correctly as plain strings, so a plain-string regression would be
+    INVISIBLE against the template's own labels; `a2` vs `a10` is the case that
+    exposes it, and it is what a study produces the moment it stops padding.
+    One participant is left UNLABELLED to pin where those rows go.
+    """
+    section('row order: by displayed name, natural sort, unlabelled last')
+    sess = ot.create_session('lab', num_participants=6, label='')
+    codes = ot.participant_codes(sess)
+    # id (arrival) order on the left, intended display order on the right:
+    #   a10, a2, Seat 03, <none>, a1, seat 1  ->  a1, a2, a10, seat 1, Seat 03, <code>
+    planted = ['a10', 'a2', 'Seat 03', '', 'a1', 'seat 1']
+    for code, lbl in zip(codes, planted):
+        if lbl:
+            ot.set_label(code, lbl)
+    # Arrive a couple of them so the table is not all never-arrived rows.
+    for code in (codes[0], codes[4]):
+        requests.get(f'{base}/InitializeParticipant/{code}',
+                     headers={'User-Agent': DESKTOP_UA})
+
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(ignore_default_args=['--hide-scrollbars'])
+        pg = browser.new_page(viewport={'width': 1440, 'height': 900})
+        pg.goto(f'{base}/login')
+        pg.fill('input[name=username]', 'admin')
+        pg.fill('input[name=password]', 'admin')
+        pg.click('button[type=submit], input[type=submit]')
+        pg.goto(f'{base}{ed.URL_BASE}/{sess.code}', wait_until='load')
+        pg.wait_for_selector('tbody tr td.c-label', timeout=15000)
+        pg.wait_for_timeout(400)
+        shown = [t.strip() for t in pg.eval_on_selector_all(
+            'tbody tr td.c-label',
+            # THE DISPLAYED NAME ONLY. The label cell also carries the current
+            # page hint, in a <span class="page-hint"> that is display:block —
+            # so it LOOKS like a second line but contributes NO newline to
+            # textContent. Splitting on "\n" therefore silently glued the two
+            # together ('a1startpage') for every ARRIVED row, and only for
+            # arrived rows, which is the sort of thing that reads as a sort bug.
+            # Drop that span by node instead of by string.
+            '''els => els.map(e => Array.from(e.childNodes)
+                 .filter(n => !(n.classList &&
+                                n.classList.contains("page-hint")))
+                 .map(n => n.textContent).join("").trim())''')]
+        check(shown[:5] == ['a1', 'a2', 'a10', 'seat 1', 'Seat 03'],
+              f'the RENDERED column is in natural label order — a2 before a10, '
+              f'case ignored, and NOT arrival order (got {shown})')
+        check(shown[0] != planted[0],
+              f'…and specifically not still in arrival order, which would start '
+              f'with {planted[0]!r}')
+        check(shown[-1] not in planted,
+              f'the unlabelled row (rendered as its code) is LAST '
+              f'(got {shown[-1]!r})')
+        pg.screenshot(path=os.path.join(OUT_DIR, 'row_order.png'),
+                      full_page=True)
+        browser.close()
+
+
 def main():
     server = Server()
     server.start()
@@ -667,6 +797,7 @@ def main():
         lab, pro = stage_sessions(server.base)
         check_http(server.base, lab, pro)
         check_browser(server.base, lab, pro)
+        check_row_order(server.base)
         # The overview last: it is the biggest staging job, and running it after
         # the assertions above means a failure there is not hidden behind it.
         check_overview(server.base, stage_overview(server.base))
