@@ -589,6 +589,69 @@ def main():
           f"a KNOWN app still maps to its step with no unmapped flag "
           f"(got {krows[codes[2]]['step']!r})")
 
+    section('D6. the six steps are defined ONCE and everything derives from it')
+    # THE ANTI-DRIFT GUARD (added 2026-08-12 with the single-sourcing). The step
+    # list used to be stated four times — the STEPS tuple, an unrendered
+    # STEP_LABELS dict, the six <span>s in the table header, and the STEPS array
+    # in the page's JavaScript — plus two more copies of the step COUNT in the
+    # CSS (the grid's track count and the connector's half-track inset). Renaming
+    # a step meant finding six places, and missing one gave a header that
+    # disagreed with the data with nothing going red. These checks fail if any
+    # of them is ever restated instead of derived.
+    import json as _json
+    check(ed.STEPS == tuple(ed.STEP_LABELS),
+          f'STEPS is derived from STEP_LABELS, not typed alongside it '
+          f'({ed.STEPS})')
+
+    page = admin.get(f'{URL}/{lab.code}').text
+    header = re.search(r'<div class="tl-header">(.*?)</div>', page, re.S)
+    rendered = re.findall(r'<span>(.*?)</span>', header.group(1)) if header else []
+    check(rendered == list(ed.STEP_LABELS.values()),
+          f'the rendered header cells ARE STEP_LABELS, in order (got {rendered})')
+
+    js = re.search(r'var STEPS = (\[[^\]]*\]);', page)
+    # Parsed DEFENSIVELY, and single quotes normalised on purpose: a hand-typed
+    # JS array (which is what a regression here looks like) is not valid JSON,
+    # and this check must report the drift, not die on it. An unparseable value
+    # is reported as itself. A test that fails by crashing tells you the test
+    # broke, not the code — that criticism was made of section C, so it applies
+    # here too.
+    raw = js.group(1) if js else None
+    try:
+        js_steps = _json.loads(raw.replace("'", '"')) if raw else None
+    except ValueError:
+        js_steps = raw
+    check(js_steps == list(ed.STEPS),
+          f"the page's JavaScript step order is injected from STEPS, not "
+          f"retyped (got {js_steps!r})")
+
+    check(f'repeat({len(ed.STEPS)}, 1fr)' in page,
+          f'the grid has one track per step (repeat({len(ed.STEPS)}, 1fr))')
+    inset = f'{100 / len(ed.STEPS) / 2:.2f}%'
+    check(page.count(f': {inset}') >= 2,
+          f'the connector is inset by half a track ({inset}) on both sides')
+
+    # A PLACEHOLDER THAT SURVIVED INTO THE PAGE IS INVISIBLE: `repeat(
+    # __STEP_COUNT__, 1fr)` is invalid CSS, so the grid silently falls back and
+    # the timeline collapses with nothing in any log. Cheap to assert, so assert.
+    leftovers = sorted(set(re.findall(r'__[A-Z][A-Z0-9_]*__', page)))
+    check(not leftovers,
+          f'no __PLACEHOLDER__ survived into the served page ({leftovers})')
+
+    # ... and the derivation is REAL, not a coincidence of matching literals:
+    # change the definition and the generator follows.
+    real_labels = ed.STEP_LABELS
+    try:
+        ed.STEP_LABELS = {'alpha': 'Alpha', 'omega': 'Omega'}
+        check(ed._step_header_html() ==
+              '<span>Alpha</span><span>Omega</span>',
+              'the header generator follows STEP_LABELS (proved by changing it)')
+    finally:
+        ed.STEP_LABELS = real_labels
+    check(ed._step_header_html() ==
+          ''.join(f'<span>{lbl}</span>' for lbl in ed.STEP_LABELS.values()),
+          'and the real labels are restored afterwards')
+
     # ------------------------------------------------------------------ E
     section('E. strictly read-only')
     before = participant_dump()
