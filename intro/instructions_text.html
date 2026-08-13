@@ -42,42 +42,12 @@
         instruction-block divs.
 --------->
 
-<style>
-    /* Worked-example table. Colours come from the design tokens (base.css), not
-       hardcoded hex — a table that hardcodes its greys drifts away from the rest
-       of the study the first time the palette is touched. */
-    .payoff-matrix {
-        margin: 12px auto;
-        border-collapse: collapse;
-        font-size: .92em;
-    }
-    .payoff-matrix th,
-    .payoff-matrix td {
-        border: 1px solid var(--line-strong);
-        padding: 10px 16px;
-        text-align: center;
-        min-width: 92px;
-    }
-    .payoff-matrix thead th,
-    .payoff-matrix tbody th {
-        background: var(--sunken);
-        font-weight: 600;
-        color: var(--ink);
-    }
-    .payoff-matrix td {
-        font-feature-settings: "tnum";
-        font-variant-numeric: tabular-nums;
-        color: var(--ink-soft);
-    }
-    .payoff-matrix .axis {
-        font-style: italic;
-        color: var(--ink-mute);
-    }
-    .your-payoff {
-        font-weight: 700;
-        color: var(--accent);
-    }
-</style>
+<!--------- NO <style> BLOCK HERE (CLAUDE.md styling rule): the worked-example
+            table is the shared .payoff-matrix / .your-payoff component in
+            _static/global/css/instructions.css, with a specimen in
+            _static/global/html/template.html. This file carries CONTENT only —
+            a style block here would also be injected a second time wherever
+            this file is included (the quiz's re-read dialog). --------->
 
 <div class="instruction-block">
     {# TITLE: "Instructions", NOT "Welcome" (Julian, 2026-08-11,
@@ -86,7 +56,7 @@
        second time. Keep any replacement first block to the same rule: it opens
        with what the study IS, not with a greeting. #}
     <h2>Instructions</h2>
-    <p style="font-size: 14px; color: #777; font-style: italic;">
+    <p class="template-note">
         Template note: this oTree starter ships with a worked Stag Hunt
         example to demonstrate variable substitution and treatment-conditional
         content — replace this file (and the matching wiring in
@@ -97,10 +67,14 @@
         called the <strong>Stag Hunt</strong> with another participant in
         this room. You will play {{ num_experimental_rounds }} rounds in total.
     </p>
+    {# THE BONUS RULE IS ALSO STATED in intro/prequiz_text.html — deliberately
+       (Julian, 2026-08-13): once here in the payment overview, once as a
+       reminder right before the quiz. If the rule changes, edit BOTH. #}
     <p>
         Your final payment will be the sum of your earnings from the rounds,
         plus a show-up fee of {{ showup }} and a bonus of {{ quiz_bonus }}
-        if you answer every quiz question correctly on your first attempt.
+        if you answer every quiz question on the instructions correctly on
+        your first attempt.
     </p>
 </div>
 

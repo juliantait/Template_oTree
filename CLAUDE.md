@@ -5,6 +5,13 @@ every study built from it. `conventions.md` holds the design principles and the
 README explains the parameter scheme; this file is the short list of rules you
 must not break.
 
+**`DECISIONS.md` records why things are the way they are** — each decision with
+its reasoning, the alternative that was rejected, and *where it is enforced* (or
+an admission that nothing enforces it). **Read it before changing anything that
+looks odd, and add to it when you make a decision someone could later mistake
+for an accident.** Most of what looks like redundancy in this codebase is
+load-bearing, and that file is where the evidence lives.
+
 ## The three orthogonal controls
 
 Everything a participant experiences is determined by three **independent** axes,

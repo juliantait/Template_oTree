@@ -45,7 +45,19 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 INSTRUCTIONS_HTML = PROJECT_ROOT / "intro" / "instructions_text.html"
 PREQUIZ_HTML = PROJECT_ROOT / "intro" / "prequiz_text.html"
-STYLE_CSS = PROJECT_ROOT / "_static" / "global" / "style.css"
+# The stylesheet SET, in the css_bundle.html order (base.css first — the
+# per-page files override it at equal specificity, so load order decides).
+# There used to be a single style.css of @imports; it was replaced by the
+# bundle on 2026-08-11 and this pointer went stale, so previews rendered with
+# NO shared styles at all until 2026-08-13.
+CSS_DIR = PROJECT_ROOT / "_static" / "global" / "css"
+CSS_FILES = [
+    CSS_DIR / "base.css",
+    CSS_DIR / "instructions.css",
+    CSS_DIR / "results.css",
+    CSS_DIR / "quiz.css",
+    CSS_DIR / "demographics.css",
+]
 QUIZ_ITEMS_FILE = PROJECT_ROOT / "intro" / "quiz_items.py"
 SETTINGS_FILE = PROJECT_ROOT / "settings.py"
 STATE_FILE = PROJECT_ROOT / ".preview_state.json"
@@ -102,22 +114,14 @@ def check_chromium() -> None:
 # ---------------------------------------------------------------------------
 
 def inline_css() -> str:
-    if not STYLE_CSS.exists():
-        return ""
-    base = STYLE_CSS.parent
-    text = STYLE_CSS.read_text(encoding="utf-8")
+    """Concatenate the shared stylesheet set, in bundle order (see CSS_FILES)."""
     out = []
-    for line in text.splitlines():
-        m = re.match(r"\s*@import\s+url\(['\"]?(.+?)['\"]?\)\s*;", line)
-        if m:
-            sub = base / m.group(1)
-            if sub.exists():
-                out.append(
-                    f"/* === {sub.name} === */\n"
-                    + sub.read_text(encoding="utf-8")
-                )
-            continue
-        out.append(line)
+    for sub in CSS_FILES:
+        if sub.exists():
+            out.append(
+                f"/* === {sub.name} === */\n"
+                + sub.read_text(encoding="utf-8")
+            )
     return "\n".join(out)
 
 

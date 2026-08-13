@@ -623,6 +623,18 @@ a { color: var(--accent); }
 
 .hint { color: var(--ink-mute); font-size: 0.86em; }
 
+/* COMPONENT — template note. INTENTION: a muted italic aside addressed to the
+   STUDY AUTHOR, not the participant — "this is shipped example content,
+   replace it" (the Stag Hunt instructions use it). Ink from the tokens, never
+   a hardcoded grey, so it follows a palette change like everything else. A
+   real study should end up with no remaining users of this class.
+   Specimen in _static/global/html/template.html. */
+.template-note {
+    font-size: 14px;
+    color: var(--ink-mute);
+    font-style: italic;
+}
+
 /* FAMILY — narrative card. INTENTION: narrative screens (welcome, consent, the
    agreement and part/block-start screens) CENTRE their script — the page title,
    the sentences and the panels are centred and held to the reading band — while

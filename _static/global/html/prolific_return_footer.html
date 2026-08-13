@@ -1,0 +1,56 @@
+{# THE ENDING FOOTER: the way back to Prolific plus the logo strip, ONE
+   component for every page that ends the study (outro/Results.html and
+   outro/Ended.html). The two pages used to carry this block separately, with
+   the reasoning below duplicated over both copies; it lives here once so the
+   invariants cannot drift apart.
+
+   CONTEXT IT READS (both pages provide all of it from vars_for_template):
+     prolific_completion_redirects  whether a way back exists at all
+     reason                         'screened_out' picks the codeless exit;
+                                    anything else (Results passes '') gets the
+                                    completion link
+     completionlink                 the completion URL for this outcome
+     prolific_screenout_return_url  the codeless way out for a screen-out
+
+   THE INVARIANTS, in one place now:
+
+   * A REAL LINK, NOT A SCRIPTED BUTTON. It used to be a button with an
+     onclick and no href, so a participant whose JavaScript never ran had NO
+     way to leave: on Results they finished the whole study, read their
+     payment total, and could not submit their completion code — unpaid, and
+     indistinguishable in the data from somebody who abandoned on the last
+     page. (Their DATA was never at risk: the exit code is written when the
+     page loads, not when the button is clicked.) An a-href needs no script.
+     Pinned by tests/render_check.py leg AF, which measures it with JavaScript
+     DISABLED.
+
+   * ESCAPED, because ibis does not auto-escape and the URL carries a
+     config-supplied value.
+
+   * THE SCREENED-OUT VARIANT CARRIES NO CODE and is NOT a .next-button: it
+     goes to the Prolific participant site itself so the submission stays open
+     (see outro.completion_link), and global.js's Enter handler clicks the
+     first .next-button on a page — an exit that forecloses completion must
+     never be one keystroke away by accident (.exit-button, the quiet
+     outline).
+
+   * PINNED AT THE FOOT: the button-row and the logo strip are DIRECT CHILDREN
+     of the card, so they stay put when the content region scrolls — see
+     .screen-card and THE LOGO FOOTER RULE in base.css. This include must
+     therefore be included as a direct child of .screen-card, after
+     .experimental-content. #}
+{% if prolific_completion_redirects %}
+<div class="button-row">
+    {% if reason == 'screened_out' %}
+    <a class="exit-button" href="{{ prolific_screenout_return_url|escape }}">
+        Back to Prolific
+    </a>
+    {% else %}
+    <a class="next-button" href="{{ completionlink|escape }}">
+        Back to Prolific
+    </a>
+    {% endif %}
+</div>
+{% endif %}
+
+{% include '_static/global/html/logo_section.html' %}

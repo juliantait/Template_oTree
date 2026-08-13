@@ -223,6 +223,12 @@ DASHBOARD_STALL_SECONDS_OUTRO = 300
 # study that never touches these lines behaves as before.
 DASHBOARD_STALL_SECONDS_DEFAULT = 300
 DASHBOARD_POLL_SECONDS = 2      # dashboard refresh; 2s is a floor, enforced server-side
+# Grace before a finisher with no recorded "Back to Prolific" click is flagged
+# ("no return click" pill). A completer reading their receipt has legitimately
+# not clicked yet — a pill that fired the moment Results loads would fire for
+# everybody briefly and train the operator to ignore it. Prolific-redirect
+# sessions only; the pill never exists in the lab (nothing to click through).
+DASHBOARD_RETURN_GRACE_SECONDS = 90
 
 # --- static asset version ----------------------------------------------------
 # Appended as ?v=... to every CSS/JS href so a redeploy is never served a stale

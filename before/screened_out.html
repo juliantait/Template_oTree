@@ -55,19 +55,15 @@
         </div>
 
         <div class="experimental-content">
-            {% if screenout_cause == 'phone' %}
+            {# ONE branch for the three physical types: `detected_device_label`
+                (common.screenout_vars, from DEVICE_TYPE_LABELS) is the ONE
+                cause→noun mapping, shared with outro/Ended.html, so the
+                phone/tablet/computer sentences cannot drift apart or between
+                the two pages. It is EMPTY for 'unknown' and for any future
+                cause — those fall to the branch below. #}
+            {% if detected_device_label %}
             <p class="section-text">
-                It looks like you are on a phone. This study can only be done on
-                {{ allowed_devices_phrase }}. You have not done anything wrong.
-            </p>
-            {% elif screenout_cause == 'tablet' %}
-            <p class="section-text">
-                It looks like you are on a tablet. This study can only be done on
-                {{ allowed_devices_phrase }}. You have not done anything wrong.
-            </p>
-            {% elif screenout_cause == 'computer' %}
-            <p class="section-text">
-                It looks like you are on a desktop or laptop computer. This study
+                It looks like you are on {{ detected_device_label }}. This study
                 can only be done on {{ allowed_devices_phrase }}. You have not
                 done anything wrong.
             </p>

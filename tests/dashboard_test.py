@@ -108,13 +108,15 @@ def payload_for(page, quiz_answers):
 
 
 def walk(client, code, quiz_answers, stop_after=None, quiz_posts=None,
-         max_steps=120, headers=None):
+         max_steps=120, headers=None, overrides=None):
     """Walk a participant over the in-process app.
 
     stop_after: page name — stop once that page has been SUBMITTED.
     quiz_posts: list of payloads to POST on successive quiz renders (wrong
                 answers first, e.g. to fail deliberately); afterwards the
                 correct answers are used.
+    overrides:  {page_name: {field: value}} merged over payload_for's default
+                for that page (e.g. a non-Dutch IBAN on Demographics).
     """
     kw = dict(headers=headers) if headers else {}
     resp = client.get(f'/InitializeParticipant/{code}', allow_redirects=True,
@@ -132,6 +134,8 @@ def walk(client, code, quiz_answers, stop_after=None, quiz_posts=None,
             data = quiz_posts.pop(0)
         else:
             data = payload_for(page, quiz_answers)
+        if overrides and page in overrides:
+            data = dict(data, **overrides[page])
         resp = client.post(path_of(resp), data=data, allow_redirects=True,
                            **kw)
         statuses.append(resp.status_code)
@@ -186,6 +190,34 @@ def set_participant(code, **fields):
                 p.vars[name[5:]] = value    # MutableDict: setitem flags dirty
             else:
                 setattr(p, name, value)
+        s.commit()
+    finally:
+        s.close()
+
+
+def backdate_stamp(code, stage, seconds_ago):
+    """Move ONE stage stamp into the past (test-side write). The intro and
+    questionnaire phases are judged on elapsed-since-a-stamp (see
+    _stall_elapsed), so aging a participant in those phases means aging the
+    STAMP — the page timestamp only ages the entry/task phases."""
+    import time as _t
+    stamps = dict(ot.participant_vars(code).get('stage_timestamps') or {})
+    stamps[stage] = _t.time() - seconds_ago
+    set_participant(code, **{'vars.stage_timestamps': stamps})
+
+
+def set_outro_sepa(code, value):
+    """Plant a value in the participant's outro.Player.sepa column — the
+    hand-edited-row case D7 uses to pin the pill's lab-only gate."""
+    from otree.common import get_models_module
+    from otree.database import DBSession
+    from otree.models import Participant
+    s = DBSession()
+    try:
+        p = s.query(Participant).filter_by(code=code).one()
+        Player = get_models_module('outro').Player
+        row = s.query(Player).filter(Player.participant_id == p.id).first()
+        row.sepa = value
         s.commit()
     finally:
         s.close()
@@ -519,26 +551,50 @@ def main():
           'the two halves of intro share ONE threshold (Julian asked for a '
           'threshold on INTRO, not on each half)')
     import time as _time
+    # THE MEASURE IS PER PHASE TOO (the pills change, 2026-08-13): entry is
+    # judged on the CURRENT PAGE, intro on the WHOLE intro app (elapsed since
+    # left_before_app — the same clock as the INTRO TIME column), because that
+    # is what each threshold MEANS in settings.py. See _stall_elapsed.
+    #
     # 400s: OVER the entry threshold, UNDER the intro one. codes[1] is on the
     # instructions, codes[6] is at entry — same dwell, different verdicts, which
     # is the behaviour a single threshold could not produce.
-    set_participant(codes[1], _last_page_timestamp=int(_time.time()) - 400)
     set_participant(codes[6], _last_page_timestamp=int(_time.time()) - 400)
+    set_participant(codes[1], _last_page_timestamp=int(_time.time()) - 400)
+    backdate_stamp(codes[1], 'left_before_app', 400)
     data, rows = rows_by_code(admin, lab)
     check(rows[codes[6]]['stalled'] is True
           and rows[codes[6]]['seconds_on_page'] >= 400,
           '400s at ENTRY is amber (over the 60s entry threshold)')
+    check(rows[codes[6]]['stall_section'] == 'Entry',
+          f"…and the timing pill names its phase "
+          f"(got {rows[codes[6]]['stall_section']!r})")
     check(rows[codes[1]]['stalled'] is False,
-          'the SAME 400s on the INSTRUCTIONS is not (under the 480s intro '
+          'the SAME 400s in the INTRO is not (under the 480s intro '
           'threshold) — one number could not have said both')
     check(rows[codes[1]]['stall_limit'] == 480
           and rows[codes[6]]['stall_limit'] == 60,
           'each row carries the threshold it is judged against, so the screen '
           'can name it')
+    # Ageing the PAGE alone must not trip the intro phase: its threshold is
+    # about the whole app, so its elapsed is stamp-based, not page-based.
     set_participant(codes[1], _last_page_timestamp=int(_time.time()) - 600)
     data, rows = rows_by_code(admin, lab)
+    check(rows[codes[1]]['stalled'] is False,
+          '600s on one PAGE alone does not trip the INTRO phase — intro is '
+          'judged on the whole app, not the current page')
+    backdate_stamp(codes[1], 'left_before_app', 600)
+    data, rows = rows_by_code(admin, lab)
     check(rows[codes[1]]['stalled'] is True,
-          '600s on the instructions IS amber (over the intro threshold)')
+          '600s INTO THE INTRO APP is amber (over the 480s intro threshold)')
+    check(rows[codes[1]]['stall_section'] == 'Intro'
+          and rows[codes[1]]['stall_elapsed'] >= 600,
+          f"the pill names Intro and shows the PHASE elapsed — the number the "
+          f"threshold judged (got {rows[codes[1]]['stall_section']!r} "
+          f"{rows[codes[1]]['stall_elapsed']})")
+    check(rows[codes[1]]['stall_elapsed'] == rows[codes[1]]['intro_seconds'],
+          'display and detection are the SAME clock as the intro-time column '
+          '(one implementation, not a second stopwatch)')
     check(rows[codes[3]]['stalled'] is False,
           'a finished row can never stall')
     import settings as user_settings
@@ -838,6 +894,159 @@ def main():
     check(ed._step_header_html() ==
           ''.join(f'<span>{lbl}</span>' for lbl in ed.STEP_LABELS.values()),
           'and the real labels are restored afterwards')
+
+    section('D7. state pills: Non-SEPA is lab-only, null is no pill, and '
+            'conditions survive finishing')
+    # THE STATE COLUMN IS A COLLECTION OF PILLS (Julian, 2026-08-13): outcome
+    # pills (terminal / finished) plus CONDITION pills that persist regardless
+    # of outcome. The Non-SEPA condition: red pill, LAB sessions only, fired by
+    # sepa == 0 alone — sepa is nullable and NULL (never asked: every Prolific
+    # row) must read as NO pill, not as a flag.
+    sepa_lab = ot.create_session('lab', num_participants=3)
+    scodes = ot.participant_codes(sepa_lab)
+    US_IBAN = 'US64SVBKUS6S3300958879'
+    walk(ot.client(), scodes[0], correct, overrides={'Demographics': {
+        'bank': US_IBAN, 'bank_confirmation': US_IBAN, 'bic': 'SVBKUS6S'}})
+    walk(ot.client(), scodes[1], correct)          # NL IBAN (the default)
+    # scodes[2] never arrives: sepa stays NULL.
+    _, srows = rows_by_code(admin, sepa_lab)
+    s0 = srows[scodes[0]]
+    check(s0['finished'] is True and s0['non_sepa'] is True,
+          'a FINISHED participant with a non-SEPA account carries BOTH facts '
+          '— the outcome does not clear the condition '
+          f"(finished={s0['finished']}, non_sepa={s0['non_sepa']})")
+    check(srows[scodes[1]]['finished'] is True
+          and srows[scodes[1]]['non_sepa'] is False,
+          'an in-SEPA (NL) account gets NO payment pill')
+    check(srows[scodes[2]]['non_sepa'] is False,
+          'sepa NULL (never asked) reads as NO pill, not as a flag')
+    # A non-Dutch but in-SEPA account gets NO pill either (Julian: only
+    # non-SEPA is flagged; there is no yellow payment state). NB this is
+    # DELIBERATELY a different predicate from the bank form's BIC rule, which
+    # DOES fire for any non-Dutch IBAN — tests/bank_details_test.py pins that
+    # half of the asymmetry.
+    DE_IBAN = 'DE89370400440532013000'
+    sepa_lab2 = ot.create_session('lab', num_participants=1)
+    de_code = ot.participant_codes(sepa_lab2)[0]
+    walk(ot.client(), de_code, correct, overrides={'Demographics': {
+        'bank': DE_IBAN, 'bank_confirmation': DE_IBAN, 'bic': 'COBADEFF'}})
+    _, drows2 = rows_by_code(admin, sepa_lab2)
+    check(drows2[de_code]['non_sepa'] is False,
+          'a non-Dutch but IN-SEPA (DE) account gets NO pill — only non-SEPA '
+          'is flagged (no yellow payment state)')
+    # LAB ONLY: even a sepa=0 value sitting in a PROLIFIC session's outro row
+    # (a hand-edited row, a future config mistake) must produce no pill —
+    # Prolific pays through the platform and there is no bank form to chase.
+    set_outro_sepa(pcodes[3], 0)
+    _, prows2 = rows_by_code(admin, pro)
+    check(prows2[pcodes[3]]['non_sepa'] is False,
+          'sepa=0 in a PROLIFIC session still shows NO pill (lab only)')
+    # The served page carries the pill machinery (classes + renderer).
+    page = admin.get(f'{URL}/{sepa_lab.code}').text
+    check('state-pills' in page and 'spill-nonsepa' in page
+          and 'spill-stall' in page and 'spill-finished' in page,
+          'the served page ships the pill renderer and all pill classes')
+
+    section('D8. the no-return-click pill, the monitor count, the arrival '
+            'count')
+    # --- 1. FINISHED HERE ≠ PAID THERE (Julian's extra warnings, item 1).
+    # The pill fires only when there is ACTUALLY A BUTTON to have clicked —
+    # prolific_completion_redirects on — and only after the grace period.
+    import outro as outro_app
+    from otree.common import get_models_module as _gmm2
+    from otree.database import db as _db2
+
+    def _outro_player(code):
+        from otree.models import Participant as _P
+        p = _db2.query(_P).filter_by(code=code).one()
+        return (_db2.query(_gmm2('outro').Player)
+                .filter(_gmm2('outro').Player.participant_id == p.id).first())
+
+    ret = ot.create_session('prolific', num_participants=1)
+    rcode = ot.participant_codes(ret)[0]
+    walk(ot.client(), rcode, correct, headers=DESKTOP)          # finishes
+    _, rrows = rows_by_code(admin, ret)
+    check(rrows[rcode]['finished'] is True
+          and rrows[rcode]['awaiting_return'] is False,
+          'within the grace period a fresh finisher is NOT flagged — they are '
+          'still reading their receipt')
+    backdate_stamp(rcode, 'finished', 200)      # past the 90s default grace
+    _, rrows = rows_by_code(admin, ret)
+    check(rrows[rcode]['awaiting_return'] is True,
+          'past the grace with no click recorded, the finisher IS flagged')
+    # A hand-crafted / wrong-shaped live message must not stamp anything…
+    outro_app.results_live_method(_outro_player(rcode), {'type': 'other'})
+    _db2.commit()
+    check('prolific_return_clicked' not in
+          (ot.participant_vars(rcode).get('stage_timestamps') or {}),
+          'a wrong-shaped live message stamps nothing')
+    # …and the real click message clears the flag on the next poll.
+    outro_app.results_live_method(_outro_player(rcode),
+                                  {'type': 'prolific_return_click'})
+    _db2.commit()
+    check('prolific_return_clicked' in
+          (ot.participant_vars(rcode).get('stage_timestamps') or {}),
+          'the click message stamps prolific_return_clicked')
+    _, rrows = rows_by_code(admin, ret)
+    check(rrows[rcode]['awaiting_return'] is False,
+          'once the click is recorded the pill is gone')
+    # THE GATE (Julian's critical condition): with redirects OFF there is no
+    # button to have clicked, so the flag must NEVER fire — otherwise every
+    # lab participant would carry it forever. scodes[1] is a lab finisher.
+    backdate_stamp(scodes[1], 'finished', 10_000)
+    _, srows = rows_by_code(admin, sepa_lab)
+    check(srows[scodes[1]]['finished'] is True
+          and srows[scodes[1]]['awaiting_return'] is False,
+          'NO redirect button configured -> NO flag, however long ago they '
+          'finished (the lab case that makes the gate load-bearing)')
+    # And the handler itself is gated the same way: a lab "click" stamps
+    # nothing even if some script sends one.
+    outro_app.results_live_method(_outro_player(scodes[1]),
+                                  {'type': 'prolific_return_click'})
+    _db2.commit()
+    check('prolific_return_clicked' not in
+          (ot.participant_vars(scodes[1]).get('stage_timestamps') or {}),
+          'the live handler is gated on the same flag (no stamp in the lab)')
+
+    # --- 2. TAB-MONITOR VIOLATIONS WHILE THEY CLIMB (item 2): count and
+    # limit together, from focus_loss_count and tab_monitor_max_violations —
+    # never a number in the markup.
+    import common as _common
+    mon = ot.create_session('prolific', num_participants=1)
+    mcode = ot.participant_codes(mon)[0]
+    walk(ot.client(), mcode, correct, stop_after='quiz', headers=DESKTOP)
+    _, mrows = rows_by_code(admin, mon)
+    check(mrows[mcode]['monitor_count'] is None,
+          'no violations -> no count shipped (no pill, not a "0 of 3")')
+    set_participant(mcode, **{'vars.focus_loss_count': 2})
+    _, mrows = rows_by_code(admin, mon)
+    from otree.models import Session as _S2
+    _mon = _db2.query(_S2).filter_by(code=mon.code).one()
+    expected_max = int(_common.cfg(_mon.config, 'tab_monitor_max_violations'))
+    check(mrows[mcode]['monitor_count'] == 2
+          and mrows[mcode]['monitor_max'] == expected_max,
+          f"a climbing count ships WITH the configured limit "
+          f"(got {mrows[mcode]['monitor_count']} of "
+          f"{mrows[mcode]['monitor_max']}, limit {expected_max})")
+    set_participant(mcode, **{'vars.ai_safety_disqualified': True,
+                              'vars.exit_code': -3})
+    _, mrows = rows_by_code(admin, mon)
+    check(mrows[mcode]['terminal'] == 'tab_monitor'
+          and mrows[mcode]['monitor_count'] is None,
+          'once disqualified the terminal pill takes over — no climbing count '
+          'next to a DQ')
+    # tab_monitor OFF (every lab session): a planted count ships nothing.
+    set_participant(scodes[0], **{'vars.focus_loss_count': 2})
+    _, srows = rows_by_code(admin, sepa_lab)
+    check(srows[scodes[0]]['monitor_count'] is None,
+          'with the tab_monitor module off, no count is ever shipped')
+
+    # --- 3. THE ARRIVAL COUNT is client-side JS ('👤 X of Y arrived'); the
+    # in-process check is that the page ships it — the measured check is
+    # dashboard_render_check.py's, in a real browser.
+    page = admin.get(f'{URL}/{ret.code}').text
+    check('👤' in page and 'arrived' in page,
+          'the served page ships the arrival-count segment (👤 X of Y)')
 
     # ------------------------------------------------------------------ E
     section('E. strictly read-only')

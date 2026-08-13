@@ -31,10 +31,25 @@ def is_lab(player) -> bool:
     return common.is_lab(player.session.config)
 
 
+def dq_cause(player) -> str:
+    """WHICH integrity module removed this participant ('' if none).
+
+    The ONE cause cascade (change_requests item 16): the ending's sentence is
+    written from this, never from the exit code. If somehow both flags are set
+    the tab monitor wins the message: it is the harder stop, and it is the one
+    the participant was warned about on screen.
+    """
+    v = player.participant.vars
+    if v.get('ai_safety_disqualified'):
+        return 'tab_monitor'
+    if v.get('comprehension_disqualified'):
+        return 'comprehension'
+    return ''
+
+
 def is_disqualified(player) -> bool:
     """True if the participant was removed by an integrity module."""
-    v = player.participant.vars
-    return bool(v.get('comprehension_disqualified') or v.get('ai_safety_disqualified'))
+    return bool(dq_cause(player))
 
 
 def declined_consent(player) -> bool:
@@ -63,10 +78,26 @@ def was_screened_out(player) -> bool:
     return common.is_screened_out(player.participant)
 
 
+def ending_reason(player) -> str:
+    """WHY this participant is on the early ending ('' for a completer).
+
+    The ONE reason cascade: `Ended.is_displayed` and its template vars both
+    read it, so the page cannot show for one reason and speak for another.
+    Order is deliberate and mirrors severity — an integrity removal outranks a
+    declined consent, which outranks the (unreachable-by-design) screen-out.
+    """
+    if is_disqualified(player):
+        return 'disqualified'
+    if declined_consent(player):
+        return 'no_consent'
+    if was_screened_out(player):
+        return 'screened_out'
+    return ''
+
+
 def is_completer(player) -> bool:
     """A participant who should walk the normal ending (task + payment)."""
-    return not (is_disqualified(player) or declined_consent(player)
-                or was_screened_out(player))
+    return not ending_reason(player)
 
 
 def completion_link(player) -> str:
@@ -77,14 +108,35 @@ def completion_link(player) -> str:
     `common.prolific_screenout_return_url`), because a completion code closes their
     submission and a returned submission can never be retaken. `Ended` renders
     that link instead of this one for them.
+
+    THE CODES ARE READ THROUGH `common.cfg`, NOT a raw `.get` — the repo's own
+    accessor rule (see `common.flag`: raw `.get` is for module flags, `cfg` is
+    for thresholds and CODES, which must keep working mid-study). For a session
+    whose frozen config predates these keys, `cfg` falls back to the shipped
+    `REPLACE_*` placeholder instead of building the string `None` into the URL.
+    Julian's reasoning (2026-08-13), recorded because it IS the justification:
+    REPLACE_CC is ALREADY the shipped placeholder, so this makes both failure
+    modes present the SAME recognisable symptom — somebody seeing REPLACE_CC in
+    a completion URL knows instantly what it means and what to do, while
+    `?cc=None` looks like a bug in our own code and tells them nothing.
+
+    THE ONE NUANCE, so nobody assumes more coverage than exists:
+    `settings._prelaunch_problems` checks the CURRENT config at launch, so it
+    catches a study that never set a real code — but it cannot catch this case.
+    The session was created before the key existed, so its frozen config
+    genuinely lacks it while the current config is fine; the placeholder
+    therefore appears at RUNTIME for that participant, not at launch. Either
+    way the submission is not auto-approved on Prolific and needs manual
+    handling — the value is that the diagnosis is instant rather than an
+    investigation. Pinned by tests/frozen_config_test.py.
     """
-    cfg = player.session.config
+    config = player.session.config
     if is_disqualified(player):
-        code = cfg.get('prolific_dq_code')
+        code = common.cfg(config, 'prolific_dq_code')
     elif declined_consent(player):
-        code = cfg.get('prolific_noconsent_code')
+        code = common.cfg(config, 'prolific_noconsent_code')
     else:
-        code = cfg.get('prolific_cc_code')
+        code = common.cfg(config, 'prolific_cc_code')
     return PROLIFIC_COMPLETE_URL + str(code)
 
 doc = """
@@ -124,7 +176,18 @@ class Player(BasePlayer):
     payouts = models.LongStringField(blank=True)
     all_round_payoffs = models.LongStringField(blank=True)
     quiz_bonus_awarded = models.FloatField(initial=0)
-    sepa = models.IntegerField(initial=1)
+    # NULLABLE ON PURPOSE (Julian, 2026-08-13). Three states, not two:
+    #   1     = IBAN checked and inside SEPA
+    #   0     = IBAN checked and OUTSIDE SEPA (the Results page warns on this)
+    #   empty = the check NEVER RAN — no bank details were collected (every
+    #           Prolific participant, and any config with collect_bank_details
+    #           off). It previously shipped as initial=1, which collapsed
+    #           "checked, fine" with "never asked": every Prolific row exported
+    #           as if a SEPA check had passed. See CODEBOOK.md.
+    # A nullable field is read with field_maybe_none, NEVER bare (CLAUDE.md).
+    # The warning fires on sepa == 0 and empty is not 0, so a participant who
+    # was never asked can never match a warning that was never about them.
+    sepa = models.IntegerField(blank=True)
     # Free-text pilot feedback; collected only when pilot_feedback is on.
     feedback = models.LongStringField(blank=True)
     # Spare columns (future-proofing) — never rename in place; see CODEBOOK.md.
@@ -141,40 +204,38 @@ SEPA_COUNTRY_CODES = frozenset([
 ])
 
 
+def iban_country_code(iban) -> str:
+    """The IBAN's first two characters, uppercased — the ONE implementation of
+    "which country is this IBAN from". Two different questions read it (is it
+    Dutch? is it in SEPA?) and neither may re-derive it: one concept decided in
+    two places is the drift trap CLAUDE.md's inverted rule describes.
+    Stripped first, so a leading space cannot make ' N' read as a country."""
+    return str(iban or '').strip()[:2].upper()
+
+
 def check_sepa_code(player):
-    # The IBAN's first two characters are its country code; flag a bank account
-    # outside the SEPA area so payment knows a transfer may not work.
-    bank_country_code = player.bank[:2].upper()
-    player.sepa = 1 if bank_country_code in SEPA_COUNTRY_CODES else 0
+    # Flag a bank account outside the SEPA area so payment knows a transfer may
+    # not work. The country comes from iban_country_code — shared with the BIC
+    # rule in Demographics.error_message, which asks a DIFFERENT question of
+    # the same two letters (see the asymmetry note there).
+    player.sepa = 1 if iban_country_code(player.bank) in SEPA_COUNTRY_CODES else 0
 
-# Function to extract round payoffs from a list of payoffs as ordered tuples (round_number, payoff)
 def extract_round_payoffs(payoffs_vector, missing_values):
-    """Return ordered (round_number, payoff) tuples, skipping missing sentinels."""
-    if isinstance(payoffs_vector, (list, tuple)):
-        raw = list(payoffs_vector)
-    else:
-        # attempt to flatten arbitrarily nested structures into numbers
-        raw = []
-        stack = [payoffs_vector]
-        while stack:
-            current = stack.pop()
-            if isinstance(current, numbers.Number):
-                raw.append(current)
-            elif isinstance(current, str):
-                try:
-                    raw.append(float(current))
-                except Exception:
-                    pass
-            elif isinstance(current, (list, tuple)):
-                stack.extend(current)
-            elif isinstance(current, dict):
-                stack.extend(current.values())
+    """Ordered (round_number, payoff) tuples, skipping missing sentinels.
 
-    round_payoffs = []
-    for idx, value in enumerate(raw):
-        if isinstance(value, numbers.Number) and value not in missing_values:
-            round_payoffs.append((idx + 1, float(value)))
-    return round_payoffs
+    The vector has ONE writer (`main.payoff.before_next_page`) and is always a
+    FLAT LIST; `common.init_participant` starts it as []. Anything else is a
+    broken write and pays NOTHING, loudly (empty payouts, visible in `earned`
+    and the export) — deliberately not "tolerated": the flattening fallback
+    this replaces traversed nested input in LIFO order, so if it ever ran it
+    would have paid the WRONG ROUNDS silently, the round number being nothing
+    but the position in this list.
+    """
+    if not isinstance(payoffs_vector, (list, tuple)):
+        return []
+    return [(idx + 1, float(value))
+            for idx, value in enumerate(payoffs_vector)
+            if isinstance(value, numbers.Number) and value not in missing_values]
 
 # PAGES
 
@@ -216,9 +277,10 @@ class Ended(Page):
             # cannot drift from the rule.
             common.screenout_vars(player.participant, player.session.config),
             completionlink=completion_link(player),
-            reason=('disqualified' if is_disqualified(player)
-                    else 'no_consent' if declined_consent(player)
-                    else 'screened_out' if was_screened_out(player) else 'other'),
+            # The ONE reason cascade (`ending_reason`); is_displayed guarantees
+            # it is non-empty here, and `or 'other'` keeps the template's
+            # neutral fallback wired if that ever stops being true.
+            reason=ending_reason(player) or 'other',
             # (`screenout_cause` — the DETECTED device type — is what the
             # template writes its sentence from, never `reason`, which is the
             # general -4 bucket; and the screened-out way out carries NO
@@ -226,19 +288,12 @@ class Ended(Page):
             # common.screenout_vars.)
             # Lab-only closing line ("raise your hand"); see is_lab().
             is_lab=is_lab(player),
-            # WHICH integrity module removed them (change_requests item 16).
-            # `reason='disqualified'` is the bucket; this is the cause, and the
-            # template writes a different sentence for each so the participant
-            # is told WHY the study ended instead of "cannot continue".
-            # If somehow both flags are set the tab monitor wins the message: it
-            # is the harder stop, and it is the one the participant was warned
-            # about on screen.
-            dq_cause=(
-                'tab_monitor'
-                if player.participant.vars.get('ai_safety_disqualified')
-                else 'comprehension'
-                if player.participant.vars.get('comprehension_disqualified')
-                else ''),
+            # WHICH integrity module removed them: `reason='disqualified'` is
+            # the bucket, this is the cause, and the template writes a
+            # different sentence for each so the participant is told WHY the
+            # study ended instead of "cannot continue". See dq_cause() for the
+            # both-flags priority.
+            dq_cause=dq_cause(player),
             prolific_completion_redirects=_flag(player, 'prolific_completion_redirects'),
         )
 
@@ -283,27 +338,44 @@ class Demographics(Page):
         )
 
     def error_message(player, values):
-        missing_fields = []
-        if player.session.config.get('collect_demographics'):
-            if not values.get('gender'):
-                missing_fields.append('gender')
-            if not values.get('age'):
-                missing_fields.append('age')
-        if player.session.config.get('collect_bank_details'):
-            if not values.get('bank'):
-                missing_fields.append('bank')
-            if not values.get('bank_confirmation'):
-                missing_fields.append('bank_confirmation')
-            if missing_fields:
-                return "Please answer all questions with an asterisk (*)."
-            if values['bank'] != values['bank_confirmation']:
-                return "Your bank numbers don't match. Please doublecheck them."
-        if missing_fields:
+        # Missing-field errors beat the mismatch error: the mismatch is only
+        # judged once both bank boxes actually hold something.
+        required = []
+        if _flag(player, 'collect_demographics'):
+            required += ['gender', 'age']
+        if _flag(player, 'collect_bank_details'):
+            required += ['bank', 'bank_confirmation']
+        if any(not values.get(f) for f in required):
             return "Please answer all questions with an asterisk (*)."
+        if _flag(player, 'collect_bank_details') and values['bank'] != values['bank_confirmation']:
+            return "Your bank numbers don't match. Please doublecheck them."
+        # A NON-DUTCH IBAN NEEDS A BIC (Julian, 2026-08-13). Dutch (NL)
+        # accounts are routed without one; for ANY other country the transfer
+        # needs the BIC, so an empty one fails the form here — after the match
+        # check, so a participant fixes one problem at a time. NON-EMPTY IS THE
+        # WHOLE REQUIREMENT, deliberately: no format validation, because a
+        # rejected valid-but-unusual BIC strands a lab participant at the one
+        # page that pays them.
+        #
+        # THE ASYMMETRY WITH THE DASHBOARD'S Non-SEPA PILL IS DELIBERATE — two
+        # different questions, and they must NOT be collapsed into one
+        # predicate (Julian, 2026-08-13):
+        #   * BIC required  = the IBAN is NOT DUTCH, in-SEPA or not. A German
+        #     IBAN needs a BIC here and gets NO pill on the dashboard.
+        #   * Non-SEPA pill = the SEPA check recorded 0 (check_sepa_code):
+        #     the transfer may not work at all, which is worth an operator's
+        #     eye even for a participant who typed a perfectly good BIC.
+        # Both read the country through iban_country_code — ONE implementation
+        # of "which country", two predicates on top of it.
+        if (_flag(player, 'collect_bank_details')
+                and iban_country_code(values.get('bank')) != 'NL'
+                and not str(values.get('bic') or '').strip()):
+            return ("Your IBAN is not Dutch (NL), so we also need your "
+                    "bank's BIC. Please enter it in the BIC field.")
 
     def before_next_page(p, timeout_happened):
         # CHECK IF THE PARTICIPANT'S BANK ACCOUNT IS IN SEPA (lab payment only) ===
-        if p.session.config.get('collect_bank_details') and p.bank:
+        if _flag(p, 'collect_bank_details') and p.bank:
             check_sepa_code(p)
 
 
@@ -361,17 +433,57 @@ class Feedback(Page):
         return is_completer(player) and _flag(player, 'pilot_feedback')
 
 
+def results_live_method(player, data):
+    """Record the click on the Results page's "Back to Prolific" link, so the
+    dashboard can flag a finisher who never went back to the platform (their
+    submission sits open there, unpaid, while our data says finished).
+
+    INSTRUMENTATION ONLY, NEVER IN THE EXIT PATH. The link stays a real href
+    that works with this handler broken, unbound, or unreached (JS off) — see
+    prolific_return_footer.html's invariants. All this does is stamp; wrapped,
+    because instrumentation must never break a page (CLAUDE.md).
+
+    WHY A LIVE MESSAGE and not the hidden-field convention: the hidden-field
+    rule (conventions.md) rides measurement on the page's OWN form POST — but
+    Results is the LAST page; there is no further submit to ride on. The live
+    socket is the template's one sanctioned server-side channel that exists
+    without a submit (the tab monitor already uses it). BEST-EFFORT by nature:
+    the click navigates away, so the message can be lost with the socket —
+    absence of the stamp means "no click RECORDED", not "no click", and the
+    dashboard pill built on it is a prompt to look, never a verdict.
+
+    Gated on prolific_completion_redirects (raw .get — module flag): with
+    redirects off there is no link to click and nothing to record.
+    """
+    try:
+        if not player.session.config.get('prolific_completion_redirects'):
+            return
+        if not isinstance(data, dict) or data.get('type') != 'prolific_return_click':
+            return
+        stamps = player.participant.vars.get('stage_timestamps') or {}
+        # First click wins: keep the FIRST time they left, not the last reload.
+        if 'prolific_return_clicked' not in stamps:
+            common.stamp_stage(player.participant, 'prolific_return_clicked')
+    except Exception:
+        pass  # measurement only: never block the participant
+
+
 class Results(Page):
 
     @staticmethod
     def is_displayed(player):
         return is_completer(player)
 
+    # The return-click stamp (instrumentation only — the link itself is a
+    # plain href and works with all of this dead; see results_live_method).
+    live_method = staticmethod(results_live_method)
+
     # NO js_vars here either — same reason as on Ended: the completion redirect
     # is a real link built server-side (so the code is authoritative) and
     # rendered into the page, not handed to a script that has to run first.
 
-    def vars_for_template(self):
+    @staticmethod
+    def vars_for_template(player):
         # REACHING THIS PAGE IS COMPLETION: the exit code becomes `finished`
         # when the page LOADS — identically in the lab and on Prolific.
         # Idempotent, so re-rendering never corrupts it.
@@ -386,16 +498,16 @@ class Results(Page):
         # A participant who closes the tab without clicking the button has still
         # finished the study; the completion CODE is what Prolific needs from
         # the click, and that is a separate concern from the exit code.
-        compute_final_payoff(self)
-        common.set_exit_code(self.participant, common.EXIT_CODES['finished'])
-        common.stamp_stage(self.participant, 'finished')
-        # Convert the selected payoffs to a JSON string to view as table in Results.html
+        compute_final_payoff(player)
+        common.set_exit_code(player.participant, common.EXIT_CODES['finished'])
+        common.stamp_stage(player.participant, 'finished')
+        # Parse the stored JSON back into rows for the per-round table.
         try:
-            payouts = json.loads(self.payouts) if self.payouts else []
+            payouts = json.loads(player.payouts) if player.payouts else []
         except Exception:
             payouts = []
         try:
-            round_payoffs = json.loads(self.all_round_payoffs) if self.all_round_payoffs else []
+            round_payoffs = json.loads(player.all_round_payoffs) if player.all_round_payoffs else []
         except Exception:
             round_payoffs = []
         selected_round_numbers = {int(r) for r, _ in payouts}
@@ -412,30 +524,38 @@ class Results(Page):
         # they must add up to `earned` exactly as compute_final_payoff computed
         # it: base (the show-up fee) + quiz bonus + the selected rounds.
         # `base_payment` is the show-up fee under the name the receipt uses;
-        # `decision_bonus` is the sum of the randomly selected rounds.
-        showup_fee = cu(common.cfg(self.session.config, 'showup'))
-        selected_sum = cu(self.selected_sum)
+        # `decision_bonus` is the sum of the randomly selected rounds. ONE name
+        # per figure — the old duplicate keys (`showup`, `selected_sum`, the raw
+        # `payouts` list) were dead template vars and are gone, so the receipt
+        # cannot be "fixed" against a name the template does not read.
         return{
             # The completion URL, rendered into the page's own link. EVERY
             # Prolific completer leaves through it, so it must not need a script
             # to exist: a completer with JS blocked would otherwise finish the
             # study, see this page, and have no way to submit their completion
             # code — unpaid, and looking like an abandoner in the data.
-            'completionlink': completion_link(self),
-            'earned': cu(self.earned),
-            'showup': showup_fee,
-            'base_payment': showup_fee,
-            'selected_sum': selected_sum,
-            'decision_bonus': selected_sum,
-            'quiz_bonus': cu(self.quiz_bonus_awarded),
-            'show_quiz_bonus': self.quiz_bonus_awarded > 0,
+            'completionlink': completion_link(player),
+            'earned': cu(player.earned),
+            'base_payment': cu(common.cfg(player.session.config, 'showup')),
+            'decision_bonus': cu(player.selected_sum),
+            'quiz_bonus': cu(player.quiz_bonus_awarded),
+            'show_quiz_bonus': player.quiz_bonus_awarded > 0,
             'has_rounds': bool(payout_rows),
-            'sepa': self.sepa,
-            'payouts': payouts,
+            # NULLABLE, so field_maybe_none, never a bare read (CLAUDE.md).
+            # Empty means the SEPA check never ran (no bank details collected);
+            # the template warns on == 0 only, and empty is not 0, so a
+            # participant who was never asked never sees the warning.
+            'sepa': player.field_maybe_none('sepa'),
             'payout_rows': payout_rows,
-            'num_rewarded': common.cfg(self.session.config, 'num_rewarded'),
+            'num_rewarded': common.cfg(player.session.config, 'num_rewarded'),
+            # The shared ending footer include branches on `reason` (Ended's
+            # variant carries the codeless screened-out exit). This page has no
+            # early-ending reason by definition; '' is passed EXPLICITLY rather
+            # than relying on the template engine's treatment of an undefined
+            # name.
+            'reason': '',
             # Lab-only closing line ("stay seated"); see is_lab().
-            'is_lab': is_lab(self),
+            'is_lab': is_lab(player),
             # THE PER-ROUND TABLE IS OPEN FROM THE START IN THE LAB (Julian,
             # 2026-08-13, round-2 item 10): there is an experimenter in the
             # room, the screens are the lab's own, and a participant asked to
@@ -448,8 +568,8 @@ class Results(Page):
             # thing to remember to set. The accordion itself is UNCHANGED and
             # still present in both — this decides its initial state only, so
             # a lab participant can still collapse the table if they want to.
-            'results_open': is_lab(self),
-            'prolific_completion_redirects': bool(self.session.config.get('prolific_completion_redirects')),
+            'results_open': is_lab(player),
+            'prolific_completion_redirects': _flag(player, 'prolific_completion_redirects'),
         }
 
 page_sequence = [Ended, Demographics, Feedback, Results]

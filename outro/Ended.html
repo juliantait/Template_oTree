@@ -64,46 +64,35 @@
                 {# SCREEN-OUT COPY IS CHOSEN BY `screenout_cause`, NOT by the exit
                    code. Exit code -4 is the GENERAL "removed at entry" bucket
                    (CODEBOOK.md §exit codes). The device allow-list records the
-                   DETECTED DEVICE TYPE as the cause — 'phone', 'tablet',
-                   'computer' or 'unknown' — so each participant is told
+                   DETECTED DEVICE TYPE as the cause, so each participant is told
                    something true about their own case instead of everyone being
-                   told the study needs a computer. What the study DOES accept
-                   comes from `allowed_devices_phrase`, built from the same list
-                   the gate enforces, so the sentence cannot drift from the rule.
+                   told the study needs a computer. BOTH NOUNS COME FROM THE ONE
+                   SHARED BUILDER (common.screenout_vars): what they came in on
+                   is `detected_device_label` (common.DEVICE_TYPE_LABELS — one
+                   branch for phone, tablet and computer, so the three sentences
+                   cannot drift apart or from before/screened_out.html), and
+                   what the study DOES accept is `allowed_devices_phrase`, built
+                   from the same list the gate enforces, so the sentence cannot
+                   drift from the rule.
 
                    THERE IS NO 'laptop' CASE, and adding one is impossible: a
                    browser cannot distinguish a laptop from a desktop (see the
-                   allow-list note in settings.py). Both are 'computer'.
+                   allow-list note in settings.py). Both are 'computer', and the
+                   label says "a desktop or laptop computer".
 
                    TO ADD A REASON from a future, non-device gate: add the cause
                    to common.SCREENOUT_CAUSES, set it via
-                   common.set_screened_out(participant, '<cause>'), and add a
-                   branch here with its own sentence. Do NOT mint a new exit
-                   code — every code in the table must be set by a real path, so
+                   common.set_screened_out(participant, '<cause>'), and give it
+                   its own sentence — a branch here (a non-device cause gets NO
+                   detected_device_label, so it falls to the neutral fallback
+                   below until you write one). Do NOT mint a new exit code —
+                   every code in the table must be set by a real path, so
                    reasons are causes, not codes. #}
-                {% if screenout_cause == 'phone' %}
+                {% if detected_device_label %}
                     <p class="section-text">
-                        This study cannot be taken on a phone. It needs
-                        {{ allowed_devices_phrase }}, so it has ended for you here.
-                    </p>
-                    <div class="panel panel--hug">
-                        If you would still like to take part, please return to the
-                        study on {{ allowed_devices_phrase }}.
-                    </div>
-                {% elif screenout_cause == 'tablet' %}
-                    <p class="section-text">
-                        This study cannot be taken on a tablet. It needs
-                        {{ allowed_devices_phrase }}, so it has ended for you here.
-                    </p>
-                    <div class="panel panel--hug">
-                        If you would still like to take part, please return to the
-                        study on {{ allowed_devices_phrase }}.
-                    </div>
-                {% elif screenout_cause == 'computer' %}
-                    <p class="section-text">
-                        This study cannot be taken on a desktop or laptop
-                        computer. It needs {{ allowed_devices_phrase }}, so it has
-                        ended for you here.
+                        This study cannot be taken on {{ detected_device_label }}.
+                        It needs {{ allowed_devices_phrase }}, so it has ended for
+                        you here.
                     </p>
                     <div class="panel panel--hug">
                         If you would still like to take part, please return to the
@@ -166,36 +155,10 @@
 
         </div>
 
-        <!-- Direct child of the card, so it stays pinned at the foot when the
-             content region scrolls (see .screen-card in base.css).
-
-             A REAL LINK, not a scripted button. It used to be
-             `<button onclick="backToProlific()">` with no href, so a participant
-             whose JavaScript had not run had no way to leave the page at all —
-             the same dead end the entry screen-out page was rebuilt to avoid.
-             ESCAPED because ibis does not auto-escape, and the URL carries a
-             config-supplied completion code.
-
-             THE SCREENED-OUT VARIANT CARRIES NO CODE: it goes to the Prolific
-             participant site itself, so the submission stays open (see
-             outro.completion_link). -->
-        {% if prolific_completion_redirects %}
-        <div class="button-row">
-            {% if reason == 'screened_out' %}
-            <a class="exit-button" href="{{ prolific_screenout_return_url|escape }}">
-                Back to Prolific
-            </a>
-            {% else %}
-            <a class="next-button" href="{{ completionlink|escape }}">
-                Back to Prolific
-            </a>
-            {% endif %}
-        </div>
-        {% endif %}
-
-        <!-- THE LOGO FOOTER: a direct child of the card, always (see the
-             include's own header and THE LOGO FOOTER RULE in base.css). -->
-        {% include '_static/global/html/logo_section.html' %}
+        {# THE ENDING FOOTER — the way back to Prolific (a real link, the
+           screened-out variant codeless) and the logo strip, one shared
+           component. The invariants live in the include's own header. #}
+        {% include '_static/global/html/prolific_return_footer.html' %}
     </div>
 </div>
 

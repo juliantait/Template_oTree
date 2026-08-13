@@ -17,49 +17,53 @@
             <div class="eyebrow">Please read carefully</div>
         </div>
         <div class="experimental-content">
-            <form method="post">
-                <div class="instructions">
-                    <!-- The slide body is the scroll region on this page (see the
-                         scroll-chain note in instructions.css). The step counter
-                         and the pager below sit OUTSIDE it, so they stay pinned
-                         and Next is reachable without scrolling. -->
-                    <div id="instruction-wrapper" class="instruction-wrapper">
-                        {% include "intro/instructions_text.html" %}
-                        {% include "intro/prequiz_text.html" %}
-                    </div>
-
-                    <!-- Back · counter · Next, on ONE row (change_requests
-                         item 3). The counter used to be a row of its own above
-                         the pager, which cost ~40px of card height for one line
-                         of quiet chrome. It sits BETWEEN the buttons, which is
-                         also where it reads best: the pager becomes one control
-                         that says where you are and where you can go.
-                         instructions.js still writes #instruction-counter and
-                         toggles .instruction-progress's visibility (never its
-                         display — the space stays reserved, stability rule). -->
-                    <div class="instruction-controls">
-                        <button type="button" id="prevBtn" class="next-button ghost">
-                            Back
-                        </button>
-                        <div class="instruction-progress">
-                            <span id="instruction-counter"></span>
-                        </div>
-                        <button type="button" id="nextBtn" class="next-button">
-                            Next
-                        </button>
-                    </div>
-
-                    {{ if is_debug }}
-                    <!-- Testing only: rendered only when settings.DEBUG
-                         (OTREE_PRODUCTION unset). -->
-                    <div class="debug-tools">
-                        <button type="button" class="skip-button" onclick="this.form.submit()">
-                            Skip instructions (testing)
-                        </button>
-                    </div>
-                    {{ endif }}
+            <!-- NO <form> here, deliberately: oTree has ALREADY wrapped the
+                 whole page in <form class="otree-form">, and the HTML5 parser
+                 DROPS a nested form start tag anyway (a dead tag used to sit
+                 here and never reached the DOM — see the scroll-chain note in
+                 instructions.css). The pager's submit and the DEBUG skip both
+                 submit oTree's own form. -->
+            <div class="instructions">
+                <!-- The slide body is the scroll region on this page (see the
+                     scroll-chain note in instructions.css). The step counter
+                     and the pager below sit OUTSIDE it, so they stay pinned
+                     and Next is reachable without scrolling. -->
+                <div id="instruction-wrapper" class="instruction-wrapper">
+                    {% include "intro/instructions_text.html" %}
+                    {% include "intro/prequiz_text.html" %}
                 </div>
-            </form>
+
+                <!-- Back · counter · Next, on ONE row (change_requests
+                     item 3). The counter used to be a row of its own above
+                     the pager, which cost ~40px of card height for one line
+                     of quiet chrome. It sits BETWEEN the buttons, which is
+                     also where it reads best: the pager becomes one control
+                     that says where you are and where you can go.
+                     instructions.js still writes #instruction-counter and
+                     toggles .instruction-progress's visibility (never its
+                     display — the space stays reserved, stability rule). -->
+                <div class="instruction-controls">
+                    <button type="button" id="prevBtn" class="next-button ghost">
+                        Back
+                    </button>
+                    <div class="instruction-progress">
+                        <span id="instruction-counter"></span>
+                    </div>
+                    <button type="button" id="nextBtn" class="next-button">
+                        Next
+                    </button>
+                </div>
+
+                {{ if is_debug }}
+                <!-- Testing only: rendered only when settings.DEBUG
+                     (OTREE_PRODUCTION unset). -->
+                <div class="debug-tools">
+                    <button type="button" class="skip-button" onclick="this.form.submit()">
+                        Skip instructions (testing)
+                    </button>
+                </div>
+                {{ endif }}
+            </div>
         </div>
     </div>
 </div>

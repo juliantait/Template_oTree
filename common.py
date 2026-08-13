@@ -774,7 +774,7 @@ def screenout_cleared(participant) -> bool:
 
 
 def screenout_vars(participant, config) -> dict:
-    """The three facts every screen-out screen needs, built ONCE.
+    """The facts every screen-out screen needs, built ONCE.
 
     Two pages describe the same screened-out participant: the entry hold page
     (`before/screened_out.html`, where the wall is soft and reversible) and the
@@ -789,14 +789,28 @@ def screenout_vars(participant, config) -> dict:
                              'unknown'), or '' — the templates pick their
                              sentence from it, never from the exit code, which
                              is the general -4 bucket.
+      detected_device_label  that type as participant-facing words ('a phone',
+                             'a tablet', 'a desktop or laptop computer'), from
+                             DEVICE_TYPE_LABELS — the ONE cause→noun mapping, so
+                             the two pages cannot word the same device
+                             differently. DELIBERATELY EMPTY for 'unknown' (we
+                             must not tell a participant what they are using
+                             when we do not know — their sentence says what is
+                             needed instead) and for ''/any future cause (the
+                             neutral fallback owns those). A template branches
+                             on this being non-empty for the one physical-device
+                             sentence, and keeps its own branches for the rest.
       allowed_devices_phrase what the study DOES accept, built from the same
                              list the gate enforces so copy cannot drift from
                              the rule.
       prolific_screenout_return_url   the way out, carrying NO completion code (see
                              `prolific_screenout_return_url` for why there is none).
     """
+    cause = screenout_cause(participant)
     return dict(
-        screenout_cause=screenout_cause(participant),
+        screenout_cause=cause,
+        detected_device_label=(DEVICE_TYPE_LABELS[cause]
+                               if cause in ('phone', 'tablet', 'computer') else ''),
         allowed_devices_phrase=device_types_phrase(allowed_devices(config)),
         prolific_screenout_return_url=prolific_screenout_return_url(config),
     )
