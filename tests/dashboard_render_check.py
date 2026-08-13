@@ -373,6 +373,28 @@ def check_overview(base, sess):
                   f'{width}px: six equal step cells (spread '
                   f'{max(widths) - min(widths):.1f}px)')
 
+            # THE CONNECTOR'S INSET IS DERIVED ARITHMETIC (half a track,
+            # 100/steps/2), so measure that it actually LANDS on the centre of
+            # the first and last markers. A wrong inset is pure geometry: no
+            # error, no failing assertion anywhere else, just a line that
+            # over- or under-shoots the end dots. Measured via the ::before
+            # pseudo-element's resolved `left`/`right`, which is the only way
+            # to see it — it has no box of its own to query.
+            line = pg.evaluate('''() => {
+                const tl = document.querySelector('.tl');
+                const cs = getComputedStyle(tl, '::before');
+                const cell = tl.querySelector('.stepcell')
+                               .getBoundingClientRect().width;
+                return {left: parseFloat(cs.left),
+                        right: parseFloat(cs.right), cell: cell};
+            }''')
+            half = line['cell'] / 2
+            check(abs(line['left'] - half) <= 1.5
+                  and abs(line['right'] - half) <= 1.5,
+                  f'{width}px: the connector starts and ends at the MARKER '
+                  f'CENTRES — inset {line["left"]:.1f}/{line["right"]:.1f}px '
+                  f'vs half a {line["cell"]:.1f}px track ({half:.1f}px)')
+
             # nothing clips, at THIS width
             clipped = pg.evaluate('''() =>
                 [...document.querySelectorAll(

@@ -103,14 +103,46 @@ POLL_FLOOR_SECONDS = 2
 
 URL_BASE = '/experimenter_dashboard'
 
-# The six timeline steps, in order, EQUAL SPACING (the CSS grid gives each the
-# same track). Consent, the ID page and the AI-safety agreement all fold into
-# ENTRY; the outro's ending/demographics/feedback pages are QUESTIONNAIRE.
-STEPS = ('entry', 'instructions', 'quiz', 'task', 'questionnaire', 'done')
+# =============================================================================
+# THE SIX TIMELINE STEPS — DEFINED HERE, ONCE, AND NOWHERE ELSE
+# =============================================================================
+# In order, EQUAL SPACING (the CSS grid gives each the same track). Consent, the
+# ID page and the AI-safety agreement all fold into ENTRY; the outro's
+# ending/demographics/feedback pages are QUESTIONNAIRE.
+#
+# One concept, one definition (single-sourced 2026-08-12). It used to be stated
+# SIX times — a STEPS tuple, a STEP_LABELS dict nothing rendered, the six
+# <span>s in the table header, the STEPS array in the page's JavaScript, and two
+# copies of the step COUNT in the CSS (the grid's track count and the
+# connector's half-track inset) — which is the inverted collapsed-distinction
+# rule in CLAUDE.md: one concept with several implementations, which drift, and
+# the drift stays invisible until something changes. Renaming a step used to
+# mean finding six places, and missing one gave a header that disagreed with the
+# data, with nothing going red.
+#
+# EVERYTHING ELSE NOW DERIVES FROM THIS ORDERED MAPPING:
+#   * STEPS               — the order, for the marker's position
+#   * _COLGROUP_HTML      — the header cells (_step_header_html, below)
+#   * the CSS grid        — one track per step, __STEP_COUNT__
+#   * the connector inset — half a track, __TL_INSET__
+#   * the page's JS STEPS — injected as JSON, never retyped
+# Add, rename or reorder a step HERE and all five follow.
+# `tests/dashboard_test.py` §D6 asserts they still agree — including that no
+# placeholder survived unreplaced into the served page, which would be invalid
+# CSS and would collapse the timeline with nothing in any log. A future edit that
+# reintroduces a second copy fails there rather than drifting quietly.
+#
+# Dicts preserve insertion order (Python 3.7+), and that order IS the timeline
+# order — do not sort it anywhere.
 STEP_LABELS = {
-    'entry': 'Entry', 'instructions': 'Instructions', 'quiz': 'Quiz',
-    'task': 'Task', 'questionnaire': 'Questionnaire', 'done': 'Done',
+    'entry': 'Entry',
+    'instructions': 'Instructions',
+    'quiz': 'Quiz',
+    'task': 'Task',
+    'questionnaire': 'Questionnaire',
+    'done': 'Done',
 }
+STEPS = tuple(STEP_LABELS)
 
 # =============================================================================
 # THE APP → STEP MAP. **A STUDY THAT ADDS AN APP MUST ADD IT HERE.**
@@ -118,10 +150,8 @@ STEP_LABELS = {
 # This template exists to be COPIED, and adding an app is the likeliest thing a
 # study does to it — so this map is the one place that decides where a new app's
 # pages sit on the timeline. Adding an app to an EXISTING step is this one line.
-# Adding a whole new STEP is four places, because the step list is not yet
-# single-sourced: the STEPS tuple, the six <span>s in _COLGROUP_HTML, and the
-# STEPS array in the page's JavaScript — plus STEP_LABELS, which nothing renders
-# today but which is the natural home if the header is ever generated.
+# Adding a whole new STEP is one line too, in STEP_LABELS above: the header, the
+# grid and the client-side step order all derive from it.
 APP_STEPS = {
     'before': 'entry',           # startpage, consent, ID capture, AI-safety
     'intro': 'instructions',     # split by page below (instructions vs quiz)
@@ -890,13 +920,25 @@ def _page_html(session) -> str:
 
 # The column headers. ADD A COLUMN HERE: one <th>, in the position the cell
 # branch in renderRow (below) will fill.
-_COLGROUP_HTML = """
+def _step_header_html() -> str:
+    """The timeline's header cells, DERIVED from STEP_LABELS — one <span> per
+    step, in definition order.
+
+    Joined with NO whitespace between the spans, deliberately: `.tl-header` is a
+    CSS grid, and while whitespace-only text between grid items generates no
+    boxes, emitting none at all means the item count cannot depend on how this
+    string happens to be formatted. Labels go through escape() like every other
+    interpolated value in this file, even though they are developer-authored —
+    the rule is not conditional on where the text came from.
+    """
+    return ''.join(f'<span>{escape(label)}</span>'
+                   for label in STEP_LABELS.values())
+
+
+_COLGROUP_HTML = f"""
   <th class="c-label">Participant</th>
   <th class="c-timeline">
-    <div class="tl-header">
-      <span>Entry</span><span>Instructions</span><span>Quiz</span>
-      <span>Task</span><span>Questionnaire</span><span>Done</span>
-    </div>
+    <div class="tl-header">{_step_header_html()}</div>
   </th>
   <th class="c-quiz" title="Quiz attempts">Quiz</th>
   <th class="c-instr" title="Time on instructions">Instr. time</th>
@@ -904,7 +946,7 @@ _COLGROUP_HTML = """
   <th class="c-state">State</th>
 """
 
-_PAGE_HTML = """<!DOCTYPE html>
+_PAGE_HTML = ("""<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <title>Dashboard — __SESSION_TITLE__</title>
 <link rel="stylesheet" href="__CSS_HREF__">
@@ -950,12 +992,19 @@ tr.unmapped-row td.c-label { box-shadow: inset 4px 0 0 var(--dash-unmapped); }
 .c-label .page-hint { display: block; color: var(--ink-mute);
   font-weight: 400; font-size: .72rem; }
 
-/* --- the six-step timeline: EQUAL SPACING via a fixed 6-track grid -------- */
+/* --- the timeline: EQUAL SPACING via one track per step -------------------
+   BOTH numbers below are DERIVED from STEP_LABELS, not typed: the track count
+   is len(STEPS), and the connector's inset is half a track (100/steps/2) so the
+   line starts and ends at the centre of the first and last markers. Hard-coding
+   them was two more copies of "how many steps are there" — add a seventh step
+   and a fixed 6-track grid would silently drop it off the end of the row. */
 .c-timeline { width: 46%; }
-.tl-header, .tl { display: grid; grid-template-columns: repeat(6, 1fr); }
+.tl-header, .tl { display: grid;
+  grid-template-columns: repeat(__STEP_COUNT__, 1fr); }
 .tl-header span { font-size: .68rem; text-align: center; }
 .tl { align-items: center; position: relative; height: 30px; }
-.tl::before { content: ''; position: absolute; left: 8.33%; right: 8.33%;
+.tl::before { content: ''; position: absolute; left: __TL_INSET__;
+  right: __TL_INSET__;
   top: 50%; height: 2px; background: var(--line-strong); }
 .tl .stepcell { position: relative; display: flex; justify-content: center; }
 .tl .dot { width: 8px; height: 8px; border-radius: 50%;
@@ -1025,7 +1074,9 @@ tr.unmapped-row td.c-label { box-shadow: inset 4px 0 0 var(--dash-unmapped); }
 'use strict';
 var DATA_URL = '__DATA_URL__';
 var POLL_MS = Math.max(2000, parseInt('__POLL_MS__', 10) || 2000);
-var STEPS = ['entry','instructions','quiz','task','questionnaire','done'];
+/* INJECTED from STEP_LABELS (see the top of experimenter_dashboard.py), never
+   retyped here: the client's idea of the step order must be the server's. */
+var STEPS = __STEPS_JSON__;
 var inFlight = false;      // skip a tick while the previous one is running
 var lastGood = null;
 
@@ -1194,4 +1245,12 @@ document.getElementById('hide-entry').addEventListener('change', function () {
 tick();
 setInterval(tick, POLL_MS);
 </script>
-</body></html>""".replace('__COLGROUP__', _COLGROUP_HTML)
+</body></html>"""
+             # THE FOUR DERIVATIONS OF THE STEP LIST, all resolved once at
+             # import: the header cells, the grid's track count, the connector
+             # inset (half a track) and the client's step order. Every one of
+             # them comes from STEP_LABELS; none is typed twice.
+             .replace('__COLGROUP__', _COLGROUP_HTML)
+             .replace('__STEP_COUNT__', str(len(STEPS)))
+             .replace('__TL_INSET__', f'{100 / len(STEPS) / 2:.2f}%')
+             .replace('__STEPS_JSON__', json.dumps(list(STEPS))))
