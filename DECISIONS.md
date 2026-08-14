@@ -292,8 +292,12 @@ fallback, and the drift check reports ok against the installed oTree.
 
 ## One payment ledger: per-round `player.payoff` is not used, `participant.payoff` is written once from `earned` — 2026-08-13
 
-Review item J1 (Julian; sub-decision also his). The game records each round in
-its own `main.Player.round_payoff`; the template pays from
+Review item J1 (Julian; sub-decision also his). The underlying conflation:
+oTree automatically sums `player.payoff` across rounds into
+`participant.payoff`, but this template pays only `num_rewarded` randomly
+selected rounds — the per-round result and the amount paid are different
+things, and the auto-sum is a total nobody is paid. So the game records each
+round in its own `main.Player.round_payoff`; the template pays from
 `participant.payoff_vector`; and oTree's `participant.payoff` gets exactly ONE
 entry — `earned` (less `participation_fee`, de-converted when `USE_POINTS` is
 on), written when the results page computes payment — so the admin Payments

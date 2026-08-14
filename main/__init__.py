@@ -43,7 +43,11 @@ class Group(BaseGroup):
 
 class Player(BasePlayer):
     # THE GAME'S OWN per-round result — deliberately NOT oTree's player.payoff
-    # (J1, Julian 2026-08-13). The template pays from participant.payoff_vector
+    # (J1, Julian 2026-08-13). oTree automatically SUMS player.payoff across
+    # rounds into participant.payoff — wrong here, where only `num_rewarded`
+    # randomly selected rounds are paid, so the per-round result and the
+    # amount paid are different numbers and must not share a field.
+    # The template pays from participant.payoff_vector
     # (collected from this field on the last round), and oTree's own ledger
     # (participant.payoff) is written ONCE, from `earned`, when the results
     # page computes payment — so the admin Payments page and the participant's
