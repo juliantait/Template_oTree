@@ -53,10 +53,21 @@
 # for sqlite, oTree IGNORES the path in DATABASE_URL — otree/database.py opens
 # the literal file ./db.sqlite3 of the process's CWD at import. So this script
 # stages a pristine copy of the candidate build in a private temp dir, drops the
-# DB copy in as its db.sqlite3, and runs the checks from there; the Python
-# helper then verifies via PRAGMA database_list that the engine really is on
-# that staged file and aborts otherwise. Neither the live volume, the given
-# snapshot, nor the checkout's own db.sqlite3 is ever opened.
+# DB copy in as its db.sqlite3, and runs the checks from there.
+#
+# ONE PLACE DECIDES WHICH DATABASE IS TOUCHED, and it decides before any
+# destructive step: DATABASE_URL is pinned to the staged copy immediately after
+# staging (an ambient one is reported and ignored), and a PRE-FLIGHT PROOF then
+# asks oTree's own engine what it actually resolved to, aborting unless it is
+# the staged file. The Python helper pins and proves the same way, through the
+# SAME function (predeploy_check.py --assert-engine-on), so the shell and the
+# helper cannot disagree. Neither the live volume, the given snapshot, nor the
+# checkout's own db.sqlite3 is ever opened.
+#
+# THIS IS NOT BELT-AND-BRACES. Until 2026-08-14 the export sat after the
+# degraded branch and the proof covered the helper only, so the degraded
+# `resetdb` ran against whatever DATABASE_URL the operator's shell had exported
+# — dropping a live Postgres and then reporting PASS. See DECISIONS.md.
 #
 # [app-dir] defaults to the checkout containing this script; pass a different
 # directory to test another build (e.g. an unpacked release candidate). That is
@@ -200,10 +211,50 @@ tar -C "$APP_DIR" \
     --exclude='.DS_Store' \
     -cf - . | tar -C "$WORKDIR/app" -xf -
 
+# ---------------------------------------------------------------------------
+# ONE PLACE DECIDES WHICH DATABASE THIS CHECK TOUCHES — and it is here, BEFORE
+# any branch below can run a destructive command.
+#
+# This export used to sit AFTER the degraded branch, so the `otree resetdb` in
+# it inherited the ambient environment. An operator with a live
+# DATABASE_URL=postgres://… exported — the normal state of a deploy shell —
+# running the documented no-argument check had their live database dropped and
+# recreated, after which the run proceeded against the staged sqlite file and
+# reported PASS. A tool that exists to prevent data loss before a deploy caused
+# it, against exactly the database about to be deployed to. Fixed 2026-08-14;
+# see DECISIONS.md. DO NOT MOVE THIS BELOW THE BRANCH.
+#
+# Refusing to honour an ambient DATABASE_URL is deliberate, not a limitation:
+# this check stages a private copy and drives fake participants through it, so
+# pointing it at a real database is never what anyone wants.
+# ---------------------------------------------------------------------------
+STAGED_DB="$WORKDIR/app/db.sqlite3"
+if [[ -n "${DATABASE_URL:-}" ]]; then
+    # Scheme only — a real URL carries a password.
+    echo "predeploy_check: NOTE: your environment sets DATABASE_URL (${DATABASE_URL%%:*}://...); this check IGNORES it and uses its own staged copy."
+fi
+export DATABASE_URL="sqlite:///$STAGED_DB"
+unset OTREE_AUTH_LEVEL OTREE_REST_KEY OTREE_IN_MEMORY 2>/dev/null || true
+
+# PRE-FLIGHT PROOF, before anything destructive. Not a re-statement of the
+# export above: for sqlite oTree IGNORES the path in DATABASE_URL and opens
+# ./db.sqlite3 relative to the cwd (see header), so the export is a declaration
+# and this is the measurement — it asks oTree's OWN engine what it resolved to
+# and refuses to continue unless the answer is the staged copy. It is the SAME
+# function the helper uses for its own boot check (predeploy_check.py
+# --assert-engine-on), so the shell and the helper cannot be proved against
+# different rules; a proof covering only one of the two deciders is how the
+# defect above survived.
+"$PY" "$SCRIPT_DIR/predeploy_check.py" --assert-engine-on \
+    --app-dir "$WORKDIR/app" --src-app-dir "$APP_DIR" --log "$WORKDIR/server.log" \
+    || die "pre-flight engine proof failed (see above); nothing was written."
+
 if [[ -n "$DEGRADED" ]]; then
     # No live data to upgrade: build a fresh database inside the staged copy so
     # the fresh-install checks have something to run against. The helper then
-    # reports every upgrade-path check NOT TESTED.
+    # reports every upgrade-path check NOT TESTED. `resetdb` DROPS EVERY TABLE
+    # it finds in whatever database it is pointed at — which is why the pin and
+    # the proof above both come first.
     echo "predeploy_check: no database copy given — DEGRADED run (fresh database)."
     ( cd "$WORKDIR/app" && PATH="$(dirname "$PY"):$PATH" OTREE_PRODUCTION=1 \
         "$PY" -c "import sys; sys.argv=['otree','resetdb','--noinput']; from otree.main import execute_from_command_line; execute_from_command_line()" ) \
@@ -213,11 +264,6 @@ else
     cp "$DB_ARG" "$WORKDIR/app/db.sqlite3"
 fi
 chmod u+w "$WORKDIR/app/db.sqlite3"
-
-# Informational only for sqlite (oTree ignores the path — see header); the
-# helper independently verifies the engine's actual file.
-export DATABASE_URL="sqlite:///$WORKDIR/app/db.sqlite3"
-unset OTREE_AUTH_LEVEL OTREE_REST_KEY OTREE_IN_MEMORY 2>/dev/null || true
 
 echo "predeploy_check: python          : $PY"
 echo "predeploy_check: candidate build : $APP_DIR"

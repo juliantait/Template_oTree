@@ -61,14 +61,25 @@ HOW THE DB IS SELECTED (an oTree 6 trap — verified against otree 6.0.15)
 For sqlite, oTree does NOT honour the path in DATABASE_URL: otree/database.py
 creates the engine with `creator=lambda: sqlite_disk_conn`, a raw connection to
 the literal file `db.sqlite3` in the CURRENT WORKING DIRECTORY at import time.
-So the ONLY reliable lever is the cwd. The shell wrapper therefore stages a
+So for sqlite the cwd is the lever. The shell wrapper therefore stages a
 pristine copy of the candidate build in a private temp dir, places the database
 copy at `<staged app>/db.sqlite3`, and this helper chdirs there before importing
 otree — and launches the server subprocess with that same cwd, so both
-processes are on the staged copy. After boot it interrogates the in-process
-engine with `PRAGMA database_list` and HARD-FAILS unless the engine is provably
-on that staged copy — so a regression in this mechanism can never silently
-write elsewhere. The live database is never opened.
+processes are on the staged copy.
+
+The cwd is NOT trusted on its own, because it is only a lever for sqlite: an
+inherited `DATABASE_URL=postgres://…` makes it inert, and the engine goes to the
+Postgres. So `pin_database_url()` also forces the variable onto the staged copy
+(refusing, rather than silently overriding, a URL that disagrees), and
+`assert_engine_on()` then interrogates the engine oTree actually built —
+`PRAGMA database_list` — and HARD-FAILS unless it resolves to that staged file.
+Declaration, then measurement, before anything is written.
+
+That proof has TWO callers on purpose: this helper at boot, and the shell
+wrapper through `--assert-engine-on` before its degraded-mode `resetdb`. One
+implementation, so a proof that passes for one decider cannot be missing for the
+other — which is exactly the hole that let a degraded run drop a live Postgres
+(fixed 2026-08-14, see DECISIONS.md). The live database is never opened.
 
 DEGRADED MODE — a template has no live database
 ------------------------------------------------
@@ -160,6 +171,116 @@ LIVE_MARKERS = ('/var/lib/docker/', 'docker/volumes')
 LIVE_MARKERS += tuple(
     m.strip() for m in os.environ.get('PREDEPLOY_LIVE_MARKERS', '').split(',')
     if m.strip())
+
+
+# --------------------------------------------------------------------------
+# ONE PLACE DECIDES WHICH DATABASE THIS CHECK TOUCHES
+#
+# The rule, stated once and applied by every caller: THE DATABASE IS
+# `db.sqlite3` INSIDE THE STAGED APP DIR. Never the live one, never whatever
+# the ambient environment happens to name.
+#
+# This used to be decided in TWO places that could disagree, and the
+# disagreement was destructive (fixed 2026-08-14, see DECISIONS.md):
+#   * the shell wrapper ran its degraded-mode `otree resetdb` in a subshell that
+#     INHERITED the environment, and only exported its own sqlite DATABASE_URL
+#     afterwards; and
+#   * this helper never set DATABASE_URL at all — it relied on `os.chdir` alone,
+#     which selects the database for sqlite ONLY (see the trap in the module
+#     docstring). Against an inherited `DATABASE_URL=postgres://…` the chdir
+#     lever does nothing.
+# So an operator with a live Postgres URL exported — the normal state of a
+# deploy shell — running the documented degraded check had their live database
+# dropped and recreated by `resetdb`, after which the run tested the staged
+# sqlite file and reported PASS. Verified end to end before the fix.
+#
+# Hence the two functions below, and hence `--assert-engine-on`: the shell calls
+# the SAME proof this helper uses, BEFORE it runs anything destructive. If the
+# proof only covered the helper, the shell's decider would grow back the first
+# time somebody edited it — which is exactly how it got there.
+# --------------------------------------------------------------------------
+def staged_db_path(app_dir):
+    """The one expression of the rule. Everything else asks this."""
+    return os.path.join(app_dir, 'db.sqlite3')
+
+
+def pin_database_url(db_path):
+    """Point DATABASE_URL at the staged copy — and REFUSE if the environment
+    already pointed somewhere else.
+
+    Overriding silently would be enough to be safe here, but it would hide the
+    interesting case: an operator who believes this check is exercising their
+    Postgres. Say so and stop, rather than testing something other than what
+    they think they are testing. MUST be called before oTree is imported —
+    otree.database builds its engine at import time.
+    """
+    want = os.path.realpath(db_path)
+    inherited = os.environ.get('DATABASE_URL', '')
+    if inherited:
+        scheme = inherited.split('://', 1)[0]
+        backend = scheme.split('+', 1)[0].lower()
+        if backend != 'sqlite':
+            # Never echo the URL itself: it usually carries a password.
+            print(f'FATAL: DATABASE_URL in this environment names a '
+                  f'{backend!r} database, and this check must only ever touch '
+                  f'its own staged copy at {want}.')
+            print('  This check stages a private copy and drives fake '
+                  'participants through it. It is NOT safe to point at a real '
+                  'database, and a `resetdb` in its degraded path would DROP '
+                  'that database.')
+            print('  Unset DATABASE_URL (or run this from a shell that has '
+                  'not exported it) and try again.')
+            sys.exit(2)
+        got = inherited.split('://', 1)[1].split('?', 1)[0] if '://' in inherited else ''
+        if got and os.path.realpath(got) != want:
+            print(f'FATAL: DATABASE_URL names the sqlite file '
+                  f'{os.path.realpath(got)}, but this run is staged on {want}.')
+            print('  Two different answers to "which database?" — refusing '
+                  'rather than picking one.')
+            sys.exit(2)
+    os.environ['DATABASE_URL'] = f'sqlite:///{want}'
+
+
+def assert_engine_on(db_path, context=''):
+    """PROOF, not a promise: interrogate the engine oTree ACTUALLY built and
+    hard-fail unless it resolves to the staged copy.
+
+    `pin_database_url` states the intent; this verifies it came true, from
+    inside the engine, before anything is written. The two are not redundant —
+    for sqlite oTree ignores the path in DATABASE_URL entirely and opens
+    `db.sqlite3` relative to the cwd, so the environment variable is a
+    declaration and this is the measurement.
+    """
+    want = os.path.realpath(db_path)
+    where = f' ({context})' if context else ''
+    from otree.database import engine
+
+    backend = engine.url.get_backend_name()
+    if backend != 'sqlite':
+        # A DIFFERENT failure from "on the wrong file": this is the wrong
+        # BACKEND, which no amount of cwd juggling would have fixed, and it is
+        # the shape the destructive bug took.
+        print(f'FATAL{where}: oTree built a {backend!r} engine, not sqlite. '
+              f'This check only ever runs against its own staged copy '
+              f'({want}) — aborting before anything is written.')
+        sys.exit(2)
+
+    raw = engine.raw_connection()
+    try:
+        dblist = raw.cursor().execute('PRAGMA database_list').fetchall()
+    finally:
+        raw.close()
+    main_file = next((row[2] for row in dblist if row[1] == 'main'), '')
+    if not main_file:
+        print(f'FATAL{where}: the sqlite engine reports no file for its main '
+              f'database (in-memory?) — expected {want}.')
+        sys.exit(2)
+    engine_file = os.path.realpath(main_file)
+    if engine_file != want:
+        print(f'FATAL{where}: the engine is on {engine_file!r}, NOT the staged '
+              f'copy {want!r} — aborting before anything is written.')
+        sys.exit(2)
+    return engine_file
 
 
 def assert_not_live(db_path, src_app_dir):
@@ -773,25 +894,16 @@ def check_boot(server, log, db_path, degraded):
     try:
         import otree.main as otree_main
         otree_main.setup()
-        from otree.database import engine, DBSession
+        from otree.database import DBSession
         from otree.models import Participant, Session
 
-        # PROOF the engine is on our staged copy and nothing else. oTree's
-        # sqlite engine binds to cwd/db.sqlite3 regardless of DATABASE_URL, so
-        # verify from inside the engine itself before ANY write happens. The
-        # server subprocess runs with the same cwd, so proving this process's
-        # engine proves the server's too.
-        raw = engine.raw_connection()
-        try:
-            dblist = raw.cursor().execute('PRAGMA database_list').fetchall()
-        finally:
-            raw.close()
-        engine_file = os.path.realpath(
-            next(row[2] for row in dblist if row[1] == 'main'))
-        if engine_file != os.path.realpath(db_path):
-            print(f'FATAL: the engine is on {engine_file!r}, NOT the staged '
-                  f'copy {db_path!r} — aborting before anything is written.')
-            sys.exit(2)
+        # PROOF the engine is on our staged copy and nothing else, before ANY
+        # write happens. The same function the shell wrapper calls through
+        # --assert-engine-on before its own destructive step, so the two
+        # processes cannot be proved against different rules. The server
+        # subprocess runs with the same cwd and the same DATABASE_URL, so
+        # proving this process's engine proves the server's too.
+        engine_file = assert_engine_on(db_path, context='in-process boot')
 
         s = DBSession()
         try:
@@ -1277,12 +1389,31 @@ def main():
     ap.add_argument('--configs', default='',
                     help='comma-separated session configs for the fresh walks '
                          '(default: one per recruitment profile)')
+    ap.add_argument('--assert-engine-on', action='store_true',
+                    help='PROOF MODE, run by scripts/predeploy_check.sh BEFORE '
+                         'it runs anything destructive: pin DATABASE_URL to the '
+                         'staged database, prove oTree resolves to it, exit 0 '
+                         'or 2. Runs no checks and writes nothing.')
     args = ap.parse_args()
 
     app_dir = os.path.realpath(args.app_dir)
     src_app_dir = os.path.realpath(args.src_app_dir or app_dir)
-    db_path = os.path.join(app_dir, 'db.sqlite3')
+    db_path = staged_db_path(app_dir)
     log_path = os.path.abspath(args.log)
+
+    # PROOF MODE. Deliberately ahead of the is-there-a-database check below:
+    # the shell calls this BEFORE its degraded-mode `resetdb`, when the staged
+    # file does not exist yet. That is the whole point — the proof has to come
+    # before the destructive step, not after it.
+    if args.assert_engine_on:
+        assert_not_live(db_path, src_app_dir)
+        os.chdir(app_dir)
+        sys.path.insert(0, app_dir)
+        pin_database_url(db_path)
+        engine_file = assert_engine_on(db_path, context='pre-flight')
+        print(f'predeploy_check: engine proof OK — oTree resolves to '
+              f'{engine_file}')
+        return
 
     if not os.path.isfile(db_path):
         print(f'FATAL: no database at {db_path} '
@@ -1300,11 +1431,17 @@ def main():
     os.environ.pop('OTREE_AUTH_LEVEL', None)
     os.environ.pop('OTREE_IN_MEMORY', None)
 
-    # THE lever that selects the database (see module docstring): the staged
-    # build becomes both cwd (=> ./db.sqlite3 is the copy) and the importable
-    # app — for this process AND the server subprocess it launches.
+    # WHICH DATABASE: the staged build becomes both cwd (=> ./db.sqlite3 is the
+    # copy) and the importable app — for this process AND the server subprocess
+    # it launches. cwd is what actually binds oTree's sqlite engine, but it is
+    # NOT relied on alone: an inherited `DATABASE_URL=postgres://…` would make
+    # the cwd lever inert, so the URL is pinned here too (and a disagreeing one
+    # is refused, not overridden in silence). Both must happen before oTree is
+    # imported. Called even though the shell wrapper pins it as well — this
+    # helper must be safe when run directly, which is how it is documented.
     os.chdir(app_dir)
     sys.path.insert(0, app_dir)
+    pin_database_url(db_path)
 
     log = Log(log_path)
     server = ServerUnderTest(sys.executable, app_dir, log, debug=args.debug)

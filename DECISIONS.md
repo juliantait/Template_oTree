@@ -11,6 +11,308 @@ working.
 
 ---
 
+## The predeploy check decides which database it touches in ONE place, and proves it before anything destructive — 2026-08-14
+
+Found by the same sweep as the entry below, and fixed on Julian's instruction
+before either was committed. `scripts/predeploy_check.sh` ran its degraded-mode
+`otree resetdb --noinput` in a subshell that **inherited the environment**; the
+line pinning the run to its own staged sqlite copy — `export
+DATABASE_URL="sqlite:///$WORKDIR/app/db.sqlite3"` — sat *after* that branch. So
+an operator with a live `DATABASE_URL=postgres://…` exported (the normal state of
+a deploy shell) running the documented no-argument check had their live database
+dropped and recreated, after which the run proceeded happily against the staged
+sqlite file and **reported PASS**. Verified end to end before the fix: a seeded
+session row went 1 → 0 and the gate exited 0 with `RESULT: PASS (DEGRADED)`.
+
+**The severity is about where it sat, not just what it did.** This is the tool
+whose entire purpose is preventing data loss before a deploy, it is destructive
+in its *documented* mode, and the database it destroys is by construction the one
+you are about to deploy to. The only thing standing between a Postgres operator
+and this was whether `psycopg2` was importable — and a working Postgres
+deployment necessarily has it.
+
+**Root cause is the mirrored rule in CLAUDE.md — one concept, two
+implementations.** "Which database does this check touch?" was answered twice:
+by the shell (inherits ambient env, pins later) and by the helper, which never
+set `DATABASE_URL` at all and relied on `os.chdir` — a lever that works *for
+sqlite only*, since oTree ignores the path in a sqlite `DATABASE_URL` but honours
+a Postgres one completely. Against an inherited Postgres URL the chdir lever is
+inert. Two deciders, and their disagreement was destructive rather than merely
+confusing.
+
+**The decision:** one place decides, and the proof covers every decider.
+`pin_database_url()` forces the URL onto the staged copy and **refuses** a
+disagreeing one (a non-sqlite URL, or a sqlite URL naming a different file)
+instead of overriding it silently — silence would hide an operator who believes
+they are exercising their Postgres. `assert_engine_on()` then interrogates the
+engine oTree actually built and hard-fails unless it resolves to the staged file:
+declaration, then measurement, because for sqlite the environment variable is
+only a statement of intent and the cwd is what binds. The shell pins immediately
+after staging, **before any branch can run a destructive command**, and calls the
+**same** proof through `predeploy_check.py --assert-engine-on` before its
+`resetdb`. The helper pins and proves for itself too, because it is documented as
+directly runnable.
+
+**Rejected:** just moving the export above the branch. It fixes this instance and
+leaves the second decider in the helper, and it leaves the proof covering only
+one of the two — which is how this survived in the first place. A proof that
+covers one decider is an invitation for the other to grow back at the next edit.
+
+**Enforced:** `predeploy_check.py --assert-engine-on`, called by the shell before
+its destructive step and by `check_boot` for itself — one function, two callers,
+so the two processes cannot be proved against different rules. Demonstrated on
+2026-08-14 against a real PostgreSQL 16: the pre-fix scenario destroyed a seeded
+row and passed; post-fix the identical run leaves the row intact (`MUSTSURVIVE`,
+22 tables) and still passes on its staged copy. The regression this is meant to
+survive was simulated directly — the pin deleted, the proof left in place — and
+the proof caught it: exit 2, `nothing was written`, live data untouched. Both
+sqlite paths re-verified unchanged (upgrade mode with the `_ai/live_data/`
+fixture: boot, schema, resume, fresh, no-JS and log-scan all pass, with 2b's
+pre-existing frozen-config failure unaffected; degraded mode: PASS).
+
+## Boot initialisation is decided by inspecting the database, not by a sqlite file — 2026-08-14
+
+Found by the hosting review, which caught the same defect in `exp_pilots`'
+`start.sh` and asked whether this template shared it. It did. The container's
+CMD initialised on `[ "${RESET_DB:-0}" = "1" ] || [ ! -f /app/data/db.sqlite3 ]`
+— **file existence as a proxy for "is this database new?"**. The proxy is only
+equivalent to the real question when the database IS that file. Point
+`DATABASE_URL` at a managed Postgres and the sqlite file never exists, so the
+condition is true on every boot and `otree resetdb` runs against the Postgres on
+every container restart. `otree/cli/resetdb.py` does `old_meta.reflect(bind);
+old_meta.drop_all(bind)` — it drops whatever it finds, on whatever backend — so
+that is a silent total wipe with no error in the log, discovered after a
+session. On Railway/Heroku/Fly (ephemeral container filesystem, no volume) it
+recurs on **every** restart; with a `-v <study>-db:/app/data` volume it fires on
+the first boot and is then masked by an accident (below), which is worse, not
+better, because the exposure comes back the day the volume is recreated.
+
+**The proxy was not sound for sqlite either**, which is the part that makes
+"just fix the condition" the wrong fix. Importing `otree.database` executes
+`sqlite_disk_conn = sqlite3.connect('db.sqlite3')` at module scope —
+unconditionally, *including when `DATABASE_URL` points at Postgres* — which
+creates a **zero-byte file**. A zero-byte `db.sqlite3` is a file that exists and
+a database that was never initialised; `-f` cannot tell those apart, so the old
+guard would also skip initialisation and leave the server running against a
+table-less database.
+
+**The decision:** the guard asks the question it actually means — *does the
+database oTree will connect to already contain oTree's tables?* — via
+`scripts/db_state.py`, which uses **oTree's own engine** (`otree.database.engine`,
+built from `DATABASE_URL` by the same code path the server uses, so it cannot
+inspect a different database from the one the study runs on) and **oTree's own
+table names** (`AnyModel.metadata`, not a hardcoded `otree_participant`, which
+would be a second implementation of "what oTree's tables are called" and would
+drift the day oTree renames one). Backend-agnostic by construction: the same
+question has the same meaning on sqlite, Postgres and anything else SQLAlchemy
+reaches. `RESET_DB=1` is unchanged and does not consult the probe.
+
+**Four situations kept apart** (the collapsed-distinction rule; collapsing any
+pair of them is how this class of bug destroys data): *no tables at all* →
+initialise; *oTree's tables present* → keep; *tables present but none of them
+oTree's* → refuse (resetdb would `drop_all()` somebody else's schema, or an
+oTree database whose version named its tables differently); *cannot determine* —
+unreachable database, missing driver, empty model registry, in-memory engine →
+refuse. "I cannot see the database" is not "the database is empty": an
+unreachable Postgres must never read as brand new. Both refusals stop the boot
+non-zero and loudly. That bias is deliberate — a container that refuses to start
+is a page in the log; a container that wipes a live study is a lost session.
+
+**Rejected:** patching the condition to also test for a Postgres URL. It keeps
+file existence as the sqlite answer (still wrong, see the zero-byte case) and
+makes the guard a list of backends to remember, which is the shape that produced
+this bug.
+
+**WHAT THE GUARD IS ACTUALLY FOR — and it is not creating tables.** Relayed from
+the `exp_pilots` fix (79d49c2) and verified here against otree 6.0.15: oTree
+builds its own schema on every start. `otree.main.setup()` calls `init_orm()`,
+which ends in `AnyModel.metadata.create_all(engine)` (otree/database.py:369), and
+`create_all` is checkfirst-by-default — it adds missing tables and never drops or
+alters an existing one. So `resetdb`-on-fresh is belt and braces; the server
+would have built the schema anyway. The guard's only real job is NEGATIVE: to
+stop `resetdb` running against a database that has data in it. That reframing is
+load-bearing for the failure path — refusing to boot forfeits nothing the server
+needed, because an unreachable database would have failed `create_all` too.
+
+**Converged with the `exp_pilots` fix (79d49c2), which was written independently
+against the same defect.** Three of its findings were taken:
+
+- **The driver is part of this fix, not a follow-up.** `pip install otree` ships
+  no Postgres driver, so without `psycopg2-binary` in the image the probe cannot
+  connect, lands in the unanswerable branch and refuses to boot — a guard whose
+  safe direction is triggered by our own missing dependency would fail 100% of
+  Postgres deploys while looking like a database problem. Pinned to 2.9.12 to
+  match. This had been written down as a "record, decide later" item; that was
+  wrong, and the correction came from comparing against the other fix.
+- **Waiting is not weakening.** A managed Postgres is very often not accepting
+  connections at container start. The probe now retries a non-answering database
+  (`DB_WAIT_ATTEMPTS` x `DB_WAIT_SECONDS`, default 30 x 2s) before calling it
+  unanswerable, so refusal is the verdict after waiting rather than the first
+  answer. Without it the guard converts every normal cold start into a failed
+  deploy — which is how a safety mechanism gets switched off for being annoying.
+  Only "did not answer" is retried; a missing driver, an empty registry, an
+  in-memory engine or a foreign schema are answers already and fail at once
+  (measured: 0s vs the full wait).
+- **No password ever reaches a log.** Fatal banners render the URL through
+  `repr(engine.url)` (SQLAlchemy 1.3 masks the password there; `str()` does not)
+  plus a regex scrub of any `scheme://user:pw@` in driver messages and a literal
+  replacement of the password read from `DATABASE_URL`.
+
+Their fourth point — resolve the URL exactly as oTree does (`os.getenv` with the
+`sqlite:///db.sqlite3` fallback, forcing sqlite paths back to the relative
+`db.sqlite3` because oTree ignores the path) — **is satisfied here by
+construction rather than by copying the rule**: this probe does not resolve a URL
+at all, it imports `otree.database.engine`, the very object the server uses. A
+second resolution is exactly the one-concept-two-implementations shape that would
+drift, and with the same destructive consequence (bless one database, wipe
+another). Demonstrated: with an initialised database in the CWD and
+`DATABASE_URL` naming a *different, empty* sqlite file, the probe answers
+`already-initialised` — it follows the CWD file, precisely as oTree does. The
+corollary is that the probe must run with the server's CWD, which the CMD does.
+
+**Also taken:** under `RESET_DB=1` the sqlite file is deleted only when the
+backend is actually sqlite (`case "${DATABASE_URL:-sqlite}"`), since on a managed
+database `resetdb` does its own dropping and deleting a stray file there would be
+theatre. `RESET_DB=1` remains the only deliberate wipe path on any backend.
+
+**Enforced:** nothing in CI — say so plainly. `scripts/predeploy_check.sh` is
+sqlite-only by design (documented in its header: oTree ignores the path in a
+sqlite `DATABASE_URL`, so isolation is achieved by CWD), no suite runs against
+Postgres, and none of them boot the container, so **no automated check in this
+repo would have caught the original defect or would catch its return.** What
+exists instead is a manual proof, run on 2026-08-14 against a real PostgreSQL 16
+(installed without root — recipe in the agent memory note `postgres-without-root`)
+and a real sqlite database, driving the **actual CMD text extracted from the
+Dockerfile** rather than a paraphrase:
+
+| case | sqlite | Postgres |
+|---|---|---|
+| fresh/empty database → initialise | yes | yes (22 tables) |
+| existing database → keep, data intact across restarts | yes | yes (3 restarts) |
+| **the old condition**, same sequence | n/a | **row gone after 1 restart** |
+| zero-byte `db.sqlite3` → initialise | yes | n/a |
+| **dropped column preserved, NOT restored** | yes | yes |
+| late-starting database (down at boot, up 14s later) | n/a | **waited 14s, then kept the data** |
+| unreachable database → refuse, exit 1, nothing modified | n/a | yes (after the wait) |
+| missing driver → refuse **immediately** (0s, no pointless retries) | n/a | yes |
+| foreign (non-oTree) schema → refuse, schema untouched | n/a | yes |
+| `RESET_DB=1` → full rebuild (dropped column comes back) | yes | yes |
+| sqlite URL naming another file → follows CWD, as oTree does | yes | n/a |
+
+The dropped-column case is the sharpest of these: a column removed by hand stays
+removed after boot, which is direct evidence that no `resetdb` ran — and it still
+boots, because oTree's own `create_all` does not repair columns either.
+
+Two things remain UNVERIFIED and should not be read as covered: **Docker itself
+was never run** (no image build, no real container boot, no `COPY` of
+`scripts/db_state.py` — the CMD body was extracted and executed with `/app`
+rewritten, and syntax-checked as `sh -c "bash -c '…'"`), and **no managed
+provider was exercised** — the Postgres was local TCP with trust auth, so TLS
+(`sslmode=require`) and connection-pooler behaviour are reasoned about, not
+tested. The pooler case is the one most likely to behave differently, and it
+fails toward refusal rather than toward wiping.
+
+The Dockerfile comment states what the guard asks, why file existence was wrong,
+and why the failure path refuses rather than initialises — because the condition
+looks redundant next to a `-f` test and invites being simplified back, and
+because a refusal invites being made permissive.
+
+## A Postgres deployment has NO upgrade-path check — recorded as an open gap, not closed — 2026-08-14
+
+Recorded on Julian's instruction while fixing the two Postgres data-loss defects
+above, because **this is the gap behind both of them** and every study copied
+from this template inherits it.
+
+Everything this template has for "will the running study survive being upgraded
+to this code?" runs on sqlite, and only on sqlite. `scripts/predeploy_check.sh`
+pins itself to a staged **sqlite** file, validates its input by the sqlite magic
+header, and proves its isolation with `PRAGMA database_list` — all sqlite-only,
+all by design and documented in its header. The documented way to obtain its
+input is `docker cp <container>:/app/data/db.sqlite3`, a file that does not exist
+under Postgres. Every suite is likewise sqlite (`tests/otree_inprocess.py`,
+`tests/render_check.py`), as is the `_ai/live_data/` fixture that makes upgrade
+mode meaningful.
+
+**So the one backend a hosted study actually uses is the one with no coverage at
+all.** A study on Railway/Heroku/Fly runs on Postgres; its operator runs the
+pre-deploy gate the documented way, lands in degraded mode — honest (it shouts
+`THE UPGRADE PATH WAS NOT TESTED`) but empty — and deploys onto live participants
+with the fresh-install checks only. The two outages this gate exists for (a
+participant-vars key old participants never had; a session config frozen before a
+parameter existed) are precisely what a fresh database cannot reproduce.
+
+It is also **why both defects above survived**: each was destructive only against
+Postgres, and no test in this repo has ever opened a Postgres connection, so
+nothing went red.
+
+**Closing it, in order:** (1) a **container boot test** — boot the image against
+a Postgres URL, write a row, restart, assert the row survives. Smallest, highest
+value, and the direct regression test for the defect that started this; it needs
+Docker. (2) a **Postgres fixture** for the suites — a real server, which needs no
+root (recipe: the agent memory note `postgres-without-root`), plus the driver,
+now in the image. (3) a **Postgres mode for `predeploy_check.sh`**: the isolation
+model changes shape rather than gaining a branch — `pg_dump` the live database
+and restore into a **throwaway database**, the live-refusal guard becomes "the
+target must not be the live database name", and `PRAGMA database_list` becomes
+`SELECT current_database()`. That proof is now behind one function
+(`assert_engine_on`), so it is one place to extend, not two.
+
+**Enforced: NOTHING.** No test, no gate, no banner tells an operator that their
+Postgres deployment is being upgraded without an upgrade check. The README's
+Docker section now says so in words, which is the only thing standing here.
+Working detail: `_ai/postgres_assumptions_recorded.md` (local only — `_ai/` is
+gitignored, so it is not in a clone).
+
+## `DB_NAME` in settings.py does not select Postgres — oTree 6 never reads `DATABASES` — 2026-08-14
+
+`settings.py` sets `DATABASES = {...postgresql...}` when `DB_NAME` is in the
+environment and a sqlite `DATABASES` otherwise. **oTree 6 never reads
+`DATABASES`** — verified: zero references to the name anywhere in the installed
+`otree` package (6.0.15). oTree 5 dropped Django; the backend is chosen solely by
+`DATABASE_URL`. The block is a Django-era leftover that reads like a working
+control, so somebody setting `DB_NAME`/`DB_USER`/`DB_HOST` expecting Postgres
+silently gets sqlite. Same defect class as the two fixed above — a control whose
+apparent meaning and real effect differ — but not destructive, so it is recorded
+rather than changed in a hurry.
+
+**Options for whoever settles it:** delete the block (simplest, matches how oTree
+works); or keep the `DB_*` names as a convenience and have them **construct**
+`DATABASE_URL` when it is not already set, so the documented knobs actually do
+something. Either way the block needs a comment saying `DATABASES` is not
+consulted, or the next reader will "restore" it.
+
+**Enforced:** nothing. No check compares the configured backend against the one
+actually in use. Detail: `_ai/postgres_assumptions_recorded.md` item 4.
+
+## The README documents that inert `DB_NAME` mechanism as if it worked — 2026-08-14
+
+`README.md` ("Running the template") says Postgres is not needed *unless you set
+`DB_NAME`*, and lists `DB_*` among the values to set via env in production. Both
+halves teach the mechanism the entry above shows is dead. Recorded separately
+because it is a second place to change, and changing the code without the prose
+leaves the same wrong instruction in the file people actually read.
+
+**Enforced:** nothing — prose is not tested. Fix it in the same change as the
+entry above, whichever way that goes.
+
+## A wrong-backend engine is reported as "the app failed to boot" — 2026-08-14
+
+`check_boot` in `scripts/predeploy_check.py` wraps the in-process import and the
+engine proof in one `try/except Exception` and reports any failure as *"the app
+failed to boot against the database"*. A wrong **backend** is not a broken build,
+and reading it as one sends the next person to debug their app instead of their
+environment. The shared-`except` shape this codebase warns about, in its mild
+form: nothing is destroyed, only misattributed.
+
+**Partly addressed as a side effect of the predeploy fix:** `assert_engine_on()`
+now names the backend explicitly ("oTree built a `postgresql` engine, not
+sqlite") and `check_boot` re-raises `SystemExit`, so that case reports itself
+accurately. What remains is the general shape — every other import-time failure
+still collapses into one message.
+
+**Enforced:** nothing. Worth splitting if that file is being edited anyway; not
+worth a change on its own. Detail: `_ai/postgres_assumptions_recorded.md` item 9.
+
 ## Ended.html carries no screen-out copy — deleted as unreachable, with the unreachability enforced — 2026-08-14
 
 Decided by Julian (before-review N4), choosing deletion over the reviewer's
