@@ -116,8 +116,11 @@ table stays a short list where every entry is genuinely wired up.
 Since 2026-08-11 the entry gate is a **device allow-list**, so the cause is the
 **device type the server detected** — not the name of the gate. A study lists the
 types it accepts in `allowed_devices` (default: all four = no gate at all), and
-anything else is screened out with the detected type recorded here. The ending
-writes a different sentence per type.
+anything else is screened out with the detected type recorded here. The
+screen-out page (`before/screened_out.html` — the ONLY page that writes
+screen-out copy; the duplicate branch `outro/Ended.html` carried was deleted
+2026-08-14 as unreachable, and the unreachability is pinned by
+`tests/screenout_softwall_test.py`) writes a different sentence per type.
 
 | Cause | Meaning | Set where |
 |-------|---------|-----------|
@@ -126,7 +129,7 @@ writes a different sentence per type.
 | `computer` | Entry User-Agent classified as a computer; excluded. **Laptop and desktop are the same type** — see the note below. | `before._apply_device_gate` |
 | `unknown` | A real, readable User-Agent that matches none of the three device families. `unknown` is its own allow-list entry, so admitting it is a study's decision. It does **not** mean "no User-Agent" — see the row below. | `before._apply_device_gate` |
 | *(never recorded)* | **No decision.** No request object, no User-Agent, a blank/malformed/absurdly long one, or an exception in the classifier (`common.UNDETERMINED`). This is NOT a device type and NOT a cause: the participant is allowed through and **nothing at all is written**, so it can never appear in the export. It also never CLEARS an existing screen-out — absence of evidence is not evidence of a device switch. | — |
-| *(empty)* | `-4` recorded without a cause. Valid but discouraged — the ending falls back to a neutral "not eligible" sentence. | — |
+| *(empty)* | `-4` recorded without a cause. Valid but discouraged — the screen-out page falls back to its neutral sentence. | — |
 
 **Why there is no `laptop` cause, and why one must never be added.** A browser
 does not expose the form factor of a computer. Neither the User-Agent nor the
@@ -355,6 +358,13 @@ Fill in per-study fields as you build the task. The template ships with:
 - `before.Player`: `participant_label`, `treatment_group`, `consent`,
   `participant_id_url`, `participant_id_external`, `is_mobile`,
   `device_info_json`, `prolific_label_conflict`.
+  - **`consent` is populated exactly when the session ran with
+    `explicit_consent` on** (before 2026-08-14 this was decided by
+    `prolific_completion_redirects` — the flag was split, see DECISIONS.md).
+    Null means the question was never asked (implicit consent — the lab
+    profile), NOT that consent is missing: implicit consent is the act of
+    continuing past the page. `False` never appears on a row that got past
+    `before` — a decliner exits with code -1.
   - **The two id columns are a matched pair, recorded separately on purpose.**
     `participant_id_url` is the id as it ARRIVED (oTree's `?participant_label=`,
     or the consent page's hidden `?PROLIFIC_PID=` capture) and is never edited;

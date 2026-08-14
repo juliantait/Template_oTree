@@ -294,25 +294,21 @@ class Ended(monitoring.OutroMonitoredPage):
     @staticmethod
     def vars_for_template(player):
         return dict(
-            # The device facts (`screenout_cause`, `allowed_devices_phrase`,
-            # `prolific_screenout_return_url`) come from common.screenout_vars, the same
-            # builder before/screened_out.html uses. The two pages say
-            # deliberately different things — "your place is still open" there,
-            # "this has ended" here — but they must not describe the same
-            # participant's DEVICE differently, and the phrase for what the
-            # study accepts is built from the list the gate enforces so copy
-            # cannot drift from the rule.
+            # The device facts come from common.screenout_vars, the same
+            # builder before/screened_out.html uses. THIS PAGE NO LONGER WRITES
+            # SCREEN-OUT COPY (the duplicate device-sentence branch was
+            # deleted 2026-08-14 — a screened-out participant is held in
+            # `before`, enforced by tests/screenout_softwall_test.py). The
+            # spread is kept because the shared footer include reads
+            # `prolific_screenout_return_url` from it to pick the CODELESS
+            # exit for reason == 'screened_out' — the second line of defence
+            # for a future gate that sets the flag later in the flow.
             common.screenout_vars(player.participant, player.session.config),
             completionlink=completion_link(player),
             # The ONE reason cascade (`ending_reason`); is_displayed guarantees
             # it is non-empty here, and `or 'other'` keeps the template's
             # neutral fallback wired if that ever stops being true.
             reason=ending_reason(player) or 'other',
-            # (`screenout_cause` — the DETECTED device type — is what the
-            # template writes its sentence from, never `reason`, which is the
-            # general -4 bucket; and the screened-out way out carries NO
-            # completion code, see completion_link. Both arrive above, from
-            # common.screenout_vars.)
             # Lab-only closing line ("raise your hand"); see is_lab().
             is_lab=is_lab(player),
             # WHICH integrity module removed them: `reason='disqualified'` is

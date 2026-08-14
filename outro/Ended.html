@@ -4,26 +4,27 @@
 <!-- Ending for participants who did NOT complete normally: disqualified and
      non-consenting.
 
-     NOTE ON THE DEVICE GATE: a screened-out participant does NOT come here any
-     more. The gate holds them on the entry page's own index and serves
+     NOTE ON THE DEVICE GATE: a screened-out participant does NOT come here.
+     The gate holds them on the entry page's own index and serves
      before/screened_out.html there, because the screen-out is a SOFT WALL that
      has to stay re-decidable — oTree only moves a participant forward, so
      anyone walked to this ending could never be brought back to consent after
-     switching device. The screened_out branch below is the unreachable-by-
-     design fallback for any future gate that sets the flag later in the flow;
-     it returns them to Prolific WITHOUT a completion code, exactly like the
-     entry page does, since a code would close a submission they may still want
-     to complete. -->
+     switching device. The LIVE screen-out copy therefore lives in
+     before/screened_out.html, and this page carries NONE (a duplicate branch
+     sat here until 2026-08-14 and could only ever drift from the real one).
+     The unreachability is ENFORCED, not assumed:
+     tests/screenout_softwall_test.py's never-reaches-outro scenario goes red
+     if any future change routes a screened-out participant here. If one ever
+     does arrive anyway, the neutral else-fallback below tells them the study
+     has ended without asserting anything false, and the shared footer include
+     still picks the CODELESS exit for reason == 'screened_out' (their
+     submission must stay open) — the second line of defence. -->
 <div class="experimental-screen">
     <div class="screen-card narrative-card">
         <div class="experimental-header">
             <div class="eyebrow">Study ended</div>
             <h2 class="header-title">
-                {% if reason == 'screened_out' %}
-                    This study needs a different device
-                {% else %}
-                    Your participation has ended
-                {% endif %}
+                Your participation has ended
             </h2>
         </div>
 
@@ -59,69 +60,12 @@
                         has ended for you. Thank you for your time.
                     </p>
                 {% endif %}
-            {% elif reason == 'screened_out' %}
-                {# SCREEN-OUT COPY IS CHOSEN BY `screenout_cause`, NOT by the exit
-                   code. Exit code -4 is the GENERAL "removed at entry" bucket
-                   (CODEBOOK.md §exit codes). The device allow-list records the
-                   DETECTED DEVICE TYPE as the cause, so each participant is told
-                   something true about their own case instead of everyone being
-                   told the study needs a computer. BOTH NOUNS COME FROM THE ONE
-                   SHARED BUILDER (common.screenout_vars): what they came in on
-                   is `detected_device_label` (common.DEVICE_TYPE_LABELS — one
-                   branch for phone, tablet and computer, so the three sentences
-                   cannot drift apart or from before/screened_out.html), and
-                   what the study DOES accept is `allowed_devices_phrase`, built
-                   from the same list the gate enforces, so the sentence cannot
-                   drift from the rule.
-
-                   THERE IS NO 'laptop' CASE, and adding one is impossible: a
-                   browser cannot distinguish a laptop from a desktop (see the
-                   allow-list note in settings.py). Both are 'computer', and the
-                   label says "a desktop or laptop computer".
-
-                   TO ADD A REASON from a future, non-device gate: add the cause
-                   to common.SCREENOUT_CAUSES, set it via
-                   common.set_screened_out(participant, '<cause>'), and give it
-                   its own sentence — a branch here (a non-device cause gets NO
-                   detected_device_label, so it falls to the neutral fallback
-                   below until you write one). Do NOT mint a new exit code —
-                   every code in the table must be set by a real path, so
-                   reasons are causes, not codes. #}
-                {% if detected_device_label %}
-                    <p class="section-text">
-                        This study cannot be taken on {{ detected_device_label }}.
-                        It needs {{ allowed_devices_phrase }}, so it has ended for
-                        you here.
-                    </p>
-                    <div class="panel panel--hug">
-                        If you would still like to take part, please return to the
-                        study on {{ allowed_devices_phrase }}.
-                    </div>
-                {% elif screenout_cause == 'unknown' %}
-                    {# The device could not be identified at all — a stripped or
-                       unrecognised User-Agent. Do NOT tell this participant what
-                       they are using; we do not know. Say what is needed. #}
-                    <p class="section-text">
-                        We could not identify the device or browser you are using,
-                        and this study can only be taken on
-                        {{ allowed_devices_phrase }}, so it has ended for you here.
-                    </p>
-                    <div class="panel panel--hug">
-                        If you are using {{ allowed_devices_phrase }}, a privacy
-                        setting or extension may be hiding your browser details.
-                        You could try again in a standard browser window.
-                    </div>
-                {% else %}
-                    {# Neutral fallback: an unrecognised or unrecorded cause. Says
-                       only what is certainly true, so a study that wires up a new
-                       -4 gate before writing its copy still reads correctly. #}
-                    <p class="section-text">
-                        Unfortunately you are not eligible to take part in this
-                        study, so it has ended for you here.
-                    </p>
-                {% endif %}
-                <p class="section-text">Thank you for your time.</p>
             {% else %}
+                {# The neutral fallback — deliberately says only what is
+                   certainly true. It is also the second line of defence for a
+                   reason this page no longer writes copy for (screened_out:
+                   the soft wall holds those participants in `before`, and the
+                   copy lives there — see the header note). #}
                 <p class="section-text">
                     The study has ended for you. Thank you for your time.
                 </p>
@@ -145,13 +89,6 @@
                 Please click the button below to return to Prolific.
             </p>
             {% endif %}
-            {% if reason == 'screened_out' and prolific_completion_redirects %}
-            <p class="section-text">
-                Your submission is not completed by this: you will be asked to
-                return it on Prolific.
-            </p>
-            {% endif %}
-
         </div>
 
         {# THE ENDING FOOTER — the way back to Prolific (a real link, the

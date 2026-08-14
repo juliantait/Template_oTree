@@ -34,6 +34,16 @@ WHAT IS CHECKED HERE
      ALLOWS a fresh participant (recording nothing) and does NOT clear an
      existing screen-out. Missing header, garbage header, and no request object
      at all.
+  9. NEVER REACHES THE OUTRO — the deletion guard (Julian, 2026-08-14). The
+     outro's Ended page no longer carries any screen-out copy: the live copy is
+     before/screened_out.html and the soft wall holds a screened-out
+     participant in `before`. That deletion rests on an unreachability claim,
+     and this repo does not keep unreachability claims untested (the
+     monitor-coverage gap of 2026-08-13 is what happens when it does), so this
+     scenario ENFORCES it: forced submits and a direct outro URL must both
+     re-serve the held page, never an ending. If a future change routes a
+     screened-out participant into the outro, this goes red instead of a
+     participant meeting Ended's neutral fallback where device copy used to be.
 
 Exits non-zero on any failed check or any 5xx.
 """
@@ -366,6 +376,59 @@ def scenario_no_request_object(base):
               f'clears({detected!r}) is membership of the allow-list, not a negation')
 
 
+def scenario_never_reaches_outro(base):
+    print('\n--- 9. a screened-out participant NEVER reaches the outro app ---')
+    # THE DELETION GUARD — see item 9 in the module docstring. Ended.html's
+    # screen-out branch was deleted as unreachable-by-design; this is the test
+    # that makes "unreachable" a fact rather than a claim.
+    created = create(base, ['computer'])
+    sc = created['code']
+    url = entry_url(created, 'NEVEROUTRO1')
+    phone, r = enter(base, url, PHONE_UA, 'phone entry')
+    p_code = participant_code(r.url)
+    check(SCREENOUT_MARKER in r.text, 'held: the screen-out page renders')
+    # Ended.html's title — the string a screened-out participant must never
+    # read (the neutral fallback they WOULD hit if routing ever broke).
+    ENDED_TITLE = 'Your participation has ended'
+
+    # A determined participant hammering submit: the wall answers every POST
+    # by re-serving the held page (WelcomePage.post -> self.get for a
+    # screened-out participant), never by advancing them.
+    advanced = False
+    for i in range(6):
+        fp = FormParser(); fp.feed(r.text)
+        payload = (build_payload(fp.inputs, {}, {}, warn=False)
+                   if fp.found_form else {})
+        r = phone.post(r.url, data=payload, allow_redirects=True)
+        if r.status_code >= 500 or SCREENOUT_MARKER not in r.text \
+                or ENDED_TITLE in r.text:
+            check(False, f'forced submit {i + 1}: expected the held screen-out '
+                         f'page, got HTTP {r.status_code} at {page_name(r.url)}')
+            advanced = True
+            break
+    if not advanced:
+        check(True, '6 forced submits: every response is the held screen-out '
+                    'page, never an ending')
+    check(page_name(r.url) == 'before.welcome',
+          f'still parked on the entry page index (at {page_name(r.url)})')
+
+    # Typing the outro's own URL bounces straight back to the held page — the
+    # outro is unreachable even by address bar.
+    r2 = phone.get(f'{base}/p/{p_code}/outro/Ended/1', allow_redirects=True)
+    check(r2.status_code < 500 and SCREENOUT_MARKER in r2.text
+          and ENDED_TITLE not in r2.text,
+          f'a direct outro URL re-serves the held screen-out page '
+          f'(HTTP {r2.status_code} at {page_name(r2.url)})')
+
+    # And the durable record is still the ENTRY screen-out, not an ending.
+    st = state(base, sc, p_code)
+    check(st['exit_code'] == -4 and st['screened_out'] is True,
+          f"the record is still exit -4 / screened_out "
+          f"(got {st['exit_code']}, {st['screened_out']})")
+    check(st['consent_submitted'] is not True,
+          'consent was never submitted along the way')
+
+
 def main():
     base = (sys.argv[1] if len(sys.argv) > 1 else 'http://localhost:8000').rstrip('/')
     scenario_soft_wall(base)
@@ -373,6 +436,7 @@ def main():
     scenario_way_out(base)
     scenario_asymmetry(base)
     scenario_no_request_object(base)
+    scenario_never_reaches_outro(base)
     print(f"\n{'ALL CASES PASS' if not FAILURES else 'FAILURES: ' + '; '.join(FAILURES)}")
     return 0 if not FAILURES else 1
 

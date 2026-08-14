@@ -77,7 +77,11 @@ participation" as "you can stop at any time", not by deleting the clause.
 - **Consent is an explicit affirmative action.** A button ("I consent and want to take
   part") or an unticked checkbox the participant selects themselves. **Never a
   pre-checked box**, and never the shipped placeholder's "by continuing to the next page
-  you consent". Doing nothing must never count as consenting.
+  you consent". Doing nothing must never count as consenting. In this template the
+  question's existence is the `explicit_consent` flag (default ON; the lab profile
+  alone resolves it OFF for implicit consent with an experimenter in the room — an
+  ethics decision with its own flag, split from the Prolific plumbing on 2026-08-14,
+  see DECISIONS.md); the radio and its no-consent routing are already wired under it.
 - **There is a graceful no-consent path.** Offer a decline option ("I do not consent")
   next to the consent action. Decliners go to a dedicated page, shown only to them,
   which says they have chosen not to take part and offers a single button to withdraw

@@ -32,6 +32,11 @@ CHECKS (each printed as PASS/FAIL with the numbers)
       the scroll overflow;
    D. the tab-monitor overlay covers the whole viewport and is not trapped
       inside the scrollable card;
+   D3. the OUTRO monitor, end to end: a REAL tab blur (headed Chromium under
+      Xvfb — headless pins visibility) held past tab_monitor_threshold_ms
+      shows NO overlay, ejects NOBODY, and IS recorded in
+      focus_loss_count_outro — the recorded count is what distinguishes
+      record-only monitoring from no monitoring at all;
    plus the feature checks: option cards (bordered, selected state, whole card
    clickable), eyebrow, privacy panel, per-family text alignment, the justified
    instructions band, pill buttons + ghost variant, logo sizing from CSS,
@@ -3022,6 +3027,259 @@ def check_overlay(server, browser):
 
 
 # ==========================================================================
+# CHECK D3 — the OUTRO monitor counts but never ejects, measured END TO END
+# ==========================================================================
+# WHY A HEADED BROWSER UNDER Xvfb, when every other leg is headless: this leg
+# must GENUINELY blur the tab — fire the real `blur`/`visibilitychange` events
+# ai_safety_monitor.js listens for, from the browser's own tab machinery, not
+# a dispatched Event() that skips the threshold timer. Headless Chromium
+# (both the headless shell and --headless=new, measured 2026-08-14) pins
+# every page to `visible`/focused forever: bring_to_front, window.open,
+# Target.activateTarget, Page.setWebLifecycleState — none of them fires
+# anything. Under a real X server the same tab switch fires real events, with
+# ONE more trap: Playwright's focus EMULATION (enabled on every page it
+# drives) swallows them, so it must be switched off for the page under test
+# via Emulation.setFocusEmulationEnabled. The Xvfb-without-root recipe lives
+# with the Chromium one in _ai/headless_chromium_recipe.md.
+def _start_xvfb():
+    """Start Xvfb without root; return (proc, display) or (None, why-not).
+
+    Resolution order: $XVFB_BINARY, a system Xvfb on PATH, then the unpacked
+    sysroot next to the libraries LD_LIBRARY_PATH already points at (the
+    no-root recipe). The sysroot build hardcodes /usr/bin as the xkbcomp
+    directory, which does not exist on a rootless box — so the binary is
+    byte-patched IN A TEMP COPY to read the equal-length '/tmp/xkb' instead,
+    and xkbcomp is symlinked there. The repo's own copy is never modified.
+    """
+    import shutil
+    lib_dir = (os.environ.get('LD_LIBRARY_PATH') or '').split(':')[0]
+    sysroot_bin = os.path.normpath(os.path.join(lib_dir, '..', '..', 'bin'))
+    xvfb = (os.environ.get('XVFB_BINARY') or shutil.which('Xvfb')
+            or os.path.join(sysroot_bin, 'Xvfb'))
+    if not os.path.isfile(xvfb):
+        return None, f'no Xvfb (looked at $XVFB_BINARY, PATH, {sysroot_bin})'
+    args = []
+    if not os.path.isfile('/usr/bin/xkbcomp'):
+        xkbcomp = shutil.which('xkbcomp') or os.path.join(sysroot_bin, 'xkbcomp')
+        if not os.path.isfile(xkbcomp):
+            return None, f'no xkbcomp next to {xvfb} and none on PATH'
+        # '/tmp/xkb' is EXACTLY as long as '/usr/bin': the string is replaced
+        # inside the compiled binary, so only an equal-length path can stand in.
+        try:
+            os.makedirs('/tmp/xkb', exist_ok=True)
+            link = '/tmp/xkb/xkbcomp'
+            if os.path.islink(link) or os.path.exists(link):
+                os.remove(link)
+            os.symlink(xkbcomp, link)
+        except OSError as exc:
+            return None, f'cannot prepare /tmp/xkb ({exc})'
+        blob = open(xvfb, 'rb').read()
+        if b'/usr/bin\x00' in blob:
+            patched = os.path.join(_TMPDIR, 'Xvfb.patched')
+            with open(patched, 'wb') as fh:
+                fh.write(blob.replace(b'/usr/bin\x00', b'/tmp/xkb\x00'))
+            os.chmod(patched, 0o755)
+            xvfb = patched
+        xkb_data = os.path.normpath(
+            os.path.join(sysroot_bin, '..', 'share', 'X11', 'xkb'))
+        if os.path.isdir(xkb_data):
+            args += ['-xkbdir', xkb_data]
+    for n in range(99, 120):
+        if os.path.exists(f'/tmp/.X{n}-lock'):
+            continue
+        proc = subprocess.Popen(
+            [xvfb, f':{n}', '-screen', '0', '1600x1200x24', '-nolisten', 'tcp']
+            + args,
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            if proc.poll() is not None:
+                break
+            if os.path.exists(f'/tmp/.X11-unix/X{n}'):
+                return proc, f':{n}'
+            time.sleep(0.1)
+        if proc.poll() is None:      # up, but never wrote the socket path
+            return proc, f':{n}'
+        err = (proc.stderr.read() or b'').decode(errors='replace')[-300:]
+        return None, f'Xvfb exited on :{n}: {err}'
+    return None, 'no free X display between :99 and :119'
+
+
+def check_outro_never_ejects(server, pw):
+    """D3. The outro monitor COUNTS the violation and does NOT eject — the
+    whole promise, measured end to end in a real browser for the first time.
+
+    Every seam of this behaviour is pinned server-side (the two live handlers,
+    the two columns, the ejects flag in js_vars), but until this leg nothing
+    ever BLURRED an outro tab and watched what actually happens. The three
+    assertions are a package, and the third is the load-bearing one:
+
+      1. NO overlay is rendered (record-only mode builds no monitor UI at all,
+         and no warning modal either — its threat would be a lie here);
+      2. the participant is NOT ejected: still on Results after a reload,
+         exit code untouched, ai_safety_disqualified unset;
+      3. the violation IS recorded, in the outro's OWN column
+         (focus_loss_count_outro), with the ejecting column untouched.
+
+    WITHOUT (3) THIS TEST WOULD BE WORTHLESS: a study with the monitor
+    switched off entirely shows the same "nothing happened" as (1) and (2) —
+    the point of outro monitoring is that it counts WITHOUT ejecting, and only
+    the recorded count distinguishes the two. (The collapsed-distinction rule,
+    as a test-design trap.)
+
+    The blur is GENUINE: a second tab in the same window is activated through
+    the browser's own tab machinery (CDP Target.activateTarget), which fires
+    the real window `blur`/`focus` events the monitor listens for — the same
+    thing a participant's Cmd-clicking another tab fires. It is held blurred
+    past tab_monitor_threshold_ms so the client's violation timer truly runs
+    out, TWICE: two violations meet the default tab_monitor_max_violations, so
+    if the outro ejected the way intro/main do, this participant WOULD be
+    disqualified — that is what makes the not-ejected assertion mean anything.
+    """
+    import common
+    section('D3. An outro blur past the threshold: counted, never ejected, '
+            'no overlay')
+    xvfb, display = _start_xvfb()
+    if xvfb is None:
+        # A missing X server must go RED, not silently skip: a leg that skips
+        # quietly is indistinguishable from coverage (the exact failure this
+        # leg exists to close at the next level down).
+        check(False, f'headed Chromium under Xvfb is available for a real '
+                     f'blur ({display})')
+        return
+    browser = None
+    try:
+        session = create_session('prolific', num_participants=2)
+        threshold_ms = int(common.cfg(session.config, 'tab_monitor_threshold_ms'))
+        max_violations = int(common.cfg(session.config, 'tab_monitor_max_violations'))
+        cycles = max(2, max_violations)
+        code, _ = walk_to(server.base, session, 'Results')
+        browser = pw.chromium.launch(
+            headless=False, env={**os.environ, 'DISPLAY': display})
+        context = browser.new_context(viewport=VIEWPORTS['laptop_1280x720'])
+        context.add_init_script(
+            "try { sessionStorage.setItem('aiSafetyAgreed', '1'); } catch (e) {}")
+        page = context.new_page()
+        page.goto(f'{server.base}/InitializeParticipant/{code}',
+                  wait_until='load')
+        page.wait_for_timeout(600)   # let the live socket connect
+        check(page_of(page.url) == 'Results',
+              f'the participant renders the outro (Results) page '
+              f'(at {page_of(page.url)})')
+        # ARMED, REALLY — the guard against this leg passing because the
+        # monitor never engaged: the script started, the server sent the
+        # config, and the config says record-only.
+        armed = page.evaluate("""() => ({
+            started: !!window._tabmonStarted,
+            cfg: (typeof js_vars !== 'undefined' && js_vars.AI_SAFETY_CONFIG)
+                 || null,
+            live: typeof liveSend === 'function'})""")
+        check(armed['started'], 'the monitor script actually started '
+                                '(window._tabmonStarted)')
+        check(bool(armed['cfg']) and armed['cfg'].get('ejects') is False,
+              f'this page\'s js_vars carry AI_SAFETY_CONFIG with ejects:false '
+              f'(got {armed["cfg"]})')
+        check(armed['live'], 'the live socket is up (liveSend exists)')
+
+        # Playwright pins every page it drives to "focused" (focus emulation),
+        # which swallows the very events this leg exists to fire — off it goes
+        # for the page under test.
+        cdp = context.new_cdp_session(page)
+        cdp.send('Emulation.setFocusEmulationEnabled', {'enabled': False})
+        own_tid = cdp.send('Target.getTargetInfo')['targetInfo']['targetId']
+        with context.expect_page() as pop:
+            page.evaluate("() => window.open('about:blank', '_blank')")
+        distractor = pop.value
+        cdp2 = context.new_cdp_session(distractor)
+        distractor_tid = cdp2.send('Target.getTargetInfo')['targetInfo']['targetId']
+        bcdp = browser.new_browser_cdp_session()
+        # Opening the tab may itself have foregrounded it — come back first so
+        # every cycle below starts from a focused study tab.
+        bcdp.send('Target.activateTarget', {'targetId': own_tid})
+        page.wait_for_timeout(400)
+
+        for cycle in range(1, cycles + 1):
+            page.evaluate("""() => { window._blurSeen = false;
+                window.addEventListener('blur',
+                    () => { window._blurSeen = true; }, {once: true}); }""")
+            bcdp.send('Target.activateTarget', {'targetId': distractor_tid})
+            # Hold the tab away for LONGER than the violation threshold, so
+            # the monitor's own timer runs out for real.
+            page.wait_for_timeout(threshold_ms + 2000)
+            check(page.evaluate('() => window._blurSeen'),
+                  f'cycle {cycle}: the browser fired a REAL blur event at the '
+                  f'study tab (tab switch via the browser\'s own machinery)')
+            # Measured WHILE the tab is still away — the moment the ejecting
+            # phase would be showing its full-screen overlay.
+            ui = page.evaluate("""() => ({
+                overlay: !!document.querySelector('.tabmon-overlay'),
+                overlayVisible: !!document.querySelector(
+                    '.tabmon-overlay.is-visible'),
+                modalVisible: !!document.querySelector(
+                    '.tabmon-modal.is-visible')})""")
+            check(not ui['overlay'],
+                  f'cycle {cycle}: NO overlay is even in the DOM while blurred '
+                  f'past the threshold (record-only mode builds no monitor UI)')
+            check(not ui['overlayVisible'] and not ui['modalVisible'],
+                  f'cycle {cycle}: …and nothing monitor-shaped is visible')
+            bcdp.send('Target.activateTarget', {'targetId': own_tid})
+            page.wait_for_timeout(700)   # real focus event + liveSend round trip
+            # No warning modal on return either. If one IS present (that is a
+            # red run), dismiss it so the NEXT cycle still measures the
+            # server's consequence rather than the client refusing to count
+            # behind an open modal.
+            modal_open = page.evaluate(
+                "() => !!document.querySelector('.tabmon-modal.is-visible')")
+            check(not modal_open,
+                  f'cycle {cycle}: no warning modal on returning to the tab')
+            if modal_open:
+                page.evaluate("""() => { const b = document.getElementById(
+                    'tabmon-modal-btn'); if (b) b.click(); }""")
+                page.wait_for_timeout(200)
+            s = DBSession()
+            try:
+                p = s.query(Participant).filter_by(code=code).one()
+                outro_count = p.vars.get('focus_loss_count_outro') or 0
+                eject_count = p.vars.get('focus_loss_count') or 0
+                dq = bool(p.vars.get('ai_safety_disqualified'))
+                exit_code = p.vars.get('exit_code')
+            finally:
+                s.close()
+            check(outro_count == cycle,
+                  f'cycle {cycle}: the violation IS recorded server-side, in '
+                  f'the outro\'s own column (focus_loss_count_outro = '
+                  f'{outro_count})')
+            check(eject_count == 0,
+                  f'cycle {cycle}: the EJECTING column is untouched '
+                  f'(focus_loss_count = {eject_count})')
+            check(not dq and exit_code != common.EXIT_CODES['tab_monitor'],
+                  f'cycle {cycle}: not disqualified (ai_safety_disqualified='
+                  f'{dq}, exit_code={exit_code})')
+
+        # …and after as many violations as would disqualify in intro/main,
+        # the participant still has their page: a reload re-runs the whole
+        # is_displayed chain, which is exactly how an ejection would land them
+        # on Ended.
+        page.goto(f'{server.base}/InitializeParticipant/{code}',
+                  wait_until='load')
+        page.wait_for_timeout(300)
+        check(page_of(page.url) == 'Results',
+              f'after {cycles} recorded violations (>= the ejecting phase\'s '
+              f'limit of {max_violations}) a reload still lands on Results, '
+              f'not an ending (at {page_of(page.url)})')
+        screenshot(page, 'outro_after_violations', 'laptop_1280x720')
+        geometry['outro_no_eject'] = dict(
+            cycles=cycles, threshold_ms=threshold_ms,
+            max_violations=max_violations)
+        context.close()
+    finally:
+        if browser is not None:
+            browser.close()
+        xvfb.terminate()
+        xvfb.wait(timeout=5)
+
+
+# ==========================================================================
 # FEATURE CHECKS — every implemented feature, proven by measurement
 # ==========================================================================
 def check_features(server, browser, facts):
@@ -3679,6 +3937,7 @@ def main():
                     check_logo_footer_rule(server, browser)
                     check_focus_rings(server, browser)
                     check_overlay(server, browser)
+                    check_outro_never_ejects(server, pw)
                     check_features(server, browser, facts)
                 check_scroll_shadow(server, browser)
             finally:
