@@ -794,6 +794,18 @@ ROOMS = [
     dict(
         name='experiment',
         display_name='Experimental Session',
+        # THE ROOM WELCOME GATE, STYLED. oTree 6 serves an interstitial on every
+        # room entry (a GET without `welcome_page_ok=1`), and its stock template
+        # is bare framework markup — the FIRST thing a participant sees looking
+        # like different software from the study behind it. `welcome_page` takes
+        # a template path (otree/room.py; rendered at
+        # otree/views/participant.py:291), so we serve our own styled copy.
+        # STYLING ONLY: the page's behaviour is oTree's, verbatim. The template's
+        # own header explains what may and may not be changed there, including
+        # why it links base.css directly and therefore carries no `?v=`
+        # cache-buster — this render has no page context to read
+        # C.STATIC_VERSION from, so bump-and-refresh does not reach this one file.
+        welcome_page='_templates/room_welcome.html',
     ),
 ]
 

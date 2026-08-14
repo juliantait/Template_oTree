@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+{# THE ROOM WELCOME GATE — the study's own styling on oTree's entry interstitial.
+
+   WHAT THIS PAGE IS. oTree 6 serves an interstitial on every room entry: a GET
+   on /room/<name> WITHOUT `welcome_page_ok=1` renders this template instead of
+   admitting the participant (otree/views/participant.py:289-292). It is new in
+   oTree 6 — oTree 5 had no such page — which is why it is not in anyone's
+   memory of the older lab studies. Stock, it is bare framework markup: a
+   flush-left `Welcome`, "Click the button to start", Bootstrap. It is the FIRST
+   THING a participant sees, and it looked like a different piece of software
+   from the study behind it.
+
+   WIRED VIA `welcome_page` on the ROOMS entry in settings.py — oTree renders
+   `room.welcome_page or "otree/RoomWelcomePage.html"`. Same mechanism and same
+   file location as exp_pilots uses, so the two studies stay comparable.
+
+   ===================================================================
+   STYLING ONLY. THE SCRIPT BELOW IS oTree's, VERBATIM, AND IS THE PAGE'S
+   MECHANISM — DO NOT "TIDY" IT.
+   ===================================================================
+   The submit handler is not decoration: it preventDefaults, POSTs the fields
+   for validation, and only then reloads with `welcome_page_ok=1`, which is what
+   admits the participant. Copied byte-for-byte from oTree 6.0.15's
+   `otree/templates/otree/RoomWelcomePage.html` so it can be re-diffed on an
+   oTree upgrade; only the MARKUP AROUND IT is ours. Its DOM contract is
+   `form`, `input[name="participant_label"]`, `[data-field-error=…]` and
+   `#other-errors` — every one of those is still here.
+
+   NO SKIP OR AUTO-SUBMIT BEHAVIOUR IS IMPLEMENTED HERE, deliberately. Making
+   the gate self-submit when the URL carries a participant id is a SEPARATE
+   OPEN DECISION (and carries the `form.submit()` vs `requestSubmit()` hazard
+   recorded in CLAUDE.md — `form.submit()` does not fire submit listeners, so it
+   would bypass the very handler below and loop the page forever). This file
+   changes how the gate LOOKS and nothing about what it DOES.
+
+   WHY NO CREED HEADER, AND NO MENTION OF PROLIFIC. This page is reachable in
+   BOTH recruitment modes — the lab enters through the room, and the Prolific
+   participant link is `/room/<name>?participant_label=…` (see
+   docs/hosting_a_prolific_study.md) — and oTree renders it with a context of
+   ONLY `has_participant_label_file`: no session, no config, no `recruitment`
+   value. So the template CANNOT branch on study type even if we wanted it to,
+   and the two-variants rule resolves the only way it can: copy that is true in
+   both modes, naming neither. `welcome_header.html` (Welcome to CREED) is
+   therefore deliberately NOT included — it is lab-only by its own contract, and
+   a Prolific participant must never see it.
+
+   WHY base.css IS LINKED DIRECTLY RATHER THAN VIA css_bundle.html. The bundle
+   is `{% include %}`-ed by oTree PAGES and needs page context this render does
+   not have: `{{ C.STATIC_VERSION }}` for its cache-buster, and it pulls in
+   tabmonitor_assets.html, which belongs to a monitored page inside a session —
+   neither exists here. base.css alone carries every class this page composes
+   (.experimental-screen, .screen-card, .narrative-card, .experimental-content,
+   .section-text, .button-row, .next-button, .logo-section); the other bundle
+   files only override those for specific pages. The cost is that this one link
+   carries no `?v=` — see settings.ROOMS for the note. #}
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome</title>
+    <link rel="stylesheet" href="{% static 'global/css/base.css' %}">
+</head>
+<body>
+<div class="experimental-screen">
+    {# NARRATIVE family, exactly as before/startpage.html: a short piece of
+       running copy, not a form or a table. Without it the card falls through to
+       its flush-left default. #}
+    <div class="screen-card narrative-card">
+        <div class="experimental-content">
+            <div class="section-text">
+                {# Hidden with the native `hidden` ATTRIBUTE, not inline style:
+                   this repo forbids `style=` in templates, and base.css already
+                   uses the attribute this way (.modal-backdrop[hidden]). The
+                   script below reveals these by setting `style.display`, an
+                   inline value, which outranks the UA rule `hidden` applies —
+                   so the contract still works untouched. `.errors` is the
+                   shared error style from base.css. #}
+                {% if has_participant_label_file %}
+                <p class="errors" data-field-error="participant_label" hidden>
+                    This participant label was not found
+                </p>
+                <label for="participant_label">Participant label:</label>
+                <input type="text" id="participant_label" name="participant_label"
+                       form="room-welcome-form">
+                {% else %}
+                <p>Welcome. Press Start when you are ready to begin.</p>
+                {% endif %}
+            </div>
+
+            <noscript>
+                <div class="section-text">
+                    <p><strong>This study needs JavaScript.</strong> Please turn
+                    it on in your browser and reload this page — the Start
+                    button cannot work without it.</p>
+                </div>
+            </noscript>
+        </div>
+
+        {# THE FORM IS THE BUTTON ROW, and the label input above joins it by
+           `form="room-welcome-form"` rather than by nesting. Both contracts have
+           to hold at once: base.css positions the forward action with the
+           DIRECT-CHILD selector `.screen-card > .button-row` (line 405), so a
+           <form> wrapping the whole card would silently unpin the button and the
+           logo footer; and oTree's script collects fields with
+           `new FormData(form)`, which DOES include elements associated by the
+           `form` attribute, so the participant label still reaches the POST.
+           Proven in a real browser, not assumed — tests/render_check.py leg AR. #}
+        <form id="room-welcome-form" class="button-row">
+            <input type="submit" value="Start" class="next-button">
+        </form>
+        <p id="other-errors" class="errors" hidden></p>
+
+        {# THE LOGO FOOTER: a direct child of the card, always — see the
+           include's own header. The institution speaks on the gate pages, and
+           this is one. #}
+        {% include '_static/global/html/logo_section.html' %}
+    </div>
+</div>
+
+<script>
+    // ===== oTree 6.0.15's stock RoomWelcomePage script, VERBATIM. =====
+    // Re-diff against otree/templates/otree/RoomWelcomePage.html on any oTree
+    // upgrade. Nothing in it is ours; the styling above is.
+    // Populate form fields from query parameters on page load
+    const urlParams = new URLSearchParams(window.location.search);
+    const participantLabel = urlParams.get('participant_label');
+    if (participantLabel) {
+        const participantLabelField = document.querySelector('input[name="participant_label"]');
+        if (participantLabelField) {
+            participantLabelField.value = participantLabel;
+        }
+    }
+
+    document.querySelector('form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        // Add form data to query parameters
+        const form = document.querySelector('form');
+        const formData = new FormData(form);
+        for (const [name, value] of formData.entries()) {
+            if (value) {
+                urlParams.set(name, value);
+            }
+        }
+
+        // Convert query parameters to JSON object
+        const jsonData = Object.fromEntries(urlParams.entries());
+
+        try {
+            const response = await fetch(window.location.pathname, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(jsonData)
+            });
+
+            const data = await response.json();
+            if (data.status === 'ok') {
+                // Validation passed, add welcome_page_ok=1 and reload page
+                urlParams.set('welcome_page_ok', '1');
+                window.location.href = window.location.pathname + '?' + urlParams.toString();
+            } else if (data.errors) {
+                // Clear all error messages first
+                for (const errorEl of document.querySelectorAll('[data-field-error]')) {
+                    errorEl.style.display = 'none';
+                }
+
+                // Show error messages for specific fields
+                for (const [fieldName, errorMessage] of Object.entries(data.errors)) {
+                    const errorEl = document.querySelector(`[data-field-error="${fieldName}"]`);
+                    if (errorEl) {
+                        errorEl.textContent = errorMessage;
+                        errorEl.style.display = 'block';
+                    } else {
+                        const otherErrorsEl = document.querySelector('#other-errors');
+                        otherErrorsEl.insertAdjacentHTML('beforeend', errorMessage);
+                        otherErrorsEl.style.display = 'block';
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    });
+</script>
+</body>
+</html>
