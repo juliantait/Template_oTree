@@ -106,6 +106,10 @@ os.environ.setdefault('OTREE_SECRET_KEY', 'render-check')
 _TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 _APP_ROOT = os.path.dirname(_TESTS_DIR)
 sys.path.insert(0, _APP_ROOT)
+# Expected completion codes are READ from the shipped config, never hardcoded:
+# a hardcoded 'REPLACE_CC' would have quietly stopped matching the day the
+# placeholders changed shape (2026-08-14), leaving the check green and blind.
+import settings as _settings  # noqa: E402
 sys.path.insert(0, _TESTS_DIR)
 
 # A LONGER QUIZ, injected BEFORE oTree loads the app models. intro.Player's quiz
@@ -2316,7 +2320,8 @@ def check_completion_link_nojs(server, browser):
     # (1) A COMPLETER, the case that matters most: everybody who finishes.
     session = create_session('prolific', num_participants=2)
     code, _ = walk_to(server.base, session, 'Results')
-    cases.append(('Results (completer)', code, 'REPLACE_CC'))
+    cases.append(('Results (completer)', code,
+                  _settings.SESSION_CONFIG_DEFAULTS['prolific_cc_code']))
 
     # (2) An EARLY EXIT — the no-consent route, which carries prolific_noconsent_code.
     session = create_session('prolific', num_participants=2)
@@ -2327,7 +2332,8 @@ def check_completion_link_nojs(server, browser):
                                          warn=False), allow_redirects=True)
     if check(page_of(r.url) == 'Ended',
              f'a non-consenter reaches the ending (got {page_of(r.url)})'):
-        cases.append(('Ended (declined consent)', code_of(r.url), 'REPLACE_NC'))
+        cases.append(('Ended (declined consent)', code_of(r.url),
+                      _settings.SESSION_CONFIG_DEFAULTS['prolific_noconsent_code']))
 
     for label, participant_code, expected_code in cases:
         context = browser.new_context(viewport=VIEWPORTS['laptop_1280x720'],

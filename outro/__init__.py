@@ -132,8 +132,9 @@ def completion_link(player) -> str:
     whose frozen config predates these keys, `cfg` falls back to the shipped
     `REPLACE_*` placeholder instead of building the string `None` into the URL.
     Julian's reasoning (2026-08-13), recorded because it IS the justification:
-    REPLACE_CC is ALREADY the shipped placeholder, so this makes both failure
-    modes present the SAME recognisable symptom — somebody seeing REPLACE_CC in
+    The shipped placeholder (`COMP-XXXXXX_REPLACE`) is ALREADY of this shape, so
+    this makes both failure modes present the SAME recognisable symptom —
+    somebody seeing an unreplaced placeholder in
     a completion URL knows instantly what it means and what to do, while
     `?cc=None` looks like a bug in our own code and tells them nothing.
 

@@ -47,6 +47,7 @@ sys.path.insert(0, __file__.rsplit('/', 1)[0])
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from http_flow_test import FormParser, build_payload, END_MARKERS
 import common
+import settings as _settings
 
 # `requests` REFUSES to send a header value with leading whitespace or control
 # characters — it validates client-side. A broken browser, a proxy, a privacy
@@ -265,7 +266,7 @@ def expect_screened_out(base, label, ua, allowed, cause, must_say, must_not_say=
     # THERE IS NO SCREENED-OUT COMPLETION CODE. The way out is a plain link to
     # Prolific carrying nothing, so their submission stays open and they can
     # still come back on a computer and finish.
-    check('REPLACE_' not in r.text,
+    check(not _settings.is_placeholder(r.text),
           f'{label}: the page carries NO completion code of any kind')
     check('submissions/complete' not in r.text,
           f'{label}: the way out is NOT a Prolific completion URL')

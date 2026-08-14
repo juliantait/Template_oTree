@@ -339,6 +339,11 @@ def init_participant(participant):
     # _apply_focus_loss).
     participant.focus_loss_count_outro = 0
     participant.focus_event_ids = []
+    # Per-event detail behind the counters, and the at-least evidence that
+    # earlier events never reached the server (see _record_focus_event and
+    # _note_missed_events).
+    participant.focus_events = []
+    participant.focus_losses_missed_at_least = 0
     # Reader-facing tab-monitor columns (see derive_tab_monitor_flag). Set here
     # rather than left to the first violation, so a participant who never trips
     # the monitor still exports a meaningful pair — and so `tab_monitor_where`
@@ -1073,11 +1078,17 @@ def derive_tab_monitor_where(pvars, monitored=True) -> str:
     actionable until the reader knows WHICH answers. This says which region of
     the study the observations came from.
 
-    IT IS REGION-LEVEL, NOT PAGE-LEVEL, AND THAT IS A REAL LIMIT — the monitor
-    persists two counters, one per region, and no per-page record (see the
-    honest note in CODEBOOK.md). 'questionnaire' narrows it to the outro pages;
-    it cannot tell you it was the demographics page rather than the feedback
-    page.
+    IT NAMES THE PAGES when they are known: `questionnaire: Demographics,
+    Feedback`. That is the point of recording `focus_events` — 'questionnaire'
+    alone spans Results, Demographics, Feedback and Ended, so it could not tell
+    a reader whether to distrust the demographics answers or the feedback typed
+    on the page after them.
+
+    THE REGION WORD STAYS THE PREFIX, deliberately. Values were region-only
+    before `focus_events` existed, and a participant recorded then still has no
+    page list — so `startswith('questionnaire')` keeps working across the
+    change, and an old row degrades to the old value instead of becoming
+    unreadable.
 
     `monitored=False` (the session's tab_monitor flag is off) is reported here
     rather than in the flag itself: the flag's empty value would otherwise mean
@@ -1089,12 +1100,27 @@ def derive_tab_monitor_where(pvars, monitored=True) -> str:
     task = int(pvars.get('focus_loss_count') or 0) > 0
     outro = int(pvars.get('focus_loss_count_outro') or 0) > 0
     if task and outro:
-        return 'task+questionnaire'
-    if task:
-        return 'task'
-    if outro:
-        return 'questionnaire'
-    return ''
+        region = 'task+questionnaire'
+    elif task:
+        region = 'task'
+    elif outro:
+        region = 'questionnaire'
+    else:
+        return ''
+
+    # Distinct page names, in the order they were first seen — reading order is
+    # what a reader wants ("distracted on Demographics, then again on
+    # Feedback"), not alphabetical. Silently absent for a participant recorded
+    # before focus_events existed, which is why the region word stands alone.
+    seen, pages = set(), []
+    for event in (pvars.get('focus_events') or []):
+        page = (event or {}).get('page')
+        if page and page not in seen:
+            seen.add(page)
+            pages.append(page)
+    if not pages:
+        return region
+    return f"{region}: {', '.join(pages)}"
 
 
 def refresh_tab_monitor_flag(participant, monitored=True) -> None:
@@ -1102,6 +1128,69 @@ def refresh_tab_monitor_flag(participant, monitored=True) -> None:
     participant.tab_monitor_flag = derive_tab_monitor_flag(participant.vars)
     participant.tab_monitor_where = derive_tab_monitor_where(
         participant.vars, monitored=monitored)
+
+
+def _record_focus_event(player, region):
+    """Append the per-event detail behind the counters. Never raises.
+
+    THE PAGE COMES FROM THE SERVER, NOT THE CLIENT. `ai_safety_monitor.js` sends
+    `page: window.location.pathname` with every event and this deliberately
+    ignores it: the client half of the monitor is the half a participant can
+    edit, and a field an analyst trusts must not be attacker-controlled.
+    `participant._current_page_name` is oTree's own record of where the
+    participant is (otree/models/participant.py:77) and is authoritative.
+
+    Wrapped defensively because instrumentation must never break a page — a
+    focus event that cannot be described in detail must still be COUNTED, and
+    the counters are written by the caller before this runs.
+    """
+    try:
+        page = getattr(player.participant, '_current_page_name', None) or ''
+        events = list(player.participant.vars.get('focus_events') or [])
+        events.append(dict(page=page, region=region, ts=int(time.time())))
+        player.participant.focus_events = events
+    except Exception:
+        pass
+
+
+def _note_missed_events(player, data):
+    """Retrospective drop detection: did events fail to reach us EARLIER?
+
+    The client sends its own running total (`count`) with every event and the
+    counting core has always ignored it. Comparing it to ours turns a silent
+    client-side drop into something visible — the participant whose websocket
+    was down for two events, then came back.
+
+    TWO DISTINCTIONS THIS MUST NOT COLLAPSE (the rule this codebase keeps
+    breaking; both were named before this was written):
+
+    1. A client count LOWER than ours IS NOT A DROP. It is a cleared
+       sessionStorage, a reused browser, a second tab, or a replay — the client
+       counter restarts at 0 while ours does not. Recording that as a loss would
+       invent missing data out of an ordinary browser event, so only a STRICTLY
+       GREATER client count is evidence of anything.
+
+    2. The gap is EVIDENCE OF A DROP, NOT A COUNT OF DROPPED EVENTS. Client 4
+       against our 2 means AT LEAST two were lost — there may have been more
+       that the client itself never counted. Hence the field name
+       `focus_losses_missed_at_least`, and hence `max()` rather than `+=`:
+       summing successive observations of the same gap would multiply one drop
+       into many.
+    """
+    try:
+        client_count = data.get('count')
+        if not isinstance(client_count, int) or isinstance(client_count, bool):
+            return                                   # unusable -> say nothing
+        server_total = (int(player.participant.vars.get('focus_loss_count') or 0)
+                        + int(player.participant.vars.get('focus_loss_count_outro') or 0))
+        gap = client_count - server_total
+        if gap <= 0:
+            return                                   # distinction 1
+        previous = int(player.participant.vars.get(
+            'focus_losses_missed_at_least') or 0)
+        player.participant.focus_losses_missed_at_least = max(previous, gap)
+    except Exception:
+        pass
 
 
 def _apply_focus_loss(player, data, ejects):
@@ -1126,12 +1215,19 @@ def _apply_focus_loss(player, data, ejects):
         # push it over a threshold that no longer applies.
         count = (player.participant.vars.get('focus_loss_count_outro') or 0) + 1
         player.participant.focus_loss_count_outro = count
+        # Detail and drop-detection AFTER the counter, so a participant is
+        # counted even if either of them cannot describe the event. Both use the
+        # same region vocabulary as tab_monitor_where.
+        _record_focus_event(player, 'questionnaire')
+        _note_missed_events(player, data)
         # Reader-facing columns follow the counters they are derived from, from
         # inside the ONE place that changes them.
         refresh_tab_monitor_flag(player.participant)
         return
     count = (player.participant.vars.get('focus_loss_count') or 0) + 1
     player.participant.focus_loss_count = count
+    _record_focus_event(player, 'task')
+    _note_missed_events(player, data)
     max_violations = int(cfg(config, 'tab_monitor_max_violations'))
     if count >= max_violations:
         player.participant.ai_safety_disqualified = True

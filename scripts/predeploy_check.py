@@ -1031,6 +1031,18 @@ def session_can_still_reach_an_ending(participants) -> bool:
     return False
 
 
+def _is_placeholder(value) -> bool:
+    """settings.is_placeholder, imported late so the pure analysis below stays
+    drivable from a test without booting the app. Falls back to the same rule
+    rather than to `False`: a placeholder that cannot be recognised must not
+    read as a real value."""
+    try:
+        from settings import is_placeholder
+        return is_placeholder(value)
+    except Exception:
+        return 'REPLACE' in str(value)
+
+
 def audit_frozen_session_configs(stored, current_configs, defaults):
     """The pure analysis behind check 2b, separable so a test can drive it.
 
@@ -1050,9 +1062,10 @@ def audit_frozen_session_configs(stored, current_configs, defaults):
                     perfectly correct. This is CLAUDE.md's frozen-config rule
                     surfacing operationally.
       * PLACEHOLDER the frozen value still holds a REPLACE_* placeholder
-                    (settings ships REPLACE_CC / REPLACE_NC / REPLACE_DQ /
-                    REPLACE_SCREENOUT_RETURN_URL; the whole family begins
-                    REPLACE_). Catches the case prelaunch_check CANNOT: the
+                    (settings ships COMP-XXXXXX_REPLACE / NOCONS-XXXXXX_REPLACE
+                    / DQ-XXXXXX_REPLACE / REPLACE_SCREENOUT_RETURN_URL; matched
+                    BY SHAPE via settings.is_placeholder, never by exact string
+                    — see that function for why). Catches the case prelaunch_check CANNOT: the
                     codes were fixed in settings but the session was never
                     recreated, so a live session still carries the placeholder.
 
@@ -1098,7 +1111,13 @@ def audit_frozen_session_configs(stored, current_configs, defaults):
                 flag('MISSING', key, f'current setting {current[key]!r}')
                 continue
             frozen_value = frozen[key]
-            if isinstance(frozen_value, str) and frozen_value.startswith('REPLACE_'):
+            # SHAPE, NOT PREFIX — via settings.is_placeholder, the one
+            # implementation. This used to be `startswith('REPLACE_')`, which
+            # the 2026-08-14 placeholder change (`REPLACE_CC` ->
+            # `COMP-XXXXXX_REPLACE`) would have silently disarmed: the audit
+            # would have kept passing while a live session carried a code that
+            # pays nobody.
+            if isinstance(frozen_value, str) and _is_placeholder(frozen_value):
                 flag('PLACEHOLDER', key, repr(frozen_value))
             elif frozen_value != current[key]:
                 diffs.append((code, key, frozen_value, current[key]))

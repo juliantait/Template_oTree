@@ -55,6 +55,21 @@ Three codes, per session config, all shipping as `REPLACE_*` placeholders:
 | `prolific_noconsent_code` | Declined consent | `-1` |
 | `prolific_dq_code` | Disqualified (comprehension or tab monitor) | `-2` / `-3` |
 
+**COMPLETION CODE SHAPE — `REASON-XXXXXX`.** A semantic prefix plus six random
+alphanumerics: `COMP-K27XQ4` for a completion, `NOCONS-T8Q4R1` for a declined
+consent, `DQ-W3FM9K` for a disqualification. Readable in a Prolific submission
+list (you can tell at a glance why a submission carries the code it does) and
+unguessable by a participant. The template ships them as
+`COMP-XXXXXX_REPLACE` / `NOCONS-XXXXXX_REPLACE` / `DQ-XXXXXX_REPLACE`, so the
+placeholder itself teaches the convention to whoever replaces it, and the
+pre-launch guard refuses to launch while any `REPLACE` survives.
+
+**The COMPLETION code is the one worth guarding**, because on Prolific it can
+**auto-approve a payment**. Keep its random part at six characters or more, make
+it genuinely random, and never use a short number — a guessable completion code
+is somebody else's money. (A disqualified participant cannot read it off the
+page: each ending is served only its own code — see below.)
+
 **A device screened out at entry (`-4`) has NO completion code, deliberately.**
 It gets a plain link to `prolific_screenout_return_url` (the Prolific participant site)
 carrying nothing, so the submission stays OPEN and the participant can still
