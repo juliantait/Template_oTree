@@ -696,13 +696,22 @@ USE_POINTS = False
 # and oTree's participant.payoff is written ONCE — from `earned`, when the
 # results page computes payment (outro.compute_final_payoff) — so the admin
 # Payments page shows exactly the figure the participant was shown. With this
-# False, oTree makes the old habit IMPOSSIBLE rather than merely discouraged:
-# any write to player.payoff raises, and the per-round payoff column is
-# omitted from the export entirely (deliberately ABSENT, not silently empty —
-# see the payment-record note in CODEBOOK.md; no data is lost, every round is
-# in payoff_vector). Flip this back to True only together with a decision
-# about which ledger is the record, or the two-numbers disagreement this
-# removed comes straight back.
+# False, the per-round payoff column is omitted from the export entirely
+# (deliberately ABSENT, not silently empty — see the payment-record note in
+# CODEBOOK.md; no data is lost, every round is in payoff_vector).
+#
+# WHAT THIS FLAG DOES NOT DO (exp_pilots review, 2026-08-14). It ALSO makes
+# oTree's own player.payoff setter raise (otree/models/player.py:41-46) — but
+# that is not enforcement, it is a participant-facing crash. The raise happens
+# inside a request, so a build carrying such a write, deployed over live
+# sessions (oTree has no migrations), is a DEAD PAGE for whoever is mid-round.
+# The actual guard is `payoff_guard.assert_no_player_payoff_writes()`, called
+# at boot from `before/__init__.py`: the build refuses to start instead.
+#
+# Flip this back to True only together with a decision about which ledger is
+# the record, or the two-numbers disagreement this removed comes straight back
+# — and note that flipping it does NOT retire the boot guard, whose job is the
+# ledger, not the raise.
 AUTO_TABULATE_PAYOFFS = False
 
 DEMO_PAGE_INTRO_HTML = """ """

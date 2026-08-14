@@ -21,6 +21,7 @@ The project root holds the four oTree apps plus a small set of top-level items:
 | `settings.py` | oTree settings: session configs, recruitment profiles, feature flags, completion codes. |
 | `common.py` | shared, oTree-free helpers — **must stay at the project root** (every app does `import common`). |
 | `identity.py` | participant-label identity: one row per external id, and the guard that stops a duplicate label 500-ing at entry. Also root-level, for the same reason. |
+| `payoff_guard.py` | the BOOT guard that refuses to start a build whose app modules write oTree's per-round `player.payoff`. Called from `before/__init__.py`. It exists because the alternative — `AUTO_TABULATE_PAYOFFS=False` making oTree's setter raise — fires inside a participant's request, so on a live upgrade it is a dead page mid-round rather than a data error. Root-level for the same reason as the others. |
 | `experimenter_dashboard.py` | the live operator view at `/experimenter_dashboard` (see "Experimenter dashboard"). Root-level for the same reason as the two above. |
 | `README.md` `conventions.md` `CODEBOOK.md` `TODO.md` | project docs: overview, design principles, field/exit-code reference, and pending work. |
 | `ideas/` | briefs for features that are scoped but not (yet) part of the template. Each file records the SPECIFICATION as it was given, and is deliberately not updated to match what gets built — so specified and built can be compared afterwards. |
@@ -566,6 +567,57 @@ You can share the instructions with coauthors who don't have the codebase instal
 > **`common.py` stays at the project root** — it is *not* in `scripts/`. All four
 > apps do a top-level `import common`, and oTree puts the project root (not
 > `scripts/`) on `sys.path`, so moving it would break every app's import.
+
+## Paying participants — the itemisation rule
+
+> **ANY PAYMENT COMPONENT PAID OUTSIDE OTREE MUST STILL BE REPRESENTED INSIDE
+> OTREE, OR THE ADMIN PAYMENTS PAGE BECOMES A PARTIAL FIGURE THAT LOOKS LIKE A
+> TOTAL.**
+>
+> **Corollary — on Prolific the components are paid by DIFFERENT MECHANISMS**
+> (the base as the study reward, the bonus through the bonus payment flow), so
+> the total alone is not enough: **the bonus must be separately visible**, and
+> it is the number that has to survive intact.
+
+Raised by the exp_pilots bossman (2026-08-14). The failure has two shapes and
+they look like opposites, which is why one rule covers both:
+
+- **Complete but not itemised** — every component is inside oTree and the total
+  is right, but the admin Payments page shows one undifferentiated number. It is
+  correct and **not actionable**: whoever pays the Prolific bonus cannot read the
+  bonus off it. *This is the shape this template is in today.*
+- **Itemised but incomplete** — the components are separate, but one of them (a
+  base paid on the platform) never entered oTree at all, so the "total" is a
+  partial figure wearing a total's name.
+
+Neither has the property that matters, which is **itemisation of a complete
+set**. What this template records per participant, all of it inside oTree:
+
+| Figure | Where it lives | Paid on Prolific as |
+| --- | --- | --- |
+| base / show-up fee | `showup` in the session config; rendered on the receipt as **Base payment** | study reward |
+| decision bonus | `outro.Player.selected_sum` (the `num_rewarded` selected rounds) | bonus payment |
+| quiz bonus | `outro.Player.quiz_bonus_awarded` | bonus payment |
+| **total** | `outro.Player.earned`, mirrored once into `participant.payoff` | — |
+
+The three components reconstruct `earned` exactly, with no residue, and the
+export carries `player.selected_sum`, `player.quiz_bonus_awarded` and
+`player.earned` as their own columns — so **the bonus figure is recoverable
+today from the export**, even though the admin Payments page shows only the
+total. The participant's own receipt already itemises; the gap is on the
+payer's side.
+
+**Pinned by** `tests/payoff_ledger_test.py` §9, which walks a *prolific*
+session and asserts the bonus in isolation as well as the total — because a
+study can get the total right while making the actionable number unreadable,
+and a test that only checks the total will not notice. §9 also records the
+current admin-page state as a measured gap; if the bonus is ever surfaced
+there, that check is expected to go red and should be rewritten to assert the
+new behaviour.
+
+Whether `participation_fee` should carry the base (so oTree itself splits
+reward from bonus) is an **open decision** — it changes what the exported
+columns mean, so nothing has been changed yet.
 
 ## Experimenter dashboard
 

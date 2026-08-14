@@ -56,7 +56,12 @@ study breaks silently. What you inherit:
   overrides `vars_for_template` SPREADS `task_template_vars(self)` in rather
   than retyping keys (see the shipped `GameStart`).
 - **The payoff plumbing**: per-round results go in `Player.round_payoff` —
-  NEVER `player.payoff`, which RAISES here (`AUTO_TABULATE_PAYOFFS=False`).
+  NEVER `player.payoff`, which **will not boot** here: `payoff_guard`
+  (`before/__init__.py`) scans the app modules at start-up and refuses a build
+  containing the write. Do not read that as "oTree's raise protects me" —
+  `AUTO_TABULATE_PAYOFFS=False` makes the setter raise *inside a participant's
+  request*, i.e. a dead page mid-round on a live upgrade, which is exactly the
+  failure the boot guard exists to get in front of (payoff_guard.py).
   oTree auto-sums `player.payoff` across rounds, but only `num_rewarded`
   rounds are paid, so that sum is a figure nobody is paid; kept apart, the
   earned figure in oTree's admin matches the `earned` computed at the end
