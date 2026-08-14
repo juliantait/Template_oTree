@@ -14,10 +14,13 @@ working.
 ## `participation_fee` ships 0, and a boot guard holds it there — 2026-08-14
 
 Decided by Julian. oTree's built-in `participation_fee` is a SECOND payment
-channel: it is not part of `participant.payoff`, it is added on top of it
-wherever oTree reports what is owed (`Session._get_payoff_plus_participation_fee`,
-the admin Payments page, the MTurk table, the `payoff_plus_participation_fee`
-export column). This template keeps **one payment ledger** — the base is
+channel: it is not part of `participant.payoff`, it is added on top of it by
+`Session._get_payoff_plus_participation_fee` (otree/models/session.py:242-248),
+which feeds the admin Payments page (`otree/views/admin.py:274`,
+`templates/otree/SessionPayments.html:46`) and the MTurk payment table. It does
+NOT reach the CSV export — verified against 6.0.15, the participant column list
+ends at `payoff` (`otree/export.py:76-96`) — so a fee is invisible in the data
+and visible only where a human reads off what to pay, which is worse. This template keeps **one payment ledger** — the base is
 `showup`, which `outro.compute_final_payoff` folds into `participant.payoff` with
 the bonus, so the admin figure equals the amount actually owed. A non-zero fee
 splits that across two numbers computed by different code in different places,
@@ -45,13 +48,24 @@ paid by a real person — and the trade is deliberate: the alternative is a stud
 that runs happily with a payment record that is wrong in a way nobody notices
 until payout, when somebody is underpaid.
 
-**What it does NOT catch, stated because it is real.** oTree's own
-`SessionEditPropertiesForm` (otree/views/admin.py:212) exposes `participation_fee`
-as an editable field on a LIVE session, so an experimenter can set a fee from the
-browser after boot on a build this guard passed. No boot check can see that and
-there is no hook to refuse it. `frozen_config_test` audits the key, so the
-divergence is visible after the fact, but nothing prevents it — say so in a
-handover rather than trusting the guard.
+**What it does NOT catch — a boot SOURCE scan cannot see a running session.**
+oTree's `SessionEditPropertiesForm` (otree/views/admin.py:212) exposes
+`participation_fee` as an editable field on a LIVE session, and `form_valid`
+(admin.py:255-261) writes it into `session.config`, a DATABASE COLUMN on the
+session row (`Column(_PickleField)`, models/session.py:35). The value lives in
+data, so **no restart will ever catch it** — the guard passes while the session
+carries a fee. Verified against 6.0.15, and measured: the ledger stayed at
+€10.00 while the Payments figure moved to €13.00.
+
+**Policing that is deliberately out of scope** (Julian + the hosting review): an
+operator editing a live session is an operator action and is trusted. A
+dashboard warning was proposed, costed, and CANCELLED. What was required instead
+is that it be visible rather than silently clean — and it already is, for free,
+because `predeploy_check`'s frozen-config audit reads the session ROWS rather
+than the source and reports it as a plain value difference (`frozen 3.00cu vs
+current setting 0.0`, confirmed on a real edited session). Check the artifact,
+not the recipe; this guard is the recipe half and must never be written up as
+more than that.
 
 **Rejected:** relying on `AUTO_TABULATE_PAYOFFS`-style enforcement from oTree
 (there is none for this field), and a runtime check in `outro` (same dead-page
@@ -116,15 +130,43 @@ double-clickable macOS launchers were sitting untracked in the tree, having been
 deliberately removed from the repo once already (`eb026e3`, 2026-07-23).
 `GitHub_sync.command` is Julian's own sync convenience: kept on disk, added to
 `.gitignore` by name rather than as `*.command`, so a launcher that IS template
-material would still have to be ignored on purpose. `Preview_Instructions.command`
-was **deleted**: the preview flow supersedes it — `intro/generate_instructions_
-preview.py` gives a person the same thing (the instructions viewable without
-running a session, as HTML and PDF) and is documented in `README.md` and two
-skills pages. Not deleted on that alone: the launcher drove a *stale May-28 copy*
-of the generator living inside the gitignored `previews/` output directory, 11
-lines behind the maintained one, writing to the same filenames — so
-double-clicking it would silently overwrite current previews with output from
-three-month-old code.
+material would still have to be ignored on purpose.
+
+## `Preview_Instructions.command` is tracked — deliberately reversing `eb026e3` — 2026-08-14
+
+Decided by Julian. `eb026e3` ("Remove local macOS launcher scripts from the
+template", 2026-07-23) removed both `.command` launchers as personal tooling.
+That was right for the file it removed and wrong as a permanent rule, and the
+distinction is what the reversal turns on: **the launcher `eb026e3` removed drove
+a stale copy of the generator; a launcher that drives the MAINTAINED generator is
+template material.**
+
+The removed one ran `previews/generate_instructions_preview.py` — a copy frozen
+on 2026-05-28 inside the gitignored `previews/` OUTPUT directory, eleven lines
+behind `intro/generate_instructions_preview.py` and writing the same filenames.
+Double-clicking it silently replaced current previews with three-month-old
+output. Deleting that was correct.
+
+**What makes the rebuilt one travel:** every study copied from this template has
+instructions, and the maintained generator is the only way to read them without
+running a session — but it needs a command line, and *"I do not want to open a
+terminal"* is a real requirement, not a preference to be argued with. A copied
+study should not lose the no-terminal route. So the launcher is tracked, points
+at `intro/`, resolves everything from its own `$SCRIPT_DIR` (no path from this
+checkout), passes `--config .preview_state.json` when saved settings exist (the
+generator otherwise opens a form and waits, which from a double-click looks like
+a hang), and opens the interactive preview when it finishes.
+
+**One thing it does NOT do, learned by measurement:** treat the generator's exit
+code as the verdict. With no browser binary installed the generator writes both
+HTML files correctly and still exits 1, because the PDF step failed. The launcher
+therefore decides on WHAT EXISTS and reports the exit code only when nothing was
+produced — otherwise it would tell somebody their previews were broken while they
+sat there complete. (Found by dry-running it; the first draft had the bug.)
+
+**Enforced:** nothing automated. The launcher carries a comment saying never to
+point it into `previews/`, and the stale copy that caused the original problem is
+still sitting in that gitignored directory for whoever looks there first.
 
 **Enforced:** nothing automated — no check fails when a tracked file gains a link
 into `_ai/`. `docs/README.md` carries the rule and the marking convention; that

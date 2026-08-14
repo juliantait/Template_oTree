@@ -5,13 +5,29 @@ Verified workflow, first used for `Experts/exp_pilots` on 2026-08-14 (live at
 oTree project from this template onto Railway. Update this file when the workflow
 improves.
 
+> **Scope of this file: the Railway PROCEDURE — tokens, CLI, GraphQL, the deploy
+> repo, study day.** What a hosted deploy needs in general, what `DATABASE_URL`
+> and the boot guard do, the TLS/pooler caveats, and the gap that there is no
+> upgrade-path check for Postgres are in `docs/hosting_a_prolific_study.md`,
+> which is written for the researcher rather than the agent. Do not restate that
+> file here; fix it there and link.
+>
+> **Two notes where this file describes `exp_pilots`, not this template:** the
+> resetdb guard lives in `exp_pilots`' `start.sh`, whereas in this template it is
+> the Dockerfile `CMD` calling `scripts/db_state.py`; and this template's
+> `scripts/start.sh` is a HOST-SIDE room-binding script run against an already
+> running server — it is not invoked at container boot and does not handle
+> `PORT`. `PORT` is honoured by the Dockerfile `CMD`.
+
 ## Why Railway
 
 Managed host, ~$5–10 for a whole ~160-participant study (Hobby plan, usage-billed).
 Reads the project's existing `Dockerfile` directly, one-click managed Postgres,
 automatic HTTPS domain, browser dashboard with logs + restart. Full comparison of
-alternatives: `Experts/reports/hosting_options.md`. TreeHost is the zero-devops
-alternative (zip upload, free tier) but has no CLI/API — dashboard only.
+alternatives: `Experts/reports/hosting_options.md` (local only — a document in the
+research monorepo this template was extracted from; not in a copied study).
+TreeHost is the zero-devops alternative (zip upload, free tier) but has no
+CLI/API — dashboard only.
 
 ## The shape
 
@@ -20,7 +36,7 @@ alternative (zip upload, free tier) but has no CLI/API — dashboard only.
    ```sh
    cd <monorepo>            # e.g. Experts/
    git subtree split --prefix=<app_folder> -b <app>-export
-   git push https://github.com/juliantait/<repo>.git <app>-export:main
+   git push https://github.com/<your-account-or-org>/<deploy-repo>.git <app>-export:main
    ```
    Re-run both commands after every commit that should deploy (delete the branch
    first: `git branch -D <app>-export`). The deploy repo is a derived export —
@@ -29,18 +45,27 @@ alternative (zip upload, free tier) but has no CLI/API — dashboard only.
 2. **Railway project** — Julian creates it in the dashboard (account, card,
    Hobby plan) and adds the Postgres there (`New -> Database -> PostgreSQL`;
    ONE, not two). Databases cannot be created with a project token.
-3. **Project token** — Julian: dashboard -> project -> Settings -> Tokens.
-   Saved at `MacMini/railway-token.txt` (gitignored). It is PROJECT-scoped:
-   env var `RAILWAY_TOKEN` (account tokens use `RAILWAY_API_TOKEN` instead).
-   Bossman wrapper: `/home/dev/bin-railway.sh` (exports the token, calls the CLI
-   from `/home/dev/.npm-global/bin/railway`; install via
-   `npm config set prefix /home/dev/.npm-global && npm i -g @railway/cli`).
+3. **Project token** — the account owner creates it in the dashboard:
+   project -> Settings -> Tokens. **Keep it OUTSIDE this repository** — a file
+   in a gitignored directory, or your OS keychain. Where exactly is
+   site-specific and deliberately not recorded here: this file is tracked and
+   ships with every copy of the template, and a durable, precise pointer to
+   where an API token lives is useless to any legitimate reader (who has their
+   own token, on their own machine) and useful to nobody else you would want
+   reading it. Never commit the token itself.
+
+   It is PROJECT-scoped: env var `RAILWAY_TOKEN` (account tokens use
+   `RAILWAY_API_TOKEN` instead). A small wrapper script that exports the token
+   and calls the CLI keeps it off your shell history and out of every command;
+   put that wrapper outside the repo too. Install the CLI without root by
+   pointing npm at a prefix you own:
+   `npm config set prefix <a-dir-you-own> && npm i -g @railway/cli`.
 
 ## What works with a project token, and how
 
 | Action | Route |
 |---|---|
-| Deploy code | CLI: `railway up --service <name> --detach` from a clean clone of the deploy repo |
+| Deploy code | CLI: `railway up --service <name> --detach` from a clean clone of the deploy repo. Julian's decision (2026-08-14): keep this manual — no GitHub auto-deploy; the live study only changes on an explicit deploy |
 | Check deploy status | GraphQL `deployments` query |
 | Create the app service | GraphQL `serviceCreate` (CLI `add` fails with project tokens) |
 | Set env vars | GraphQL `variableCollectionUpsert` (CLI `variables` unusable) |
@@ -73,12 +98,19 @@ Dockerfile (needed behind any TLS proxy).
 
 - **The resetdb wipe trap.** start.sh's old guard reset the DB when the sqlite
   file was missing — with `DATABASE_URL` set that file never exists, so every
-  boot wiped Postgres. Fixed 2026-08-14 (Experts `79d49c2`, same shape in this
-  template): reset only on explicit `RESET_DB=1` or a database with no `otree_*`
+  boot wiped Postgres. Fixed 2026-08-14 (Experts `79d49c2`; this template's
+  `9d14738`): reset only on explicit `RESET_DB=1` or a database with no `otree_*`
   tables; fail loud when the DB is unreachable. Any project built from an older
   template snapshot MUST take this fix before Postgres hosting.
+  Two refinements in this template's version, worth knowing at a first deploy:
+  a database holding tables that are NOT oTree's is REFUSED rather than reset
+  (it is somebody else's schema), and an unreachable database is retried for
+  ~60s before the boot is refused, because a managed Postgres frequently is not
+  accepting connections at the instant the container starts.
 - **Postgres driver.** The Dockerfile needs `psycopg2-binary` alongside otree,
-  or the app dies on connect.
+  or the app dies on connect. **Already done in this template** (pinned
+  `psycopg2-binary==2.9.12`); the note stands for any project on an older
+  snapshot.
 - **`railway up` can transiently 500** ("Failed to upload", deployment shows
   FAILED with no build attached). Just retry after ~45s; it clears.
 - **Variable changes trigger their own redeploy** — set vars, then confirm the

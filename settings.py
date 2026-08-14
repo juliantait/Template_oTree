@@ -282,9 +282,10 @@ SESSION_CONFIG_DEFAULTS = dict(
     # currency conversion, and whether we collect bank details to pay out.
     real_world_currency_per_point=1.00,  # oTree currency conversion rate
     # ZERO, AND HELD THERE BY A BOOT GUARD (fee_guard.py). oTree adds this ON
-    # TOP of participant.payoff wherever it reports what is owed (admin Payments,
-    # payoff_plus_participation_fee, the export column) — a second payment
-    # channel. This template keeps ONE ledger: the base is `showup` below, which
+    # TOP of participant.payoff on the admin Payments page
+    # (payoff_plus_participation_fee) — a second payment channel. It does NOT
+    # reach the CSV export, so it is invisible in the data and visible only
+    # where somebody reads off what to pay. This template keeps ONE ledger: the base is `showup` below, which
     # outro.compute_final_payoff folds into participant.payoff with the bonus, so
     # the admin figure equals the amount actually owed. A non-zero value here
     # splits that across two numbers and REFUSES THE BOOT.
@@ -648,6 +649,8 @@ PARTICIPANT_FIELDS = [
     'focus_loss_count',     # tab-monitor violations while ejection applied (intro+main)
     'focus_loss_count_outro',  # tab-monitor violations in the outro: recorded, NEVER eject
     'focus_event_ids',      # tab-monitor seen event ids (server-side dedup)
+    'tab_monitor_flag',     # READER-FACING verdict: ''|observed|warned|disqualified
+    'tab_monitor_where',    # where those observations were: task|questionnaire|both|not-monitored
     'comprehension_disqualified',  # comprehension-DQ authoritative flag
     'instructions_reread_used',    # lab: the one-time re-read pass was taken
     'device_info',          # dict of captured device/screen info, if enabled
@@ -673,6 +676,14 @@ PARTICIPANT_FIELDS = [
 #   only — never a disqualification, whatever the count. Its own column so an
 #   analyst can tell a completed-with-violations participant from a
 #   nearly-ejected one (see common._apply_focus_loss and CODEBOOK.md).
+# - tab_monitor_flag / tab_monitor_where: the READER-FACING pair, derived from
+#   the three raw columns above by common.derive_tab_monitor_flag — what to DO
+#   ('' | observed | warned | disqualified, most severe wins) and WHERE to look
+#   (task | questionnaire | task+questionnaire | not-monitored). They replace
+#   nothing: the counts remain the datum, and these are a reading of them for
+#   somebody who has not read the codebook. `where` carries 'not-monitored'
+#   because the flag's empty value would otherwise mean both "watched and
+#   clean" and "never watched" — every lab session being the latter.
 # - comprehension_disqualified: set when a participant fails the quiz too often.
 # - instructions_reread_used: True once a lab participant enters the second
 #   instructions pass (quiz_reread module). Consumed on entry, not on offer.
