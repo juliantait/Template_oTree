@@ -302,10 +302,10 @@ round in its own `main.Player.round_payoff`; the template pays from
 entry — `earned` (less `participation_fee`, de-converted when `USE_POINTS` is
 on), written when the results page computes payment — so the admin Payments
 page shows the figure the participant was shown, and there is nothing left to
-disagree. `AUTO_TABULATE_PAYOFFS=False` makes the old habit RAISE rather than
-drift back silently, and removes oTree's per-round payoff column from the
-export (deliberately absent, not accidentally empty — no data lost, every
-round is in `round_payoff` and `payoff_vector`; CODEBOOK "The payment record").
+disagree. `AUTO_TABULATE_PAYOFFS=False` also removes oTree's per-round payoff
+column from the export (deliberately absent, not accidentally empty — no data
+lost, every round is in `round_payoff` and `payoff_vector`; CODEBOOK "The
+payment record").
 Facts established before shipping: nothing in oTree 6.0.15 recomputes
 `participant.payoff` after that write (the `player.payoff` setter's delta is
 the only other writer), and nothing in the template or its tests read the
@@ -314,9 +314,157 @@ per-round column except the placeholder itself.
 wrong (option 1 — Julian chose agreement over conspicuous wrongness); and
 keeping the per-round writes while overwriting the total at the end, which
 leaves a round column summing to a number nobody was paid.
+
+### AMENDED 2026-08-14 — the raise was never the enforcement, and it lands on a participant
+
+**Caught by the exp_pilots bossman**, verified against the installed oTree
+before acting: this entry, `settings.py`, `main/__init__.py`,
+`outro/__init__.py`, `CODEBOOK.md` and `skills_claude/writing_task.md` all
+said `AUTO_TABULATE_PAYOFFS=False` "makes the old habit RAISE rather than
+drift back silently" — presenting a **participant-facing crash as a safety
+feature**. The setter is oTree's own (`otree/models/player.py:41-46`), it
+cannot be removed, and it fires **at participant request time, on a page,
+mid-round**. oTree has no migrations, so the realistic failure is an upgrade
+under live sessions: a new build introduces a `player.payoff` write and the
+first person mid-round to reach it gets a DEAD PAGE. The flag alone therefore
+converts a CONDITIONAL data problem (one ledger drifting into two) into a
+CERTAIN outage for whoever is part-way through — the same trade this repo has
+already refused twice, in `install_duplicate_label_guard` (the early install
+must fail quietly) and in `assert_duplicate_label_guard` (deliberately not on
+the entry path). It was missed here for the reason it is always missed: **a
+raise feels like the strict, careful option.**
+
+The raise stays — it is oTree's, and it is the floor. What changed is that the
+failure is now caught **earlier, at boot**, where loud is what loud should
+mean for a server: `payoff_guard.assert_no_player_payoff_writes()`, called
+from `before/__init__.py` beside the identity assert, refuses to START a build
+whose app modules write `player.payoff`. The operator sees it at deploy time
+while the old build is still serving; the participant never sees it.
+
+**TWO CHECKS, DELIBERATELY, because their blind spots are disjoint** — the
+judgement call the review left open. The boot scan parses app SOURCE with
+`ast`, so it covers every syntactic write whether or not any test walks that
+line, and it cannot be fooled by the six files that discuss `player.payoff` in
+prose (a regex would refuse to boot over this very paragraph); it is blind to
+indirection. The runtime test walks a real journey and asserts the underlying
+`_payoff` column is still 0 on every round row, which catches indirection; it
+is blind to code no walk reaches. Neither alone is sufficient, so both ship.
+`participant.payoff` and `player.payoff` are two fields sharing a name, and
+the scan tests the base expression explicitly rather than the attribute — the
+collapsed-distinction rule, since a name-only check would refuse to boot over
+`outro.compute_final_payoff`, the one write the decision exists to protect.
+**Rejected:** a launch-gate-only check (`scripts/prelaunch_check.py`), which a
+deploy can skip — the whole point is that the server will not come up; and
+`import`-and-introspect instead of parsing, which would execute
+`intro/generate_instructions_preview.py` and its browser driver at boot.
+**Enforced:** `payoff_guard.py`; `tests/payoff_ledger_test.py` §7 (a walked
+journey leaves every round row's `_payoff` at 0) and §8 (the guard catches six
+write forms including `setattr` with a literal name, refuses a synthetic build
+naming file and line, does NOT fire on the participant write or on prose,
+declares its `setattr`-with-computed-name blind spot, and reports an
+unparseable module as "cannot answer" rather than as a payoff write).
+
 **Enforced:** `tests/payoff_ledger_test.py` (the two figures agree on the
-admin page itself; the value survives re-renders; `player.payoff` writes
-raise; the export column is absent while `round_payoff` is present).
+admin page itself; the value survives re-renders; oTree's setter does raise;
+the export column is absent while `round_payoff` is present) — plus the boot
+guard above.
+
+## A payment total is not a payment instruction: every component paid outside oTree must still be represented inside it — 2026-08-14
+
+**Caught by the exp_pilots bossman**, and it is the natural blind spot of the
+one-payment-ledger decision above: that decision made the total CORRECT and
+made both ledgers AGREE on it, and stopped there. Our admin Payments figure is
+one undifferentiated number — full `earned` into `participant.payoff`,
+`participation_fee` shipped 0.00 — so it covers base plus bonus at once. **On
+Prolific those components are paid through DIFFERENT MECHANISMS**: the base as
+the study reward, the bonus through the bonus payment flow. A single total,
+however correct, is therefore NOT ACTIONABLE — whoever pays needs the **bonus
+figure on its own**, and that is the number that must survive intact.
+
+THE RULE, in the reviewer's words:
+
+> **ANY PAYMENT COMPONENT PAID OUTSIDE OTREE MUST STILL BE REPRESENTED INSIDE
+> OTREE, OR THE ADMIN PAYMENTS PAGE BECOMES A PARTIAL FIGURE THAT LOOKS LIKE A
+> TOTAL.**
+
+**Corollary:** on Prolific the components are paid by different mechanisms, so
+the total alone is not enough — the bonus must be separately visible.
+
+THE TWO SHAPES, WHICH LOOK LIKE OPPOSITES AND ARE THE SAME DEFECT. Ours is
+**complete but not itemised**: everything is inside oTree, the total is right,
+and the payer cannot read the bonus off it. The reviewer's own study was
+**itemised but incomplete**: components kept apart, but the base never entered
+oTree at all, so its "total" was a partial figure wearing a total's name.
+Neither has the property that matters, which is **itemisation of a complete
+set** — and framing them as opposites is what let both ship.
+
+WHY THE EXISTING TEST DID NOT CATCH IT — the part worth remembering. §1 pins
+that the total is correct and that the two ledgers agree on it. **A study can
+get the total right while making the actionable number unreadable**, and a
+test written against the total cannot see that. This is the collapsed-
+distinction rule in the measurement rather than in the code: "the payment is
+correct" and "the payment is payable" were one assertion.
+
+**DONE NOW (safe, and independent of the open config decision):**
+`tests/payoff_ledger_test.py` §9 walks a *prolific* session and asserts the
+BONUS IN ISOLATION as well as the total — each component recorded on its own,
+the three reconstructing `earned` with zero residue, the bonus
+(`selected_sum + quiz_bonus_awarded`) derived from the stored components
+rather than as `total − base` (which would be right by construction and prove
+nothing), both halves separately readable, and the components present as their
+own export columns. It also records the admin-page state as a **measured gap**.
+
+**THE CONCRETE FIGURES THIS DECISION IS BEING MADE AGAINST**, so nobody reading
+it later has to reconstruct what the admin page actually showed. One real
+walked Prolific completer (participant `240pbcpa`, config `prolific`, 10 rounds,
+`num_rewarded=2`, exit code 1), measured 2026-08-14, all figures EUR:
+
+| Figure | Source | Value |
+| --- | --- | --- |
+| base / show-up | `showup` (session config) | **2.50** |
+| selected rounds | `outro.Player.selected_sum` (r10 → 45.00, r6 → 98.00) | **143.00** |
+| quiz bonus | `outro.Player.quiz_bonus_awarded` | **5.00** |
+| **total earned** | `outro.Player.earned` — the three above, residue exactly 0 | **150.50** |
+| `participant.payoff` | written once by `compute_final_payoff` | **150.50** |
+| `participation_fee` | session config, as shipped | **0.00** |
+| **admin Payments figure** | `payoff_plus_participation_fee()` | **150.50** |
+
+The selected-rounds component is randomly drawn, so it and every total below it
+vary per run (other runs measured 125.00 and 140.00); **base, quiz bonus and
+`participation_fee` are fixed, and the SHAPE is invariant** — the admin figure
+always equals `earned`, because `participation_fee` is 0.00 and the whole of
+`earned` goes into `participant.payoff`.
+
+**WHAT THE PAYER NEEDS IS TWO NUMBERS, AND THE ADMIN PAGE SHOWS NEITHER** — it
+shows their sum. Study reward, set on the Prolific study: **2.50** (the base
+alone). Bonus payment, entered in the bonus flow: **148.00** (selected rounds +
+quiz bonus). Pasting the admin's 150.50 into the bonus flow pays 148.00 of
+correct bonus plus 2.50 that Prolific has ALREADY paid as the study reward: the
+participant is overpaid by exactly the base, and the error is invisible because
+the total was right all along.
+
+**THE MEASURED EVIDENCE**, fetched from oTree's own `/SessionPayments` for that
+session: **€150.50 PRESENT. €148.00 (the bonus) ABSENT. €2.50 (the base)
+ABSENT.** That is the itemisation argument in one line — the page carries the
+total and neither component.
+
+(Matched CURRENCY-PREFIXED, never as a bare number: `150.50` contains `2.50`, so
+a substring search reported the base as present on a page that never mentions
+it. See the comment at that check — a bare search makes both negative
+assertions unable to fail, which is the same defect class as the total-only test
+this whole entry is about.)
+
+**DELIBERATELY NOT DONE YET:** changing `participation_fee` or how
+`participant.payoff` is composed — that is an open decision with Julian, and it
+changes what the exported columns MEAN, which is not something to do as a side
+effect of adding a test.
+**Rejected:** asserting only that the components exist, without asserting they
+sum to `earned` — a component nobody can reconcile is a number, not an
+itemisation; and deriving the bonus as `total − base` in the test, which passes
+whatever the data says.
+**Enforced:** `tests/payoff_ledger_test.py` §9; the rule is stated in
+README "Paying participants — the itemisation rule" and in CODEBOOK "THE
+ITEMISATION RULE".
 
 ## The end-of-page cookie reset is gone — 2026-08-13
 

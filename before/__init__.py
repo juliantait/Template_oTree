@@ -49,6 +49,7 @@
 from otree.api import *
 import common
 import identity
+import payoff_guard
 from settings import STATIC_VERSION
 from . import treatment_assignment
 
@@ -65,6 +66,19 @@ from . import treatment_assignment
 # participant's page. See identity.assert_duplicate_label_guard for why the
 # alternative placement (first participant entry) would be the wrong trade.
 identity.assert_duplicate_label_guard()
+
+# SAME PLACEMENT, SAME ARGUMENT, DIFFERENT DEFECT (exp_pilots review,
+# 2026-08-14). `settings.AUTO_TABULATE_PAYOFFS=False` makes oTree's OWN
+# `player.payoff` setter raise, and that raise lands INSIDE A PARTICIPANT'S
+# REQUEST — a dead page mid-round for whoever is part-way through when a build
+# carrying such a write is deployed over live sessions (oTree has no
+# migrations). So the write is caught HERE instead: at boot, before anybody is
+# served, where the operator sees it while the old build is still running. The
+# check reads app SOURCE, so it is complete regardless of import order and of
+# which paths a test happens to walk; the indirection it cannot see is covered
+# from the other side by tests/payoff_ledger_test.py §7. Full argument in
+# payoff_guard.py's docstring.
+payoff_guard.assert_no_player_payoff_writes()
 
 class C(BaseConstants):
     # Asset cache-buster for this BUILD (settings.STATIC_VERSION).

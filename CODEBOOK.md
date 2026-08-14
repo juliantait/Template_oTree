@@ -285,6 +285,36 @@ the admin page displays `payoff × conversion + participation_fee`; this
 template ships `USE_POINTS=False` and `participation_fee=0`, where the stored
 value is `earned` itself.)
 
+### THE ITEMISATION RULE — a total is not a payment instruction (2026-08-14)
+
+> **ANY PAYMENT COMPONENT PAID OUTSIDE OTREE MUST STILL BE REPRESENTED INSIDE
+> OTREE, OR THE ADMIN PAYMENTS PAGE BECOMES A PARTIAL FIGURE THAT LOOKS LIKE A
+> TOTAL.** Corollary: **on Prolific the components are paid by DIFFERENT
+> MECHANISMS** — the base as the study reward, the bonus through the bonus
+> payment flow — **so the total alone is not enough; the bonus must be
+> separately visible.**
+
+Raised by the exp_pilots bossman. `earned` being CORRECT is not the same
+property as `earned` being READABLE component by component, and only the
+second one lets somebody pay. The three components are each recorded, and they
+reconstruct `earned` exactly:
+
+| Component | Column / source | Prolific mechanism |
+| --- | --- | --- |
+| base (show-up fee) | `showup` — a **session-config value**, not a per-participant column; on the receipt as "Base payment" | study reward |
+| decision bonus | **`outro.Player.selected_sum`** — sum of the `num_rewarded` selected rounds | bonus payment |
+| quiz bonus | **`outro.Player.quiz_bonus_awarded`** | bonus payment |
+| total | **`outro.Player.earned`** = the three above; mirrored once into `participant.payoff` | — |
+
+So the **bonus figure a Prolific payer needs is `selected_sum +
+quiz_bonus_awarded`**, and it is recoverable from the app export today. The
+admin Payments page shows the total ONLY (`participation_fee` ships 0.00, so
+that one figure covers base plus bonus) — correct, but not actionable where two
+mechanisms pay. Whether `participation_fee` should carry the base is an open
+decision; it changes what these columns mean, so nothing has moved yet.
+`tests/payoff_ledger_test.py` §9 asserts the bonus in isolation as well as the
+total, and records the admin-page gap as measured.
+
 **What is NOT a payment record:**
 
 - **`main.Player.round_payoff`** — the game's per-round result (the value the
@@ -296,7 +326,10 @@ value is `earned` itself.)
   payment, not its result.
 - **oTree's per-round `payoff` column — DELIBERATELY GONE from the export**
   (`AUTO_TABULATE_PAYOFFS=False` in settings.py; oTree omits the column
-  entirely and any write to `player.payoff` raises). **An export from before
+  entirely, and a build that writes `player.payoff` is refused at boot by
+  `payoff_guard` — oTree's own setter also raises under that flag, but inside
+  a participant's request, which is why the check moved to start-up).
+  **An export from before
   2026-08-13 carries `main.Player.payoff`; one from after does not. NO DATA
   WAS LOST**: the same values now live in `round_payoff` and, as ever, in
   `payoff_vector`. Before this change `participant.payoff` was the running SUM

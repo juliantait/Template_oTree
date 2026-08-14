@@ -438,11 +438,15 @@ def compute_final_payoff(p):
     # ONE LEDGER (J1, option 2 — Julian, 2026-08-13): oTree's own
     # participant.payoff is written HERE, once, from `earned`, so the admin
     # Payments page shows exactly the figure this participant's receipt shows.
-    # It is oTree's ONLY payoff entry: nothing writes player.payoff any more
-    # (settings.AUTO_TABULATE_PAYOFFS=False makes that raise), and nothing in
-    # oTree recomputes participant.payoff afterwards (verified against oTree
-    # 6.0.15: the player.payoff setter's delta is the only other writer;
-    # tests/payoff_ledger_test.py pins that this value sticks).
+    # It is oTree's ONLY payoff entry: nothing writes the per-round
+    # player.payoff any more — enforced at BOOT by
+    # `payoff_guard.assert_no_player_payoff_writes()`, not by
+    # AUTO_TABULATE_PAYOFFS=False, whose raise would land on a participant's
+    # page mid-round (exp_pilots review, 2026-08-14; see payoff_guard.py). And
+    # nothing in oTree recomputes participant.payoff afterwards (verified
+    # against oTree 6.0.15: the player.payoff setter's delta is the only other
+    # writer; tests/payoff_ledger_test.py pins that this value sticks, and §7
+    # pins that a walked journey leaves every round row's _payoff at 0).
     #
     # The admin page displays payoff.to_real_world_currency(session) +
     # participation_fee, so the value stored is (earned − participation_fee),

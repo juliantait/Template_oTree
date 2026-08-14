@@ -51,9 +51,22 @@ class Player(BasePlayer):
     # (collected from this field on the last round), and oTree's own ledger
     # (participant.payoff) is written ONCE, from `earned`, when the results
     # page computes payment — so the admin Payments page and the participant's
-    # receipt show the same figure with nothing to disagree. Writing oTree's
-    # player.payoff instead now RAISES (settings.AUTO_TABULATE_PAYOFFS=False),
-    # so a study cannot drift back into two ledgers by habit.
+    # receipt show the same figure with nothing to disagree.
+    #
+    # WHAT STOPS A STUDY DRIFTING BACK, AND WHAT DOES NOT (exp_pilots review,
+    # 2026-08-14 — this comment used to claim the wrong one). Writing oTree's
+    # `player.payoff` does raise under settings.AUTO_TABULATE_PAYOFFS=False,
+    # but that raise is NOT a safety feature: it is oTree's own code
+    # (otree/models/player.py:41-46), we cannot change it, and it fires INSIDE
+    # A PARTICIPANT'S REQUEST. oTree has no migrations, so a build carrying
+    # such a write gets deployed over live sessions and the first person
+    # mid-round to reach it gets a DEAD PAGE, not a bookkeeping error.
+    # `payoff_guard.assert_no_player_payoff_writes()`, called at boot from
+    # `before/__init__.py`, is what actually protects them: a build containing
+    # the write refuses to START, so it is caught at deploy time while the old
+    # build is still serving. oTree's raise stays underneath as the floor for
+    # the indirection a source scan cannot see; tests/payoff_ledger_test.py
+    # §7/§8 pin both halves.
     round_payoff = models.CurrencyField(blank=True)
     # Passive measurement: time on page in ms, filled by a hidden field on the
     # page's OWN form (no side request). blank=True so an EMPTY submission (JS
