@@ -6,10 +6,129 @@ argument that drove it), what was rejected where an alternative was genuinely
 considered, and — the field that matters most — **where it is enforced**: the
 test, guard or CSS rule that holds it in place, or a plain admission that
 nothing does and it relies on people remembering. Newest first. Entries are
-deliberately short; the linked `_ai/` documents and code comments hold the full
+deliberately short; code comments and the linked working documents hold the full
 working.
 
 ---
+
+## `participation_fee` ships 0, and a boot guard holds it there — 2026-08-14
+
+Decided by Julian. oTree's built-in `participation_fee` is a SECOND payment
+channel: it is not part of `participant.payoff`, it is added on top of it
+wherever oTree reports what is owed (`Session._get_payoff_plus_participation_fee`,
+the admin Payments page, the MTurk table, the `payoff_plus_participation_fee`
+export column). This template keeps **one payment ledger** — the base is
+`showup`, which `outro.compute_final_payoff` folds into `participant.payoff` with
+the bonus, so the admin figure equals the amount actually owed. A non-zero fee
+splits that across two numbers computed by different code in different places,
+which is the condition the single-ledger decision exists to prevent.
+
+**Why a guard and not just a zero in the config.** A zero in a config is a
+convention, and an unenforced convention in a template drifts the first time
+somebody copies it. `participation_fee` is a standard oTree knob that the
+official docs and tutorials set; a researcher starting from this template will
+meet it there and set it in good faith, with no error to say the payment record
+has quietly split. This repo has already had one convention-only rule turn out to
+be nothing (three documents calling oTree's `player.payoff` raise "enforcement"
+when it fires inside a participant's request).
+
+**Boot, never request time** — the `payoff_guard.py` precedent, and the reason is
+the same: oTree has no migrations, so an upgrade under live sessions is how every
+study built from this template is actually deployed, and a check that fires in a
+request is a dead page for whoever is mid-study. `fee_guard.py` is called from
+`before/__init__.py` beside the other two boot guards.
+
+**THE KNOWN COST, ACCEPTED WITH EYES OPEN.** A study copied from this template
+that already sets a `participation_fee` **will refuse to boot** until the money
+is moved into the ledger (into `showup`, or into `outro`'s `earned`). A real cost
+paid by a real person — and the trade is deliberate: the alternative is a study
+that runs happily with a payment record that is wrong in a way nobody notices
+until payout, when somebody is underpaid.
+
+**What it does NOT catch, stated because it is real.** oTree's own
+`SessionEditPropertiesForm` (otree/views/admin.py:212) exposes `participation_fee`
+as an editable field on a LIVE session, so an experimenter can set a fee from the
+browser after boot on a build this guard passed. No boot check can see that and
+there is no hook to refuse it. `frozen_config_test` audits the key, so the
+divergence is visible after the fact, but nothing prevents it — say so in a
+handover rather than trusting the guard.
+
+**Rejected:** relying on `AUTO_TABULATE_PAYOFFS`-style enforcement from oTree
+(there is none for this field), and a runtime check in `outro` (same dead-page
+trade the payoff guard exists to avoid).
+
+**Enforced:** `fee_guard.assert_participation_fee_is_zero()`, called at boot from
+`before/__init__.py`. Two halves: the RESOLVED configs (`SESSION_CONFIG_DEFAULTS`
+must carry an explicit 0; a per-config entry may omit the key but must not set a
+fee) and an AST scan of app packages and shared root modules for
+`participation_fee` written as anything but a literal 0 — assignment, attribute,
+`config['participation_fee']`, a `dict(participation_fee=…)` keyword, or a dict
+literal. The scanned file list comes from `payoff_guard.files_to_scan`, not a
+second copy of the rule, so the two guards cannot disagree about which
+directories are apps. Verified 2026-08-14: the template boots clean (15 files
+scanned); a fee in the defaults, an absent key, and a per-config override each
+refuse the boot; a config omitting the key inherits correctly; all seven source
+shapes fire and a literal 0, a `0.00` keyword and a *read* of the key do not.
+Proven end to end with `otree resetdb` — the shipped template exits 0, and with
+`participation_fee=2.50` the boot fails with the guard's message.
+
+## Tracked docs are for whoever runs a study; `_ai/` stays local and is marked as such — 2026-08-14
+
+Decided by Julian, after the sweep for the entry below found that tracked
+documentation pointed into gitignored `_ai/` about fifteen times — nine in
+`DECISIONS.md`, five in `README.md`, one in `CLAUDE.md`. Nothing under `_ai/` is
+tracked (`git ls-files _ai/` returns nothing), so **every one of those was a dead
+link in a clone**, including the recipe `CLAUDE.md` sends every agent to before
+running a render check. A template whose first-read files point at absent
+documents teaches the copy to distrust its own instructions.
+
+**The test applied** is not "is this useful?" and not even "does a copy need
+it?", but **"does a person running a study need it?"**. That reframing is what
+made the split easy: an audit of how the dashboard was built is scaffolding no
+matter how good it is; a recipe for running the render check without root is
+something a researcher needs on day one.
+
+**Three files moved to a new tracked `docs/`**: `headless_chromium_recipe.md`
+(eight tracked references, and without it a copy cannot run the measured render
+checks this template calls the only evidence a layout change works),
+`postgres_assumptions.md` (item 8 is a gap every copy inherits), and
+`group_matching_reference.py` (`main/__init__.py` tells whoever implements group
+matching to read it first). Two were written into `docs/`: a researcher-facing
+`README.md` — the front door, in the terms somebody running a study thinks in
+rather than the terms we built it in — and `hosting_a_prolific_study.md`.
+
+**Everything else stayed in `_ai/` and every reference to it now carries `local
+only — _ai/ is gitignored; not in a clone`**, in one style, so a reader can tell
+a deliberate absence from a missing file at a glance. `_ai/render_check/` and
+`_ai/dashboard_render/` were deliberately NOT marked: they are output directories
+created by running the checks, not documents to read, and marking them would
+teach the reader that the tool is broken.
+
+**Why `docs/` rather than the repo root or `skills_claude/`.** The root already
+carries the six documents everybody is told to read; adding second-tier reference
+beside them makes the first tier harder to see. `skills_claude/` is method
+material addressed to an agent working ON the template, which is a different
+audience from a researcher running a study. `docs/README.md` states the rule for
+what may be added, so the next person has a test rather than a habit.
+
+**Also settled, same theme — what belongs in a template at all.** Two
+double-clickable macOS launchers were sitting untracked in the tree, having been
+deliberately removed from the repo once already (`eb026e3`, 2026-07-23).
+`GitHub_sync.command` is Julian's own sync convenience: kept on disk, added to
+`.gitignore` by name rather than as `*.command`, so a launcher that IS template
+material would still have to be ignored on purpose. `Preview_Instructions.command`
+was **deleted**: the preview flow supersedes it — `intro/generate_instructions_
+preview.py` gives a person the same thing (the instructions viewable without
+running a session, as HTML and PDF) and is documented in `README.md` and two
+skills pages. Not deleted on that alone: the launcher drove a *stale May-28 copy*
+of the generator living inside the gitignored `previews/` output directory, 11
+lines behind the maintained one, writing to the same filenames — so
+double-clicking it would silently overwrite current previews with output from
+three-month-old code.
+
+**Enforced:** nothing automated — no check fails when a tracked file gains a link
+into `_ai/`. `docs/README.md` carries the rule and the marking convention; that
+is all that holds it.
 
 ## The predeploy check decides which database it touches in ONE place, and proves it before anything destructive — 2026-08-14
 
@@ -66,7 +185,7 @@ row and passed; post-fix the identical run leaves the row intact (`MUSTSURVIVE`,
 22 tables) and still passes on its staged copy. The regression this is meant to
 survive was simulated directly — the pin deleted, the proof left in place — and
 the proof caught it: exit 2, `nothing was written`, live data untouched. Both
-sqlite paths re-verified unchanged (upgrade mode with the `_ai/live_data/`
+sqlite paths re-verified unchanged (upgrade mode with the `_ai/live_data/` (local only — `_ai/` is gitignored; not in a clone)
 fixture: boot, schema, resume, fresh, no-JS and log-scan all pass, with 2b's
 pre-existing frozen-config failure unaffected; degraded mode: PASS).
 
@@ -230,7 +349,7 @@ header, and proves its isolation with `PRAGMA database_list` — all sqlite-only
 all by design and documented in its header. The documented way to obtain its
 input is `docker cp <container>:/app/data/db.sqlite3`, a file that does not exist
 under Postgres. Every suite is likewise sqlite (`tests/otree_inprocess.py`,
-`tests/render_check.py`), as is the `_ai/live_data/` fixture that makes upgrade
+`tests/render_check.py`), as is the `_ai/live_data/` fixture (local only — `_ai/` is gitignored; not in a clone) that makes upgrade
 mode meaningful.
 
 **So the one backend a hosted study actually uses is the one with no coverage at
@@ -260,8 +379,7 @@ target must not be the live database name", and `PRAGMA database_list` becomes
 **Enforced: NOTHING.** No test, no gate, no banner tells an operator that their
 Postgres deployment is being upgraded without an upgrade check. The README's
 Docker section now says so in words, which is the only thing standing here.
-Working detail: `_ai/postgres_assumptions_recorded.md` (local only — `_ai/` is
-gitignored, so it is not in a clone).
+Working detail: `docs/postgres_assumptions.md`.
 
 ## `DB_NAME` in settings.py does not select Postgres — oTree 6 never reads `DATABASES` — 2026-08-14
 
@@ -282,7 +400,7 @@ something. Either way the block needs a comment saying `DATABASES` is not
 consulted, or the next reader will "restore" it.
 
 **Enforced:** nothing. No check compares the configured backend against the one
-actually in use. Detail: `_ai/postgres_assumptions_recorded.md` item 4.
+actually in use. Detail: `docs/postgres_assumptions.md` item 4.
 
 ## The README documents that inert `DB_NAME` mechanism as if it worked — 2026-08-14
 
@@ -311,7 +429,7 @@ accurately. What remains is the general shape — every other import-time failur
 still collapses into one message.
 
 **Enforced:** nothing. Worth splitting if that file is being edited anyway; not
-worth a change on its own. Detail: `_ai/postgres_assumptions_recorded.md` item 9.
+worth a change on its own. Detail: `docs/postgres_assumptions.md` item 9.
 
 ## Ended.html carries no screen-out copy — deleted as unreachable, with the unreachability enforced — 2026-08-14
 
@@ -936,7 +1054,7 @@ templates and defined nowhere, one concept carrying two widths, and an inline
 marked `EXCEPTION` with the reason.
 **Enforced:** the Styling section of `CLAUDE.md`; layout drift is caught by
 `tests/render_check.py` against the geometry baseline. The no-inline-style rule
-itself relies on review. Full working: `_ai/css_divergence_report.md`.
+itself relies on review. Full working: `_ai/css_divergence_report.md` (local only — `_ai/` is gitignored; not in a clone).
 
 ## "Flags decide mechanics, `recruitment` decides copy" — 2026-08-13
 
@@ -999,7 +1117,7 @@ history never is — "how many did the gate turn away" is counted from
 write-once `-4` (would leave genuine finishers recorded as screened out).
 **Enforced:** `tests/screenout_softwall_test.py`; the consent boundary is the
 durable `participant.consent_submitted` fact, not a page index. Full working:
-`_ai/screenout_softwall_log.md`.
+`_ai/screenout_softwall_log.md` (local only — `_ai/` is gitignored; not in a clone).
 
 ## The clear predicate is exactly the entry-allow predicate minus `undetermined` — 2026-08-12
 
@@ -1023,7 +1141,7 @@ a study rejecting `unknown` starts ejecting laptops behind privacy proxies.
 This is the model case of the collapsed-distinction rule in `CLAUDE.md`.
 **Enforced:** `common.classify_device`; `tests/device_gate_test.py`, which is
 deliberately weighted toward false positives (browsers that must NOT be
-screened). Full working: `_ai/device_allowlist_log.md`.
+screened). Full working: `_ai/device_allowlist_log.md` (local only — `_ai/` is gitignored; not in a clone).
 
 ## The lab comprehension rule is help, not ejection — unlimited attempts — 2026-08-12
 
@@ -1041,7 +1159,7 @@ all).
 **Enforced:** `tests/gated_flow_test.py` (lab-reread and prolific-dq
 scenarios); the prelaunch check refuses `comprehension_dq` in a lab config;
 attempts proven uncapped by `tests/quiz_attempt_log_test.py`. Full working:
-`_ai/lab_comprehension_proposal.md`.
+`_ai/lab_comprehension_proposal.md` (local only — `_ai/` is gitignored; not in a clone).
 
 ## Every graded quiz submission is logged — uncapped, and unable to break the page — 2026-08-12
 

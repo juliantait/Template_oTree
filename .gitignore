@@ -21,5 +21,12 @@ _ai/
 
 TODO.md
 
+# Julian's own Mac mini sync launcher (git-adds everything and pushes, so he can
+# keep the mini in step by double-clicking it). Personal convenience, not part
+# of the template — it must not travel into a copied study. Named explicitly
+# rather than as `*.command` so a launcher that IS template material would
+# still have to be ignored on purpose.
+GitHub_sync.command
+
 # Private Mac mini hosting runbook (tunnel IDs, ports, credential env names) — keep local
 MACMINI_HOSTING.md

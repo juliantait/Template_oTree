@@ -188,7 +188,8 @@ SCREENOUT_RETURN_URL_PLACEHOLDER = 'REPLACE_SCREENOUT_RETURN_URL'
 
 # --- experimenter dashboard ----------------------------------------------------
 # The live operator view at /experimenter_dashboard (experimenter_dashboard.py,
-# notes in _ai/dashboard_notes.md). These are read AT REQUEST TIME, so tuning
+# notes in _ai/dashboard_notes.md, local only: _ai/ is gitignored). These are
+# read AT REQUEST TIME, so tuning
 # them needs only a server restart; deleting either line falls back to the same
 # defaults, defined in that module. NOT session config parameters, deliberately:
 # they are operator-screen behaviour, not experimental design, so they must not
@@ -280,7 +281,14 @@ SESSION_CONFIG_DEFAULTS = dict(
     # Everything money: base/show-up pay, bonuses, how many rounds are paid,
     # currency conversion, and whether we collect bank details to pay out.
     real_world_currency_per_point=1.00,  # oTree currency conversion rate
-    participation_fee=0.00,      # oTree's built-in participation fee (admin report)
+    # ZERO, AND HELD THERE BY A BOOT GUARD (fee_guard.py). oTree adds this ON
+    # TOP of participant.payoff wherever it reports what is owed (admin Payments,
+    # payoff_plus_participation_fee, the export column) — a second payment
+    # channel. This template keeps ONE ledger: the base is `showup` below, which
+    # outro.compute_final_payoff folds into participant.payoff with the bonus, so
+    # the admin figure equals the amount actually owed. A non-zero value here
+    # splits that across two numbers and REFUSES THE BOOT.
+    participation_fee=0.00,      # oTree's built-in participation fee — keep 0
     showup=2.5,                  # show-up fee quoted on consent and paid at the end
     expected_duration_minutes=30,  # session length quoted on the consent page
     quiz_bonus=5,                # bonus for passing the quiz on the first attempt
@@ -347,7 +355,8 @@ SESSION_CONFIG_DEFAULTS = dict(
     #     the online rule ejects on, so "failed comprehension" means one thing
     #     across both study types. (Failing already costs quiz_bonus, which is
     #     paid only when failed_attempts == 0.)
-    # See _ai/lab_comprehension_proposal.md and CODEBOOK.md.
+    # See CODEBOOK.md (and _ai/lab_comprehension_proposal.md, local only:
+    # _ai/ is gitignored, so it is not in a copied study).
     comprehension_max_failures=3,   # wrong attempts that count as failing the quiz
     # Lab re-read pass: on first crossing the failure threshold, offer ONE
     # return through the instructions (intro round 2). After it is used, further

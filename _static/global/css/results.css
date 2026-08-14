@@ -108,7 +108,8 @@
 
 /* COMPONENT — per-round payoff table. The look is ported from the exp_pilots
    pilot (Julian, 2026-08-13, change_requests_round2 item 8; reference kept at
-   _ai/ref_exp_pilots/_static/global/css/results.css). PORTED BY REASON, NOT BY
+   _ai/ref_exp_pilots/_static/global/css/results.css, local only: _ai/ is
+   gitignored). PORTED BY REASON, NOT BY
    PASTE — each rule below is here for the effect it produces, and the pilot's
    coconut/allocation columns and its win / no-win vocabulary are deliberately
    NOT imported, because this table is Round + Payoff and has no win state.

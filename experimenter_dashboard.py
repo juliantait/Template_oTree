@@ -549,7 +549,8 @@ def _quiz_outcome_map(session) -> dict:
     passing), or absent (nothing graded at all).
 
     WHY THIS EXISTS — the collapsed distinction found answering Julian's
-    question B (2026-08-13; see _ai/change_requests_round2.md for the measured
+    question B (2026-08-13; see _ai/change_requests_round2.md — local only,
+    _ai/ is gitignored — for the measured
     trace). `quiz_done` is stamped on ANY exit from the quiz page, so these two
     reached the same predicate and became indistinguishable:
 
@@ -920,7 +921,8 @@ def _quiz_cell(v, stamps, step, terminal, max_failures, last_attempt_passed) -> 
     instructions/quiz block with no comprehension DQ.
 
     THE FORCED STATE (added 2026-08-13; the full trace is question B in
-    _ai/change_requests_round2.md). Being past the quiz was ALSO not "passed":
+    _ai/change_requests_round2.md, local only). Being past the quiz was ALSO
+    not "passed":
     an experimenter using the admin panel's "advance slowest participants"
     pushes a participant past it having answered nothing, and the row then
     claimed a pass — for every participant at once, since that button advances
@@ -2012,7 +2014,7 @@ function repaint(data) {
          renders as a solid neutral glyph with no face and no skin tone, so
          it stays legible at header size — with the standing caveat that
          emoji rendering depends on the operator machine's fonts
-         (_ai/dashboard_notes.md). */
+         (_ai/dashboard_notes.md, local only: _ai/ is gitignored). */
       arrived = data.rows.filter(function (r) { return r.arrived; }).length,
       fin = data.rows.filter(function (r) { return r.finished; }).length,
       term = data.rows.filter(function (r) { return r.terminal; }).length,
