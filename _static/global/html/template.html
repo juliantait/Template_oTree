@@ -28,6 +28,21 @@
             <div class="eyebrow">Design reference</div>
             <h2 class="header-title">Experimental screen — title</h2>
             <p class="header-text">Header text for subtitles, aligned just below the title.</p>
+
+            <!-- PROGRESS-STRIP: the task pages' round-of-total indicator
+                 (base.css). In the real pages it arrives via the shared
+                 include (_static/global/html/task_progress_strip.html), whose
+                 text and bar are driven by ONE server-side computation
+                 (main.progress_vars); the fill width there is an inline style
+                 because it is a server-computed dynamic value — the marked
+                 EXCEPTION to the no-inline-style rule. This specimen shows the
+                 static shape only. -->
+            <div class="progress-strip">
+                <div class="progress-count">Round 3 of 10</div>
+                <div class="progress-track">
+                    <div class="progress-fill" style="width: 30%;"></div>
+                </div>
+            </div>
         </div>
 
         <!-- CONTENT: the scroll region. The header above and the button row

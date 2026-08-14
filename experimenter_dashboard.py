@@ -663,6 +663,10 @@ def _participant_row(pp, ctx, now) -> dict:
     minus the dirty flag. Field access like ``pp.vars.get(...)`` is still
     what everything OUTSIDE this module must use.
     """
+    import common   # local, like every common/settings import in this
+    # module — the dashboard must stay importable with oTree absent
+    # (the _FALLBACK_EXIT_CODES reasoning); the stage-name constants
+    # (common.STAGE_*) are only needed at request time.
     v = pp._vars or {}
     stamps = dict(v.get('stage_timestamps') or {})
     codes = ctx['exit_codes']
@@ -692,7 +696,7 @@ def _participant_row(pp, ctx, now) -> dict:
         idx, last = pp._index_in_pages, pp._max_page_index
         finished = (
             exit_code == codes['finished']
-            or 'finished' in stamps
+            or common.STAGE_FINISHED in stamps
             or (isinstance(idx, int) and isinstance(last, int)
                 and pp.visited and idx > last)
         )
@@ -757,11 +761,11 @@ def _participant_row(pp, ctx, now) -> dict:
     # `finished` was derived without a stamp never flags — no clock to judge.
     awaiting_return = False
     if finished and ctx['completion_redirects']:
-        fin_ts = stamps.get('finished')
+        fin_ts = stamps.get(common.STAGE_FINISHED)
         awaiting_return = bool(
             isinstance(fin_ts, (int, float))
             and (now - fin_ts) >= ctx['return_grace']
-            and 'prolific_return_clicked' not in stamps)
+            and common.STAGE_PROLIFIC_RETURN_CLICKED not in stamps)
 
     # --- tab-monitor violations while they CLIMB -----------------------------
     # Until now the operator saw only the disqualification, after it happened.
@@ -883,17 +887,21 @@ def _reached_step(terminal, stamps) -> str:
     submit that disqualifies, so the stamp alone would claim 'task').
     The tab monitor is the one that can fire anywhere, so only it is derived.
     """
+    import common   # local, like every common/settings import in this
+    # module — the dashboard must stay importable with oTree absent
+    # (the _FALLBACK_EXIT_CODES reasoning); the stage-name constants
+    # (common.STAGE_*) are only needed at request time.
     if terminal in ('screened_out', 'no_consent'):
         return 'entry'
     if terminal == 'comprehension':
         return 'quiz'
-    if 'task_done' in stamps:
+    if common.STAGE_TASK_DONE in stamps:
         return 'questionnaire'
-    if 'quiz_done' in stamps:
+    if common.STAGE_QUIZ_DONE in stamps:
         return 'task'
-    if 'instructions_done' in stamps:
+    if common.STAGE_INSTRUCTIONS_DONE in stamps:
         return 'quiz'
-    if 'consent' in stamps:
+    if common.STAGE_CONSENT in stamps:
         return 'instructions'
     return 'entry'
 
@@ -927,9 +935,13 @@ def _quiz_cell(v, stamps, step, terminal, max_failures, last_attempt_passed) -> 
     with verify_quiz off) leaves the old behaviour exactly as it was: no
     evidence is not evidence of a force-advance.
     """
+    import common   # local, like every common/settings import in this
+    # module — the dashboard must stay importable with oTree absent
+    # (the _FALLBACK_EXIT_CODES reasoning); the stage-name constants
+    # (common.STAGE_*) are only needed at request time.
     attempts_wrong = int(v.get('failed_attempts', 0) or 0)
     past_quiz = (
-        'quiz_done' in stamps
+        common.STAGE_QUIZ_DONE in stamps
         and terminal != 'comprehension'
         and step not in ('entry', 'instructions', 'quiz')
     )
@@ -989,10 +1001,15 @@ def _intro_seconds(stamps, step, terminal, finished, now) -> dict:
     the one subtlety in this function; do not "simplify" it to reading the
     stamp.
     """
-    start = stamps.get('left_before_app')
+    import common   # local, like every common/settings import in this
+    # module — the dashboard must stay importable with oTree absent
+    # (the _FALLBACK_EXIT_CODES reasoning); the stage-name constants
+    # (common.STAGE_*) are only needed at request time.
+    start = stamps.get(common.LEFT_BEFORE_APP_STAGE)
     if not isinstance(start, (int, float)):
         start = max(
-            (t for k in ('consent', 'confirm_id', 'ai_safety_agreed')
+            (t for k in (common.STAGE_CONSENT, common.STAGE_CONFIRM_ID,
+                         common.STAGE_AI_SAFETY_AGREED)
              for t in [stamps.get(k)] if isinstance(t, (int, float))),
             default=None,
         )
@@ -1001,7 +1018,7 @@ def _intro_seconds(stamps, step, terminal, finished, now) -> dict:
     in_intro = step in ('instructions', 'quiz')
     if in_intro and terminal is None and not finished:
         return dict(seconds=max(0, int(now - start)), live=True)
-    end = stamps.get('quiz_done')
+    end = stamps.get(common.STAGE_QUIZ_DONE)
     if isinstance(end, (int, float)) and end >= start:
         return dict(seconds=int(end - start), live=False)
     # Out of the intro block with no quiz stamp: a screen-out or a declined
@@ -1037,12 +1054,16 @@ def _stall_elapsed(step, stamps, intro, seconds_on_page, now):
     Falls back to page time wherever a stamp is missing (a participant already
     mid-flow when the stamp was deployed), which is the pre-pills behaviour.
     """
+    import common   # local, like every common/settings import in this
+    # module — the dashboard must stay importable with oTree absent
+    # (the _FALLBACK_EXIT_CODES reasoning); the stage-name constants
+    # (common.STAGE_*) are only needed at request time.
     if step in ('instructions', 'quiz'):
         if intro['live'] and intro['seconds'] is not None:
             return intro['seconds']
         return seconds_on_page
     if step == 'questionnaire':
-        t = stamps.get('task_done')
+        t = stamps.get(common.STAGE_TASK_DONE)
         if isinstance(t, (int, float)):
             return max(0, int(now - t))
         return seconds_on_page

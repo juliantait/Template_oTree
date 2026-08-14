@@ -348,7 +348,7 @@ flowchart TD
         Welcome["welcome + consent<br>explicit consent question,<br>Prolific ID + device capture"]
         ScreenOut["screened_out — shown INSTEAD of consent,<br>at the same page index (exit code -4).<br>Codeless link back to Prolific."]
         ConfirmID["ConfirmProlificID — confirm the platform id"]
-        Arm["AISafetyAgree — ARMS THE TAB MONITOR<br>before the instructions and the quiz,<br>so both are monitored too"]
+        Arm["AISafetyAgree — ARMS THE TAB MONITOR.<br>EVERY page after this one is monitored by default<br>(monitoring.py): intro + main EJECT at the cap,<br>outro RECORDS ONLY — see the outro subgraph"]
     end
     Gate -. "a type the study excludes:<br>consent is never shown" .-> ScreenOut
     ScreenOut -. "returns on an accepted device<br>BEFORE consent: verdict CLEARED" .-> Welcome
@@ -357,21 +357,22 @@ flowchart TD
     ConfirmID --> Arm
     Arm --> Instr1
 
-    subgraph INTRO ["intro — instructions + quiz (round 2 exists but is never shown online)"]
+    subgraph INTRO ["intro — instructions + quiz (tab monitor live — round 2 exists but is never shown online)"]
         Instr1["instructing — instructions (round 1)"] --> Quiz1["quiz (round 1)"]
         Quiz1 -- "wrong answers, failures below<br>the cap: error, try again" --> Quiz1
     end
     Quiz1 -- "failures reach comprehension_max_failures" --> EndedDQ
+    Quiz1 -. "tab-away violations reach<br>tab_monitor_max_violations<br>(counted on the instructions and quiz too)" .-> EndedTM
 
     Quiz1 -- "all correct" --> Game
     subgraph MAIN ["main — task rounds 1..num_experimental_rounds (tab monitor live)"]
         Game["GameStart — task page"] --> Payoff["payoff — round result"]
         Payoff -- "next round" --> Game
     end
-    Game -. "tab-away violations reach<br>tab_monitor_max_violations<br>(counted on any task page)" .-> EndedTM
+    Game -. "tab-away violations reach<br>tab_monitor_max_violations<br>(one count across intro + main)" .-> EndedTM
     Payoff -- "after the last round" --> FbGate
 
-    subgraph OUTRO ["outro — ending (Demographics page skipped: Prolific exports demographics itself)"]
+    subgraph OUTRO ["outro — ending (Demographics skipped: Prolific exports demographics itself). Tab monitor still watching, but RECORD-ONLY: violations here land in focus_loss_count_outro and NEVER eject — the task is over and the data collected"]
         FbGate{"pilot_feedback<br>flag on?"}
         FbGate -. "yes (pilots only)" .-> Fb["Feedback — free-text pilot feedback"]
         Fb -.-> Results
@@ -801,7 +802,18 @@ scheme" section and `settings.py`). That bundle turns on:
   disqualification (comprehension / tab monitor). The entry screen-out is the
   exception: it returns them with NO code, so their submission stays open.
 - the **integrity modules** — `tab_monitor`, `comprehension_dq`, plus
-  `passive_capture` and `device_capture`.
+  `passive_capture` and `device_capture`. With `tab_monitor` on, **every page
+  after the agreement screen is monitored by default** (`monitoring.py` — a
+  page can only be unmonitored by opting out explicitly), with one deliberate
+  asymmetry: same monitor, same counting, **different consequence by phase**.
+  During the instructions, quiz and task, violations count toward
+  disqualification (`focus_loss_count`, ejecting at
+  `tab_monitor_max_violations`); during the **outro they are recorded only**
+  (`focus_loss_count_outro`) and never eject — by then the task is over and
+  the data collected, so disqualifying somebody who completed the whole study
+  (say, for tabbing to Prolific while reading their receipt) would cost a
+  real participant for no benefit. A nonzero outro count on a finished
+  participant is measurement, not a near-miss.
 
 The profile deliberately does **not** narrow `allowed_devices` (see the
 parameter scheme above): screening devices out is a separate, explicit decision,

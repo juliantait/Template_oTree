@@ -218,6 +218,10 @@ TERMINAL_PAGES |= {p.strip() for p in
 # task rounds, participant vars set along the way) are the pages that a broken
 # upgrade actually 500s. Unknown pages (anything a study added) simply sort
 # last; they are still tried.
+# NB the task-page names ('GameStart', 'payoff') also live in
+# tests/main_contract.py — the one contract the test suite imports. Update
+# them there on a game swap; this list only degrades (unknown names sort
+# last), it does not break.
 RESUME_PREFERENCE = ['quiz', 'GameStart', 'payoff', 'instructing',
                      'AISafetyAgree', 'ConfirmProlificID', 'Demographics',
                      'Feedback', 'welcome', 'startpage']

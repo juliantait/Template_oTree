@@ -4,7 +4,12 @@ import random
 # Take NUM_ROUNDS from session defaults (static at import time for oTree).
 from settings import SESSION_CONFIG_DEFAULTS, STATIC_VERSION
 import common
+import monitoring
 num_experimental_rounds = SESSION_CONFIG_DEFAULTS['num_experimental_rounds']
+
+# One implementation, in common.flag (raw config.get — see its docstring for
+# why it is NOT common.cfg).
+_flag = common.flag
 
 doc = """
 tasks
@@ -98,28 +103,17 @@ def is_active_round(player) -> bool:
 def task_page_visible(player) -> bool:
     """Visibility for a task page: active round AND still in the study.
 
-    Once the tab monitor disqualifies a participant (ai_safety_disqualified), or
-    the entry mobile screen-out removed them (screened_out), every task page
-    returns False, so a page reload lands them on the ending.
+    The removal half is `common.removed_from_study` — the ONE downstream belt
+    (whole-app review A1): any recorded removal (tab-monitor DQ, screen-out,
+    comprehension DQ, declined consent) hides every task page, so a page
+    reload lands the participant on the ending instead of a task screen. Some
+    of those states cannot reach this app today (routing walks them to the
+    outro) — belted anyway; the membership note lives on the predicate.
     """
-    if player.participant.vars.get('ai_safety_disqualified'):
-        return False
-    if common.is_screened_out(player.participant):
+    if common.removed_from_study(player.participant):
         return False
     return is_active_round(player)
 
-
-def ai_safety_js_vars(player):
-    """Thresholds for the client monitor (read by ai_safety_monitor.js)."""
-    cfg = player.session.config
-    return dict(
-        tab_monitor=bool(cfg.get('tab_monitor')),
-        AI_SAFETY_CONFIG=dict(
-            max_violations=int(common.cfg(cfg, 'tab_monitor_max_violations')),
-            threshold_ms=int(common.cfg(cfg, 'tab_monitor_threshold_ms')),
-            overlay_delay_ms=int(common.cfg(cfg, 'tab_monitor_overlay_delay_ms')),
-        ),
-    )
 
 # FUNCTIONS
 
@@ -127,62 +121,48 @@ def ai_safety_js_vars(player):
 
 def task_template_vars(player) -> dict:
     """The template vars EVERY task page needs: the progress strip's numbers
-    (main.progress_vars — one source for the text line and the bar) and the
-    tab_monitor gate the shared script include branches on. A TaskPage
+    (main.progress_vars — one source for the text line and the bar). A TaskPage
     subclass that overrides vars_for_template must SPREAD this dict in (see
-    GameStart / payoff) rather than retype the keys."""
-    return dict(
-        progress_vars(player),
-        tab_monitor=bool(player.session.config.get('tab_monitor')),
-    )
+    GameStart / payoff) rather than retype the keys.
+
+    (The tab_monitor gate is NOT here any more: the monitor include ships
+    through css_bundle.html and gates itself on session.config, so no page
+    has to remember to pass it — the monitored-by-default inversion.)"""
+    return dict(progress_vars(player))
 
 
-class TaskPage(Page):
-    """THE BASE EVERY TASK PAGE SUBCLASSES — the task wiring lives here, once.
+class TaskPage(monitoring.MonitoredPage):
+    """THE BASE EVERY TASK PAGE SUBCLASSES — the task-specific wiring, once.
 
-    WHY INHERITANCE — recorded because it is the justification for the
-    indirection (Julian, 2026-08-13, review item J2): a task page that is
-    SILENTLY NOT ARMED for the tab monitor is a worse outcome than the cost of
-    a base class. Somebody adding a page and forgetting the wiring gets no
-    error anywhere — the failure is monitoring that simply never fires on that
-    page, discovered from the data rather than from a test. With the wiring
-    here, "add a task page" is subclass-and-write-content, and forgetting is
-    structurally impossible.
-
-    WHAT IT CARRIES — the monitor CONTRACT is untouched; this changes who
-    TYPES the wiring, not what it is (same bindings, names and thresholds):
+    THE MONITOR WIRING IS NOT HERE ANY MORE — it generalised upward
+    (2026-08-13, whole-app review B1): TaskPage began as the template's one
+    use of page inheritance (J2: a page silently not armed for the monitor is
+    worse than the cost of a base class), and that same reasoning now covers
+    EVERY page after the agreement screen through `monitoring.MonitoredPage`,
+    which this subclasses. live_method and js_vars are inherited from there;
+    what stays HERE is what makes a page a TASK page:
       * ``is_displayed = task_page_visible`` — round capping plus the
-        disqualified / screened-out gate;
-      * ``live_method = common.focus_live_method`` — the server-authoritative
-        violation counter (a no-op unless the tab_monitor flag is on);
-      * ``js_vars = ai_safety_js_vars`` — the client monitor's thresholds;
+        removed-from-study belt;
       * ``vars_for_template`` -> task_template_vars — the progress strip's
-        numbers and the tab_monitor gate. A page needing MORE vars overrides
-        it and spreads ``task_template_vars(self)`` in.
-    The template side has its own two shared pieces: include
-    ``_static/global/html/task_progress_strip.html`` in the header and
-    ``_static/global/html/tabmonitor_assets.html`` at the end of the template.
+        numbers. A page needing MORE vars overrides it and spreads
+        ``task_template_vars(self)`` in.
+    The template side keeps one shared piece: include
+    ``_static/global/html/task_progress_strip.html`` in the header. (The
+    monitor's script/stylesheet ship to every page via css_bundle.html — no
+    per-template include left to forget.)
 
-    TWO GOTCHAS THAT MAKE THIS PATTERN BITE LATER — read before adding pages:
-      * oTree resolves page attributes AT IMPORT. A future page that must NOT
-        bind the monitor cannot just omit something — it INHERITS the binding,
-        and needs an explicit override (``live_method = None`` and
-        ``js_vars = None``, with a comment saying why) to unbind.
-      * SUBCLASS THIS; never copy its attributes into a new page class.
-        Copying reintroduces exactly the per-page drift this removes — the
-        page whose copy goes stale is the silently-unarmed page again.
+    TWO GOTCHAS, still live — monitoring.py's docstring carries the full set:
+      * oTree resolves page attributes AT IMPORT: a page that must NOT be
+        monitored cannot just omit something — it says ``monitored = False``
+        (never ``js_vars = None``, which 500s at render);
+      * SUBCLASS THIS; never copy its attributes into a new page class —
+        the page whose copy goes stale is the silently-unarmed page again.
 
-    Page-class inheritance is NOT an idiom this template uses anywhere else —
-    every other page is written out explicitly. It is deliberate HERE, and
-    only here, for the reason above: the task block is the one place where a
-    missing binding fails silently and costs monitoring data.
     ``tests/task_page_test.py`` proves the arming structurally — a fresh
     subclass is armed by subclassing alone, and the served page carries the
     monitor config end-to-end.
     """
     is_displayed = staticmethod(task_page_visible)
-    live_method = staticmethod(common.focus_live_method)
-    js_vars = staticmethod(ai_safety_js_vars)
 
     def vars_for_template(self):
         return task_template_vars(self)
@@ -208,23 +188,55 @@ class GameStart(TaskPage):
     @staticmethod
     def get_form_fields(player):
         # The passive-capture hidden field rides on this page's own form.
-        return ['client_ms'] if player.session.config.get('passive_capture') else []
+        return ['client_ms'] if _flag(player, 'passive_capture') else []
 
     def vars_for_template(self):
         return dict(
             task_template_vars(self),
-            passive_capture=bool(self.session.config.get('passive_capture')),
+            passive_capture=_flag(self, 'passive_capture'),
         )
 
+    @staticmethod
     def before_next_page(player, timeout_happened):
         # Generate a payoff for this round before showing the payoff page.
         # Into round_payoff, NEVER player.payoff — see the field's comment.
         player.round_payoff = random.randint(1, 100)
         # Passive measurement: store the client-captured hidden fields (empty if
         # JS didn't run). No-op unless passive_capture is on.
-        if player.session.config.get('passive_capture'):
+        if _flag(player, 'passive_capture'):
             common.extra_set(player.participant, f'client_ms_round_{player.round_number}',
                              player.field_maybe_none('client_ms') or '')
+
+
+def finish_task_block(player):
+    """EVERY study's LAST task page must call this from before_next_page —
+    it is what hands the task's results to the rest of the template.
+
+    On the last DISPLAYED round (which may be earlier than C.NUM_ROUNDS for a
+    shorter config) it collects every round's payoff into
+    `participant.payoff_vector` — what `outro.compute_final_payoff` pays from
+    — and stamps `task_done`, which the dashboard's task/outro boundary and
+    the export read.
+
+    A MODULE-LEVEL FUNCTION, DELIBERATELY, so it survives the deletion of the
+    placeholder pages (main review S2): it used to live inline in the
+    placeholder `payoff` class, where deleting that class deleted it — and
+    the failure is the silent kind this template hunts: an empty vector means
+    `outro.extract_round_payoffs` returns [], `selected_sum` is 0, and every
+    participant is paid show-up plus quiz bonus only, with NO ERROR ANYWHERE.
+    Omit the `task_done` stamp and the dashboard misplaces everyone at the
+    task/outro boundary, equally silently. If you replace the task pages,
+    your last page's before_next_page calls this — one line.
+    """
+    if player.round_number == rounds_for(player.session):
+        payoff_vector = [pr.field_maybe_none('round_payoff') or cu(0)
+                         for pr in player.in_rounds(1, player.round_number)]
+        existing = player.participant.vars.get('payoff_vector', None)
+        if existing is None:
+            existing = []
+        existing.extend(payoff_vector)
+        player.participant.payoff_vector = existing
+        common.stamp_stage(player.participant, common.STAGE_TASK_DONE)
 
 
 class payoff(TaskPage):
@@ -241,16 +253,13 @@ class payoff(TaskPage):
 
     @staticmethod
     def before_next_page(player, timeout_happened):
-        # On the LAST DISPLAYED round (which may be earlier than C.NUM_ROUNDS for
-        # a shorter config), collect all payoffs into the participant vector.
-        if player.round_number == rounds_for(player.session):
-            payoff_vector = [pr.field_maybe_none('round_payoff') or cu(0)
-                             for pr in player.in_rounds(1, player.round_number)]
-            existing = common.pvar(player.participant, 'payoff_vector', None)
-            if existing is None:
-                existing = []
-            existing.extend(payoff_vector)
-            player.participant.payoff_vector = existing
-            common.stamp_stage(player.participant, 'task_done')
+        # The payoff-vector collection and the task_done stamp — the two
+        # duties every replacement task app must keep (its docstring).
+        finish_task_block(player)
 
 page_sequence = [GameStart, payoff]
+
+# MONITORED BY DEFAULT — every page above must be a monitoring.MonitoredPage
+# subclass or explicitly opted out; a page that dodged the rule fails the BOOT
+# here, never a participant (see monitoring.py).
+monitoring.assert_monitored_page_sequence(__name__, page_sequence)

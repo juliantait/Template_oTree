@@ -234,7 +234,7 @@ DASHBOARD_RETURN_GRACE_SECONDS = 90
 # Appended as ?v=... to every CSS/JS href so a redeploy is never served a stale
 # cached asset. BUMP THIS ON EVERY CHANGE to a file under _static/. Each app
 # exposes it as C.STATIC_VERSION, which is what the templates read.
-STATIC_VERSION = '13'
+STATIC_VERSION = '14'
 
 
 SESSION_CONFIG_DEFAULTS = dict(
@@ -371,8 +371,17 @@ SESSION_CONFIG_DEFAULTS = dict(
     # and comprehension_dq as well — as a DEBUG-gated read-time override like
     # verify_quiz, NEVER by editing the resolved study values (see the
     # guarantee on resolve_recruitment_profile).
+    # COVERAGE AND THE PHASE ASYMMETRY (Julian, 2026-08-13): with the module
+    # on, EVERY page after the agreement screen is monitored by default
+    # (monitoring.py) — but the consequence differs by phase, deliberately:
+    # violations EJECT during the instructions, quiz and task (the pages the
+    # agreement protects), and are RECORDED ONLY during the outro (the task is
+    # over and the data collected; ejecting a completer over their bank-details
+    # page would cost a real participant for no benefit). Outro violations land
+    # in their own column, focus_loss_count_outro. Full why:
+    # common._apply_focus_loss.
     tab_monitor=False,              # tab-switch / AI-safety monitor
-    tab_monitor_max_violations=2,   # disqualify on the Nth recorded tab-away
+    tab_monitor_max_violations=2,   # disqualify on the Nth recorded tab-away (intro/main only)
     tab_monitor_threshold_ms=4000,  # continuous away-time that counts as a violation
     tab_monitor_overlay_delay_ms=400,  # grace before the warning overlay appears
 
@@ -594,7 +603,8 @@ PARTICIPANT_FIELDS = [
     'stage_timestamps',     # dict {stage_name: epoch_seconds} filled as the flow advances
     'participant_extra',    # free JSON bucket for future/ad-hoc fields (see codebook)
     'ai_safety_disqualified',   # tab-monitor authoritative disqualification flag
-    'focus_loss_count',     # tab-monitor authoritative violation count
+    'focus_loss_count',     # tab-monitor violations while ejection applied (intro+main)
+    'focus_loss_count_outro',  # tab-monitor violations in the outro: recorded, NEVER eject
     'focus_event_ids',      # tab-monitor seen event ids (server-side dedup)
     'comprehension_disqualified',  # comprehension-DQ authoritative flag
     'instructions_reread_used',    # lab: the one-time re-read pass was taken
@@ -614,7 +624,13 @@ PARTICIPANT_FIELDS = [
 # - stage_timestamps: {stage: epoch_seconds}; when the participant cleared a stage.
 # - participant_extra: A JSON-able dict reserved for future use (repurpose
 #   convention in CODEBOOK.md — never rename in place).
-# - ai_safety_disqualified / focus_loss_count / focus_event_ids: tab monitor state.
+# - ai_safety_disqualified / focus_loss_count / focus_event_ids: tab monitor
+#   state. focus_loss_count counts ONLY the ejecting phases (intro + main) —
+#   crossing tab_monitor_max_violations there disqualifies.
+# - focus_loss_count_outro: violations AFTER the task (outro pages), recorded
+#   only — never a disqualification, whatever the count. Its own column so an
+#   analyst can tell a completed-with-violations participant from a
+#   nearly-ejected one (see common._apply_focus_loss and CODEBOOK.md).
 # - comprehension_disqualified: set when a participant fails the quiz too often.
 # - instructions_reread_used: True once a lab participant enters the second
 #   instructions pass (quiz_reread module). Consumed on entry, not on offer.

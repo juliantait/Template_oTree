@@ -36,6 +36,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from main_contract import task_page_submits
 from otree_inprocess import boot, path_of, page_name_of  # noqa: E402
 
 ot = boot(production=True)          # MUST come before any app import
@@ -93,8 +94,9 @@ def payload_for(page, quiz_answers):
         'instructing': {},
         'quiz': dict(quiz_answers),
         'AISafetyAgree': {},
-        'GameStart': {'client_ms': ''},
-        'payoff': {},
+        # The task pages' names and payloads come from the ONE contract
+        # module (tests/main_contract.py) — a game swap edits it there.
+        **task_page_submits(),
         'Demographics': {'age': '30', 'gender': 'Female',
                          'bank': 'NL91ABNA0417164300',
                          'bank_confirmation': 'NL91ABNA0417164300', 'bic': ''},

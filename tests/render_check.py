@@ -141,6 +141,7 @@ from otree.database import engine, AnyModel, DBSession  # noqa: E402
 AnyModel.metadata.create_all(engine)
 
 import requests  # noqa: E402
+from main_contract import TASK_PAGES  # noqa: E402  (the one task-page contract)
 import uvicorn  # noqa: E402
 from otree.asgi import app  # noqa: E402
 from otree.session import create_session  # noqa: E402
@@ -414,8 +415,8 @@ def page_specs():
         # The tab-monitor agreement page: its one bold sentence is the
         # consequence the participant is agreeing to (change_requests item 18).
         dict(key='ai_safety', config='prolific', stop='AISafetyAgree'),
-        dict(key='task_tabmonitor', config='prolific', stop='GameStart'),
-        dict(key='task_payoff', config='prolific', stop='payoff'),
+        dict(key='task_tabmonitor', config='prolific', stop=TASK_PAGES[0]),
+        dict(key='task_payoff', config='prolific', stop=TASK_PAGES[1]),
         # The lab's demographics/bank page. It had NO render leg until
         # 2026-08-11, which is how a template syntax error on it (a tag quoted
         # inside a JS comment — oTree parses tags there too) reached a 500 that
@@ -1025,7 +1026,7 @@ def check_card_min_derivation(server, browser, facts):
     """
     section('Q. The card floor is derived from the task screen, and holds')
     natural = {}
-    for key, stop in (('task', 'GameStart'), ('payoff', 'payoff')):
+    for key, stop in (('task', TASK_PAGES[0]), ('payoff', TASK_PAGES[1])):
         session = create_session('prolific', num_participants=2)
         code, _ = walk_to(server.base, session, stop)
         for vp_name, vp in VIEWPORTS.items():
@@ -1318,7 +1319,7 @@ def check_task_progress(server, browser, facts):
     """U. The task screen states the round of the total, in text AND a bar."""
     section('U. Round-of-total progress on the task screens (item 7)')
     code, _ = walk_to(server.base, create_session('prolific', num_participants=2),
-                      'GameStart')
+                      TASK_PAGES[0])
     for vp_name, vp in VIEWPORTS.items():
         context = browser.new_context(viewport=vp)
         page = context.new_page()
@@ -2961,7 +2962,7 @@ def check_focus_rings(server, browser):
 def check_overlay(server, browser):
     section('D. The tab-monitor overlay covers the whole viewport')
     session = create_session('prolific', num_participants=2)
-    code, _ = walk_to(server.base, session, 'GameStart')
+    code, _ = walk_to(server.base, session, TASK_PAGES[0])
     for vp_name, vp in VIEWPORTS.items():
         context = browser.new_context(viewport=vp)
         # ARM THE MONITOR the way the study does: the AI-safety agreement page

@@ -1,20 +1,30 @@
-{# THE TAB-MONITOR PAGE ASSETS — include at the END of every template whose
-   page class binds common.focus_live_method, i.e. every TaskPage subclass
-   (review item J2 turned the two verbatim copies into this include).
+{# THE TAB-MONITOR PAGE ASSETS — shipped to EVERY page through
+   css_bundle.html (the monitored-by-default inversion, 2026-08-13; this file
+   used to be included per task-page template, which is exactly how the intro
+   spent a day documented as monitored while carrying no monitor at all — a
+   per-template include is a per-template thing to forget).
 
-   THE MONITOR CONTRACT IS UNCHANGED, only who types it:
-     * tabmonitor.css is linked PER PAGE, never in css_bundle.html — the
-       monitor's overlay/modal chrome must not ship to pages that cannot
-       show it (the css_bundle header names this as the pattern to follow);
-     * the thresholds arrive via js_vars.AI_SAFETY_CONFIG
-       (main.ai_safety_js_vars), read by ai_safety_monitor.js;
-     * the scripts are emitted only when the tab_monitor flag is on
-       (task_template_vars supplies the gate) — outside it the client gets
-       no monitor code at all. The stylesheet link is deliberately
-       UNCONDITIONAL, exactly as the two pages shipped it before this
-       include existed. #}
+   THREE GATES decide whether monitoring actually RUNS on a page, and none of
+   them lives in a template any more:
+     1. the script is emitted only when the `tab_monitor` module is on — read
+        straight off session.config below, guarded by is_defined() because
+        ibis RAISES UndefinedVariable on a missing key (measured: the
+        frozen-config suite 500s without the guard). Missing-means-OFF is
+        exactly common.flag's rule: a key absent from a frozen config means
+        the module post-dates the session;
+     2. the script REQUIRES AI_SAFETY_CONFIG in the page's js_vars
+        (common.monitor_js_vars via monitoring.MonitoredPage) — absent on the
+        `before` pages and on any page opted out with `monitored = False`, so
+        there it loads and does nothing;
+     3. the participant must have armed it on the agreement page
+        (sessionStorage.aiSafetyAgreed).
+   The config also tells the client its PHASE: ejects=false (outro) counts and
+   reports but shows no overlay and no warning modal — see
+   ai_safety_monitor.js and common._apply_focus_loss for the asymmetry.
+
+   The stylesheet link is deliberately unconditional, as it always was: the
+   overlay/modal chrome is inert without the script. #}
 <link rel="stylesheet" href="{% static 'global/css/tabmonitor.css' %}?v={{ C.STATIC_VERSION }}">
-{% if tab_monitor %}
-<script>window.AI_SAFETY_CONFIG = js_vars.AI_SAFETY_CONFIG;</script>
+{% if is_defined('session.config.tab_monitor') and session.config.tab_monitor %}
 <script src="{% static 'global/js/ai_safety_monitor.js' %}?v={{ C.STATIC_VERSION }}"></script>
 {% endif %}

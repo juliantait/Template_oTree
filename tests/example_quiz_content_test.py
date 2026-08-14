@@ -40,6 +40,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from main_contract import task_page_submits
 from otree_inprocess import boot, path_of, page_name_of  # noqa: E402
 
 # PRODUCTION mode: DEBUG off is the build participants get, and it is the only
@@ -84,8 +85,9 @@ PAYLOAD = {
     'ConfirmProlificID': {'participant_id_external': 'quiz-example'},
     'instructing': {},
     'AISafetyAgree': {},
-    'GameStart': {'client_ms': ''},
-    'payoff': {},
+    # The task pages' names and payloads come from the ONE contract
+    # module (tests/main_contract.py) — a game swap edits it there.
+    **task_page_submits(),
 }
 
 

@@ -52,6 +52,7 @@ sys.path.insert(0, _APP_ROOT)
 # Locked-down mode, like a real launch: the browser must hit the login wall.
 os.environ['OTREE_AUTH_LEVEL'] = 'STUDY'
 
+from main_contract import task_page_submits
 from otree_inprocess import boot, path_of, page_name_of  # noqa: E402
 
 ot = boot(production=True)
@@ -134,8 +135,9 @@ def payload_for(page, quiz_answers):
         'instructing': {},
         'quiz': dict(quiz_answers),
         'AISafetyAgree': {},
-        'GameStart': {'client_ms': ''},
-        'payoff': {},
+        # The task pages' names and payloads come from the ONE contract
+        # module (tests/main_contract.py) — a game swap edits it there.
+        **task_page_submits(),
         'Demographics': {'age': '30', 'gender': 'Female',
                          'bank': 'NL91ABNA0417164300',
                          'bank_confirmation': 'NL91ABNA0417164300', 'bic': ''},

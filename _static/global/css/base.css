@@ -1070,10 +1070,27 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
        results.css makes for the payment summary. Nothing about the copy, the
        font sizes or the components changes.
 
-       SCOPED TO `.stacked-form`, so it is the consent group only: the quiz
-       renders the same `.mc-option`/`.form-check` component through a different
-       wrapper and has its own (taller) budget, and one page's shortfall must not
-       silently retune every choice in the study.
+       THE SELECTOR IS EVERY `.stacked-form` OPTION ROW, AND THAT IS THE RULE,
+       NOT A LEAK (Julian, 2026-08-14): on a short viewport, option rows
+       tighten to this rhythm on EVERY page that stacks them — consent, the
+       quiz, demographics, and whatever a study adds. One component, one rule,
+       everywhere: a component that tightens on short viewports on one page
+       but not another is exactly the mixing-and-matching THE LOGO FOOTER RULE
+       exists to prevent, wearing a different class.
+
+       AN EARLIER SCOPING INTENT WAS ABANDONED HERE, ON PURPOSE — recorded so
+       it cannot read as an oversight. When this block landed (2026-08-13) its
+       comment claimed it was "the consent group only", on the reasoning that
+       one page's shortfall must not silently retune every choice in the
+       study — but the quiz and demographics stack their options in
+       `.stacked-form` directly (no "different wrapper" ever existed), so the
+       rule reached them from day one. The discrepancy surfaced through a
+       geometry-baseline diff, not by design; measured and screenshotted on
+       both pages, the shared rhythm was judged neutral-to-better (rows stay
+       over the 44px touch floor that `min-height` guarantees, nothing
+       cramped, more content above the fold), and Julian RATIFIED the shipped
+       behaviour rather than restoring the scope. See the 2026-08-14 entry in
+       DECISIONS.md. Do not re-scope this to one page without a new decision.
 
        THE TOUCH TARGET SURVIVES, which is the constraint that decides how far
        this can go: .85em -> .5em block padding leaves each row 52px tall,

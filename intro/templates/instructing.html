@@ -5,7 +5,6 @@
 <!--------- This file dynamically updates to blocks in instructions_text.html. --------->
 
 {% include '_static/global/html/css_bundle.html' %}
-<script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
 
 <!--------- Each step's title is the <h2> inside its instruction block in
             instructions_text.html — single source of truth, no fixed page
@@ -68,5 +67,9 @@
     </div>
 </div>
 
+{# global.js before instructions.js, both at the foot like every other page
+   (whole-app review A6 — global.js defers everything through onReady, so the
+   position is safety-neutral; one placement is simply one fewer variant). #}
+<script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
 <script src="{% static 'global/js/instructions.js' %}?v={{ C.STATIC_VERSION }}"></script>
 {{ endblock }}

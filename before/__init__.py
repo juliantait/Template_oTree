@@ -232,14 +232,14 @@ def _apply_device_gate(player, user_agent):
         # sentence for a phone, a tablet, a computer and an unrecognised device
         # (see common.SCREENOUT_CAUSES and before/screened_out.html).
         common.set_screened_out(participant, detected)
-        common.stamp_stage(participant, 'screened_out')
+        common.stamp_stage(participant, common.STAGE_SCREENED_OUT)
         # Keep the evidence for the decision (export only — never rendered).
         common.extra_set(participant, 'screenout_user_agent',
                          (user_agent or '')[:common.SCREENOUT_UA_TRUNC])
     elif was_screened and clears:
         action = 'cleared'
         common.clear_screened_out(participant)
-        common.stamp_stage(participant, 'screenout_cleared')
+        common.stamp_stage(participant, common.STAGE_SCREENOUT_CLEARED)
     elif was_screened:
         # Screened out, and this request is not positive evidence either way.
         # Unreachable while the two predicates are exact complements for a
@@ -404,7 +404,14 @@ class startpage(Page):
     # Lab hold screen: only meaningful when an experimenter starts the session.
     @staticmethod
     def is_displayed(player):
-        return player.session.config.get('recruitment') == 'lab'
+        # common.is_lab, like every other reader of the study type (B2, Julian
+        # 2026-08-13 — the LAST raw read of `recruitment` in the flow). The raw
+        # `.get` it replaces evaluated None == 'lab' -> False on a session
+        # frozen before the key existed, silently dropping the lab hold screen
+        # while the consent page one index later still rendered lab copy
+        # through is_lab's own default fallback: one participant, one
+        # question, two answers, one page apart.
+        return common.is_lab(player.session.config)
 
 
 class welcome(Page):
@@ -543,7 +550,11 @@ class welcome(Page):
             # Rendered only when show_duration_and_fee is on (off by default).
             show_duration_and_fee=bool(common.cfg(cfg, 'show_duration_and_fee')),
             expected_duration_minutes=common.cfg(cfg, 'expected_duration_minutes'),
-            showup_fee=cu(common.cfg(cfg, 'showup') or 0),
+            # BARE READ, no `or 0` (B4, Julian 2026-08-13): one guard policy for one
+            # money value — the payment side reads this key bare and fails loudly,
+            # so the promise side must not silently advertise €0.00 for the same
+            # broken config. See intro.instructions_context for the full note.
+            showup_fee=cu(common.cfg(cfg, 'showup')),
             # WHICH CONTACT ROUTE the closing sentence offers. BOTH branches
             # come from the STUDY TYPE, never from a module flag: this is copy,
             # and copy is `recruitment`'s to decide (the rule is written out in
@@ -596,7 +607,7 @@ class welcome(Page):
         if _flag(player, 'device_capture') and player.device_info_json:
             common.extra_set(player.participant, 'device_info_json', player.device_info_json)
 
-        common.stamp_stage(player.participant, 'consent')
+        common.stamp_stage(player.participant, common.STAGE_CONSENT)
         # And the entry-block exit stamp, written by EVERY page of this app and
         # deliberately overwritten each time — see common.stamp_left_before_app.
         common.stamp_left_before_app(player.participant)
@@ -670,7 +681,7 @@ class ConfirmProlificID(Page):
         if confirmed:
             _claim_participant_label(player, confirmed)
             player.participant.participant_id_external = confirmed
-        common.stamp_stage(player.participant, 'confirm_id')
+        common.stamp_stage(player.participant, common.STAGE_CONFIRM_ID)
         common.stamp_left_before_app(player.participant)
 
 
@@ -679,7 +690,14 @@ class AISafetyAgree(Page):
 
     On submit the template sets `sessionStorage.aiSafetyAgreed = '1'`; the
     monitor JS (`_static/global/js/ai_safety_monitor.js`) stays dormant until
-    that flag is set, so this page marks exactly where monitoring begins.
+    that flag is set, so this page marks exactly where monitoring begins — and
+    since 2026-08-13 everything after it really IS monitored by default
+    (monitoring.MonitoredPage: intro and main eject at the threshold, outro
+    records only — see monitoring.py). Between 2026-08-12 and then, "begins
+    here" was a claim the code did not honour: the page had moved but the
+    intro pages carried no monitor wiring, so the instructions and the quiz
+    stayed unwatched with nothing anywhere to say so (the whole-app review's
+    headline finding; recorded in DECISIONS.md).
 
     WHY IT IS IN `before`, AND NOT AT THE END OF `intro` (moved 2026-08-12 —
     a deliberate correction, do not move it back).
@@ -748,7 +766,7 @@ class AISafetyAgree(Page):
         # `ai_safety_agreed` survives only as the fallback in
         # `experimenter_dashboard._intro_seconds`, for participants who were
         # already mid-flow when `left_before_app` was deployed.
-        common.stamp_stage(player.participant, 'ai_safety_agreed')
+        common.stamp_stage(player.participant, common.STAGE_AI_SAFETY_AGREED)
         common.stamp_left_before_app(player.participant)
 
 

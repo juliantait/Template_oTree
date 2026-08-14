@@ -29,6 +29,7 @@ _TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _TESTS_DIR)
 sys.path.insert(0, os.path.dirname(_TESTS_DIR))
 
+from main_contract import task_page_submits
 from otree_inprocess import boot, path_of, page_name_of
 
 ot = boot(production=True)          # MUST come before any app import
@@ -76,8 +77,9 @@ def to_demographics(code):
                     'participant_id_url': ''},
         'instructing': {},
         'quiz': dict(correct),
-        'GameStart': {'client_ms': ''},
-        'payoff': {},
+        # The task pages' names and payloads come from the ONE contract
+        # module (tests/main_contract.py) — a game swap edits it there.
+        **task_page_submits(),
     }
     client = ot.client()
     resp = client.get(f'/InitializeParticipant/{code}', allow_redirects=True)

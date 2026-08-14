@@ -1,10 +1,27 @@
 from otree.api import *
 import numbers, json
 import common
+import monitoring
 from settings import STATIC_VERSION
 from .payment_rule import select_random_payouts
 
 PROLIFIC_COMPLETE_URL = "https://app.prolific.com/submissions/complete?cc="
+
+# =============================================================================
+# THE TAB MONITOR IN THIS APP: SAME COUNTING, DIFFERENT CONSEQUENCE (Julian,
+# 2026-08-13). Every page below is monitored (monitoring.OutroMonitoredPage) —
+# but a violation here is RECORDED ONLY, in its own column
+# (focus_loss_count_outro), and NEVER disqualifies. That is not drift from the
+# intro/main behaviour; it is the point: by this app the task is over and the
+# data is already collected, so ejecting somebody who has completed the whole
+# study — for tabbing away while typing bank details, or to fetch their
+# Prolific tab — would cost a real participant for no benefit. The client is
+# told the same (ejects: false) and shows no overlay and no warning modal, so
+# a completer is never threatened with a consequence that does not exist.
+# Full reasoning at common._apply_focus_loss; analyst-facing note in
+# CODEBOOK.md (a nonzero outro count on a finished row does NOT mean they
+# came close to ejection).
+# =============================================================================
 
 
 # One implementation, in common.flag (raw config.get — see its docstring for
@@ -220,6 +237,16 @@ def check_sepa_code(player):
     # the same two letters (see the asymmetry note there).
     player.sepa = 1 if iban_country_code(player.bank) in SEPA_COUNTRY_CODES else 0
 
+# THE MISSING-PAYOFF SENTINELS — a CONTRACT WITH THE GAME THE STUDY AUTHOR
+# WRITES IN `main`, hoisted to a named constant so it can be found from there
+# (main review S2b; it used to be a local inside compute_final_payoff, i.e. a
+# contract defined in one app and honoured — or not — in another, invisible
+# from `main`). A round whose payoff is one of these values is treated as
+# "no payoff recorded" and skipped by the payment selection. Edit this list if
+# your study uses different codes for "no payoff" in its data.
+MISSING_PAYOFF_SENTINELS = [-333, -111, -999]
+
+
 def extract_round_payoffs(payoffs_vector, missing_values):
     """Ordered (round_number, payoff) tuples, skipping missing sentinels.
 
@@ -239,7 +266,7 @@ def extract_round_payoffs(payoffs_vector, missing_values):
 
 # PAGES
 
-class Ended(Page):
+class Ended(monitoring.OutroMonitoredPage):
     """Finish screen for participants who did NOT complete normally: the two
     integrity disqualifications and a declined consent. When completion
     redirects are on it sends them back to Prolific with the matching code.
@@ -298,7 +325,7 @@ class Ended(Page):
         )
 
 
-class Demographics(Page):
+class Demographics(monitoring.OutroMonitoredPage):
     form_model = 'player'
     # KEEP THE ANSWERS ON A VALIDATION ERROR (change_requests item 10). oTree
     # implements this client-side: it stores each named input in sessionStorage
@@ -387,15 +414,12 @@ def compute_final_payoff(p):
     if p.field_maybe_none('earned') is not None:
         return  # already computed (e.g. Results re-rendered)
 
-    # List of values that indicate missing payoff values in the participant's payoff vector. Edit this list if you are using different codes for "no payoff" in your data.
-    missing_payoff_values = [
-        -333,
-        -111,
-        -999]
     # Extract RANDOM selected payoffs from the participant's payoff vector as ordered tuples (round_number, payoff)
     # Read participant vars with .vars.get(), never getattr() (KeyError trap; see conventions.md).
     payoffs_vector = p.participant.vars.get('payoff_vector', []) or []
-    round_payoffs = extract_round_payoffs(payoffs_vector, missing_payoff_values)
+    # The "no payoff recorded" codes are the module-level MISSING_PAYOFF_SENTINELS
+    # — a contract with the game in `main`; see the constant's comment.
+    round_payoffs = extract_round_payoffs(payoffs_vector, MISSING_PAYOFF_SENTINELS)
     # common.cfg, never []-indexing: a session created before a parameter
     # existed does not carry it, and a KeyError here is a 500 on the payment
     # page — the worst possible place (CLAUDE.md).
@@ -446,7 +470,7 @@ def compute_final_payoff(p):
     p.participant.payoff = cu(target)
 
 
-class Feedback(Page):
+class Feedback(monitoring.OutroMonitoredPage):
     """Free-text pilot feedback (pilot_feedback axis).
 
     Shown to completers when the pilot_feedback flag is on — a pilot or friend
@@ -464,7 +488,15 @@ class Feedback(Page):
 
 
 def results_live_method(player, data):
-    """Record the click on the Results page's "Back to Prolific" link, so the
+    """The Results page's live channel — a DISPATCHER, because a page has
+    exactly ONE live_method and this page needs two things on it: the
+    return-click stamp below, and the tab monitor's focus messages, which are
+    DELEGATED to the outro's record-only handler at the end (the
+    four-pieces-travel-together rule: overriding the monitored base's
+    live_method must keep delegating, or this page's monitoring silently dies
+    — see monitoring.py's gotcha list, and the test that pins this).
+
+    THE CLICK STAMP: records the click on the "Back to Prolific" link, so the
     dashboard can flag a finisher who never went back to the platform (their
     submission sits open there, unpaid, while our data says finished).
 
@@ -482,30 +514,37 @@ def results_live_method(player, data):
     absence of the stamp means "no click RECORDED", not "no click", and the
     dashboard pill built on it is a prompt to look, never a verdict.
 
-    Gated on prolific_completion_redirects (raw .get — module flag): with
-    redirects off there is no link to click and nothing to record.
+    Gated on prolific_completion_redirects (module flag): with redirects off
+    there is no link to click and nothing to record.
     """
     try:
-        if not player.session.config.get('prolific_completion_redirects'):
+        if (_flag(player, 'prolific_completion_redirects')
+                and isinstance(data, dict)
+                and data.get('type') == 'prolific_return_click'):
+            stamps = player.participant.vars.get('stage_timestamps') or {}
+            # First click wins: keep the FIRST time they left, not the last
+            # reload.
+            if common.STAGE_PROLIFIC_RETURN_CLICKED not in stamps:
+                common.stamp_stage(player.participant,
+                                   common.STAGE_PROLIFIC_RETURN_CLICKED)
             return
-        if not isinstance(data, dict) or data.get('type') != 'prolific_return_click':
-            return
-        stamps = player.participant.vars.get('stage_timestamps') or {}
-        # First click wins: keep the FIRST time they left, not the last reload.
-        if 'prolific_return_clicked' not in stamps:
-            common.stamp_stage(player.participant, 'prolific_return_clicked')
     except Exception:
         pass  # measurement only: never block the participant
+    # Everything else on this channel is the monitor's. Record-only here, like
+    # the rest of the outro (the phase note at the top of this file).
+    return common.focus_live_method_outro(player, data)
 
 
-class Results(Page):
+class Results(monitoring.OutroMonitoredPage):
 
     @staticmethod
     def is_displayed(player):
         return is_completer(player)
 
-    # The return-click stamp (instrumentation only — the link itself is a
-    # plain href and works with all of this dead; see results_live_method).
+    # OVERRIDES the monitored base's live_method — legitimately, because it
+    # DELEGATES the monitor's messages (see results_live_method). The
+    # return-click stamp is instrumentation only; the link itself is a plain
+    # href and works with all of this dead.
     live_method = staticmethod(results_live_method)
 
     # NO js_vars here either — same reason as on Ended: the completion redirect
@@ -530,7 +569,7 @@ class Results(Page):
         # the click, and that is a separate concern from the exit code.
         compute_final_payoff(player)
         common.set_exit_code(player.participant, common.EXIT_CODES['finished'])
-        common.stamp_stage(player.participant, 'finished')
+        common.stamp_stage(player.participant, common.STAGE_FINISHED)
         # Parse the stored JSON back into rows for the per-round table.
         try:
             payouts = json.loads(player.payouts) if player.payouts else []
@@ -629,7 +668,20 @@ def vars_for_admin_report(subsession):
     return dict(dashboard_url=f'{base}/{subsession.session.code}')
 
 
+# THE COMPLETER GATE IS A PER-PAGE DUTY (whole-app review, 2026-08-13, kept
+# explicit deliberately — no base class, because Ended INVERTS the predicate
+# and every other page ANDs its own flags onto it): every page added to this
+# sequence must compose `is_completer` into its is_displayed — positively for
+# a normal page, negated for an ending. Forgetting it fails SILENTLY: a
+# disqualified participant reaching a payment or feedback page produces no
+# error, just wrong pages served and wrong data collected.
 page_sequence = [Ended, Demographics, Feedback, Results]
+
+# MONITORED BY DEFAULT — every page above must be a monitoring.MonitoredPage
+# subclass (here, OutroMonitoredPage: record-only — the phase note at the top
+# of this file) or explicitly opted out; a page that dodged the rule fails the
+# BOOT here, never a participant (see monitoring.py).
+monitoring.assert_monitored_page_sequence(__name__, page_sequence)
 
 # EXPERIMENTER DASHBOARD INSTALL — deliberately the LAST lines of the LAST app
 # module, and deliberately in `outro` rather than `before` or `settings.py`:
