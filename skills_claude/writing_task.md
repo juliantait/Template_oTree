@@ -56,8 +56,11 @@ study breaks silently. What you inherit:
   overrides `vars_for_template` SPREADS `task_template_vars(self)` in rather
   than retyping keys (see the shipped `GameStart`).
 - **The payoff plumbing**: per-round results go in `Player.round_payoff` —
-  NEVER `player.payoff`, which RAISES here (`AUTO_TABULATE_PAYOFFS=False`;
-  one ledger, see the field's comment). `finish_task_block` collects the
+  NEVER `player.payoff`, which RAISES here (`AUTO_TABULATE_PAYOFFS=False`).
+  oTree auto-sums `player.payoff` across rounds, but only `num_rewarded`
+  rounds are paid, so that sum is a figure nobody is paid; kept apart, the
+  earned figure in oTree's admin matches the `earned` computed at the end
+  (one ledger, see the field's comment). `finish_task_block` collects the
   vector and stamps `task_done`; `outro.compute_final_payoff` pays from it
   using `outro/payment_rule.py` and `MISSING_PAYOFF_SENTINELS`.
 - **The stage stamps** (`common.stamp_stage`) — the dashboard and export read
