@@ -4,7 +4,14 @@
 <div class="experimental-screen">
     <div class="screen-card narrative-card">
         <div class="experimental-header">
-            <h2 class="header-title">Before you begin</h2>
+            {# The entry block's shared header anatomy (B3, Julian 2026-08-13):
+               eyebrow "Before you begin" over a REAL title, like the consent,
+               ID and screen-out pages. This page used to render the siblings'
+               eyebrow text AS its title, so a Prolific participant saw
+               eyebrow+title, eyebrow+title, then a heading that was the
+               previous pages' kicker. The title states what the page asks. #}
+            <div class="eyebrow">Before you begin</div>
+            <h2 class="header-title">Keep this tab in focus</h2>
         </div>
         <div class="experimental-content">
             <div class="section-text">

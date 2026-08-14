@@ -24,6 +24,8 @@
 
 <script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
 
-{% include '_static/global/html/tabmonitor_assets.html' %}
+{# No tabmonitor_assets include here any more: the monitor ships to EVERY page
+   through css_bundle.html and gates itself (monitored-by-default, 2026-08-13).
+   The page's monitoring comes from its CLASS (TaskPage -> MonitoredPage). #}
 
 {{ endblock }}

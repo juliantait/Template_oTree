@@ -19,7 +19,7 @@ participant leaves early. Defined in `settings.EXIT_CODES`.
 | `0` | abandoned | Created but never reached the end (the default). | `common.init_participant` |
 | `-1` | no_consent | Declined consent on the entry page. | `before.welcome.before_next_page` |
 | `-2` | comprehension | Disqualified: failed the comprehension check too many times. **Prolific only** — see the next section for what the same threshold means in a lab session. | `intro.quiz.error_message` |
-| `-3` | tab_monitor | Disqualified: AI-safety / tab-switch monitor. **Prolific only** — the tab monitor is not supported in the lab. | `common.focus_live_method` |
+| `-3` | tab_monitor | Disqualified: AI-safety / tab-switch monitor. **Prolific only** — the tab monitor is not supported in the lab. **Only the ejecting phases (intro + main) can set it** — outro violations never do; see "Tab-monitor violation counts" below. | `common.focus_live_method` |
 | `-4` | screened_out | **General** "removed at entry, before the consent page" bucket. Set by the **device allow-list** (`allowed_devices`) and by any future entry gate. WHICH DEVICE was detected is in `participant_extra['screenout_cause']` — see below. The code is deliberately NOT device-specific: one bucket, split by cause. **NOT write-once** — see the note directly below. | `common.set_screened_out`, called by `before._apply_device_gate` |
 
 > **`-4` IS THE ONE CODE THAT CAN CHANGE BACK.** The device screen-out is a soft
@@ -43,6 +43,36 @@ with the place that sets it. Every code in the table must be set by real code:
 a code that nothing records is a lie in the export, so a reserved-but-unwired
 code gets deleted, not documented. (One such code, `-5`, has already been
 removed on those grounds; `-4` was wired up instead of removed.)
+
+### Tab-monitor violation counts — TWO columns, one deliberate asymmetry
+
+Same monitor, same counting, **different consequence by phase** (Julian,
+2026-08-13). With `tab_monitor` on, every page after the agreement screen is
+monitored (`monitoring.py`), but violations split into two exported
+participant fields by WHERE they happened:
+
+| Column | Counts violations on | Consequence |
+|--------|----------------------|-------------|
+| `focus_loss_count` | the instructions, the quiz and the task pages (the ejecting phases) | reaching `tab_monitor_max_violations` disqualifies: exit code `-3`, `ai_safety_disqualified=True` |
+| `focus_loss_count_outro` | the outro pages (Ended, Demographics, Feedback, Results) | **none, ever** — recorded only, at any count |
+
+Why the split exists rather than one number: by the outro the task is over and
+the data already collected, so ejecting somebody who has completed the whole
+study (for tabbing away while typing bank details, or to fetch their Prolific
+tab) would cost a real participant for no benefit — while a violation during
+the pages the agreement warns about is exactly what the module exists to stop.
+The two-column split is what keeps that legible in the data:
+
+* **a nonzero `focus_loss_count_outro` on a finished participant does NOT mean
+  they were ejected or nearly ejected** — no threshold applies to it, the
+  client showed them no warning, and it never touches the exit code;
+* `focus_loss_count` alone answers "how close to disqualification did they
+  come", because only its phases eject;
+* the event-id dedup (`focus_event_ids`) is shared across both, so one real
+  focus loss is never counted in both columns.
+
+The full reasoning lives at `common._apply_focus_loss`; the per-phase wiring
+at `monitoring.py`.
 
 ### Comprehension failure means different things by study type
 

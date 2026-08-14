@@ -67,6 +67,7 @@ import requests
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from http_flow_test import FormParser, build_payload  # noqa: E402
+from main_contract import TASK_PAGES  # noqa: E402  (the one task-page contract)
 
 ROOM = 'experiment'
 DESKTOP_UA = ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
@@ -301,10 +302,10 @@ def journey(base, config, label):
         # the quiz are unmonitored.
         expected = (['welcome', 'ConfirmProlificID', 'AISafetyAgree',
                      'instructing', 'quiz', 'quiz']
-                    + ['GameStart', 'payoff'] * rounds + ['Results'])
+                    + TASK_PAGES * rounds + ['Results'])
     else:
         expected = (['startpage', 'welcome', 'instructing', 'quiz', 'quiz']
-                    + ['GameStart', 'payoff'] * rounds
+                    + TASK_PAGES * rounds
                     + ['Demographics', 'Results'])
     check(seen == expected,
           f'every screen in the real order\n'

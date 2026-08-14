@@ -161,9 +161,18 @@ documented. See `settings.EXIT_CODES` and the CODEBOOK.md exit-code table.
 - **prolific_completion_redirects** — explicit consent + "Back to Prolific" endings keyed
   by exit code (`before`, `outro`).
 - **tab_monitor** — server-authoritative tab-switch / AI-safety monitor: an
-  arming page (`intro`), a live handler counting deduped violations
-  (`common.focus_live_method`) bound to the task pages, and a disqualified
-  ending. Thresholds are config values; the client JS reads them via `js_vars`.
+  arming page (`before.AISafetyAgree`), a live handler counting deduped
+  violations, and a disqualified ending. **Every page after the arming page is
+  monitored BY DEFAULT** (`monitoring.MonitoredPage`; a page opts out only by
+  saying `monitored = False`), with one deliberate asymmetry — same monitor,
+  same counting, different consequence by phase: during the instructions,
+  quiz and task, violations eject at the threshold
+  (`common.focus_live_method` → exit code `-3`); during the **outro they are
+  recorded only** (`common.focus_live_method_outro` →
+  `focus_loss_count_outro`) and never eject, because by then the task is over
+  and the data collected — disqualifying a completer would cost a real
+  participant for no benefit. Thresholds are config values; the client JS
+  reads them via `js_vars` and shows no warnings in the record-only phase.
 - **comprehension_dq** — disqualify after `comprehension_max_failures` wrong quiz
   attempts, routing to the ending (`intro`). The online (Prolific) rule. **Not
   supported in the lab** (with `tab_monitor`; the pre-launch check fails on it).

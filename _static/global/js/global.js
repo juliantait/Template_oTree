@@ -45,14 +45,14 @@
         if (form) { form.submit(); }
     }
 
-    // Run `fn` once the page's own markup exists. NOT OPTIONAL: this file is
-    // linked at DIFFERENT POINTS in different templates — at the END of the
-    // body on the consent and quiz pages, but at the TOP on the instructions
-    // and results pages, before their card is parsed. Anything that queries the
-    // card at script time therefore silently found nothing on those pages (the
-    // scroll affordance below was dead on the instructions page for exactly
-    // this reason). Deferring costs nothing and makes the file
-    // position-independent.
+    // Run `fn` once the page's own markup exists. NOT OPTIONAL, even though
+    // every template now links this file at the foot of the body (normalised
+    // 2026-08-13; it used to sit at the TOP on the instructions and results
+    // pages, where anything querying the card at script time silently found
+    // nothing — the scroll affordance below was dead on the instructions page
+    // for exactly this reason). Deferring keeps the file position-independent,
+    // so the next template that links it somewhere else cannot resurrect that
+    // bug. Do not remove as a pointless delay.
     function onReady(fn) {
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', fn);

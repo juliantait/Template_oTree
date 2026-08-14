@@ -1,6 +1,5 @@
-{% block content %}
+{{ block content }}
 {% include '_static/global/html/css_bundle.html' %}
-<script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
 
 <!-- Ending for participants who did NOT complete normally: disqualified and
      non-consenting.
@@ -162,4 +161,7 @@
     </div>
 </div>
 
-{% endblock %}
+{# global.js at the foot like every other page (whole-app review A6);
+   its onReady deferral makes the position safety-neutral. #}
+<script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
+{{ endblock }}

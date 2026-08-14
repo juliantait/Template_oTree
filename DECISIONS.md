@@ -11,7 +11,148 @@ working.
 
 ---
 
+## One short-viewport rhythm for every `.stacked-form` option row — a leak ratified into the rule — 2026-08-14
+
+The consent-fold block (`@media (max-height: 820px)` in base.css, 2026-08-13)
+tightened option rows via `.stacked-form .mc-option / .form-check` while its
+comment claimed consent-only scope — but the quiz and demographics stack their
+options in `.stacked-form` directly (the "different wrapper" the comment cited
+never existed), so both pages were retuned from day one. **Discovered through
+a geometry-baseline diff, not by design** — the fold work never ran
+`--update-baseline`, so the first `--diff` afterwards surfaced ~130 moved
+measurements (quiz card −125px, demographics −59px at short viewports), which
+were first mis-attributed to environment drift and then pinned by a CSSOM
+toggle: deleting the one media rule sprang the rows back to the baseline's
+values on both pages, while a rule audit proved the concurrently-added
+tabmonitor.css matches nothing there. The log records the route because that
+is how it actually happened.
+**Julian's ruling: make the rule the intent.** One component, one rule,
+everywhere — a component that tightens on short viewports on one page but not
+another is the same mixing-and-matching the logo-strip principle forbids. The
+shipped behaviour stands, the adopted baseline stands, and the earlier
+"one page's shortfall must not silently retune every choice" scoping intent
+is ABANDONED, on purpose, with the reversal recorded at the block itself.
+Judged on screenshots before ratifying, not on the principle alone: rows stay
+over the 44px touch floor, nothing cramped, quiz and demographics
+neutral-to-better on short screens.
+**Rejected:** re-scoping the rule to the consent group (a dedicated class) —
+it would honour the written intent by making the same control obey two
+rhythms, which is the defect class, not the fix.
+**Enforced:** the rewritten comment at the block (base.css) states the
+everywhere-rule and forbids re-scoping without a new decision;
+`tests/geometry_baseline.json` pins the shared rhythm at all three viewports;
+the affordance and touch-target legs of `tests/render_check.py` assert the
+pages still behave.
+
+## The tab monitor is monitored-by-default after the agreement page — and the claim preceded the behaviour — 2026-08-13
+
+Whole-app review B1, decided by Julian. **First, the record correction this
+entry exists to hold: from 2026-08-12 to 2026-08-13 four places (this file's
+armed-before-the-quiz entry, README's Prolific flow diagram, the
+`AISafetyAgree` docstring, `intro/__init__.py`'s closing comment) stated that
+the instructions and the quiz were monitored, and they were not.** The
+agreement page had moved but no monitor wiring existed in `intro` — no
+live_method, no js_vars, no script — so the very check the move was made to
+protect stayed unwatched, with nothing anywhere to say so (the enforcement
+test pinned page ORDER, not coverage). The gap was found by asking where one
+concept — "a monitored page" — had two implementations, and it is recorded
+here because a claim that quietly becomes true later is exactly the kind of
+thing a future auditor must be able to date.
+
+**What closed it — an INVERSION, not page-by-page opt-in** (Julian's rule):
+everything after `before.AISafetyAgree` is monitored BY DEFAULT
+(`monitoring.MonitoredPage`, generalising TaskPage's J2 reasoning), and a
+page can only be unmonitored by asking (`monitored = False`, one switch that
+disarms all the wiring together — never `js_vars = None`, which 500s at
+render because oTree calls js_vars unconditionally). The four pieces travel
+as one: live_method and js_vars from the base class; script and stylesheet
+through `css_bundle.html` (self-gating on `session.config.tab_monitor` and on
+the page's own js_vars), so there is no per-template include left to forget —
+a per-template include is how the gap happened. The client lost its
+threshold-defaults fallback (a second copy of SESSION_CONFIG_DEFAULTS kept in
+sync by a comment) and its `/outro/` path check (a second spelling of "which
+pages are monitored"): the server's js_vars are now the one authority.
+`intro.intro_page_visible` gates on the new `common.removed_from_study` belt
+(one membership list for every removal mechanism, used by main too), so a
+mid-quiz disqualification's reload lands on the ending.
+
+**THE PHASE ASYMMETRY — same monitor, same counting, different consequence
+(Julian): intro + main EJECT at the threshold; the outro RECORDS ONLY and
+never ejects.** By the outro the task is over and the data already collected,
+so disqualifying somebody who has completed the whole study — for tabbing
+away while typing bank details, or to fetch their Prolific tab — would cost a
+real participant for no benefit. Outro violations land in their OWN column
+(`focus_loss_count_outro`), so a completed-with-violations participant is
+distinguishable from a nearly-ejected one (`focus_loss_count` keeps meaning
+"how close to disqualification"); the dedup set is shared so no event counts
+twice. The client is told its phase (`ejects: false`) and shows no overlay
+and no warning modal in the outro — the modal's threat would be a lie there.
+The asymmetry is stated, with its why, at every site that could read as
+inconsistent: `common._apply_focus_loss`, `monitoring.py`, the top of
+`outro/__init__.py`, settings' integrity block, README (section + diagram),
+CODEBOOK ("Tab-monitor violation counts"), conventions.md.
+**Rejected:** page-by-page opt-in (the model that produced the gap — a
+checklist cannot make forgetting impossible); ejecting in the outro
+(cost-without-benefit above, plus a mechanical trap: `Ended` sits FIRST in
+outro's sequence, so a mid-outro ejection has no ending page ahead of it to
+land on); and a client-side warning without counting or counting with the
+old threatening modal in the outro (each a new collapsed distinction).
+**Enforced:** `monitoring.assert_monitored_page_sequence` runs at IMPORT at
+the bottom of `intro`, `main` and `outro` and refuses to BOOT over a page
+that is neither monitored nor explicitly opted out — you can only get an
+unmonitored page by asking for one. `tests/task_page_test.py` (reworked)
+pins the bindings by identity, the quiz page's served monitor config
+end-to-end, the record-only outro (violations past the threshold disqualify
+nobody and stay in their own column), the Results dispatcher (one live
+channel, both message types), and the checker refusing a dodger.
+
+## One guard policy for a config-read money value: fail loudly — 2026-08-13
+
+Whole-app review B4, decided by Julian. `showup` / `quiz_bonus` were read two
+ways: the promise side (consent, instructions) guarded with `or 0`, the
+payment side (`outro.compute_final_payoff`) bare. For a config holding None
+that split is the worst arrangement — the participant is silently promised
+€0.00 and the crash still happens, at the payment page. The `or 0` guards are
+gone; every side now reads bare and fails loudly at the first page that
+renders the value. **This has a behavioural implication, stated plainly
+because the decision was taken assuming it did not: a degenerate config that
+used to render a silent €0.00 promise now errors instead.** Loud is chosen
+because silently promising somebody nothing is the worse outcome — the same
+reasoning `compute_final_payoff` already carried ("failing loudly beats
+recording the wrong number quietly"). No shipped or frozen config is
+affected: `common.cfg` falls back to the shipped numeric default for a
+MISSING key; only an explicit None ever hit either path.
+**Enforced:** nothing structural — the policy is one line of comment at each
+former guard site (`before.welcome.vars_for_template`,
+`intro.instructions_context`), and the loudness is the absence of the guard.
+
+## The two-accessor question is CLOSED across the flow — 2026-08-13
+
+Chased across three separate reviews (before N3 → whole-app B2 → this
+implementation), and recorded here so nobody re-opens it: **every reader of
+the study type now goes through `common.is_lab` / `common.is_prolific` /
+`common.recruitment`.** The last holdout was `before.startpage.is_displayed`'s
+raw `config.get('recruitment') == 'lab'`, which on a session frozen before
+the key existed evaluated `None == 'lab'` → False — silently dropping the lab
+hold screen while the consent page one index later rendered lab copy through
+`is_lab`'s fallback: one participant, one question, two answers, one page
+apart. Behaviour change is confined to that frozen-config case (the hold
+screen now appears, which is what the neighbouring pages already assumed);
+blast radius today is zero — no live sessions, the same window the
+`prolific_` rename used.
+**Enforced:** `grep "config.get('recruitment')"` returns nothing outside
+`common.py`; `tests/copy_routing_test.py` pins the single-implementation rule
+the accessor carries.
+
 ## Task pages inherit their wiring from `TaskPage` — the template's one use of page inheritance — 2026-08-13
+
+> **SUPERSEDED IN PART, same day — see the monitored-by-default entry above.**
+> The J2 reasoning held and GENERALISED: the monitor wiring moved up into
+> `monitoring.MonitoredPage`, which every page after the agreement screen now
+> subclasses, so page inheritance is no longer "used nowhere else" — it is the
+> rule for three of the four apps, for exactly the reason this entry gives.
+> TaskPage survives as the task-specific layer (round gating + progress vars)
+> on top of that base. The monitor contract itself is still untouched.
 
 Review item J2, approved with Julian's reasoning (recorded at the class, which
 is where the next reader meets the indirection): a task page that is SILENTLY
@@ -373,6 +514,13 @@ participant their page.
 standing.
 
 ## The tab monitor is armed before the instructions and quiz, not after — 2026-08-12
+
+> **CORRECTED 2026-08-13 — see the monitored-by-default entry above.** This
+> entry implied the move made the instructions and quiz monitored. It did
+> not: only the AGREEMENT moved; no monitor wiring existed in `intro`, so the
+> quiz stayed unwatched for a day while four documents said otherwise. The
+> enforcement below pinned page ORDER, never coverage — which is how the gap
+> survived its own test. Coverage is now real, and enforced at boot.
 
 The agreement page moved from the end of `intro` to `before`: armed after the
 quiz, the very check that gates entry was unmonitored — a participant could

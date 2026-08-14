@@ -333,6 +333,11 @@ def init_participant(participant):
     participant.participant_id_external = participant.vars.get('participant_id_external', '')
     participant.ai_safety_disqualified = False
     participant.focus_loss_count = 0
+    # Post-task violations: recorded, NEVER disqualifying — a separate column
+    # from focus_loss_count so an analyst can tell a completed-with-violations
+    # participant from a nearly-ejected one (the phase asymmetry note above
+    # _apply_focus_loss).
+    participant.focus_loss_count_outro = 0
     participant.focus_event_ids = []
     participant.comprehension_disqualified = False
     participant.instructions_reread_used = False
@@ -357,6 +362,33 @@ def stamp_stage(participant, stage):
     stamps[stage] = time.time()
     participant.stage_timestamps = stamps
 
+
+# =============================================================================
+# THE STAGE-STAMP VOCABULARY — one spelling per stamp, for writers AND readers.
+# =============================================================================
+# LEFT_BEFORE_APP_STAGE below existed first, "so the writer and the reader
+# cannot drift apart on the spelling" — and an audit (whole-app review A2,
+# 2026-08-13) found every OTHER cross-file stamp was literals on both sides,
+# and even that one's named reader used the literal. Either the reasoning
+# holds for the whole vocabulary or the constant is decoration; it holds. The
+# apps write these and experimenter_dashboard.py reads them; a typo on either
+# side is now an AttributeError at import instead of a silently wrong pill.
+#
+# THE VALUES ARE FROZEN — they are keys inside live exports' stage_timestamps
+# JSON, so the CODEBOOK never-rename rule applies to the strings, not just the
+# columns. Rename the Python names freely; never the values.
+STAGE_CONSENT = 'consent'
+STAGE_CONFIRM_ID = 'confirm_id'
+STAGE_AI_SAFETY_AGREED = 'ai_safety_agreed'
+STAGE_SCREENED_OUT = 'screened_out'
+STAGE_SCREENOUT_CLEARED = 'screenout_cleared'
+STAGE_INSTRUCTIONS_DONE = 'instructions_done'
+STAGE_INSTRUCTIONS_REREAD_DONE = 'instructions_reread_done'
+STAGE_QUIZ_DONE = 'quiz_done'
+STAGE_REREAD_TAKEN = 'reread_taken'
+STAGE_TASK_DONE = 'task_done'
+STAGE_FINISHED = 'finished'
+STAGE_PROLIFIC_RETURN_CLICKED = 'prolific_return_clicked'
 
 # THE NAME OF THE "LEFT THE ENTRY BLOCK" STAMP, defined once so the writer
 # (before/__init__.py) and the reader (experimenter_dashboard._intro_seconds)
@@ -473,6 +505,39 @@ def is_screened_out(participant) -> bool:
     getattr().
     """
     return bool(participant.vars.get('screened_out'))
+
+
+def removed_from_study(participant) -> bool:
+    """The DOWNSTREAM belt: is there any recorded reason this participant is
+    out of the study?
+
+    ONE membership list for every removal mechanism the template has —
+    the entry screen-out, both integrity disqualifications, and a declined
+    consent — so a removal mechanism added tomorrow is joined in ONE place
+    instead of three differently-shaped predicates (whole-app review A1,
+    2026-08-13; before that, intro belted one flag, main two, outro all four).
+    `intro.intro_page_visible` and `main.task_page_visible` gate on this;
+    `outro.ending_reason` reads the SAME records but stays its own cascade,
+    because the ending needs the reason and its priority order for copy, not
+    a boolean — extend BOTH when adding a mechanism.
+
+    Reads only durable records, so it answers the same on any request. The one
+    deliberate non-caller: `before._leaving_study`, which must answer from the
+    consent FORM on the page's own request, before any record exists (the
+    two-currencies note at `before._declined_consent`).
+
+    Some of what this belts is unreachable today (routing walks a non-consenter
+    and a comprehension DQ straight to the outro) — kept anyway, for the same
+    reason `outro.was_screened_out` is kept: the future gate that sets a flag
+    later in the flow.
+    """
+    v = participant.vars
+    return bool(
+        is_screened_out(participant)
+        or v.get('ai_safety_disqualified')
+        or v.get('comprehension_disqualified')
+        or v.get('exit_code') == EXIT_CODES['no_consent']
+    )
 
 
 def allowed_devices(config) -> tuple:
@@ -904,14 +969,40 @@ def extra_set(participant, key, value):
     participant.participant_extra = bucket
 
 
-def focus_live_method(player, data):
-    """Server-authoritative tab-switch handler (bind as live_method on monitored pages).
+# =============================================================================
+# THE TAB MONITOR — server half. ONE counting core, TWO consequences by phase.
+# =============================================================================
+# SAME MONITOR, SAME COUNTING, DIFFERENT CONSEQUENCE BY PHASE (Julian,
+# 2026-08-13). Violations EJECT during the instructions, the quiz and the task
+# (`focus_live_method`), and are RECORDED BUT NEVER EJECT during the outro
+# (`focus_live_method_outro`). This looks like an inconsistency to anyone who
+# does not know why, so here is why: by the outro THE TASK IS OVER AND THE DATA
+# IS ALREADY COLLECTED — disqualifying somebody who has completed the whole
+# study (say, for tabbing away while typing bank details, or to fetch their
+# Prolific tab) would cost a real participant for no benefit. A violation
+# during the pages the agreement warns about is exactly what the module exists
+# to stop; a violation after them is only worth knowing about.
+#
+# THE TWO PHASES ARE TWO COLUMNS, so an analyst can tell a completed-with-
+# violations participant from a nearly-ejected one:
+#
+#   focus_loss_count        violations while ejection applied (intro + main).
+#                           Crossing tab_monitor_max_violations HERE
+#                           disqualifies (exit code -3).
+#   focus_loss_count_outro  violations after the task (outro pages). NEVER
+#                           disqualifies, whatever the count — a nonzero value
+#                           on a finished participant does NOT mean they came
+#                           close to ejection. See CODEBOOK.md.
+#
+# Event dedup (focus_event_ids) is deliberately SHARED across both phases, so
+# a replayed event id cannot be counted once per phase.
+#
+# The page wiring that binds these — monitored BY DEFAULT for every page after
+# the agreement screen — lives in monitoring.py (MonitoredPage /
+# OutroMonitoredPage); the client half is _static/global/js/ai_safety_monitor.js.
 
-    Counts each real focus-loss once (deduped by client-supplied event_id) and
-    disqualifies at the configured threshold, broadcasting {action:'disqualified'}
-    to that player so the client reloads onto the ending. No-op unless the
-    tab_monitor flag is on. See settings + _static/global/js/ai_safety_monitor.js.
-    """
+def _apply_focus_loss(player, data, ejects):
+    """The one counting core. `ejects` picks the phase's consequence."""
     # NB the local name is `config`, not `cfg`: `cfg` is this module's safe
     # session-config accessor and shadowing it here would hide it.
     config = player.session.config
@@ -925,6 +1016,14 @@ def focus_live_method(player, data):
         return  # dedup: count each real loss once
     seen.append(event_id)
     player.participant.focus_event_ids = seen
+    if not ejects:
+        # OUTRO: record in the outro's OWN column and stop. Deliberately not
+        # the same counter — see the phase note above: the ejecting count must
+        # stay readable as "how close to disqualification", and this must not
+        # push it over a threshold that no longer applies.
+        count = (player.participant.vars.get('focus_loss_count_outro') or 0) + 1
+        player.participant.focus_loss_count_outro = count
+        return
     count = (player.participant.vars.get('focus_loss_count') or 0) + 1
     player.participant.focus_loss_count = count
     max_violations = int(cfg(config, 'tab_monitor_max_violations'))
@@ -932,3 +1031,60 @@ def focus_live_method(player, data):
         player.participant.ai_safety_disqualified = True
         set_exit_code(player.participant, EXIT_CODES['tab_monitor'])
         return {player.id_in_group: dict(action='disqualified')}
+
+
+def focus_live_method(player, data):
+    """Server-authoritative tab-switch handler for the EJECTING phases
+    (intro + main — bound by monitoring.MonitoredPage).
+
+    Counts each real focus-loss once (deduped by client-supplied event_id) and
+    disqualifies at the configured threshold, broadcasting {action:'disqualified'}
+    to that player so the client reloads onto the ending. No-op unless the
+    tab_monitor flag is on. See settings + _static/global/js/ai_safety_monitor.js.
+    """
+    return _apply_focus_loss(player, data, ejects=True)
+
+
+def focus_live_method_outro(player, data):
+    """The OUTRO's handler (bound by monitoring.OutroMonitoredPage): the same
+    counting, RECORDED ONLY — it never disqualifies, never touches the exit
+    code, and never broadcasts (Julian, 2026-08-13; the full why is the phase
+    note above). Violations land in `focus_loss_count_outro`, a separate
+    column, so the export can tell post-task violations from the ones that
+    counted toward ejection.
+    """
+    return _apply_focus_loss(player, data, ejects=False)
+
+
+def _monitor_js_vars(player, ejects):
+    """Client thresholds for ai_safety_monitor.js, or {} when the module is off.
+
+    Empty-when-off matches the device-capture pattern (`welcome.js_vars`):
+    config is sent only when the script that reads it is meant to run. The
+    client REQUIRES this config and refuses to start without it — there is
+    deliberately no defaults fallback in the JS any more, because a fallback
+    is a second copy of settings.SESSION_CONFIG_DEFAULTS that drifts.
+
+    `ejects` tells the client which phase it is in: in the record-only outro
+    phase it counts and reports but shows NO overlay and NO warning modal —
+    the modal's copy ("will end your participation") would be a lie there.
+    """
+    config = player.session.config
+    if not config.get('tab_monitor'):
+        return {}
+    return dict(AI_SAFETY_CONFIG=dict(
+        max_violations=int(cfg(config, 'tab_monitor_max_violations')),
+        threshold_ms=int(cfg(config, 'tab_monitor_threshold_ms')),
+        overlay_delay_ms=int(cfg(config, 'tab_monitor_overlay_delay_ms')),
+        ejects=bool(ejects),
+    ))
+
+
+def monitor_js_vars(player):
+    """js_vars for the EJECTING phases (bound by monitoring.MonitoredPage)."""
+    return _monitor_js_vars(player, ejects=True)
+
+
+def monitor_js_vars_outro(player):
+    """js_vars for the record-only OUTRO phase (monitoring.OutroMonitoredPage)."""
+    return _monitor_js_vars(player, ejects=False)

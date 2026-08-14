@@ -1,6 +1,5 @@
-{% block content %}
+{{ block content }}
 {% include '_static/global/html/css_bundle.html' %}
-<script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
 
 
 <div class="experimental-screen">
@@ -175,14 +174,34 @@
     // click" pill), then let the navigation proceed untouched. The link is a
     // real href and must keep working with every line of this dead — never
     // preventDefault here, never make leaving depend on this script.
+    //
+    // WIRED AT DOMContentLoaded, AND liveSend IS CHECKED AT CLICK TIME — both
+    // load-bearing (found 2026-08-13): oTree defines liveSend in live.js at
+    // the very BOTTOM of its own page template, after this content block, so
+    // the old parse-time `typeof liveSend` guard was always false and the
+    // listener was NEVER attached in a real browser — the stamp could only
+    // ever be missing, and the dashboard's pill read as "did not click" for
+    // every completer. Best-effort remains best-effort; it just exists now.
     (function () {
-        var link = document.querySelector('.button-row a.next-button');
-        if (!link || typeof liveSend !== 'function') { return; }
-        link.addEventListener('click', function () {
-            try { liveSend({type: 'prolific_return_click'}); } catch (e) {}
-        });
+        function wire() {
+            var link = document.querySelector('.button-row a.next-button');
+            if (!link) { return; }
+            link.addEventListener('click', function () {
+                try {
+                    if (typeof liveSend === 'function') {
+                        liveSend({type: 'prolific_return_click'});
+                    }
+                } catch (e) { /* never touch the navigation */ }
+            });
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', wire);
+        } else { wire(); }
     })();
 </script>
 {% endif %}
 
-{% endblock %}
+{# global.js at the foot like every other page (whole-app review A6);
+   its onReady deferral makes the position safety-neutral. #}
+<script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
+{{ endblock }}

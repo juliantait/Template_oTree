@@ -19,9 +19,14 @@
    specificity, so whichever loads LAST wins. base.css first, always. This is the
    exact order the old bundle used — preserved deliberately, not re-derived.
 
-   NOT IN THIS SET: tabmonitor.css. It is linked per-page by the two monitored
-   pages only, so the monitor's chrome never ships to pages that cannot show it.
-   Follow that pattern for any future page-specific stylesheet.
+   ALSO IN THIS BUNDLE: the tab-monitor assets (the include below), since the
+   monitored-by-default inversion of 2026-08-13. tabmonitor.css used to be
+   linked per-page by the two monitored pages only, "so the monitor's chrome
+   never ships to pages that cannot show it" — the inversion changed which
+   pages those are (every page after the agreement can show it, and on the
+   pages before it the script is inert), and a per-template include had just
+   been caught as the mechanism by which the intro claimed monitoring it did
+   not have. The include gates itself; templates carry nothing.
 
    Adding a stylesheet? Add it HERE, after base.css, so every page picks it up in
    one place — never as a stray <link> in one template. #}
@@ -30,3 +35,4 @@
 <link rel="stylesheet" href="{% static 'global/css/results.css' %}?v={{ C.STATIC_VERSION }}">
 <link rel="stylesheet" href="{% static 'global/css/quiz.css' %}?v={{ C.STATIC_VERSION }}">
 <link rel="stylesheet" href="{% static 'global/css/demographics.css' %}?v={{ C.STATIC_VERSION }}">
+{% include '_static/global/html/tabmonitor_assets.html' %}

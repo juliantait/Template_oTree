@@ -3,8 +3,13 @@ from otree import settings as otree_settings
 import json
 import time
 import common
+import monitoring
 from settings import STATIC_VERSION
 from .quiz_items import QUIZ_ITEMS
+
+# One implementation, in common.flag (raw config.get — see its docstring for
+# why it is NOT common.cfg).
+_flag = common.flag
 
 doc = """
 Intro
@@ -96,7 +101,7 @@ def reread_available(player) -> bool:
     offer modal is shown — dismissing the modal keeps the offer open.
     """
     cfg = player.session.config
-    if not cfg.get('quiz_reread'):
+    if not _flag(player, 'quiz_reread'):
         return False
     if player.round_number >= C.NUM_ROUNDS:
         return False  # no re-read round left to enter
@@ -161,13 +166,15 @@ def intro_page_visible(player) -> bool:
     re-read offer (Prolific never reaches it) — everyone else's round-2 pages
     return False (empty export rows, by design; see C.NUM_ROUNDS).
 
-    Never a participant screened out at entry. The belt to the soft wall's
-    brace: the gate HOLDS such a participant on before.welcome, so they never
-    reach this app at all — this is here for a future gate that could set the
-    flag later in the flow. (Not "mobile": the cause is a device TYPE, and a
-    study may exclude computers.)
+    Never a participant with a recorded removal — `common.removed_from_study`,
+    the ONE downstream belt (whole-app review A1; this used to check
+    `screened_out` alone). The tab-monitor half is LIVE, not a belt: these
+    pages are monitored (monitoring.MonitoredPage), so a mid-quiz
+    disqualification's reload must land on the ending, not back on the quiz.
+    The screen-out half stays the belt to the soft wall's brace — the gate
+    HOLDS such a participant on before.welcome, so they never reach this app.
     """
-    if common.is_screened_out(player.participant):
+    if common.removed_from_study(player.participant):
         return False
     return player.round_number == 1 or in_reread_pass(player)
 
@@ -198,8 +205,14 @@ def instructions_context(player) -> dict:
     """
     cfg = player.session.config
     return {
-        'showup': cu(common.cfg(cfg, 'showup') or 0),
-        'quiz_bonus': cu(common.cfg(cfg, 'quiz_bonus') or 0),
+        # BARE READS, DELIBERATELY — no `or 0` (B4, Julian 2026-08-13). These
+        # used to be guarded with `or 0`, which silently promised €0.00 for a
+        # config that set the value to None while the PAYMENT side read the
+        # same key bare and crashed at Results — the worst split of one value.
+        # One policy now, and it is the payment path's own: failing loudly
+        # beats silently promising somebody nothing.
+        'showup': cu(common.cfg(cfg, 'showup')),
+        'quiz_bonus': cu(common.cfg(cfg, 'quiz_bonus')),
         'num_experimental_rounds': common.cfg(cfg, 'num_experimental_rounds'),
         # Participant fields via .vars.get(), never getattr() (KeyError trap).
         'treatment': player.participant.vars.get('treatment_group', ''),
@@ -269,13 +282,17 @@ def quiz_modal_state(player) -> dict:
 
 
 # PAGES
-class instructing(Page):
+class instructing(monitoring.MonitoredPage):
+    # MONITORED (monitoring.MonitoredPage): the agreement page the participant
+    # just passed warns against consulting an AI assistant during exactly this
+    # reading — the pages it protects must be the pages it watches.
     template_name = 'intro/templates/instructing.html'
     # NO form_model/form_fields: this page only advances. redoinstructions is
     # a QUIZ field (the POST that takes the re-read offer); declaring it here
     # rendered no control and stored nothing.
     is_displayed = staticmethod(intro_page_visible)
 
+    @staticmethod
     def vars_for_template(player):
         return {
             **instructions_context(player),
@@ -291,18 +308,25 @@ class instructing(Page):
             'is_debug': otree_settings.DEBUG,
         }
 
+    @staticmethod
     def before_next_page(player, timeout_happened):
-        stage = 'instructions_done' if player.round_number == 1 else 'instructions_reread_done'
+        stage = (common.STAGE_INSTRUCTIONS_DONE if player.round_number == 1
+                 else common.STAGE_INSTRUCTIONS_REREAD_DONE)
         common.stamp_stage(player.participant, stage)
 
-class quiz(Page):
+class quiz(monitoring.MonitoredPage):
+    # MONITORED (monitoring.MonitoredPage): this is the very check that gates
+    # entry to the study — the page the 2026-08-12 agreement-page move existed
+    # to protect. A violation here ejects exactly as on a task page.
     template_name = 'intro/templates/quiz.html'
     form_model = 'player'
     is_displayed = staticmethod(intro_page_visible)
 
+    @staticmethod
     def get_form_fields(player):
         return QUIZ_FIELD_NAMES + ['redoinstructions']
 
+    @staticmethod
     def error_message(player, values):
         # verify_quiz=False is a DEBUG loosening (clickthrough), honoured only
         # while DEBUG is on — in production validation always runs, whatever
@@ -331,7 +355,7 @@ class quiz(Page):
             # When enabled, a participant who fails too many times is not blocked
             # again — they are flagged and allowed through to the disqualified
             # ending (see app_after_this_page and the outro Disqualified page).
-            if cfg.get('comprehension_dq'):
+            if _flag(player, 'comprehension_dq'):
                 if player.participant.failed_attempts >= comprehension_threshold(cfg):
                     player.participant.comprehension_disqualified = True
                     common.set_exit_code(
@@ -339,6 +363,7 @@ class quiz(Page):
                     return  # no error -> the page advances to the ending
             return "One or more quiz answers are wrong."
 
+    @staticmethod
     def vars_for_template(player):
         # Solutions reach the browser only under settings.DEBUG (i.e. when
         # OTREE_PRODUCTION is unset), where they power the testing skip
@@ -362,15 +387,17 @@ class quiz(Page):
             'is_debug': is_debug,
         }
 
+    @staticmethod
     def before_next_page(player, timeout_happened):
-        common.stamp_stage(player.participant, 'quiz_done')
+        common.stamp_stage(player.participant, common.STAGE_QUIZ_DONE)
         # Taking the re-read offer: consume it HERE — the moment the
         # participant leaves for the second pass — not when the modal opened.
         # (field_maybe_none: redoinstructions is blank=True and may arrive empty.)
         if player.field_maybe_none('redoinstructions') and reread_available(player):
             player.participant.instructions_reread_used = True
-            common.stamp_stage(player.participant, 'reread_taken')
+            common.stamp_stage(player.participant, common.STAGE_REREAD_TAKEN)
 
+    @staticmethod
     def app_after_this_page(player, upcoming_apps):
         # Route a comprehension-disqualified participant straight to the ending
         # app, skipping the task entirely.
@@ -384,8 +411,17 @@ class quiz(Page):
 # only AFTER the comprehension quiz — leaving the instructions and the quiz
 # itself unmonitored, so a participant could consult an AI assistant during the
 # very check that gates entry to the study, which is exactly what that page's
-# text warns against. It now sits after the consent/ID pages in `before`, so
-# everything a participant is asked to do alone is covered. See
-# `before.AISafetyAgree` for the full reasoning.
+# text warns against. It now sits after the consent/ID pages in `before`, AND
+# — since 2026-08-13 — these pages really are monitored (they subclass
+# monitoring.MonitoredPage), so everything a participant is asked to do alone
+# is covered. Between those two dates the previous sentence was a claim the
+# code did not honour: the agreement page had moved but no monitor wiring
+# existed here, so the quiz stayed unwatched with nothing to say so — see the
+# 2026-08-13 DECISIONS.md entry. `before.AISafetyAgree` has the arming story.
 page_sequence = [instructing, quiz]
+
+# MONITORED BY DEFAULT — every page above must be a monitoring.MonitoredPage
+# subclass or explicitly opted out; a page that dodged the rule fails the BOOT
+# here, never a participant (see monitoring.py).
+monitoring.assert_monitored_page_sequence(__name__, page_sequence)
 
