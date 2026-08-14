@@ -993,10 +993,49 @@ def check_schema(log, degraded):
         record(name, False, f'comparison failed: {e!r}')
 
 
+def session_can_still_reach_an_ending(participants) -> bool:
+    """Could ANYBODY in this session still be sent to an ending — and so to a
+    completion code — from now on?
+
+    THE ASYMMETRY IS THE POINT, and it is deliberately not symmetric (adopted
+    from the exp_pilots frozen-config audit, 2026-08-14). Answering YES when the
+    truth is no blocks a deploy, and the printed per-session line says exactly
+    which session and why, so it is diagnosable in seconds. Answering NO when
+    the truth is yes lets a live session through carrying a REPLACE_*
+    completion code, and costs a real participant their payment. Those two
+    wrong answers are not equally bad, so **UNSURE COUNTS AS YES.**
+
+    "Done" is therefore only ever concluded from positive evidence: oTree's own
+    page cursor showing the participant at or past the last page
+    (`_index_in_pages >= _max_page_index`). Anything else — an unstarted
+    participant who might still arrive, a cursor that is None, an attribute that
+    does not exist on this oTree version, an exception while reading — is live.
+    """
+    if participants is None:
+        return True
+    any_seen = False
+    for p in participants:
+        any_seen = True
+        try:
+            index = getattr(p, '_index_in_pages', None)
+            last = getattr(p, '_max_page_index', None)
+            if index is None or last is None:
+                return True          # cannot tell -> live
+            if int(index) < int(last):
+                return True          # positively still has pages to go
+        except Exception:
+            return True              # cannot tell -> live
+    # Two ways to reach here, both meaning "nobody can be sent anywhere":
+    # every participant is positively at or past the last page, or the query
+    # positively returned no participants at all.
+    return False
+
+
 def audit_frozen_session_configs(stored, current_configs, defaults):
     """The pure analysis behind check 2b, separable so a test can drive it.
 
     `stored`          iterable of (session_code, config_name, frozen_config)
+                      or (session_code, config_name, frozen_config, live)
     `current_configs` {name: current SESSION_CONFIGS entry} (profile-resolved —
                       resolve_recruitment_profile writes explicit keys at import)
     `defaults`        current SESSION_CONFIG_DEFAULTS
@@ -1027,7 +1066,12 @@ def audit_frozen_session_configs(stored, current_configs, defaults):
     showing the operator everything.
     """
     problems, diffs = [], []
-    for code, name, frozen in stored:
+    for row in stored:
+        # A 4th element carries liveness. Absent means UNSURE, and unsure
+        # counts as live — a caller that has not been taught to answer the
+        # question must not thereby silence the failure.
+        code, name, frozen = row[0], row[1], row[2]
+        live = row[3] if len(row) > 3 else True
         entry = current_configs.get(name)
         if entry is None:
             diffs.append((code, f'(config {name!r})',
@@ -1035,14 +1079,27 @@ def audit_frozen_session_configs(stored, current_configs, defaults):
                           'compared against the defaults alone)', ''))
             entry = {}
         current = {**defaults, **entry}
+        # A finished session cannot send anybody anywhere, so its stale keys
+        # cannot cost anybody a payment. They are still SHOWN — silence would
+        # hide a real difference — but as information, not as a deploy blocker.
+        # See session_can_still_reach_an_ending for why the doubt goes the
+        # other way.
+        def flag(kind, key, extra):
+            if live:
+                problems.append((code, key, kind, extra))
+            else:
+                diffs.append((code, key, extra,
+                              f'({kind} — but no participant in this session '
+                              f'can still reach an ending, so it blocks '
+                              f'nothing)'))
+
         for key in sorted(current):
             if key not in frozen:
-                problems.append((code, key, 'MISSING',
-                                 f'current setting {current[key]!r}'))
+                flag('MISSING', key, f'current setting {current[key]!r}')
                 continue
             frozen_value = frozen[key]
             if isinstance(frozen_value, str) and frozen_value.startswith('REPLACE_'):
-                problems.append((code, key, 'PLACEHOLDER', repr(frozen_value)))
+                flag('PLACEHOLDER', key, repr(frozen_value))
             elif frozen_value != current[key]:
                 diffs.append((code, key, frozen_value, current[key]))
         for key in sorted(set(frozen) - set(current)):
@@ -1090,9 +1147,17 @@ def check_frozen_session_configs(log, degraded):
         from settings import SESSION_CONFIGS, SESSION_CONFIG_DEFAULTS
         s = DBSession()
         try:
-            stored = [(sess.code, (sess.config or {}).get('name'),
-                       dict(sess.config or {}))
-                      for sess in s.query(Session).all()]
+            stored = []
+            liveness = []
+            for sess in s.query(Session).all():
+                try:
+                    live = session_can_still_reach_an_ending(
+                        sess.get_participants())
+                except Exception:
+                    live = True      # cannot tell -> live (see that function)
+                stored.append((sess.code, (sess.config or {}).get('name'),
+                               dict(sess.config or {}), live))
+                liveness.append((sess.code, live))
         finally:
             s.close()
         current_configs = {c['name']: dict(c) for c in SESSION_CONFIGS}
@@ -1101,6 +1166,17 @@ def check_frozen_session_configs(log, degraded):
 
         detail = [f'{len(stored)} existing session(s) audited against the '
                   f'current settings']
+        # The per-session line: whether each session can still send somebody to
+        # an ending is what decides failure-vs-information below, so it is
+        # printed rather than left implicit. A wrong LIVE verdict blocks a
+        # deploy, and this line is how somebody diagnoses that in seconds.
+        for code, live in liveness:
+            detail.append(
+                f'  session {code}: '
+                + ('CAN still reach an ending — stale keys here FAIL'
+                   if live else
+                   'nobody can still reach an ending — stale keys here are '
+                   'reported only'))
         if problems:
             detail.append(
                 'BROKEN — a frozen session cannot be repaired by editing '

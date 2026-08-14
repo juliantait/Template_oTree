@@ -100,6 +100,20 @@ audit question is: *does any concept in this codebase get decided in two places,
 and does one of them delegate to something the environment controls* (a
 database, a locale, a browser, a clock)?
 
+**The client-side variant, which fails silently and reads as success.** A path
+check in JavaScript deciding *which pages are monitored* is a second source of
+truth about a question the server already answers. When the two disagree, the
+script simply declines to run: no error, no exception, no failing test — the
+column fills with clean values for everybody and a dead feature looks like good
+news. `exp_pilots` shipped exactly this (a hard `return` on any `/outro/` path
+in `tabmonitor.js`), so its questionnaire pages could have been wired perfectly
+server-side and still recorded nothing.
+
+The general rule: **wiring can be verified, a silent refusal to run cannot** —
+unless something asserts that observations actually *arrive*. Any client-side
+instrumentation needs a test that a monitored page produces a record, not merely
+that the page is configured to be monitored.
+
 ## Styling: shared components, never page-local patches
 
 **Style with reusable components in `_static/global/css/`. A page template

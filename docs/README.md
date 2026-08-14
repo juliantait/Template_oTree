@@ -91,13 +91,16 @@ are quiet in a way you would only notice at payout:
 **If you are copying a study that already sets a participation fee, it will not
 boot until you move that money into the ledger** — put it in `showup`, or into
 the `earned` computation in `outro`. That is deliberate: oTree adds
-`participation_fee` on top of `participant.payoff` wherever it reports payment,
-so leaving it set splits what you owe across two numbers that no report shows
-together.
+`participation_fee` on top of `participant.payoff` on the admin Payments page, so
+leaving it set splits what you owe across two numbers. It does not appear in the
+CSV export at all, so the split is invisible in your data.
 
 One gap to know about: an experimenter can still edit the fee on a running
-session from oTree's own admin page. No boot check can see that. If you pay from
-the admin Payments page, do not let anyone touch that field.
+session from oTree's own admin page, and that lands in the session row in the
+database — so no restart and no boot check will ever see it. That is treated as
+an operator decision rather than something to block, but it is not invisible:
+the pre-deploy frozen-config audit reads the session rows and reports the
+difference, so it shows up as `participation_fee: frozen 3.00 vs current 0.0`.
 
 ## 6. Running it for participants
 

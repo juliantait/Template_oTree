@@ -138,9 +138,17 @@ commit this template to nothing.
 ## Prior art
 
 One real deploy has been done from a project built on this template (Railway,
-2026-08-14). The step-by-step — deploy-repo export, the dashboard steps, the
-environment variables set in practice — was written up as
-`skills_claude/hosting_railway.md`. **That file is untracked**, so it is on the
-machine that made it and not in a copy of this template. If a hosted deploy is
-going to happen more than once, that write-up is the thing to bring in here and
-generalise; this page is the durable part.
+2026-08-14), by the team that did the `exp_pilots` hosting. **The step-by-step
+is `skills_claude/hosting_railway.md`** — deploy-repo export via `git subtree
+split`, project tokens, which operations need the GraphQL API rather than the
+CLI, the env vars as actually set, the crash rehearsal, and study day. It is
+tracked, and it is the source of truth for the Railway PROCEDURE.
+
+The split between the two files is by reader, not by topic: that one is written
+for an agent or operator EXECUTING a deployment on Railway; this one is for the
+researcher deciding whether and how to host at all, and is provider-neutral.
+Where they touch the same ground — the env vars, the driver, the boot guard —
+**this file is the source of truth for what is in THIS TEMPLATE** (it is this
+repo's own code, verified here), and that file is the source of truth for
+anything Railway-specific, which was verified on a real managed host and this
+was not.

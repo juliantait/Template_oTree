@@ -178,7 +178,7 @@ virtual display, where a same-window tab switch fires the real `blur`/`focus`
 events the tab monitor listens for.
 
 ```bash
-cd /home/dev/.chromium-sysroot            # the same private apt root as above
+cd "$SCRATCH/sysroot"                     # the same private apt root as above
 export APT_CONFIG=$PWD/aptroot/apt.conf
 apt-get -o Debug::NoLocking=1 -y --download-only install xvfb
 for d in aptroot/cache/archives/*.deb; do dpkg-deb -x "$d" root/; done

@@ -74,6 +74,46 @@ The two-column split is what keeps that legible in the data:
 The full reasoning lives at `common._apply_focus_loss`; the per-phase wiring
 at `monitoring.py`.
 
+### `tab_monitor_flag` — the column to sort when you want the attention cases
+
+The two counts above are what the software counted. **`tab_monitor_flag` is what
+you should DO about it**, and it is the only tab-monitor column you need in order
+to find every participant whose attention needs a human decision. Sort by it; you
+do not need to know what `tab_monitor_max_violations` was set to for that session.
+
+Ordered, least to most severe. **Most severe wins** — a participant with both
+outro observations and enforcing violations reads as the worse of the two.
+
+| `tab_monitor_flag` | What it means | What to do | Derived from | Where to look next |
+|---|---|---|---|---|
+| *(empty)* | Nothing observed. **Check `tab_monitor_where`:** `not-monitored` means the module was OFF for this session (every lab session), which is not the same as watched-and-clean. | Nothing. | all three counters zero | `tab_monitor_where` |
+| `observed` | A record-only focus loss **after the task**, on the outro pages. They were never warned and never at risk of ejection. | **Keep and pay them.** The task data is valid. Treat their *questionnaire* answers with suspicion. | `focus_loss_count_outro > 0` | `focus_loss_count_outro` for how many; `tab_monitor_where` = `questionnaire` |
+| `warned` | Violations on an **enforcing** page (instructions, quiz, task), but under the threshold. They saw the warning and stayed. | **Keep them.** The task data is valid; treat attention as a covariate, not a reason to exclude. | `focus_loss_count > 0` and not disqualified | `focus_loss_count` for how close they came; `tab_monitor_max_violations` in the session config for the limit that applied |
+| `disqualified` | The threshold was crossed on an enforcing page. | **Exclude from analysis.** The row is flagged, not deleted — the data is still there. | `ai_safety_disqualified` | `focus_loss_count`, `exit_code` = `-3` |
+
+`tab_monitor_where` says **which region** the observations came from — `task`,
+`questionnaire`, `task+questionnaire`, `not-monitored`, or empty. It exists
+because `observed` on its own is not actionable: "treat those answers with
+suspicion" is useless until you know which answers.
+
+**THE LIMIT, STATED PLAINLY: the monitor records no per-page detail.** It keeps
+two counters, one per region, so `questionnaire` narrows it to the outro pages —
+it **cannot** tell you it was the demographics page rather than the feedback
+page. If you need that, it has to be recorded first (see
+`common.derive_tab_monitor_where`); the client already transmits the page with
+every event, the server just does not keep it.
+
+**Timestamps:** there is no per-event timestamp column. Each entry in
+`focus_event_ids` begins with a base-36 client-clock millisecond stamp
+(`Date.now().toString(36)`), so approximate times are recoverable from that blob,
+but it is dedup bookkeeping and not a designed timestamp — the client's clock,
+not the server's. `stage_timestamps` gives the surrounding stage boundaries.
+
+Nothing above replaces the raw columns. `focus_loss_count`,
+`focus_loss_count_outro` and `ai_safety_disqualified` remain the datum;
+`tab_monitor_flag` is derived from them in ONE place
+(`common.derive_tab_monitor_flag`).
+
 ### Comprehension failure means different things by study type
 
 `comprehension_max_failures` is **one counter and one threshold**

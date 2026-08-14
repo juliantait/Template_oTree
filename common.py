@@ -339,6 +339,13 @@ def init_participant(participant):
     # _apply_focus_loss).
     participant.focus_loss_count_outro = 0
     participant.focus_event_ids = []
+    # Reader-facing tab-monitor columns (see derive_tab_monitor_flag). Set here
+    # rather than left to the first violation, so a participant who never trips
+    # the monitor still exports a meaningful pair — and so `tab_monitor_where`
+    # can record that the module was OFF for this session, which the flag's
+    # empty value cannot say on its own.
+    monitored = bool(participant.session.config.get('tab_monitor'))
+    refresh_tab_monitor_flag(participant, monitored=monitored)
     participant.comprehension_disqualified = False
     participant.instructions_reread_used = False
     participant.device_info = {}
@@ -1001,6 +1008,102 @@ def extra_set(participant, key, value):
 # the agreement screen — lives in monitoring.py (MonitoredPage /
 # OutroMonitoredPage); the client half is _static/global/js/ai_safety_monitor.js.
 
+# --------------------------------------------------------------------------
+# THE READER-FACING TAB-MONITOR FLAG
+#
+# The raw columns answer "what did the software count?". They do not answer the
+# question a person actually has — **does this participant's ATTENTION need a
+# human decision, and what should I do about it?** — because answering that from
+# the raw columns requires knowing which phase ejects, which does not, and what
+# `tab_monitor_max_violations` was set to for THAT session. A reader who has
+# never opened CODEBOOK.md cannot get there, and a reader who half-remembers it
+# gets there wrongly: a nonzero `focus_loss_count_outro` on a finished
+# participant looks alarming and means "keep and pay them".
+#
+# So one column says what to DO, in an ordered vocabulary, most severe winning:
+#
+#   ''             clean — nothing observed (see the `where` companion for
+#                  whether the monitor was even on).
+#   'observed'     a record-only focus loss AFTER the task. KEEP AND PAY —
+#                  the data is valid; treat those questionnaire answers with
+#                  suspicion.
+#   'warned'       violations on an enforcing page, under the threshold. The
+#                  TASK DATA IS VALID; attention is a covariate, not a reason
+#                  to exclude.
+#   'disqualified' the threshold was crossed. EXCLUDE from analysis — the row
+#                  is flagged, not deleted.
+#
+# It REPLACES NOTHING. `focus_loss_count`, `focus_loss_count_outro` and
+# `ai_safety_disqualified` remain exactly as they were and are what this is
+# derived from; the flag is a reading of them, not a substitute.
+#
+# DERIVED IN ONE PLACE (`derive_tab_monitor_flag`) and written from the ONE
+# counting core below, which is the only code in this template that changes any
+# of the three inputs. A flag computed at each write site would drift the first
+# time somebody added a fourth site.
+# --------------------------------------------------------------------------
+
+# Ordered least-to-most severe. The order IS the semantics — `max()` over this
+# tuple is what "most severe wins" means, so do not reorder it for tidiness.
+TAB_MONITOR_FLAG_ORDER = ('', 'observed', 'warned', 'disqualified')
+
+
+def derive_tab_monitor_flag(pvars) -> str:
+    """The single derivation. `pvars` is a participant.vars-like mapping.
+
+    Pure and read-only so it can be applied to a live participant, an exported
+    row, or a test fixture without special-casing any of them.
+    """
+    if pvars.get('ai_safety_disqualified'):
+        return 'disqualified'
+    if int(pvars.get('focus_loss_count') or 0) > 0:
+        # Under the threshold: crossing it sets ai_safety_disqualified above, so
+        # reaching here means enforcing-phase violations that did NOT eject.
+        return 'warned'
+    if int(pvars.get('focus_loss_count_outro') or 0) > 0:
+        return 'observed'
+    return ''
+
+
+def derive_tab_monitor_where(pvars, monitored=True) -> str:
+    """WHERE the observations happened — the companion the flag is useless
+    without.
+
+    'observed' means "treat those answers with suspicion", which is not
+    actionable until the reader knows WHICH answers. This says which region of
+    the study the observations came from.
+
+    IT IS REGION-LEVEL, NOT PAGE-LEVEL, AND THAT IS A REAL LIMIT — the monitor
+    persists two counters, one per region, and no per-page record (see the
+    honest note in CODEBOOK.md). 'questionnaire' narrows it to the outro pages;
+    it cannot tell you it was the demographics page rather than the feedback
+    page.
+
+    `monitored=False` (the session's tab_monitor flag is off) is reported here
+    rather than in the flag itself: the flag's empty value would otherwise mean
+    both "watched and clean" and "never watched", which are different facts
+    about a participant — every lab session is the latter.
+    """
+    if not monitored:
+        return 'not-monitored'
+    task = int(pvars.get('focus_loss_count') or 0) > 0
+    outro = int(pvars.get('focus_loss_count_outro') or 0) > 0
+    if task and outro:
+        return 'task+questionnaire'
+    if task:
+        return 'task'
+    if outro:
+        return 'questionnaire'
+    return ''
+
+
+def refresh_tab_monitor_flag(participant, monitored=True) -> None:
+    """Recompute both reader-facing columns from the raw counters."""
+    participant.tab_monitor_flag = derive_tab_monitor_flag(participant.vars)
+    participant.tab_monitor_where = derive_tab_monitor_where(
+        participant.vars, monitored=monitored)
+
+
 def _apply_focus_loss(player, data, ejects):
     """The one counting core. `ejects` picks the phase's consequence."""
     # NB the local name is `config`, not `cfg`: `cfg` is this module's safe
@@ -1023,6 +1126,9 @@ def _apply_focus_loss(player, data, ejects):
         # push it over a threshold that no longer applies.
         count = (player.participant.vars.get('focus_loss_count_outro') or 0) + 1
         player.participant.focus_loss_count_outro = count
+        # Reader-facing columns follow the counters they are derived from, from
+        # inside the ONE place that changes them.
+        refresh_tab_monitor_flag(player.participant)
         return
     count = (player.participant.vars.get('focus_loss_count') or 0) + 1
     player.participant.focus_loss_count = count
@@ -1030,7 +1136,9 @@ def _apply_focus_loss(player, data, ejects):
     if count >= max_violations:
         player.participant.ai_safety_disqualified = True
         set_exit_code(player.participant, EXIT_CODES['tab_monitor'])
+        refresh_tab_monitor_flag(player.participant)
         return {player.id_in_group: dict(action='disqualified')}
+    refresh_tab_monitor_flag(player.participant)
 
 
 def focus_live_method(player, data):

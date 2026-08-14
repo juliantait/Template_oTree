@@ -6,11 +6,16 @@ WHY THIS EXISTS
 Same decision as `payoff_guard.py`, one field along: **one payment ledger.**
 `participation_fee` is oTree's own second money channel — it is not added to
 `participant.payoff`, it is added ON TOP of it wherever oTree reports payment
-(`Session._get_payoff_plus_participation_fee`, otree/models/session.py:248; the
-admin Payments page; the MTurk payment table; the `payoff_plus_participation_fee`
-export column). A non-zero fee therefore splits the amount owed to a participant
-across two numbers that live in different places and are computed by different
-code — which is the exact condition the single-ledger decision exists to prevent.
+(`Session._get_payoff_plus_participation_fee`, otree/models/session.py:248 — used
+by the admin Payments page, otree/views/admin.py:274 and
+templates/otree/SessionPayments.html:46, and by the MTurk payment table). NOT the
+CSV export: verified against 6.0.15, the participant export column list ends at
+`payoff` (otree/export.py:76-96) and carries no fee column.
+
+That asymmetry is the dangerous part: a non-zero fee splits the amount owed to a
+participant across two numbers computed by different code, and it splits them
+where a human reads off what to pay while leaving the data you analyse looking
+untouched. Exactly the condition the single-ledger decision exists to prevent.
 
 This template already pays the base amount THROUGH the ledger: `showup` is a
 session-config value that `outro.compute_final_payoff` folds into
@@ -50,18 +55,29 @@ CAUGHT — the two places a build can carry a fee:
     entry. This is the half that catches a study that builds a config at runtime
     rather than declaring it.
 
-NOT CAUGHT — and this one is REAL, not theoretical:
+NOT CAUGHT — **THIS GUARD CANNOT SEE A RUNNING SESSION AT ALL.** It reads
+source and the resolved settings objects; anything that lives in DATA is
+invisible to it, and the failure mode is the bad one — it reports CLEAN while
+the value is set. Concretely:
   * **THE ADMIN UI.** oTree ships `SessionEditPropertiesForm`
     (otree/views/admin.py:212) with `participation_fee` as an editable
-    `DecimalField`, so an experimenter can set a fee on a LIVE SESSION from the
-    browser, after boot, on a build this guard passed. No boot check can see
-    that, and there is no hook to refuse it. The mitigation is that the session
-    config view then disagrees with the shipped config, and `frozen_config_test`
-    lists `participation_fee` among the keys it audits — but nothing prevents it.
-    A study that pays out from the admin Payments page after somebody edited the
-    fee will overpay. Say so in the handover; do not pretend the guard covers it.
+    `DecimalField`. `form_valid` (otree/views/admin.py:255-261) writes it into
+    `session.config`, which is a DATABASE COLUMN on the session row
+    (`Column(_PickleField)`, otree/models/session.py:35) — so the edit lands in
+    data, not in settings.py, and **no restart will ever see it**: the guard
+    passes while the running session carries a fee. Verified against 6.0.15.
   * Indirection a source scan is structurally blind to — a computed attribute
     name, a value assembled by `exec`, a fee injected by a library.
+
+THAT IS DELIBERATELY NOT POLICED (Julian + the hosting review, 2026-08-14). An
+operator editing a live session in the browser is an operator ACTION, and we
+trust it; building a warning to second-guess it was considered and cancelled.
+What matters is that it is VISIBLE rather than silently clean, and it already
+is, for free: `scripts/predeploy_check.py`'s frozen-config audit reads the
+session ROWS (`sess.config`) rather than the source, so an edited fee shows up
+as a plain reported value difference — `frozen 3.00cu vs current setting 0.0`.
+Checking the ARTIFACT catches what checking the RECIPE cannot; this guard is the
+recipe half, and it should never be described as more.
 
 WHY THIS IS A BOOT CHECK AND NEVER A RUNTIME RAISE
 ==================================================
@@ -263,9 +279,10 @@ def assert_participation_fee_is_zero(root=None, defaults=None, configs=None):
             "the boot is being refused.\n"
             f"{listing}\n"
             "participation_fee is a SECOND payment channel: oTree adds it on "
-            "top of participant.payoff wherever it reports what is owed (the "
-            "admin Payments page, payoff_plus_participation_fee, the export "
-            "column). This template keeps ONE ledger — the base is paid through "
+            "top of participant.payoff on the admin Payments page "
+            "(payoff_plus_participation_fee), and nowhere else — it never "
+            "reaches the CSV export, so the split is invisible in your data. "
+            "This template keeps ONE ledger — the base is paid through "
             "`showup`, which outro.compute_final_payoff folds into "
             "participant.payoff with the bonus — so a fee here splits the "
             "amount owed across two numbers and somebody gets paid the wrong "
