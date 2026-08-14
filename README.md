@@ -931,9 +931,34 @@ and the finish-screen routing in practice — see **`prolific/Prolific_running.m
 ## Docker (build and run the container)
 The root `Dockerfile` builds a self-contained image that serves the study, so
 every study copied from this template inherits one. It bakes in nothing but
-Python 3.12, a pinned oTree and the code: **no database is in the image** — the
-container creates `/app/data/db.sqlite3` on first boot and keeps it across
-restarts, so mount that directory as a volume if the data matters.
+Python 3.12, a pinned oTree and the code: **no database is in the image** — with
+the default (sqlite) configuration the container creates `/app/data/db.sqlite3`
+on first boot and keeps it across restarts, so mount that directory as a volume
+if the data matters.
+
+The boot guard initialises the database **only when it has no tables yet**, and
+it establishes that by inspecting the database oTree will connect to
+(`scripts/db_state.py`), not by looking for a sqlite file — so it is correct
+under `DATABASE_URL=postgres://…` too. A database that is not answering yet — the
+normal state of a managed Postgres at container start — is retried for a minute
+(`DB_WAIT_ATTEMPTS` × `DB_WAIT_SECONDS`, default 30 × 2s) before the guard gives
+up; it then refuses to start, loudly and without touching anything, as it also
+does when the target database holds a schema that is not oTree's. The image ships
+`psycopg2-binary`, so `DATABASE_URL=postgres://…` works out of the box. Why the
+old file-existence check was a data-loss bug on any managed Postgres:
+`DECISIONS.md`, "Boot initialisation is decided by inspecting the database, not
+by a sqlite file".
+
+Note what the guard is *not* doing: oTree creates its own missing tables on every
+start (`create_all`), so the initialise branch is belt and braces. The guard
+exists to stop `resetdb` — which drops everything — from running against a
+database that has participants in it.
+
+**There is no upgrade-path check for a Postgres deployment.**
+`scripts/predeploy_check.sh` is sqlite-only by design, so a study hosted on
+managed Postgres is currently deployed without the gate described under
+[Before a deploy](#before-a-deploy-scriptspredeploy_checksh). See
+`_ai/postgres_assumptions_recorded.md`.
 
 ```bash
 docker build -t otree-template .
