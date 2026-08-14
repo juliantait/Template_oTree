@@ -187,7 +187,7 @@ class TaskPage(monitoring.MonitoredPage):
 
 # GROUP MATCHING: this template ships NONE. Reference code from a DIFFERENT
 # study (a RoundStartWaitPage with perfect-stranger matching) lives in
-# _ai/group_matching_reference.py — read its header first: it references names
+# docs/group_matching_reference.py — read its header first: it references names
 # this template does not have, so it is a shape to learn from, not a block to
 # uncomment. The design questions around it (matching cannot be designed
 # independently of WHEN treatment/role assignment happens) are in TODO.md

@@ -148,7 +148,7 @@ each kind of check is and is not evidence of.
 asserts on element geometry and rendered pixels. Layout failures produce no
 error at all — nothing 500s and no test goes red while the participant gets a
 broken page. Headless Chromium runs here without root; the recipe is
-`_ai/headless_chromium_recipe.md`.
+`docs/headless_chromium_recipe.md`.
 
 ## Deploying
 

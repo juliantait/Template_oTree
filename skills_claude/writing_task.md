@@ -101,7 +101,7 @@ step 4 update to match the game you built in step 2.
   `CLAUDE.md`); keep the progress-strip include and the passive-capture
   hidden-field pattern.
 - Group matching: the template ships NONE. Reference shape (not a block to
-  uncomment): `_ai/group_matching_reference.py`; the open design questions
+  uncomment): `docs/group_matching_reference.py`; the open design questions
   are in `TODO.md` under "Group matching".
 
 **`tests/main_contract.py` — in the SAME change as `main/`:**

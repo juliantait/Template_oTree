@@ -178,7 +178,8 @@
    here. inline margin auto keeps it in the centred reading measure, and
    text-align centres the title to match the centred .header-title on the
    welcome / consent / narrative pages. (SUPERSEDES the older flush-left rule
-   recorded in _ai/pilot_snapshot: because the two titles are visually identical
+   recorded in _ai/pilot_snapshot (local only: _ai/ is gitignored): because the
+   two titles are visually identical
    they now align identically. The BODY copy below stays justified.) */
 .instruction-block > h2 {
     margin: 0 auto .6em;

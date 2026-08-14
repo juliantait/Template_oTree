@@ -46,7 +46,7 @@ CHECKS (each printed as PASS/FAIL with the numbers)
 RUNNING IT (headless Chromium needs system libraries)
 -----------------------------------------------------
 On a box without root, unpack the library .debs into a private sysroot and point
-LD_LIBRARY_PATH at it — full recipe in `_ai/headless_chromium_recipe.md`:
+LD_LIBRARY_PATH at it — full recipe in `docs/headless_chromium_recipe.md`:
 
     pip install playwright pillow uvicorn requests && playwright install chromium
     LD_LIBRARY_PATH=/path/to/sysroot/usr/lib/x86_64-linux-gnu \
@@ -3040,7 +3040,7 @@ def check_overlay(server, browser):
 # ONE more trap: Playwright's focus EMULATION (enabled on every page it
 # drives) swallows them, so it must be switched off for the page under test
 # via Emulation.setFocusEmulationEnabled. The Xvfb-without-root recipe lives
-# with the Chromium one in _ai/headless_chromium_recipe.md.
+# with the Chromium one in docs/headless_chromium_recipe.md.
 def _start_xvfb():
     """Start Xvfb without root; return (proc, display) or (None, why-not).
 
@@ -3898,7 +3898,7 @@ def main():
             except Exception as exc:
                 print(f'headless Chromium did not launch ({exc.__class__.__name__}: '
                       f'{exc}).\nSet LD_LIBRARY_PATH to an unpacked sysroot — see '
-                      f'_ai/headless_chromium_recipe.md')
+                      f'docs/headless_chromium_recipe.md')
                 return 2
             try:
                 facts = render_all(server, browser)

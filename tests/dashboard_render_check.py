@@ -30,7 +30,7 @@ two overview shots in _ai/render_check/dashboard_overview*.png — those two are
 OUTPUTS OF THIS FILE, not artefacts beside it, so the best picture of the
 feature can always be regenerated.
 
-Run (see _ai/headless_chromium_recipe.md for the sysroot):
+Run (see docs/headless_chromium_recipe.md for the sysroot):
     LD_LIBRARY_PATH=<sysroot>/root/usr/lib/x86_64-linux-gnu \
         python tests/dashboard_render_check.py
 

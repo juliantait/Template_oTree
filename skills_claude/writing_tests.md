@@ -230,7 +230,7 @@ silently: nothing 500s, no test goes red, the participant just gets a broken
 page.
 
 Setup on a box without root (full recipe, including the exact package list, in
-`_ai/headless_chromium_recipe.md` — it works, do not conclude otherwise):
+`docs/headless_chromium_recipe.md` — it works, do not conclude otherwise):
 
 ```bash
 pip install playwright pillow uvicorn requests && playwright install chromium

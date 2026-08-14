@@ -6,7 +6,7 @@
         python tests/device_capture_js_test.py http://localhost:8000
 
 (Headless Chromium runs here without root — the recipe, including the exact
-package list, is `_ai/headless_chromium_recipe.md`.)
+package list, is `docs/headless_chromium_recipe.md`.)
 
 WHY A BROWSER IS THE ONLY HONEST TEST OF THIS. `device_info_json` is filled by
 JavaScript. An HTTP test posts whatever it likes into that field and proves

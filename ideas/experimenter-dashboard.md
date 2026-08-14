@@ -135,7 +135,7 @@ carries the template's own earlier development. Anyone wanting a real per-featur
 number would have to attribute sessions to tasks by hand from the history; that
 has not been done, and no estimate is offered here rather than an invented split.
 
-Related: `_ai/dashboard_conformance_audit.md` records what was built against the
+Related: `_ai/dashboard_conformance_audit.md` (local only — `_ai/` is gitignored; not in a clone) records what was built against the
 spec above (19 of 26 checklist items met as specified, 6 met differently, 1 not
 met), including which deviations were deliberate. That audit was itself part of
 the spend recorded above.

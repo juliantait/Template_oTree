@@ -48,6 +48,7 @@
 
 from otree.api import *
 import common
+import fee_guard
 import identity
 import payoff_guard
 from settings import STATIC_VERSION
@@ -79,6 +80,20 @@ identity.assert_duplicate_label_guard()
 # from the other side by tests/payoff_ledger_test.py §7. Full argument in
 # payoff_guard.py's docstring.
 payoff_guard.assert_no_player_payoff_writes()
+
+# THE SAME DECISION, THE OTHER HALF OF IT (Julian, 2026-08-14). `player.payoff`
+# is one way to open a second payment ledger; oTree's built-in
+# `participation_fee` is the other, and it is the likelier one — it is a
+# standard oTree knob that every tutorial sets, so a researcher copying this
+# template will meet it in oTree's own docs and set it in good faith. oTree adds
+# it ON TOP of participant.payoff in every place it reports what is owed, so the
+# amount would be split across two numbers with no error to say so. The fee
+# ships 0 in SESSION_CONFIG_DEFAULTS; this is what holds it there, because an
+# unenforced convention in a template drifts the first time somebody copies it.
+# Boot, never request time — same trade as above. Known cost, accepted: a copied
+# study that already sets a fee refuses to boot until the fee is moved into the
+# ledger. Full argument in fee_guard.py's docstring.
+fee_guard.assert_participation_fee_is_zero()
 
 class C(BaseConstants):
     # Asset cache-buster for this BUILD (settings.STATIC_VERSION).
@@ -778,7 +793,7 @@ class AISafetyAgree(Page):
         # study type, with nothing on screen to say which: the experimenter
         # dashboard reported 5s of "instructions time" for a participant who
         # spent 5s here and none there (found by the conformance audit,
-        # `_ai/dashboard_conformance_audit.md`).
+        # `_ai/dashboard_conformance_audit.md`, local only: _ai/ is gitignored).
         #
         # Consumers do NOT need to special-case this page, and must not start:
         # every page of this app calls `common.stamp_left_before_app`, which

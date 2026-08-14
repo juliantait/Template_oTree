@@ -28,7 +28,7 @@ The project root holds the four oTree apps plus a small set of top-level items:
 | `MACMINI_HOSTING.md` | private Mac mini hosting runbook (gitignored — kept local). |
 | dotfiles | `.gitignore`, `.gitattributes`, etc. |
 
-Not tracked in git: `_ai/` (agent scaffolding — pilot snapshots, performance reviews), `previews/` (regenerable instruction previews), the SQLite DB, `__pycache__`, and OS cruft.
+Not tracked in git: `_ai/` (agent scaffolding — pilot snapshots, performance reviews, audits), `previews/` (regenerable instruction previews), `TODO.md`, `MACMINI_HOSTING.md`, the SQLite DB, `__pycache__`, and OS cruft. Reference material a copied study genuinely needs is tracked in **`docs/`** instead — start at `docs/README.md` if you are running a study rather than editing the template.
 
 ## Running the template
 It runs out of the box with no setup: `otree devserver` uses a local SQLite file
@@ -624,7 +624,7 @@ columns mean, so nothing has been changed yet.
 A live, **read-only** view of a running session for whoever is supervising it —
 the experimenter in the room for a lab session, whoever is watching the study run
 on Prolific. It is served **in-process** by oTree itself
-(`experimenter_dashboard.py`, design notes in `_ai/dashboard_notes.md`), not as a
+(`experimenter_dashboard.py`, design notes in `_ai/dashboard_notes.md` — local only — `_ai/` is gitignored; not in a clone), not as a
 separate service:
 
 - `/experimenter_dashboard` — pick a session;
@@ -743,7 +743,7 @@ you started on a **throwaway** database (`OTREE_ADMIN_PASSWORD=admin otree devse
 (`identity_test`, `frozen_config_test`, `xss_escaping_test`,
 `quiz_attempt_log_test`) boot oTree in-process against their own temp database
 and need no server — `python tests/frozen_config_test.py`. `render_check.py` needs a headless
-Chromium; on a box without root see `_ai/headless_chromium_recipe.md`.
+Chromium; on a box without root see `docs/headless_chromium_recipe.md`.
 
 ### Two gates: pre-launch and pre-deploy (they check different things)
 
@@ -958,7 +958,7 @@ database that has participants in it.
 `scripts/predeploy_check.sh` is sqlite-only by design, so a study hosted on
 managed Postgres is currently deployed without the gate described under
 [Before a deploy](#before-a-deploy-scriptspredeploy_checksh). See
-`_ai/postgres_assumptions_recorded.md`.
+`docs/postgres_assumptions.md`.
 
 ```bash
 docker build -t otree-template .
