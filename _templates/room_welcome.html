@@ -11,27 +11,54 @@
    from the study behind it.
 
    WIRED VIA `welcome_page` on the ROOMS entry in settings.py — oTree renders
-   `room.welcome_page or "otree/RoomWelcomePage.html"`. Same mechanism and same
-   file location as exp_pilots uses, so the two studies stay comparable.
+   `room.welcome_page or "otree/RoomWelcomePage.html"`. Same mechanism, same file
+   location and the same auto-pass behaviour as exp_pilots, so the two studies do
+   not drift.
 
    ===================================================================
-   STYLING ONLY. THE SCRIPT BELOW IS oTree's, VERBATIM, AND IS THE PAGE'S
-   MECHANISM — DO NOT "TIDY" IT.
+   WHAT IS OURS AND WHAT IS oTree's — READ THIS BEFORE EDITING THE SCRIPT.
    ===================================================================
-   The submit handler is not decoration: it preventDefaults, POSTs the fields
-   for validation, and only then reloads with `welcome_page_ok=1`, which is what
-   admits the participant. Copied byte-for-byte from oTree 6.0.15's
-   `otree/templates/otree/RoomWelcomePage.html` so it can be re-diffed on an
-   oTree upgrade; only the MARKUP AROUND IT is ours. Its DOM contract is
-   `form`, `input[name="participant_label"]`, `[data-field-error=…]` and
-   `#other-errors` — every one of those is still here.
+   The page now does TWO things: it wears the study's styling (all of the markup
+   above), and it AUTO-PASSES a visitor whose URL already identifies them
+   (Julian, 2026-08-14 — this replaces an earlier "styling only, no auto-submit"
+   state of this file).
 
-   NO SKIP OR AUTO-SUBMIT BEHAVIOUR IS IMPLEMENTED HERE, deliberately. Making
-   the gate self-submit when the URL carries a participant id is a SEPARATE
-   OPEN DECISION (and carries the `form.submit()` vs `requestSubmit()` hazard
-   recorded in CLAUDE.md — `form.submit()` does not fire submit listeners, so it
-   would bypass the very handler below and loop the page forever). This file
-   changes how the gate LOOKS and nothing about what it DOES.
+   The script is in three marked parts:
+     PART 1 (OURS)   read the id from the URL, and decide whether to auto-pass.
+     PART 2 (oTree)  the submit handler, VERBATIM from oTree 6.0.15's
+                     otree/templates/otree/RoomWelcomePage.html. It preventDefaults,
+                     POSTs the fields for validation, and only then reloads with
+                     `welcome_page_ok=1` — which is what actually admits the
+                     visitor. Re-diff it on any oTree upgrade. DO NOT "TIDY" IT.
+     PART 3 (OURS)   fire the auto-pass, AFTER part 2 has bound its listener.
+
+   THE RULE THAT MAKES THIS SAFE, AND THE ONE THAT WOULD BREAK IT:
+
+   * `form.requestSubmit()`, NEVER `form.submit()`. `submit()` does not fire
+     submit-event listeners, so it would bypass PART 2 entirely: no gate POST,
+     no `welcome_page_ok`, and the browser reloads the same URL — which
+     auto-passes again, forever. And it would do that ONLY for arrivals carrying
+     an id, i.e. only for real participants and never once while anybody tests
+     with a bare URL. `requestSubmit()` fires the handler, which is the whole
+     point of using it.
+
+   * NO SLOT IS CLAIMED WITHOUT A CLICK when the URL carries no id. That is
+     load-bearing, not a nicety: a bot arrives with no id and usually runs no
+     JavaScript, so the button is what keeps it out. Do not auto-pass a bare URL
+     "for convenience".
+
+   * THE LOOP GUARD. Auto-pass happens at most ONCE per tab (a sessionStorage
+     timestamp, 30s window). If we are back on this page inside that window, the
+     previous attempt did not admit us, so we show the button instead of trying
+     again — a failure a participant can click through is recoverable; a failure
+     that retries is a participant who never arrives and leaves no trace. If
+     sessionStorage is unavailable, or the browser has no `requestSubmit`, we do
+     NOT auto-pass at all: without the guard the safe answer is the button.
+
+   WITH JAVASCRIPT DISABLED nothing here runs, so an id-carrying arrival sees the
+   styled page — and CANNOT get past it, because PART 2 is the mechanism and it
+   is JavaScript. That is oTree's design, not something this file introduces;
+   the <noscript> block below is what tells the visitor.
 
    WHY NO CREED HEADER, AND NO MENTION OF PROLIFIC. This page is reachable in
    BOTH recruitment modes — the lab enters through the room, and the Prolific
@@ -118,11 +145,24 @@
 </div>
 
 <script>
-    // ===== oTree 6.0.15's stock RoomWelcomePage script, VERBATIM. =====
-    // Re-diff against otree/templates/otree/RoomWelcomePage.html on any oTree
-    // upgrade. Nothing in it is ours; the styling above is.
-    // Populate form fields from query parameters on page load
+    // ================= PART 1 — OURS: the id, and whether to auto-pass ======
     const urlParams = new URLSearchParams(window.location.search);
+
+    // PROLIFIC_PID -> participant_label. oTree's server only ever reads
+    // `participant_label`; Prolific appends `?PROLIFIC_PID=...` when "record URL
+    // parameters" is left at its defaults. Without this copy the id is dropped
+    // at this interstitial (the query string does not survive the
+    // InitializeParticipant redirect) and every participant lands in the
+    // type-it-by-hand fallback. Same change exp_pilots makes, for the same
+    // reason. A bare URL is untouched.
+    const prolificPid = urlParams.get('PROLIFIC_PID');
+    if (prolificPid && !urlParams.get('participant_label')) {
+        urlParams.set('participant_label', prolificPid);
+    }
+
+    // oTree's own line, kept: fill the visible field when the room uses a
+    // participant-labels file. (With no labels file there is no input, and the
+    // label still reaches the POST through urlParams below.)
     const participantLabel = urlParams.get('participant_label');
     if (participantLabel) {
         const participantLabelField = document.querySelector('input[name="participant_label"]');
@@ -131,6 +171,35 @@
         }
     }
 
+    // THE LOOP GUARD. Auto-pass at most once per tab: if we are back on this
+    // page within the window, the last attempt did not admit us, so show the
+    // button rather than trying again. Storage unavailable (private mode, a
+    // blocked partition) => return true, i.e. "treat as already attempted", so
+    // the safe answer wins: an un-guarded auto-pass is the one failure mode that
+    // can loop a real participant forever with no trace.
+    const AUTO_PASS_KEY = 'roomWelcomeAutoPassAt';
+    const AUTO_PASS_WINDOW_MS = 30000;
+
+    function autoPassAlreadyTried() {
+        try {
+            const at = parseInt(sessionStorage.getItem(AUTO_PASS_KEY) || '0', 10);
+            return !!at && (Date.now() - at) < AUTO_PASS_WINDOW_MS;
+        } catch (e) {
+            return true;
+        }
+    }
+
+    function recordAutoPassAttempt() {
+        try {
+            sessionStorage.setItem(AUTO_PASS_KEY, String(Date.now()));
+            return true;
+        } catch (e) {
+            return false;   // cannot guard => do not auto-pass
+        }
+    }
+
+    // ================= PART 2 — oTree 6.0.15 STOCK, VERBATIM ================
+    // Re-diff against otree/templates/otree/RoomWelcomePage.html on any upgrade.
     document.querySelector('form').addEventListener('submit', async function(e) {
         e.preventDefault();
 
@@ -184,6 +253,19 @@
             console.error('Error:', error);
         }
     });
+
+    // ================= PART 3 — OURS: fire the auto-pass ====================
+    // AFTER part 2 has bound its listener, or requestSubmit would find nothing
+    // to run. requestSubmit() FIRES that listener; submit() would bypass it and
+    // loop this page forever for id-carrying arrivals only — see the header.
+    (function autoPassIfIdentified() {
+        if (!participantLabel) return;              // bare URL: the button stays
+        const form = document.querySelector('form');
+        if (!form || typeof form.requestSubmit !== 'function') return;
+        if (autoPassAlreadyTried()) return;         // loop guard
+        if (!recordAutoPassAttempt()) return;       // cannot guard => don't
+        form.requestSubmit();
+    })();
 </script>
 </body>
 </html>
