@@ -114,6 +114,16 @@ unless something asserts that observations actually *arrive*. Any client-side
 instrumentation needs a test that a monitored page produces a record, not merely
 that the page is configured to be monitored.
 
+**A second instance, same shape, different mechanism: `form.submit()` does not
+fire submit event listeners.** A page whose real work lives in an
+`addEventListener('submit', …)` handler — `preventDefault`, a gate POST, a
+reload carrying a flag — is bypassed entirely by `form.submit()`. The page
+reloads without the flag, auto-submits again, and loops forever: no participant
+row, no error, no failing test, and it happens **only to real arrivals** whose
+URL carries an id. Use **`form.requestSubmit()`**, which fires the handler, and
+pair any auto-submit with a loop guard that falls back to showing the button
+when the gate POST fails or the reload comes back without its flag.
+
 ## Styling: shared components, never page-local patches
 
 **Style with reusable components in `_static/global/css/`. A page template

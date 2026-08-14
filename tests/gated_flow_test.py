@@ -27,7 +27,12 @@ import re
 import requests
 
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
+# The project root too: the completion-code checks below read the shipped
+# placeholders from settings rather than hardcoding them, so that changing a
+# placeholder cannot silently stop this test from checking anything.
+sys.path.insert(0, __file__.rsplit('/', 2)[0])
 from http_flow_test import FormParser, build_payload, END_MARKERS
+import settings as _settings
 
 WRONG = {'quiz1': 'NO', 'quiz2': 'Metal'}
 RIGHT = {'quiz1': 'YES', 'quiz2': 'Water'}
@@ -371,7 +376,16 @@ def scenario_prolific_dq(base):
     check('/outro/' in r.url and '/Ended/' in r.url,
           f'failure {THRESHOLD} (AT the threshold): disqualified straight to '
           f'the ending [{page_name(r.url)}]')
-    check('REPLACE_DQ' in r.text, 'ending carries the DQ completion code')
+    check(_settings.SESSION_CONFIG_DEFAULTS['prolific_dq_code'] in r.text,
+          'ending carries the DQ completion code')
+    # THE PAYMENT EXPOSURE, PINNED: a disqualified participant must never be
+    # able to read the COMPLETED code out of the page source and self-approve.
+    # Each ending is served ONE server-chosen code (outro.completion_link), and
+    # this is what stops a future template from spreading session.config.
+    check(_settings.SESSION_CONFIG_DEFAULTS['prolific_cc_code'] not in r.text,
+          'and does NOT leak the COMPLETION code to a disqualified participant')
+    check(_settings.SESSION_CONFIG_DEFAULTS['prolific_noconsent_code'] not in r.text,
+          'and does not leak the no-consent code either')
     check('/Introduction/' not in r.url, 'round 2 never seen')
 
 

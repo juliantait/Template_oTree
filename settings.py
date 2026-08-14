@@ -161,7 +161,31 @@ RECRUITMENT_PROFILES = {
 # which forecloses the very thing the screen-out page asks them to do, namely
 # come back on a computer and finish. The old `error_code` / 'REPLACE_ERR' pair
 # was removed on 2026-08-12 for exactly that reason; do not reintroduce it.
-PROLIFIC_CODE_PLACEHOLDERS = ('REPLACE_CC', 'REPLACE_NC', 'REPLACE_DQ')
+PROLIFIC_CODE_PLACEHOLDERS = ('COMP-XXXXXX_REPLACE', 'NOCONS-XXXXXX_REPLACE',
+                              'DQ-XXXXXX_REPLACE')
+
+
+def is_placeholder(value) -> bool:
+    """Is this config value still an unreplaced placeholder?
+
+    MATCHED BY SHAPE, NEVER BY EXACT STRING, and that is the whole point of this
+    function existing. The guard used to test `value in
+    PROLIFIC_CODE_PLACEHOLDERS` — exact membership — so the day somebody
+    improved the placeholders (2026-08-14: `REPLACE_CC` became
+    `COMP-XXXXXX_REPLACE`, to teach the real code's shape) the guard would have
+    kept passing while a study shipped codes that pay nobody. **A check that is
+    silently disarmed by an unrelated edit is worse than no check**, because
+    nothing goes red and everyone believes it is still watching. Placeholders
+    and the guard that catches them are ONE change, and this predicate is what
+    keeps them one.
+
+    `REPLACE` anywhere in the value is the test, so it catches the old
+    `REPLACE_*` shape, the new `*_REPLACE` shape, and any future one that keeps
+    the word. A real completion code containing 'REPLACE' would be a false
+    alarm; it would block a launch and be diagnosable in seconds from the
+    printed line, which is the safe direction.
+    """
+    return 'REPLACE' in str(value)
 
 # THE SCREEN-OUT RETURN URL IS A PLACEHOLDER TOO, AND IS GUARDED THE SAME WAY.
 #
@@ -545,9 +569,15 @@ SESSION_CONFIG_DEFAULTS = dict(
     # than a broken one here. Replace it with the platform URL your participants
     # should be sent back to (for Prolific that is https://app.prolific.com/).
     prolific_screenout_return_url=SCREENOUT_RETURN_URL_PLACEHOLDER,
-    prolific_cc_code='REPLACE_CC',        # normal completion
-    prolific_noconsent_code='REPLACE_NC', # declined consent
-    prolific_dq_code='REPLACE_DQ',        # disqualified (comprehension / tab monitor)
+    # SHAPED LIKE A REAL CODE ON PURPOSE: `REASON-XXXXXX`, a semantic prefix
+    # plus six random alphanumerics. The placeholder teaches the convention to
+    # whoever replaces it — readable in a Prolific submission list, unguessable
+    # by a participant. Replace the XXXXXX with six RANDOM characters, not a
+    # short number: the completion code is the one that can AUTO-APPROVE a
+    # payment on Prolific, so a guessable one is somebody else's money.
+    prolific_cc_code='COMP-XXXXXX_REPLACE',        # normal completion
+    prolific_noconsent_code='NOCONS-XXXXXX_REPLACE',  # declined consent
+    prolific_dq_code='DQ-XXXXXX_REPLACE',          # disqualified (comprehension / tab monitor)
     # NB: no screened-out code. See PROLIFIC_CODE_PLACEHOLDERS above.
 )
 
@@ -649,6 +679,8 @@ PARTICIPANT_FIELDS = [
     'focus_loss_count',     # tab-monitor violations while ejection applied (intro+main)
     'focus_loss_count_outro',  # tab-monitor violations in the outro: recorded, NEVER eject
     'focus_event_ids',      # tab-monitor seen event ids (server-side dedup)
+    'focus_events',         # per-event detail: {page, region, ts} for each counted loss
+    'focus_losses_missed_at_least',  # AT-LEAST evidence of events that never reached us
     'tab_monitor_flag',     # READER-FACING verdict: ''|observed|warned|disqualified
     'tab_monitor_where',    # where those observations were: task|questionnaire|both|not-monitored
     'comprehension_disqualified',  # comprehension-DQ authoritative flag
@@ -676,6 +708,17 @@ PARTICIPANT_FIELDS = [
 #   only — never a disqualification, whatever the count. Its own column so an
 #   analyst can tell a completed-with-violations participant from a
 #   nearly-ejected one (see common._apply_focus_loss and CODEBOOK.md).
+# - focus_events: one {page, region, ts} record per COUNTED focus loss. `page`
+#   is the SERVER's own participant._current_page_name, never the client's
+#   reported pathname — the client half of the monitor is the half a participant
+#   can edit, and a field an analyst trusts must not be attacker-controlled.
+#   This is what lets tab_monitor_where name the pages instead of the region.
+# - focus_losses_missed_at_least: evidence that events were LOST before reaching
+#   the server, from comparing the client's own running total against ours. It is
+#   an AT-LEAST, not a count — 4 against 2 means at least two were lost, possibly
+#   more — so it is a maximum, never a sum, and must never be totalled across
+#   participants as if it were a number of events. 0 means no evidence of loss,
+#   NOT proof that nothing was lost (see CODEBOOK.md).
 # - tab_monitor_flag / tab_monitor_where: the READER-FACING pair, derived from
 #   the three raw columns above by common.derive_tab_monitor_flag — what to DO
 #   ('' | observed | warned | disqualified, most severe wins) and WHERE to look
@@ -819,10 +862,12 @@ def _prelaunch_problems():
         if eff.get('prolific_completion_redirects'):
             for code_key in ('prolific_cc_code', 'prolific_noconsent_code', 'prolific_dq_code'):
                 value = eff.get(code_key)
-                if value in PROLIFIC_CODE_PLACEHOLDERS:
+                if is_placeholder(value):
                     problems.append(
                         (f"config {cfg['name']!r} {code_key}", value,
-                         'a real Prolific completion code (not a REPLACE_* placeholder)'))
+                         'a real Prolific completion code, shaped '
+                         'REASON-XXXXXX with six RANDOM characters (this is '
+                         'still an unreplaced placeholder)'))
         # THE SCREEN-OUT RETURN URL — REQUIRED FOR A PROLIFIC STUDY, AND THE ONE
         # PLACE THIS GUARD ENFORCES A DEPENDENCY RATHER THAN SPOTTING A
         # PLACEHOLDER (Julian, 2026-08-13).
@@ -847,7 +892,7 @@ def _prelaunch_problems():
         # and not on every config.
         if eff.get('recruitment') == 'prolific':
             url = str(eff.get('prolific_screenout_return_url') or '').strip()
-            if not url or url == SCREENOUT_RETURN_URL_PLACEHOLDER:
+            if not url or is_placeholder(url):
                 problems.append(
                     (f"config {cfg['name']!r} prolific_screenout_return_url",
                      eff.get('prolific_screenout_return_url'),

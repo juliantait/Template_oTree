@@ -125,6 +125,7 @@ def main():
         "participant.participant_extra",     # free JSON bucket: screen-out history, raw UA copies
         "participant.device_info",           # raw device/screen blob (device_capture)
         "participant.focus_event_ids",       # tab-monitor dedup bookkeeping (focus_loss_count is the datum)
+        "participant.focus_events",          # per-event {page, region, ts} log (tab_monitor_where is the readable form)
         "before.1.player.device_info_json",  # the same device blob, as submitted
         "intro.1.player.quiz_attempt_log",   # every graded quiz submission (round 1)
         "intro.2.player.quiz_attempt_log",   # ... and the lab re-read pass (round 2)

@@ -96,18 +96,49 @@ outro observations and enforcing violations reads as the worse of the two.
 because `observed` on its own is not actionable: "treat those answers with
 suspicion" is useless until you know which answers.
 
-**THE LIMIT, STATED PLAINLY: the monitor records no per-page detail.** It keeps
-two counters, one per region, so `questionnaire` narrows it to the outro pages —
-it **cannot** tell you it was the demographics page rather than the feedback
-page. If you need that, it has to be recorded first (see
-`common.derive_tab_monitor_where`); the client already transmits the page with
-every event, the server just does not keep it.
+`tab_monitor_where` **names the pages** when they are known —
+`questionnaire: Demographics, Feedback` — because `questionnaire` alone spans
+Results, Demographics, Feedback and Ended, which cannot tell you whether to
+distrust the demographics answers or the feedback typed afterwards. The region
+word is always the prefix, so filtering on `questionnaire` keeps working, and a
+participant recorded before per-event detail existed simply shows the region
+alone.
 
-**Timestamps:** there is no per-event timestamp column. Each entry in
-`focus_event_ids` begins with a base-36 client-clock millisecond stamp
-(`Date.now().toString(36)`), so approximate times are recoverable from that blob,
-but it is dedup bookkeeping and not a designed timestamp — the client's clock,
-not the server's. `stage_timestamps` gives the surrounding stage boundaries.
+### `focus_events` — the per-event detail
+
+One record per **counted** focus loss: `{page, region, ts}`. Pages are listed in
+the order first seen, which is reading order.
+
+* **`page` is the SERVER's page name** (`participant._current_page_name`), not
+  the client's reported URL. The client sends a `page` field and it is
+  deliberately ignored: the client half of the monitor is the half a participant
+  can edit, and a field an analyst trusts must not be attacker-controlled.
+* **`ts`** is a server-clock epoch second — a real timestamp, unlike the base-36
+  client stamp embedded in `focus_event_ids` (which is dedup bookkeeping on the
+  participant's own clock). `stage_timestamps` still gives stage boundaries.
+* Blanked by `scripts/format_session_data.py` like the other per-event logs;
+  `tab_monitor_where` is the readable form.
+
+### `focus_losses_missed_at_least` — evidence of events that never arrived
+
+The client keeps its own running total and sends it with every event. When it
+exceeds ours, events were lost in transit. **This column is that evidence.**
+
+* **It is an AT-LEAST, not a count.** Client 4 against our 2 means *at least*
+  two were lost — possibly more, if the client itself never counted them. It is
+  stored as a maximum, never a sum. **Do not total it across participants** and
+  do not report it as "N events were lost".
+* **A client total LOWER than ours is not a drop** and is never recorded: that is
+  a cleared `sessionStorage`, a reused browser, a second tab or a replay.
+* **`0` means no evidence of loss, NOT proof that nothing was lost.**
+
+**WHAT IT STILL CANNOT SEE — this narrows the blind spot, it does not close it.**
+Detection only works when a *later* event arrives to carry the client's total. A
+participant who tabs away once, at the very end, and never generates another
+event leaves **no trace at all**: nothing arrives, so nothing can be compared,
+and both the flag and this column read clean. The same is true if the browser is
+closed on the last page. Treat a clean tab-monitor row as "no evidence of a
+problem", never as "nothing happened".
 
 Nothing above replaces the raw columns. `focus_loss_count`,
 `focus_loss_count_outro` and `ai_safety_disqualified` remain the datum;

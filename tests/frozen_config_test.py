@@ -193,7 +193,8 @@ def main():
     # frozen session falls back to the shipped REPLACE_* placeholder, so both
     # failure modes ("never set a real code" and "fixed the codes but forgot to
     # recreate the session") present the SAME recognisable symptom. Somebody
-    # seeing REPLACE_CC in a completion URL knows instantly what it means;
+    # seeing an unreplaced placeholder in a completion URL knows instantly
+    # what it means;
     # '?cc=None' looks like a bug in our own code and tells them nothing.
     # ONLY the code keys are stripped here — prolific_completion_redirects stays
     # on, or the link would (correctly) not render at all.
