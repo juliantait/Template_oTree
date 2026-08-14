@@ -42,6 +42,21 @@
     function submitFormBehindVeil(form, fill) {
         showSubmitVeil();
         if (typeof fill === 'function') { fill(); }
+        // ⚠ form.submit() DOES NOT FIRE SUBMIT EVENT LISTENERS. Anything doing
+        // real work in a 'submit' handler is skipped, silently, with no error:
+        //   * ai_safety_monitor.js's markNavigatingAway — the flag that stops a
+        //     navigation being counted as a tab-monitor violation (it is also
+        //     set by beforeunload/pagehide, so today that one is covered twice);
+        //   * main/game.html's client_ms timing listener, which fills its hidden
+        //     field ON SUBMIT — bypassed, it posts empty and the telemetry is
+        //     just missing for that participant.
+        // If a listener MUST run, use form.requestSubmit(), which fires them.
+        //
+        // WHY THIS IS A WARNING AND NOT A BUG TODAY: both current callers
+        // (quiz.js) pass `form` as null and let the submit control fire
+        // natively, so this line is unreached. That is a property of the CALL
+        // SITES, not of this helper — pass a real form and the two listeners
+        // above stop firing for that page, with nothing to tell you.
         if (form) { form.submit(); }
     }
 

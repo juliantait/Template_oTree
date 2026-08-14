@@ -901,6 +901,110 @@ def check_band_centred(server, browser):
             context.close()
 
 
+def check_room_welcome_gate(server, browser):
+    """AR: the ROOM WELCOME GATE wears the study's clothes, and still works.
+
+    oTree 6 serves an interstitial on every room entry (a GET on /room/<name>
+    without `welcome_page_ok=1`). Stock it is bare framework markup, and it is
+    the FIRST page a participant sees. settings.ROOMS points `welcome_page` at
+    _templates/room_welcome.html; this measures the result.
+
+    IT IS NOT AN oTree PAGE, so nothing else in this file reaches it — no
+    session, no participant, no InitializeParticipant walk. Without this leg the
+    page has no measured check at all.
+    """
+    section('AR. The room welcome gate: styled, legible, and still a gate')
+    url = f'{server.base}/room/experiment'
+
+    for vp_name, vp in VIEWPORTS.items():
+        context = browser.new_context(viewport=vp)
+        page = context.new_page()
+        page.goto(url, wait_until='load')
+        page.wait_for_timeout(150)
+
+        m = page.evaluate(r"""() => {
+            const card = document.querySelector('.screen-card');
+            const btn = document.querySelector('.button-row .next-button');
+            const logo = document.querySelector('.logo-section');
+            const r = el => { if (!el) return null; const b = el.getBoundingClientRect();
+                return {x: Math.round(b.left), y: Math.round(b.top),
+                        w: Math.round(b.width), h: Math.round(b.height)}; };
+            return {
+                card: r(card), button: r(btn), logo: r(logo),
+                stockBootstrap: !!document.querySelector('.container.m-5'),
+                creedHeader: !!document.querySelector('.welcome-header-row'),
+                docW: document.documentElement.scrollWidth,
+                winW: window.innerWidth,
+                text: (document.body.innerText || '').replace(/\s+/g, ' ').trim(),
+            };
+        }""")
+
+        label = f'room_welcome @ {vp_name}'
+        if not check(m['card'] is not None, f'{label}: the study card renders'):
+            context.close()
+            continue
+        check(not m['stockBootstrap'],
+              f'{label}: it is OUR page, not oTree\'s stock Bootstrap markup')
+        # The two-variants rule: this gate is reachable in BOTH recruitment
+        # modes and has no config to branch on, so it must carry neither the
+        # lab's CREED header nor any mention of Prolific.
+        check(not m['creedHeader'],
+              f'{label}: no lab-only CREED header (a Prolific participant sees '
+              f'this page too)')
+        check('Prolific' not in m['text'],
+              f'{label}: and no mention of Prolific (a lab participant sees it too)')
+        check(m['button'] is not None and m['button']['w'] > 40
+              and m['button']['h'] > 20,
+              f'{label}: the Start button is visible and pressable '
+              f'({m["button"]["w"]}x{m["button"]["h"]}px)' if m['button']
+              else f'{label}: the Start button is visible and pressable')
+        check(m['logo'] is not None and m['logo']['h'] > 0,
+              f'{label}: the institutional logo strip is present')
+        check(m['docW'] <= m['winW'] + 1,
+              f'{label}: no sideways overflow ({m["docW"]}px document in a '
+              f'{m["winW"]}px window)')
+        geometry.setdefault('room_welcome', {})[vp_name] = {
+            'card': m['card'], 'button': m['button'], 'logo': m['logo']}
+        page.screenshot(
+            path=os.path.join(OUT_DIR, f'room_welcome_{vp_name}.png'),
+            full_page=True)
+        context.close()
+
+    # WITH JAVASCRIPT OFF the gate cannot be passed at all: oTree's own handler
+    # is what POSTs and reloads with welcome_page_ok=1. That is oTree's design,
+    # not ours to fix here — so the page must SAY so rather than present a dead
+    # button.
+    context = browser.new_context(viewport=VIEWPORTS['laptop_1280x720'],
+                                  java_script_enabled=False)
+    page = context.new_page()
+    page.goto(url, wait_until='load')
+    text = ' '.join((page.inner_text('body') or '').split())
+    check('This study needs JavaScript' in text,
+          'no-JS: the page says plainly that JavaScript is required '
+          '(the gate cannot be passed without it)')
+    check(page.locator('.next-button').count() == 1,
+          'no-JS: the card still renders rather than collapsing')
+    context.close()
+
+    # THE `form` ATTRIBUTE ASSOCIATION the template depends on. base.css pins
+    # the forward action with `.screen-card > .button-row`, so the <form> IS the
+    # button row and the participant-label input sits outside it, joined by
+    # `form="room-welcome-form"`. oTree's script collects fields with
+    # `new FormData(form)` — this proves that still picks the input up, in the
+    # same browser the participant uses, rather than trusting the spec.
+    context = browser.new_context(viewport=VIEWPORTS['laptop_1280x720'])
+    page = context.new_page()
+    page.set_content(
+        '<form id="room-welcome-form"><input type="submit"></form>'
+        '<input name="participant_label" form="room-welcome-form" value="P123">')
+    collected = page.evaluate(
+        "() => new FormData(document.querySelector('form')).get('participant_label')")
+    check(collected == 'P123',
+          f'an input joined by form="…" IS collected by new FormData(form) '
+          f'(got {collected!r}) — the participant label still reaches the POST')
+    context.close()
+
+
 def check_eyebrow_alignment(server, browser):
     """D8 (2026-08-11): the eyebrow is flush with the copy it introduces.
 
@@ -3923,6 +4027,7 @@ def main():
                     check_pager_aligns_with_text(server, browser)
                     check_reread_dialog(server, browser)
                     check_lab_experimenter_notice(server, browser)
+                    check_room_welcome_gate(server, browser)
                     check_warning_modal(server, browser)
                     check_consent_single_question(server, browser, facts)
                     check_page_anatomy(server, browser, facts)
