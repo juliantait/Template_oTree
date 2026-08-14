@@ -75,6 +75,9 @@ STRIPPED = [
     'collect_bank_details',
     # consent-page copy switches
     'show_duration_and_fee',
+    # consent mechanics: a frozen session without the key reads it as OFF
+    # (common.flag), so the radio is absent and the page must not 500
+    'explicit_consent',
     # recruitment plumbing
     'prolific_capture_participant_id', 'prolific_completion_redirects', 'allowed_devices',
     'prolific_screenout_return_url',

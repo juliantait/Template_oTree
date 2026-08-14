@@ -37,10 +37,49 @@ to `admin`/`admin`. Set real values via env in production (`OTREE_ADMIN_USERNAME
 from `OTREE_PRODUCTION` — never hardcode it.
 
 ## How to use and edit this template
-- Instructions content: edit `intro/instructions_text.html`. Each `<div class="instruction-block">` is shown as one page to participants. Add, edit, or reorder blocks there to change the instruction pages.
-- Quiz questions: edit `intro/quiz_items.py`. Define `QUIZ_ITEMS` entries with `field`, `prompt`, `choices`, and `answer`. The intro quiz reads directly from this file.
-- Treatment assignment: edit `before/treatment_assignment.py`. Treatments are assigned when the session is created (via `creating_session` in the `before` app). Adjust `assign_treatments` to set the treatment groups you need.
-- Experimental Payoff: edit `outro/payment_rule.py` to determine how participants are actually paid. The logic inside this file controls which rounds and payoffs are selected for payment at the end.
+
+An ordered walkthrough for starting a new study, for people and agents alike.
+Each step names what to edit and links the `skills_claude/` file that holds
+the method — read the matching skill file **before** editing that surface.
+The order matters: the game is built in `main` **before** `intro` is written,
+because `intro` *describes* the game and describing before building is
+backwards. (The shipped template has more Stag Hunt content in `intro` than in
+`main` — that is an artefact of it being a placeholder that needed something
+concrete to describe, not a pattern to copy.)
+
+1. **Decide the audience and the recruitment settings** — lab or Prolific,
+   chosen via the `recruitment` profile plus the module flags and (for
+   Prolific) the completion codes; see the parameter scheme below. Then shape
+   the entry pages: welcome + consent live in `before/welcome+consent.html`
+   and `before/__init__.py` → [`skills_claude/writing_welcome_consent.md`](skills_claude/writing_welcome_consent.md).
+   Treatment assignment: edit `before/treatment_assignment.py` — treatments
+   are assigned when the session is created (via `creating_session` in the
+   `before` app); adjust `assign_treatments` to set the treatment groups you
+   need.
+2. **Build the game in `main/`** — replace the placeholder task pages,
+   subclassing `TaskPage` and keeping the machinery you inherit (round loop,
+   progress strip, monitoring, payoff plumbing); update
+   `tests/main_contract.py` in the same change
+   → [`skills_claude/writing_task.md`](skills_claude/writing_task.md), the
+   full manifest of everything a game swap touches.
+3. **Write `intro` to match the game you built.**
+   Instructions content: edit `intro/instructions_text.html` — each
+   `<div class="instruction-block">` is shown as one page to participants;
+   add, edit, or reorder blocks there to change the instruction pages
+   → [`skills_claude/writing_instructions.md`](skills_claude/writing_instructions.md).
+   Quiz questions: edit `intro/quiz_items.py` — define `QUIZ_ITEMS` entries
+   with `field`, `prompt`, `choices`, and `answer`; the intro quiz reads
+   directly from this file
+   → [`skills_claude/writing_quiz.md`](skills_claude/writing_quiz.md).
+4. **The `outro` work.** Experimental payoff: edit `outro/payment_rule.py` to
+   determine how participants are actually paid — the logic inside this file
+   controls which rounds and payoffs are selected for payment at the end.
+   The Results receipt renders what `outro.compute_final_payoff` computes.
+5. **Test what you built** — real HTTP, a no-JS submit, and a measured render
+   check; before launch run `scripts/prelaunch_check.py` and
+   `scripts/predeploy_check.sh`
+   → [`skills_claude/writing_tests.md`](skills_claude/writing_tests.md) and
+   the Testing section below.
 
 ## Parameter scheme (read `conventions.md` and `settings.py` first)
 Three **independent axes** at the top of `settings.py` determine everything a
@@ -72,7 +111,13 @@ pattern.)
 Modules (all off by default): `prolific_capture_participant_id`, `prolific_completion_redirects`,
 `tab_monitor`, `comprehension_dq`, `quiz_reread`, `passive_capture`,
 `device_capture`, `collect_bank_details`,
-`collect_demographics`, `pilot_feedback`. Thresholds (`comprehension_max_failures`,
+`collect_demographics`, `pilot_feedback`. The one deliberate exception to
+off-by-default is **`explicit_consent`** (the consent page asks an explicit
+"I consent / I do not consent" question, declining routed to exit code -1):
+it ships **ON**, because asking is the safer ethical footing and a study must
+opt out — the lab profile resolves it OFF (implicit consent by continuing,
+with an experimenter in the room). It is an ethics decision with its own flag,
+not Prolific plumbing — see DECISIONS.md (2026-08-14). Thresholds (`comprehension_max_failures`,
 `tab_monitor_*`) and Prolific codes (`prolific_cc_code`, `prolific_noconsent_code`, `prolific_dq_code`)
 are config values too. Each participant records a numeric
 `exit_code` (see `CODEBOOK.md`). `C.NUM_ROUNDS` is fixed at import — a config may

@@ -59,8 +59,9 @@
                 {% endif %}
             </div>
 
-            {% if prolific_completion_redirects %}
-            {# Explicit consent + no-consent routing. #}
+            {% if explicit_consent %}
+            {# Explicit consent + no-consent routing (the explicit_consent
+               flag — an ethics decision, not platform plumbing). #}
             <div>
                 <p class="section-text"><strong>Please indicate whether you
                     consent to taking part and to the recording of your

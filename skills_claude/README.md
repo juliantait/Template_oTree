@@ -16,6 +16,7 @@ checklists, and short examples.
 
 ## Skill files
 
+- [`writing_task.md`](./writing_task.md) — how to replace the shipped placeholder game (build in `main/`, then update every placeholder site): the game belongs in `main` and `intro` describes it afterwards; what a task page inherits from `TaskPage` and must not rewrite; the full manifest of replace-sites including `tests/main_contract.py`.
 - [`writing_instructions.md`](./writing_instructions.md) — how to write participant instructions (edit `intro/instructions_text.html`): lead with intuition, no formulas, one vocabulary, frequency framing, factual payment description, DEBUG-gated skips.
 - [`writing_quiz.md`](./writing_quiz.md) — how to write the comprehension quiz (edit `intro/quiz_items.py`): test, never teach; **never quiz on the effect the study measures**; minimal item set; honest distractors.
 - [`writing_tests.md`](./writing_tests.md) — how to test a study built from this template (add scripts to `tests/`): why bot tests are not evidence a browser works; driving form pages over real HTTP; the no-JS submit; simulating a phone; asserting against rendered visible text; escaping; frozen configs; and measured rendering checks in a real headless browser.

@@ -11,6 +11,92 @@ working.
 
 ---
 
+## Ended.html carries no screen-out copy — deleted as unreachable, with the unreachability enforced — 2026-08-14
+
+Decided by Julian (before-review N4), choosing deletion over the reviewer's
+keep-both recommendation. The `reason == 'screened_out'` block in
+`outro/Ended.html` — the four device-cause branches and the screened-out
+title — duplicated `before/screened_out.html`'s live copy for a participant
+who can never arrive: the soft wall holds a screened-out participant at the
+entry page's own index precisely because oTree only moves forward, so walking
+them to an outro ending would make the verdict un-liftable. A duplicate that
+never renders can only drift from the copy that does.
+
+**The deletion was not made on the unreachability claim alone.** This repo
+has been bitten by untested claims (the 2026-08-13 monitor-coverage entry
+below: four documents asserting something untrue), so the claim was made
+ENFORCED in the same change: `tests/screenout_softwall_test.py` scenario 9
+hammers a screened-out participant with forced submits and a direct
+`/outro/Ended/` URL and requires every response to re-serve the held page.
+If routing ever changes, the test goes red before a participant reads the
+wrong page. Two second-line defences remain for that hypothetical future
+gate: Ended's neutral else-fallback ("The study has ended for you") says
+nothing false, and the shared footer include still picks the CODELESS exit
+for `reason == 'screened_out'`, so their submission would stay open.
+
+**What deliberately stayed:** `outro.was_screened_out` — a DIFFERENT
+mechanism that looks related and is not. It is what keeps a screened-out
+participant out of `is_completer`, so no future gate can hand them a
+completion code; deleting it with the template branch would have been the
+over-pull this entry exists to warn against. `Ended.vars_for_template`'s
+`common.screenout_vars` spread also stays: the footer reads
+`prolific_screenout_return_url` from it.
+
+**Record check, done with the change:** no document claims the screen-out
+exit code is written when the participant clicks the return link — it is
+written at DECISION time (`common.set_screened_out`: a closed tab still
+exports as screened out, not abandoned), and `set_screened_out`'s docstring,
+the softwall test header and the footer include all state it correctly.
+
+**Enforced:** `tests/screenout_softwall_test.py` scenario 9 (the deletion
+guard); the header note in `outro/Ended.html` points at it.
+
+## Explicit consent is its own flag (`explicit_consent`), split from `prolific_completion_redirects` — 2026-08-14
+
+Decided by Julian, from the before-app review. Whether the consent page asks
+an explicit question (required unticked radio, no-consent routed to exit code
+-1) or states that continuing is consent was decided by
+`prolific_completion_redirects` — which, read literally, said "if we hold a
+completion code, consent must be an affirmative act". **Whether consent is
+EXPLICIT is an ethics decision; holding a completion code is platform
+plumbing.** The conflation is the same defect class as the screened-out
+dead end of 2026-08-13 (one flag doing a second, unrelated job), caught this
+time before it cost a participant.
+
+The split: `explicit_consent` defaults **ON** in `SESSION_CONFIG_DEFAULTS` —
+the one shipped flag that is deliberately not off-by-default, because a study
+should have to OPT OUT of asking for consent — and the **lab profile resolves
+it OFF** (implicit consent by continuing; there is an experimenter in the
+room). That preserves the pre-split behaviour of both shipped profiles
+exactly: prolific keeps the radio, the lab keeps implicit consent. The
+prolific profile deliberately does NOT list the key (it falls through to the
+baseline ON): explicit consent is the default, not a Prolific feature.
+
+The audit for a second conflation found none: every other use of
+`prolific_completion_redirects` (the outro return footers, the Ended/Results
+"Back to Prolific" branches, the dashboard's awaiting-return pill, the
+return-click stamp) is genuinely about the completion-code redirect. One
+consequence is newly constructable and deliberate: `explicit_consent` on with
+redirects off produces a decliner whose ending has no return button —
+`outro/Ended.html`'s neutral fallback covers them.
+
+A frozen session predating the flag reads it as OFF (`common.flag`'s
+missing-module rule) — the radio would silently vanish for that session's
+future entrants, which is why the predeploy frozen-config audit reporting the
+missing key matters: the remedy is to recreate the session.
+
+**Rejected:** deciding at runtime from `recruitment` (the consent page asking
+"am I a lab study?") — profiles resolve to explicit config values at import
+precisely so behaviour is never re-derived silently; and keeping the old
+wiring with a comment — the rename made the misreading legible, a comment
+would only apologise for it.
+
+**Enforced:** `tests/explicit_consent_test.py` (radio present+required when
+on, absent with implicit copy when off, in BOTH recruitment profiles — flag
+decides mechanics, recruitment decides copy — plus the resolved values on
+both shipped configs); `explicit_consent` in `tests/frozen_config_test.py`'s
+STRIPPED list pins the frozen-session behaviour.
+
 ## One short-viewport rhythm for every `.stacked-form` option row — a leak ratified into the rule — 2026-08-14
 
 The consent-fold block (`@media (max-height: 820px)` in base.css, 2026-08-13)

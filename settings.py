@@ -108,6 +108,14 @@ RECRUITMENT_PROFILES = {
     'lab': dict(
         prolific_capture_participant_id=False,
         prolific_completion_redirects=False,
+        # Implicit consent by continuing — an ETHICS choice the lab modality
+        # makes deliberately (experimenter in the room; see the flag's own
+        # comment in SESSION_CONFIG_DEFAULTS). Resolving it OFF here preserves
+        # the exact pre-split behaviour: the lab never showed the radio. The
+        # prolific profile deliberately does NOT list this key — it falls
+        # through to the baseline's ON, because explicit consent is the
+        # default, not a Prolific feature.
+        explicit_consent=False,
         tab_monitor=False,
         comprehension_dq=False,
         passive_capture=False,
@@ -286,6 +294,31 @@ SESSION_CONFIG_DEFAULTS = dict(
     # being deleted because the next study's ethics text may REQUIRE the fee to
     # be stated, and that must not need a template edit.
     show_duration_and_fee=False,
+
+    # =========================================================================
+    # CONSENT
+    # =========================================================================
+    # Whether the consent page asks an EXPLICIT question — a required, unticked
+    # "I consent / I do not consent" radio, with the no-consent answer routed
+    # to its own ending (exit code -1) — or states that continuing to the next
+    # page IS consent (implicit consent; nothing to decline, no -1 path).
+    #
+    # THIS IS AN ETHICS DECISION, NOT A PLATFORM ONE. It used to be decided by
+    # `prolific_completion_redirects`, which conflated "we hold a completion
+    # code to send them back with" and "consent must be an affirmative act" —
+    # two things that have nothing to do with each other (DECISIONS.md,
+    # 2026-08-14). The default is ON: explicit consent is the safer footing,
+    # and a study must OPT OUT of asking. The lab profile resolves it OFF —
+    # implicit consent by continuing, because there is an experimenter in the
+    # room, which preserves exactly the pre-split behaviour of both shipped
+    # profiles.
+    #
+    # Mechanics live in `before.welcome.get_form_fields` (the radio exists only
+    # under this flag) and `before._declined_consent` (the no-consent routing).
+    # A frozen session created before this flag existed reads it as OFF
+    # (common.flag's missing-module rule) — the predeploy frozen-config audit
+    # names the missing key, and the fix is to recreate the session.
+    explicit_consent=True,
 
     # =========================================================================
     # COMPREHENSION

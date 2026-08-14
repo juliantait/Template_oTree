@@ -96,8 +96,9 @@ class Player(BasePlayer):
     #     the pre-ticked True anyway.
     # Required + unset means an untouched submit is REJECTED with oTree's own
     # validation message, so the choice cannot be skipped. It is only ever in
-    # form_fields when prolific_completion_redirects is on (see get_form_fields), so the
-    # lab variant is unaffected and leaves it null — read it with
+    # form_fields when explicit_consent is on (see get_form_fields), so an
+    # implicit-consent variant (the lab profile) is unaffected and leaves it
+    # null — read it with
     # field_maybe_none anywhere outside that branch.
     consent = models.BooleanField(
         # NO LABEL, deliberately (Julian, 2026-08-11, change_requests item 13).
@@ -311,9 +312,9 @@ def _declined_consent(player) -> bool:
 
     THE FLAG TEST IS THE SHORT-CIRCUIT, NOT A STYLE CHOICE: `consent` is only
     ever a form field — and therefore only ever set — when
-    `prolific_completion_redirects` is on (see `welcome.get_form_fields`), so it must not
-    be read when that flag is off. In the lab the first operand is False and
-    `player.consent` is never touched.
+    `explicit_consent` is on (see `welcome.get_form_fields`), so it must not
+    be read when that flag is off. Under implicit consent (the lab profile)
+    the first operand is False and `player.consent` is never touched.
 
     AND THE READ IS DELIBERATELY BARE, not `field_maybe_none`. Unset consent is
     NOT "declined": it is "never asked", and the two must not collapse into one
@@ -323,7 +324,7 @@ def _declined_consent(player) -> bool:
     participant, whose form has no fields at all — is short-circuited by the
     screen-out test in `_leaving_study` before this is ever reached.
     """
-    return bool(_flag(player, 'prolific_completion_redirects')) and not player.consent
+    return bool(_flag(player, 'explicit_consent')) and not player.consent
 
 
 def _leaving_study(player) -> bool:
@@ -499,9 +500,13 @@ class welcome(Page):
         if common.is_screened_out(player.participant):
             return []
         fields = []
-        # Explicit consent (with no-consent routing) only when we redirect people
-        # back to a platform; lab consent is implicit in clicking Next.
-        if _flag(player, 'prolific_completion_redirects'):
+        # The explicit consent question (with its no-consent routing) exists
+        # exactly when the `explicit_consent` flag says so — an ETHICS
+        # decision with its own flag, split from `prolific_completion_redirects`
+        # on 2026-08-14 (DECISIONS.md): whether consent must be an affirmative
+        # act has nothing to do with whether we hold a completion code. The
+        # lab profile resolves it OFF (implicit consent by continuing).
+        if _flag(player, 'explicit_consent'):
             fields.append('consent')
         # NB: the participant id is NOT collected here. It has its own page
         # (ConfirmProlificID) so this page stays platform-neutral and renders
@@ -539,7 +544,9 @@ class welcome(Page):
         return dict(
             prolific_capture_participant_id=_flag(player, 'prolific_capture_participant_id'),
             device_capture=_flag(player, 'device_capture'),
-            prolific_completion_redirects=_flag(player, 'prolific_completion_redirects'),
+            # Drives the template's radio-vs-implicit branch; see
+            # get_form_fields, which adds the field under the same flag.
+            explicit_consent=_flag(player, 'explicit_consent'),
             # Payment-mechanics wording only. Branching on collect_bank_details
             # (not on prolific_capture_participant_id) because the sentence is about HOW
             # the participant is paid — and it keeps this page from having any
