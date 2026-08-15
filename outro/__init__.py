@@ -49,6 +49,34 @@ def is_lab(player) -> bool:
 
 
 def dq_cause(player) -> str:
+    """THE FINE CAUSE, AND THE ONLY SOURCE FOR BOTH THE MESSAGE AND THE CODE.
+
+    ==================================================================
+    DO NOT let the displayed reason and the completion code come from
+    two different reads. Both MUST derive from this function.
+    ==================================================================
+    Since the per-ending codes landed (2026-08-15) a disqualified participant
+    has a code that identifies WHICH module removed them. If the sentence they
+    read were derived independently of the code they carry back, the two could
+    silently disagree — a comprehension failure reading the quiz explanation
+    while submitting the TAB code. Nothing would error, the data would look
+    normal, and the population split would be corrupted at exactly the point it
+    exists to be made, discoverable only by hand-reconciling submissions.
+
+    That failure mode COULD NOT EXIST while one shared DQ code served both
+    populations: splitting the code is what created it, which is worth noticing
+    — the hazard is ours, introduced the same afternoon as the fix it belongs
+    to.
+
+    Today both consumers call THIS function and nothing else:
+      * the message — `Ended.vars_for_template` passes `dq_cause=dq_cause(player)`
+        and `outro/Ended.html` branches on it;
+      * the code    — `completion_link` does `cause = dq_cause(player)`.
+    Two calls to one deterministic function on the same player in the same
+    request cannot disagree. TWO IMPLEMENTATIONS COULD. So do not "tidy" either
+    call into a separate flag read, a template conditional on
+    `ai_safety_disqualified` / `comprehension_disqualified`, or a second lookup.
+    """
     """WHICH integrity module removed this participant ('' if none).
 
     The ONE cause cascade (change_requests item 16): the ending's sentence is
@@ -98,8 +126,14 @@ def was_screened_out(player) -> bool:
 def ending_reason(player) -> str:
     """WHY this participant is on the early ending ('' for a completer).
 
-    The ONE reason cascade: `Ended.is_displayed` and its template vars both
-    read it, so the page cannot show for one reason and speak for another.
+    THE COARSE cascade — the BUCKET a participant is in. There is now a second,
+    FINER one (`dq_cause`: comprehension vs tab_monitor), and the two are not
+    independent: this function asks `is_disqualified`, which asks `dq_cause`, so
+    the bucket and the cause come off the same tree and cannot contradict each
+    other. `Ended.is_displayed` and the template vars both read THIS, so the page
+    cannot show for one reason and speak for another; the same guarantee at the
+    finer grain is stated on `dq_cause`, which is where the message and the
+    completion code both come from.
     Order is deliberate and mirrors severity — an integrity removal outranks a
     declined consent, which outranks the (unreachable-by-design) screen-out.
     """
