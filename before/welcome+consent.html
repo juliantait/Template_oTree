@@ -47,9 +47,18 @@
             </p>
             {% endif %}
 
+            {# THE INSTITUTION IS NAMED ONCE, IN settings.INSTITUTION_NAME
+               (Julian, 2026-08-15), and re-exported as C.INSTITUTION_NAME like
+               STATIC_VERSION. It used to be typed here, so a copied study
+               promised its participants that OUR university held their data.
+               The value carries its own article ("the University of
+               Amsterdam", but "MIT"), because this sentence cannot know which
+               one a name takes. The logo partials deliberately cannot read it
+               — the room page renders them with no page context; see
+               logo_section.html. #}
             <div class="panel panel--hug">
                 All recorded data are stored anonymously and used solely for
-                research purposes by researchers at the University of Amsterdam.
+                research purposes by researchers at {{ C.INSTITUTION_NAME }}.
                 {% if collect_bank_details %}
                 Your contact and bank details are used only to arrange your
                 payment and are never linked to the published data.

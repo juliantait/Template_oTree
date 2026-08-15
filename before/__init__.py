@@ -51,7 +51,7 @@ import common
 import fee_guard
 import identity
 import payoff_guard
-from settings import STATIC_VERSION
+from settings import INSTITUTION_NAME, STATIC_VERSION
 from . import treatment_assignment
 
 # Make oTree's entry lookup unable to raise MultipleResultsFound on a duplicate
@@ -101,6 +101,12 @@ class C(BaseConstants):
     # a session config is frozen at creation, so the template read 500s
     # for in-flight participants when the parameter post-dates them.
     STATIC_VERSION = STATIC_VERSION
+    # The institution named in participant COPY. Defined once in
+    # settings.INSTITUTION_NAME and re-exported here, exactly as
+    # STATIC_VERSION is, because a template can only read page context.
+    # NB the logo partials deliberately do NOT use it — see the note in
+    # settings.py; the room page renders them with no `C` at all.
+    INSTITUTION_NAME = INSTITUTION_NAME
     NAME_IN_URL = 'before'
     PLAYERS_PER_GROUP = None
     NUM_ROUNDS = 1

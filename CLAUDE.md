@@ -153,6 +153,13 @@ instance looks reasonable on its own.
 screen). Mark them `EXCEPTION` with the reason, so the next reader can tell a
 deliberate departure from an accreted patch.
 
+**A change here also ages the website.** The screens on the academic site are
+built from these stylesheets by `previews/build_site_previews.py` (checked by
+`previews/check_site_previews.py`); re-run both after touching
+`_static/global/css/`. Nothing fails if you don't — the site simply goes on
+showing an older study, which is exactly how the hand-written snapshots it
+replaced went stale.
+
 ## Testing standard
 
 Bot tests passing is not evidence that a browser works. Drive form pages **over

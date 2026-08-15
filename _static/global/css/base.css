@@ -956,16 +956,89 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
     justify-content: center;
     gap: 14px 26px;
 }
-.logo-row img { height: 40px; width: auto; max-width: 100%; opacity: .62; }
 
-/* The welcome header's inline CREED logo (lab gate page). */
-.welcome-header-row { display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
-.welcome-header-row img { height: 44px; width: auto; max-width: 100%; }
+/* COMPONENT — THE LOGO BOX. INTENTION: any institution's mark, of ANY aspect
+   ratio, lands in the SAME bounding box, undistorted and uncropped.
+   ============================================================================
+   THE BUG THIS REPLACES (Julian, 2026-08-15). These marks used to be sized by
+   HEIGHT ALONE (`height: 40px; width: auto`), which is only a box if every
+   study ships the shape we do. Width then follows the aspect ratio, so:
+     * a wide banner renders 276px across and a SQUARE mark 40px across — the
+       same "size" by one measure and wildly different visual weight;
+     * an EXTREME banner overshoots the row, hits `max-width` and is scaled
+       down by WIDTH — so its height silently drops below the 40px everything
+       else is aligned to, and the strip looks broken rather than tidy.
+   We had just made the marks swappable by filename (see logo_section.html);
+   that is half a promise if dropping in a differently-shaped file wrecks the
+   strip.
+
+   THE FIX: constrain BOTH dimensions and let the image choose which one binds.
+   `height/width: auto` plus `max-height`/`max-width` is the only combination
+   that fits a replaced element inside a box while preserving its ratio — the
+   browser scales by whichever limit binds first. `object-fit: contain` cannot
+   fire while both are auto and is here as a GUARD: if a future edit ever sets
+   a fixed width or height, the mark still fits rather than stretching.
+
+   THE BOX IS DERIVED FROM THE SHIPPED MARKS, so adopting it changes nothing
+   about how this study looks (measured 2026-08-15):
+       university_logo.jpg  1360x197 (6.90:1) -> 276.1px wide at 40px high
+       lab_logo.jpg          589x175 (3.37:1) -> 134.6px wide at 40px high
+   280px clears the widest by 4px, so both shipped marks render exactly as
+   before and only foreign shapes are affected. The box keeps ONE ratio (7:1)
+   at every breakpoint, so a mark that fits on a laptop fits on a phone.
+
+   WHAT THE BOX DOES NOT DO, stated so nobody expects it: a square mark still
+   occupies 40x40 inside a 280x40 box. Equalising the visual WEIGHT of a square
+   and a banner would require cropping or distorting one of them, which is
+   exactly what `contain` exists to prevent. What is guaranteed is that every
+   mark FITS, keeps its shape, and never exceeds the 40px height the row aligns
+   on.
+
+   `min(..., 100%)` KEEPS THE ORIGINAL OVERFLOW GUARD. The 100% term is not
+   redundant with the box: on a column narrower than the box (a 320px phone), it
+   is what stops a mark widening the card. Removing it re-opens the measured
+   2026-08-11 sideways-overflow bug described above the row. */
+:root {
+    --logo-box-h: 40px;
+    --logo-box-w: 280px;          /* 7:1 — see THE BOX IS DERIVED, above */
+    --welcome-logo-box-h: 44px;
+    --welcome-logo-box-w: 308px;  /* the same 7:1 box at the header's height */
+}
+.logo-row img {
+    height: auto;
+    width: auto;
+    max-height: var(--logo-box-h);
+    max-width: min(var(--logo-box-w), 100%);
+    object-fit: contain;
+    opacity: .62;
+}
+
+/* The welcome header's inline lab mark (lab gate page). The mark itself is
+   institution-neutral by filename and alt text — see logo_section.html.
+   IT WRAPS, for the same reason the footer row does: the title and the mark sit
+   on one flex line, and a foreign banner mark at the box's full width would
+   otherwise push the row sideways out of the card on a phone. Wrapping drops
+   the mark under the title instead. Shipped marks never reach that point (the
+   pair measures ~275px in a ~333px column at 375px), so nothing moves today. */
+.welcome-header-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+.welcome-header-row img {
+    height: auto;
+    width: auto;
+    max-height: var(--welcome-logo-box-h);
+    max-width: min(var(--welcome-logo-box-w), 100%);
+    object-fit: contain;
+}
 /* The title INSIDE this row sizes to its words. It is an .header-title, which
    carries `width: 100%; max-width: var(--read-measure); margin-inline: auto` so
    that a page title holds the reading band — correct for a title that owns its
    line, wrong for one paired with a logo: it claimed the whole measure and shoved
-   the mark to the far edge of the card, so "Welcome to" and the CREED logo read
+   the mark to the far edge of the card, so "Welcome to" and the lab mark read
    as two unrelated things. */
 .welcome-header-row .header-title { width: auto; max-width: none; margin-inline: 0; }
 
@@ -1000,7 +1073,11 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
 @media (max-width: 520px) {
     .button-row { justify-content: stretch; }
     .button-row .next-button { flex: 1; text-align: center; }
-    .logo-row img { height: 32px; }
+    /* THE BOX SHRINKS AS A BOX, keeping its 7:1 ratio (32px x 224px), so a
+       mark that fits on a laptop fits here too. Retuning the token rather
+       than the img rule keeps ONE definition of the box — see THE LOGO BOX.
+       224px is what the widest shipped mark needs at 32px (220.9px). */
+    :root { --logo-box-h: 32px; --logo-box-w: 224px; }
     .logo-row { gap: 18px; }
 
     .screen-card { max-height: none; }
@@ -1134,7 +1211,11 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
        statement is at THE LOGO FOOTER RULE above; if vertical space is ever
        short again, this strip is the first thing that should shrink. The RULE
        itself (placement, order, divider) is untouched — only the mark height. */
-    .logo-row img { height: 32px; }
+    /* THE BOX SHRINKS AS A BOX, keeping its 7:1 ratio (32px x 224px), so a
+       mark that fits on a laptop fits here too. Retuning the token rather
+       than the img rule keeps ONE definition of the box — see THE LOGO BOX.
+       224px is what the widest shipped mark needs at 32px (220.9px). */
+    :root { --logo-box-h: 32px; --logo-box-w: 224px; }
 }
 
 /* --- respect reduced-motion preference -------------------------------------- */

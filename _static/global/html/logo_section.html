@@ -19,10 +19,49 @@
      Sizing and opacity come from .logo-section / .logo-row in base.css — do NOT
      put inline height/style attributes back on these tags. An inline style beats
      any stylesheet rule, so the design system could no longer re-tune them (and
-     the phone breakpoint that shrinks them would silently stop working). -->
+     the phone breakpoint that shrinks them would silently stop working).
+
+     ============================================================================
+     SWAPPING THE MARKS IS A FILE REPLACEMENT — TWO FILES, NOTHING ELSE
+     (Julian, 2026-08-15). This is a TEMPLATE other institutions copy, and it
+     used to name ours in three places at once: the filenames (`Creed_*`,
+     `Uva_*`) and the alt text ("University of Amsterdam logo"). A copying lab
+     had to rename image files AND edit templates to put their own marks up,
+     which is the kind of chore that gets half-done — one page still showing
+     somebody else's university.
+
+     To rebrand a copied study, replace these two files and change nothing here:
+
+         _static/global/images/lab_logo.jpg         your lab / centre mark
+         _static/global/images/university_logo.jpg  your institution mark
+
+     Keep them roughly the shipped proportions (both are wide wordmarks, ~3-7x
+     as wide as they are tall). They are sized by HEIGHT (40px, 32px on a phone
+     and on a short screen), so an unusually tall mark takes more width than the
+     row can give it and the strip wraps; see the .logo-row note in base.css.
+
+     WHY THE ALT TEXT IS GENERIC RATHER THAN READ FROM A SETTING, which is what
+     was asked for first and does not work here. This partial is included by
+     oTree PAGES *and* by `_templates/room_welcome.html`, and oTree renders the
+     room page with a context of ONLY `has_participant_label_file` — no session,
+     no config, no `C`. A `C.INSTITUTION_NAME` interpolation in this file would
+     therefore render fine on every page a participant reaches and BLOW UP ON
+     THE ROOM PAGE, which is the lab's front door. One component must render one
+     way in both contexts, so the institution is carried by the IMAGE alone and
+     the alt text describes the ROLE the mark plays. The institution's NAME does
+     have a single home for the places that can read it —
+     `settings.INSTITUTION_NAME`, used by the consent page's privacy sentence;
+     see the README.
+
+     AND NOTE HOW THAT SENTENCE IS WRITTEN. It does not spell the interpolation
+     out, because **oTree parses template tags INSIDE HTML COMMENTS** — writing
+     the braces here, even to warn against them, is not a comment: it is the
+     very expression, evaluated on every page that includes this file. Doing
+     exactly that 500'd the room gate on 2026-08-15, caught by render_check leg
+     AR. If you must show one, space the braces apart. -->
 <div class="logo-section">
     <div class="logo-row">
-        <img src="{% static 'global/images/Uva_logo_regular.jpg' %}" alt="University of Amsterdam logo">
-        <img src="{% static 'global/images/Creed_logo_subtitle.jpg' %}" alt="CREED logo with subtitle">
+        <img src="{% static 'global/images/university_logo.jpg' %}" alt="University logo">
+        <img src="{% static 'global/images/lab_logo.jpg' %}" alt="Research lab logo">
     </div>
 </div>

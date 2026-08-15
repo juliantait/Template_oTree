@@ -102,13 +102,20 @@
                 THE COMBINATION IS NOW UNCONSTRUCTABLE, not merely handled: a
                 PROLIFIC study must offer an exit, because its participants have
                 no experimenter to ask, so `settings._prelaunch_problems` FAILS
-                any prolific config whose `prolific_screenout_return_url` is blank or
+                any prolific config whose screen-out exit is blank or
                 unreplaced — it can no longer reach a participant at all. The
                 branches below are what a participant meets, in this order:
 
-                  1. `show_return_link` — a prolific study WITH its return URL,
-                     i.e. every launchable one: the real link, carrying no
-                     completion code so their submission stays open;
+                  1. `show_return_link` — a prolific study WITH its exit, i.e.
+                     every launchable one: a completion URL carrying
+                     `prolific_device_code`, the screen-out population's own
+                     code. CORRECTED 2026-08-15: this line used to say "the real
+                     link, carrying no completion code so their submission stays
+                     open", which stopped being true the day the screen-out got
+                     its own code — the page was describing a link it no longer
+                     gives. The reversal and its reasoning (an open submission
+                     is limbo, not kindness) are on
+                     `common.prolific_screenout_return_url` and in DECISIONS.md;
                   2. `is_lab` — there is an experimenter in the room, and no
                      platform to return to;
                   3. `is_prolific` — a prolific session that somehow has no URL
@@ -124,11 +131,25 @@
             {% if show_return_link %}
             <div class="read-band">
                 <h3 class="section-title">If you cannot switch devices</h3>
+                {# THE EXIT IS FINAL, AND THE PAGE SAYS SO (Julian, 2026-08-15).
+                   The last sentence used to read "Once you do this you will not
+                   be able to take part later", which is true but reads as
+                   "not later today" — on a page whose PRIMARY ask, three
+                   inches above, is to switch device and come back. Since the
+                   exit became a completion code that returns the submission,
+                   that route is foreclosed for anyone who presses it, so the
+                   sentence now names the route it closes.
+                   A CLARIFICATION, NOT A WARNING BANNER: one sentence, the
+                   same register as the rest of the page, no emphasis added,
+                   and the control below is untouched — it stays `.exit-button`
+                   and must never become `.next-button`, because global.js
+                   Enter-clicks the first `.next-button` on a page and an
+                   irreversible exit must not be one keystroke away. #}
                 <p class="section-text">
                     Press the button below. This ends the study for you and takes
                     you back to Prolific, where you will be asked to return your
-                    submission. Once you do this you will not be able to take
-                    part later.
+                    submission. Once you return it you cannot take part again,
+                    even on an accepted device.
                 </p>
             </div>
             {% elif is_lab %}

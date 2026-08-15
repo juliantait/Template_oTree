@@ -719,21 +719,48 @@ def device_types_phrase(types) -> str:
 
 
 def prolific_screenout_return_url(config) -> str:
-    """The way OUT for a screened-out participant: the recruitment platform's
-    own site, carrying NO completion code.
+    """The way OUT for a screened-out participant: a Prolific COMPLETION URL
+    carrying `prolific_device_code`, the screen-out population's own code.
 
-    THERE IS DELIBERATELY NO SCREENED-OUT COMPLETION CODE. Submitting one would
-    close the participant's Prolific submission the instant they clicked it, and
-    a returned submission can never be retaken — which forecloses exactly the
-    outcome the screen-out page is trying to produce, namely that they reopen
-    the study on a computer and finish it. Their submission therefore stays
-    OPEN, and returning it stays their decision, taken on Prolific.
+    STOP BEFORE YOU "FIX" THIS TO MATCH AN OLDER COMMENT. Until 2026-08-15 this
+    function's docstring said the exact opposite of these four lines — that
+    there is deliberately NO screened-out completion code and the link carries
+    nothing — while the body already built the coded URL. Anybody reading the
+    two together would reasonably have made the code match the prose, and that
+    would have silently reverted a deliberate decision. The prose was the stale
+    half; this is the reasoning it should have carried.
+
+    WHY THE CODELESS EXIT WAS REVERSED (DECISIONS.md, "Every ending population
+    gets its own completion code", 2026-08-15, which SUPERSEDES the 2026-08-12
+    codeless-screen-out entry). The old argument was right that a completion
+    code CLOSES a Prolific submission and that a returned submission can never
+    be retaken. It was wrong that leaving the submission open was therefore the
+    kind option: a bare researcher URL leaves it in LIMBO — occupying a place in
+    the study, telling Prolific nothing, until it times out. A REQUEST_RETURN
+    code is a different instrument: it prompts the participant to return the
+    submission, which frees the place and ends the ambiguity. Hence a code, and
+    hence this population's OWN code — one code shared with the DQ populations
+    would collapse them irreversibly on a system we do not own.
+
+    KNOWN AND DELIBERATE, NOT AN OVERSIGHT: for a participant who takes this
+    exit, returning the submission does foreclose the "come back on an accepted
+    device and finish" route the screen-out page invites. The page still leads
+    with switching device, and this exit is deliberately the QUIET control
+    (`.exit-button`, never `.next-button`, so Enter cannot trigger it). Whether
+    the copy should say so is an open COPY question with Julian (raised
+    2026-08-15) — it is not a defect to fix here, and the mechanics below are
+    not what is in question.
+
+    THE CODE IS THE ONLY SOURCE. There is no `prolific_screenout_return_url`
+    SETTING any more: a URL that embeds a code, plus the code key itself, is one
+    value in two places and they drift. The template variable of that name is
+    built HERE, from the code.
 
     Read through `cfg` so a session created before the parameter existed falls
     back to the shipped default instead of 500-ing on the one page a stranded
-    participant needs. Returns '' if a study blanks it, and the template then
-    renders no link at all rather than a broken one. Escaping happens at the
-    point of use, in the template.
+    participant needs. Returns '' if a study blanks the code, and the template
+    then renders no link at all rather than a broken one. Escaping happens at
+    the point of use, in the template.
     """
     try:
         code = str(cfg(config, 'prolific_device_code') or '').strip()

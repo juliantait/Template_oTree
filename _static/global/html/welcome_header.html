@@ -1,9 +1,22 @@
-<!-- "Welcome to [CREED]" header.
+<!-- "Welcome to [lab]" header.
      SCOPE: this belongs to the LAB GATE PAGE ONLY (before/startpage.html) — the
      wait-to-be-seated screen an experimenter advances. It must NOT appear on the
      consent page or anywhere in the Prolific flow, which carries no lab
-     branding. Sizing lives in .welcome-header-row in base.css, not inline. -->
+     branding. Sizing lives in .welcome-header-row in base.css, not inline.
+
+     THE MARK IS THE SAME FILE THE FOOTER USES — `lab_logo.jpg` — so rebranding
+     a copied study stays a two-file replacement (see logo_section.html for the
+     whole contract). It used to be a second, caption-less CREED file, which
+     made the swap a THREE-file job for one lab's mark; the caption-bearing
+     version is the one the footer shows on five pages, so that is the one kept
+     and this page took the change. If your own mark has a compact variant you
+     prefer here, point this one tag at it — that is a deliberate departure, not
+     the default.
+
+     Alt text is deliberately generic and institution-free: this markup is
+     shared, and the institution is carried by the image. See logo_section.html
+     for why it cannot be read from a setting. -->
 <div class="welcome-header-row">
     <h2 class="header-title">Welcome to</h2>
-    <img src="{% static 'global/images/Creed_logo_small.jpg' %}" alt="CREED logo">
+    <img src="{% static 'global/images/lab_logo.jpg' %}" alt="Research lab logo">
 </div>
