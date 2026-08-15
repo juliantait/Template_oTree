@@ -162,7 +162,27 @@ RECRUITMENT_PROFILES = {
 # come back on a computer and finish. The old `error_code` / 'REPLACE_ERR' pair
 # was removed on 2026-08-12 for exactly that reason; do not reintroduce it.
 PROLIFIC_CODE_PLACEHOLDERS = ('COMP-XXXXXX_REPLACE', 'NOCONS-XXXXXX_REPLACE',
-                              'DQ-XXXXXX_REPLACE')
+                              'DQ-QUIZ-XXXXXX_REPLACE', 'DQ-TAB-XXXXXX_REPLACE',
+                              'DEVICE-XXXXXX_REPLACE')
+
+# THE FIVE ENDING POPULATIONS, AND WHY EACH HAS ITS OWN CODE (Julian,
+# 2026-08-15). A shared code COLLAPSES TWO POPULATIONS IRREVERSIBLY, and the
+# collapse happens on Prolific's side where we cannot undo it: once a
+# comprehension failure and a tab-monitor ejection have both submitted under one
+# `DQ-` code, the submission list cannot tell them apart and nothing downstream
+# recovers it. This is the collapsed-distinction rule (CLAUDE.md) applied to a
+# system we do not own — which is exactly the case where it has to be got right
+# up front, because there is no later fix.
+#
+# EVERY CODE KEY IS LISTED HERE, and the prelaunch guard iterates THIS TUPLE
+# rather than its own copy — see PROLIFIC_CODE_KEYS below.
+PROLIFIC_CODE_KEYS = (
+    'prolific_cc_code',          # completed        -> auto-approve
+    'prolific_noconsent_code',   # declined consent -> request return
+    'prolific_dq_quiz_code',     # comprehension DQ -> request return
+    'prolific_dq_tab_code',      # tab-monitor DQ   -> request return
+    'prolific_device_code',      # device screen-out-> request return
+)
 
 
 def is_placeholder(value) -> bool:
@@ -208,7 +228,8 @@ def is_placeholder(value) -> bool:
 # now cannot get back to the platform. Shipping it broken makes the omission
 # impossible to miss: the pre-launch guard fails, and the link on the page is
 # visibly not a URL.
-SCREENOUT_RETURN_URL_PLACEHOLDER = 'REPLACE_SCREENOUT_RETURN_URL'
+# (SCREENOUT_RETURN_URL_PLACEHOLDER retired 2026-08-15: the screened-out
+#  exit is a completion code now, not a URL setting. See DECISIONS.md.)
 
 # --- experimenter dashboard ----------------------------------------------------
 # The live operator view at /experimenter_dashboard (experimenter_dashboard.py,
@@ -548,36 +569,32 @@ SESSION_CONFIG_DEFAULTS = dict(
     # any REPLACE_* placeholder that survives to launch.
     prolific_capture_participant_id=False,  # capture the Prolific ID at entry
     prolific_completion_redirects=False,    # send them back with a completion code
-    # WHERE A SCREENED-OUT PARTICIPANT IS SENT, as a plain link carrying NO
-    # completion code: the Prolific participant site itself. Their submission
-    # therefore stays OPEN, so they can still reopen the study on an accepted
-    # device and finish it — which is the outcome the screen-out page asks for,
-    # and which a completion code would foreclose for good. See "The device
-    # check" in README.md, and common.prolific_screenout_return_url.
+    # WHERE A SCREENED-OUT PARTICIPANT IS SENT: a Prolific completion URL
+    # carrying `prolific_device_code`, built by
+    # common.prolific_screenout_return_url from that ONE key. There is no
+    # separate URL setting any more — a URL that embeds a code, plus a code key,
+    # is one value in two places, and they drift.
     #
-    # REQUIRED FOR A PROLIFIC STUDY, which is why it is filed here rather than
-    # with the device allow-list it serves: a Prolific participant has no
-    # experimenter to ask, so a study that screens somebody out MUST leave them
-    # a way off that page. scripts/prelaunch_check.py FAILS a prolific config
-    # whose value here is blank or still the placeholder — that combination is
-    # not a configuration choice, it is a dead end (see
-    # settings._prelaunch_problems). Blank is legitimate only for a study type
-    # that is not prolific.
-    #
-    # SHIPPED AS A REPLACE_* PLACEHOLDER, deliberately — see
-    # SCREENOUT_RETURN_URL_PLACEHOLDER above for why a working default is worse
-    # than a broken one here. Replace it with the platform URL your participants
-    # should be sent back to (for Prolific that is https://app.prolific.com/).
-    prolific_screenout_return_url=SCREENOUT_RETURN_URL_PLACEHOLDER,
+    # THIS REVERSES the codeless screen-out exit (DECISIONS.md, and the old
+    # rationale is preserved there rather than deleted). A Prolific
+    # REQUEST_RETURN code PROMPTS the participant to return the submission and
+    # frees the place; the bare researcher URL left it in limbo instead.
     # SHAPED LIKE A REAL CODE ON PURPOSE: `REASON-XXXXXX`, a semantic prefix
     # plus six random alphanumerics. The placeholder teaches the convention to
     # whoever replaces it — readable in a Prolific submission list, unguessable
     # by a participant. Replace the XXXXXX with six RANDOM characters, not a
     # short number: the completion code is the one that can AUTO-APPROVE a
     # payment on Prolific, so a guessable one is somebody else's money.
-    prolific_cc_code='COMP-XXXXXX_REPLACE',        # normal completion
-    prolific_noconsent_code='NOCONS-XXXXXX_REPLACE',  # declined consent
-    prolific_dq_code='DQ-XXXXXX_REPLACE',          # disqualified (comprehension / tab monitor)
+    prolific_cc_code='COMP-XXXXXX_REPLACE',            # completed
+    prolific_noconsent_code='NOCONS-XXXXXX_REPLACE',   # declined consent
+    prolific_dq_quiz_code='DQ-QUIZ-XXXXXX_REPLACE',    # comprehension DQ
+    prolific_dq_tab_code='DQ-TAB-XXXXXX_REPLACE',      # tab-monitor DQ
+    # THE DEVICE SCREEN-OUT NOW CARRIES A CODE TOO, and this REVERSES the
+    # earlier codeless decision — see DECISIONS.md, 'Every ending population
+    # gets its own completion code'. A Prolific REQUEST_RETURN code actively
+    # PROMPTS the participant to return the submission, which frees the place;
+    # the bare researcher URL it replaces left the submission sitting in limbo.
+    prolific_device_code='DEVICE-XXXXXX_REPLACE',      # device screen-out
     # NB: no screened-out code. See PROLIFIC_CODE_PLACEHOLDERS above.
 )
 
@@ -871,8 +888,26 @@ def _prelaunch_problems():
         # redirects to Prolific.
         # NB three codes, not four: there is deliberately NO screened-out code
         # (see PROLIFIC_CODE_PLACEHOLDERS). Do not add one back here.
+        # WHICH CODES ARE OWED, AND BY WHAT. The four ENDING codes are owed by
+        # the redirect flag: a study that does not send participants back to
+        # Prolific needs none of them. The DEVICE code is owed by the STUDY TYPE
+        # itself — a Prolific participant screened out at entry has no
+        # experimenter to ask, so the way out is owed whether or not the study
+        # uses completion redirects. That asymmetry predates this key (it was
+        # the old `prolific_screenout_return_url` rule, and its reasoning is in
+        # DECISIONS.md); it is preserved here rather than quietly lost when the
+        # URL setting became a code.
         if eff.get('prolific_completion_redirects'):
-            for code_key in ('prolific_cc_code', 'prolific_noconsent_code', 'prolific_dq_code'):
+            code_keys = PROLIFIC_CODE_KEYS
+        elif eff.get('recruitment') == 'prolific':
+            code_keys = ('prolific_device_code',)
+        else:
+            code_keys = ()
+        if code_keys:
+            # ITERATES THE ONE LIST. An enumeration copied here would be the
+            # trap this template keeps hitting: add a sixth ending, forget this
+            # line, and its code ships unguarded while the check reports clean.
+            for code_key in code_keys:
                 value = eff.get(code_key)
                 if is_placeholder(value):
                     problems.append(
@@ -880,39 +915,13 @@ def _prelaunch_problems():
                          'a real Prolific completion code, shaped '
                          'REASON-XXXXXX with six RANDOM characters (this is '
                          'still an unreplaced placeholder)'))
-        # THE SCREEN-OUT RETURN URL — REQUIRED FOR A PROLIFIC STUDY, AND THE ONE
-        # PLACE THIS GUARD ENFORCES A DEPENDENCY RATHER THAN SPOTTING A
-        # PLACEHOLDER (Julian, 2026-08-13).
-        #
-        # A participant screened out at entry is on the one page whose entire
-        # job is to give them a way out. In the lab they raise a hand. ON
-        # PROLIFIC THERE IS NOBODY TO ASK, so the exit is owed to them by the
-        # study type itself — being a Prolific study and offering an exit are
-        # the same commitment, and a config that separates them is not a
-        # configuration choice, it is a broken study.
-        #
-        # SO THIS IS CHECKED ON `recruitment`, NOT ON `prolific_completion_redirects`
-        # (which gates the codes above, and is a different mechanism entirely:
-        # the return URL deliberately carries NO completion code, so that their
-        # submission stays open). Gating it on that flag is what produced the
-        # dead end this now forbids: a prolific session with redirects off
-        # served a screened-out participant a page with no exit at all, silently
-        # — no error, no failing test. See before/screened_out.html.
-        #
-        # AND A BLANK VALUE IS NO LONGER A LEGITIMATE CHOICE FOR PROLIFIC. It
-        # remains one for any other study type, which is why the test is here
-        # and not on every config.
-        if eff.get('recruitment') == 'prolific':
-            url = str(eff.get('prolific_screenout_return_url') or '').strip()
-            if not url or is_placeholder(url):
-                problems.append(
-                    (f"config {cfg['name']!r} prolific_screenout_return_url",
-                     eff.get('prolific_screenout_return_url'),
-                     'the real URL a screened-out participant is sent back to '
-                     '(e.g. https://app.prolific.com/). REQUIRED for a prolific '
-                     'study — blank or the REPLACE_* placeholder would leave a '
-                     'screened-out participant with no way out and nobody to '
-                     'ask'))
+        # NB THE SCREEN-OUT IS NOT A SEPARATE CHECK ANY MORE. It used to have
+        # its own branch here, guarding a `prolific_screenout_return_url` that
+        # had to be a real URL. That key is gone: the screened-out exit is now
+        # `prolific_device_code`, which the loop above already covers along with
+        # the other four. One enumeration, five populations — see
+        # PROLIFIC_CODE_KEYS.
+
     return problems
 
 

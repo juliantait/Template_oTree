@@ -376,16 +376,22 @@ def scenario_prolific_dq(base):
     check('/outro/' in r.url and '/Ended/' in r.url,
           f'failure {THRESHOLD} (AT the threshold): disqualified straight to '
           f'the ending [{page_name(r.url)}]')
-    check(_settings.SESSION_CONFIG_DEFAULTS['prolific_dq_code'] in r.text,
-          'ending carries the DQ completion code')
-    # THE PAYMENT EXPOSURE, PINNED: a disqualified participant must never be
-    # able to read the COMPLETED code out of the page source and self-approve.
-    # Each ending is served ONE server-chosen code (outro.completion_link), and
-    # this is what stops a future template from spreading session.config.
-    check(_settings.SESSION_CONFIG_DEFAULTS['prolific_cc_code'] not in r.text,
-          'and does NOT leak the COMPLETION code to a disqualified participant')
-    check(_settings.SESSION_CONFIG_DEFAULTS['prolific_noconsent_code'] not in r.text,
-          'and does not leak the no-consent code either')
+    # THIS ENDING IS THE COMPREHENSION DQ, so it must carry the QUIZ code — not
+    # the tab-monitor one, and not any of the other three. Since 2026-08-15
+    # every ending population has its own code, because a shared code collapses
+    # two populations irreversibly on Prolific's side.
+    D = _settings.SESSION_CONFIG_DEFAULTS
+    check(D['prolific_dq_quiz_code'] in r.text,
+          'the comprehension ending carries the QUIZ DQ code')
+    # THE PAYMENT EXPOSURE, PINNED, AND NOW FOR ALL FOUR OTHERS: a disqualified
+    # participant must never read another population's code out of the page
+    # source. Each ending is served ONE server-chosen code
+    # (outro.completion_link) — per-page injection, never a bundle in the
+    # template context.
+    for other in ('prolific_cc_code', 'prolific_noconsent_code',
+                  'prolific_dq_tab_code', 'prolific_device_code'):
+        check(D[other] not in r.text,
+              f'and does NOT leak {other} to a comprehension-DQ participant')
     check('/Introduction/' not in r.url, 'round 2 never seen')
 
 

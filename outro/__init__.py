@@ -149,8 +149,11 @@ def completion_link(player) -> str:
     investigation. Pinned by tests/frozen_config_test.py.
     """
     config = player.session.config
-    if is_disqualified(player):
-        code = common.cfg(config, 'prolific_dq_code')
+    cause = dq_cause(player)
+    if cause == 'tab_monitor':
+        code = common.cfg(config, 'prolific_dq_tab_code')
+    elif cause == 'comprehension':
+        code = common.cfg(config, 'prolific_dq_quiz_code')
     elif declined_consent(player):
         code = common.cfg(config, 'prolific_noconsent_code')
     else:
@@ -267,6 +270,22 @@ def extract_round_payoffs(payoffs_vector, missing_values):
 
 # PAGES
 
+def _screenout_context(player) -> dict:
+    """`common.screenout_vars`, with the exit URL withheld from everybody who is
+    not actually screened out.
+
+    The device facts (what device, what the study accepts) are harmless and the
+    ending's copy may use them. The EXIT URL is not: it is a completion URL
+    carrying `prolific_device_code`, so handing it to every ending would put one
+    population's code in another population's page source — the thing
+    per-ending codes exist to prevent.
+    """
+    ctx = dict(common.screenout_vars(player.participant, player.session.config))
+    if ending_reason(player) != 'screened_out':
+        ctx['prolific_screenout_return_url'] = ''
+    return ctx
+
+
 class Ended(monitoring.OutroMonitoredPage):
     """Finish screen for participants who did NOT complete normally: the two
     integrity disqualifications and a declined consent. When completion
@@ -304,7 +323,15 @@ class Ended(monitoring.OutroMonitoredPage):
             # `prolific_screenout_return_url` from it to pick the CODELESS
             # exit for reason == 'screened_out' — the second line of defence
             # for a future gate that sets the flag later in the flow.
-            common.screenout_vars(player.participant, player.session.config),
+            # PER-PAGE INJECTION, NEVER A SHARED BUNDLE. The device facts come
+            # from common.screenout_vars, the same builder
+            # before/screened_out.html uses — but the screened-out EXIT URL is
+            # stripped below for anybody who is not screened out. It carries
+            # `prolific_device_code`, and a comprehension-DQ participant has no
+            # business receiving another population's code: found by
+            # tests/gated_flow_test.py when the per-ending codes landed
+            # (2026-08-15), which is what that assertion is for.
+            **_screenout_context(player),
             completionlink=completion_link(player),
             # The ONE reason cascade (`ending_reason`); is_displayed guarantees
             # it is non-empty here, and `or 'other'` keeps the template's
