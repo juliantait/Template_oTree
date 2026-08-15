@@ -11,6 +11,70 @@ working.
 
 ---
 
+## Every ending population gets its own completion code — 2026-08-15
+
+Decided by Julian. Five endings, five codes, one per population:
+
+| key | population | Prolific action |
+|---|---|---|
+| `prolific_cc_code` | completed | **auto-approve** |
+| `prolific_noconsent_code` | declined consent | request return |
+| `prolific_dq_quiz_code` | comprehension DQ | request return |
+| `prolific_dq_tab_code` | tab-monitor DQ | request return |
+| `prolific_device_code` | device screen-out | request return |
+
+**Why not one shared `DQ-` code, which is what this replaces.** A shared code
+**collapses two populations irreversibly, on a system we do not own.** Once a
+comprehension failure and a tab-monitor ejection have both submitted under one
+code, Prolific's submission list cannot tell them apart and nothing downstream
+recovers it — not an export, not a rerun, not a support ticket. This is the
+collapsed-distinction rule applied to a third party: the usual version of that
+rule costs a debugging session, and this version cannot be fixed at all, which
+is why it had to be got right before a launch rather than after one.
+
+**THIS REVERSES the codeless screen-out** recorded on 2026-08-12 (marked
+SUPERSEDED above, with its reasoning preserved). That decision was right that a
+completion code closes a submission and a returned submission cannot be retaken.
+It was wrong that leaving the submission open was therefore kind: a bare
+researcher URL leaves it in limbo, occupying a place, telling Prolific nothing.
+A **REQUEST_RETURN** code is a different instrument — it prompts the participant
+to return the submission, which frees the place. So the screened-out exit is now
+`prolific_device_code` rendered as a full completion URL, and the
+`prolific_screenout_return_url` setting is gone: a URL that embeds a code, plus
+a code key, is one value in two places and they drift.
+
+**Rejected:** keeping `prolific_screenout_return_url` alongside the new code as
+an override. Two sources for one value is the defect this repo has spent the
+week removing.
+
+**Enforced, and each part separately verified:**
+
+- `settings.PROLIFIC_CODE_KEYS` is the ONE enumeration; `_prelaunch_problems`
+  iterates it rather than keeping a copy, so a sixth ending cannot ship
+  unguarded. **Mutation-tested key by key**: with the other four set to
+  plausible real codes, leaving each one placeholder in turn is named by the
+  check — and only that one (no false positives). The old three-key enumeration
+  would have shipped the two new codes completely unguarded while reporting
+  clean, which is the trap this template keeps meeting.
+- The frozen-session audit needs no enumeration: it walks every key in the
+  current config, so the new keys are covered the moment they exist.
+- `tests/completion_codes_test.py` — **one browser-driven journey per ending**,
+  each asserting it carries ITS OWN code and NOT the other four. 30 checks, all
+  passing. The absence half is the point: a disqualified participant who can
+  read the COMPLETED code out of page source can self-approve and be paid, so
+  every path checks all four others, and the codes are injected per page rather
+  than bundled into the template context.
+- `tests/render_check.py` leg AD asserted the screen-out carried NO code; that
+  expectation is now reversed to assert it carries the DEVICE code and none of
+  the other four.
+- Two test-construction faults were found and fixed while writing the above,
+  both worth knowing because they would have produced false confidence: a walker
+  using the default `python-requests` User-Agent is classified `unknown` and is
+  SCREENED OUT by `allowed_devices=['computer']`, and setting a DQ flag on a
+  participant still at the consent page does not put them on their ending. In
+  both cases the code assertions passed against the wrong page until the journey
+  itself was asserted.
+
 ## `participation_fee` ships 0, and a boot guard holds it there — 2026-08-14
 
 Decided by Julian. oTree's built-in `participation_fee` is a SECOND payment
@@ -1125,7 +1189,7 @@ clicking has still finished; the click is Prolific's concern, not the data's.
 minimal-divergence principle itself has no guard — the caller-list warning on
 `common.is_lab` and review are what hold it.
 
-## A screened-out Prolific participant gets a codeless link back — 2026-08-12
+## ~~A screened-out Prolific participant gets a codeless link back~~ — 2026-08-12, SUPERSEDED 2026-08-15
 
 The way off the screen-out page is a plain link with **no completion code**,
 because submitting a code closes the Prolific submission, and a returned
@@ -1138,6 +1202,25 @@ dependency is enforced, not documented.
 `settings._prelaunch_problems` refuses a `recruitment='prolific'` config with a
 blank or unreplaced `prolific_screenout_return_url`;
 `tests/copy_routing_test.py` walks the codeless way out end to end.
+
+> **SUPERSEDED 2026-08-15 by "Every ending population gets its own completion
+> code" (below/newest).** The reasoning above is kept, not deleted, because a
+> reader who meets the codeless design in an older study — or who reasons their
+> way back to it — should be able to see that it was reconsidered and why,
+> rather than find it silently gone.
+>
+> **What it got right:** submitting a completion code does close a Prolific
+> submission, and a returned submission cannot be retaken. That is still true.
+>
+> **What it got wrong:** it treated "leave the submission open" as the kind
+> outcome. In practice a bare researcher URL leaves the submission sitting in
+> LIMBO — the participant has been turned away, cannot continue, and nothing
+> tells Prolific anything; the place stays occupied until it times out. A
+> Prolific REQUEST_RETURN code is not the same instrument as a completion code:
+> it actively PROMPTS the participant to return the submission, which is the
+> outcome that frees the place and ends the ambiguity. The screened-out exit is
+> now `prolific_device_code` used as a full completion URL, and
+> `prolific_screenout_return_url` is gone as a setting.
 
 ## The screen-out return URL ships as a placeholder, not a working default — 2026-08-12
 

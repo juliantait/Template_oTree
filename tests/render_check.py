@@ -2356,8 +2356,7 @@ def check_screenout_way_out(server, browser):
     # study's way out.
     session = create_session('prolific', num_participants=2,
                              modified_session_config_fields={
-                                 'allowed_devices': ['computer'],
-                                 'prolific_screenout_return_url': 'https://app.prolific.com/'})
+                                 'allowed_devices': ['computer']})
     code, _ = walk_to(server.base, session, 'welcome', user_agent=PHONE_UA)
     for vp_name, vp in VIEWPORTS.items():
         context = browser.new_context(viewport=vp, user_agent=PHONE_UA,
@@ -2384,8 +2383,20 @@ def check_screenout_way_out(server, browser):
             continue
         check(m['href'].startswith('http'),
               f'{label}: it is a real href ({m["href"]!r}) — not a scripted button')
-        check('submissions/complete' not in m['href'] and 'cc=' not in m['href'],
-              f'{label}: it carries NO completion code ({m["href"]!r})')
+        # REVERSED 2026-08-15 (DECISIONS.md, 'Every ending population gets its
+        # own completion code'). This used to assert the screen-out carried NO
+        # code, so that the submission stayed open. It now carries
+        # `prolific_device_code` as a REQUEST_RETURN completion URL: that
+        # actively prompts the participant to return the submission and frees
+        # the place, where the bare researcher URL left it in limbo.
+        device_code = _settings.SESSION_CONFIG_DEFAULTS['prolific_device_code']
+        check('submissions/complete' in m['href'] and device_code in m['href'],
+              f'{label}: it carries the DEVICE code, its own and no other '
+              f'({m["href"]!r})')
+        for other in ('prolific_cc_code', 'prolific_noconsent_code',
+                      'prolific_dq_quiz_code', 'prolific_dq_tab_code'):
+            check(_settings.SESSION_CONFIG_DEFAULTS[other] not in m['href'],
+                  f'{label}: and NOT the {other} code')
         check(m['onclick'] is None,
               f'{label}: no onclick — nothing about it needs a script')
         check(m['visibility'] == 'visible' and m['w'] >= 120 and m['h'] >= 36,

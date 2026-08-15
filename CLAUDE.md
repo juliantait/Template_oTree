@@ -161,6 +161,24 @@ Before a launch, fuzz with a headless browser one worker per surface (entry,
 instructions and quiz, task, monitor, endings) — that practice found an XSS and a
 dropped participant label that server-side testing missed.
 
+**Never assert an absence without asserting the matching presence.** A test that
+only checks "this page does not contain X" passes against *any* page that
+happens to be blank of X — including a page the participant never reached. Two
+faults in the completion-code tests (2026-08-15) hid behind exactly this: the
+walker was screened out at entry in one case and never left the consent page in
+the other, so the page under test was the wrong page entirely, and all four
+"does not carry another population's code" assertions passed happily. Only the
+paired "carries its OWN code" assertion exposed it. An absence-only leak test is
+indistinguishable from a test of nothing.
+
+Two related traps, both of which produce false confidence rather than a false
+alarm: a suite bound to a **fixed port** can silently test a stale server from
+an earlier run (this happened, and reported a fixed defect as still present);
+and a suite driven against an **externally started server** inherits that
+server's mode, so a leak test pointed at a DEBUG server measures oTree's
+`vars_for_template` debug panel rather than what a participant can see. Assert
+what a real participant reaches — start the server in production mode.
+
 **Read `skills_claude/writing_tests.md` before writing or editing any test.** It
 holds the method (the two drivers, the no-JS submit, phone User-Agents,
 asserting on rendered visible text rather than raw HTML, escaping, frozen

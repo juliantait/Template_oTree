@@ -80,8 +80,8 @@ STRIPPED = [
     'explicit_consent',
     # recruitment plumbing
     'prolific_capture_participant_id', 'prolific_completion_redirects', 'allowed_devices',
-    'prolific_screenout_return_url',
-    'prolific_cc_code', 'prolific_noconsent_code', 'prolific_dq_code',
+    'prolific_cc_code', 'prolific_noconsent_code', 'prolific_dq_quiz_code',
+    'prolific_dq_tab_code', 'prolific_device_code',
     # misc
     'pilot_feedback', 'static_version',
 ]
@@ -202,9 +202,11 @@ def main():
     session = ot.create_session('prolific', num_participants=1)
     removed = ot.strip_config_keys(
         session,
-        ['prolific_cc_code', 'prolific_noconsent_code', 'prolific_dq_code'])
+        ['prolific_cc_code', 'prolific_noconsent_code', 'prolific_dq_quiz_code',
+         'prolific_dq_tab_code', 'prolific_device_code'])
     check(sorted(removed) == sorted(
-        ['prolific_cc_code', 'prolific_noconsent_code', 'prolific_dq_code']),
+        ['prolific_cc_code', 'prolific_noconsent_code', 'prolific_dq_quiz_code',
+         'prolific_dq_tab_code', 'prolific_device_code']),
         f'exactly the three code keys stripped ({sorted(removed)})')
     pcode = ot.participant_codes(session)[0]
     visited, statuses = drive(client, pcode, correct)
@@ -239,11 +241,11 @@ def main():
         # its way out comes from a parameter added in a later deploy. A session
         # frozen before it existed must still render a working link.
         import settings as _s
-        check(common.prolific_screenout_return_url({}) ==
-              _s.SESSION_CONFIG_DEFAULTS['prolific_screenout_return_url'],
-              'a session frozen before prolific_screenout_return_url existed still gets '
+        check(_s.SESSION_CONFIG_DEFAULTS['prolific_device_code']
+              in common.prolific_screenout_return_url({}),
+              'a session frozen before prolific_device_code existed still gets '
               'the shipped URL (the screen-out page cannot be a dead end)')
-        check(common.prolific_screenout_return_url({'prolific_screenout_return_url': ''}) == '',
+        check(common.prolific_screenout_return_url({'prolific_device_code': ''}) == '',
               'and a study that deliberately blanks it gets no link, not a broken one')
         try:
             common.cfg({}, 'a_totally_unknown_param')

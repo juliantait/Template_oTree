@@ -66,7 +66,7 @@ LAPTOP_UA = ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
 # A study that HAS configured its way out. `prolific_screenout_return_url` ships as a
 # REPLACE_* placeholder on purpose, and the pre-launch guard refuses to launch
 # while it is unreplaced (see device_gate_test.py for the same note).
-CONFIGURED_RETURN_URL = 'https://app.prolific.com/'
+CONFIGURED_DEVICE_CODE = 'DEVICE-T3STC0'
 
 SWITCH_HEADING = 'If you cannot switch devices'
 
@@ -94,7 +94,7 @@ def visible_text(html):
 
 def create(config, **modified):
     """A session of a NAMED config, with per-scenario overrides."""
-    fields = {'prolific_screenout_return_url': CONFIGURED_RETURN_URL}
+    fields = {'prolific_device_code': CONFIGURED_DEVICE_CODE}
     fields.update(modified)
     r = requests.post(
         BASE + '/api/sessions',
@@ -133,8 +133,8 @@ section('A. THE MECHANISM: a Prolific study with no exit CANNOT BE LAUNCHED')
 # refused before a server ever serves it.
 import settings                                    # noqa: E402  (after argv)
 
-REAL_URL = CONFIGURED_RETURN_URL
-PLACEHOLDER = settings.SCREENOUT_RETURN_URL_PLACEHOLDER
+REAL_CODE = CONFIGURED_DEVICE_CODE
+PLACEHOLDER = settings.SESSION_CONFIG_DEFAULTS['prolific_device_code']
 
 
 def guard_problems(**config):
@@ -154,28 +154,28 @@ def guard_problems(**config):
         settings.SESSION_CONFIGS = original
 
 
-def mentions_return_url(problems):
-    return any('prolific_screenout_return_url' in p for p in problems)
+def mentions_device_code(problems):
+    return any('prolific_device_code' in p for p in problems)
 
 
-check(mentions_return_url(guard_problems(
-          recruitment='prolific', prolific_screenout_return_url='')),
-      'prolific + BLANK return URL is REFUSED by the prelaunch guard')
-check(mentions_return_url(guard_problems(
-          recruitment='prolific', prolific_screenout_return_url=PLACEHOLDER)),
-      'prolific + the unreplaced REPLACE_* placeholder is REFUSED')
-check(mentions_return_url(guard_problems(
-          recruitment='prolific', prolific_screenout_return_url='',
+# THE SCREENED-OUT EXIT IS NOW A CODE, not a URL setting (2026-08-15; see
+# DECISIONS.md). The guarantee under test is unchanged: a Prolific study that
+# could screen somebody out must have a working way out for them.
+check(mentions_device_code(guard_problems(
+          recruitment='prolific', prolific_device_code=PLACEHOLDER)),
+      'prolific + the unreplaced DEVICE placeholder is REFUSED by the guard')
+check(mentions_device_code(guard_problems(
+          recruitment='prolific', prolific_device_code=PLACEHOLDER,
           prolific_completion_redirects=False)),
-      'prolific + blank is refused with prolific_completion_redirects OFF too — the '
-      'exit is owed by the STUDY TYPE, not by the redirect flag')
-check(not mentions_return_url(guard_problems(
-          recruitment='prolific', prolific_screenout_return_url=REAL_URL)),
-      'prolific + a real return URL passes')
-check(not mentions_return_url(guard_problems(
-          recruitment='lab', prolific_screenout_return_url='')),
-      'lab + blank passes: a lab participant raises a hand, and there is no '
-      'platform to return to')
+      'and refused with prolific_completion_redirects OFF too — the exit is '
+      'owed by the STUDY TYPE, not by the redirect flag')
+check(not mentions_device_code(guard_problems(
+          recruitment='prolific', prolific_device_code=REAL_CODE)),
+      'prolific + a real device code passes')
+check(not mentions_device_code(guard_problems(
+          recruitment='lab', prolific_device_code=PLACEHOLDER)),
+      'lab + placeholder passes: a lab participant raises a hand, and there is '
+      'no platform to return to')
 
 # =============================================================================
 section('B. The screen-out page ALWAYS answers "what if I cannot switch?"')
@@ -229,7 +229,7 @@ for row in SCREENOUT_ROWS:
     check(has_link == row['link'],
           f'{label}: way-out LINK present={row["link"]} (mechanics, not copy)')
     if has_link:
-        check(CONFIGURED_RETURN_URL in r.text,
+        check(CONFIGURED_DEVICE_CODE in r.text,
               f'{label}: ...and it points at the configured return URL')
 
 # =============================================================================
@@ -271,7 +271,7 @@ r, _ = entry('prolific', PHONE_UA, allowed_devices=['computer'], **DEAD_END)
 screenout = visible_text(r.text)
 check(SWITCH_HEADING in screenout,
       'friend-test config: ...and the screen-out page is NOT a dead end')
-check('exit-button' in r.text and CONFIGURED_RETURN_URL in r.text,
+check('exit-button' in r.text and CONFIGURED_DEVICE_CODE in r.text,
       '...it offers the real, codeless way out — owed by the study type, not '
       'by the redirect flag')
 

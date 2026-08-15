@@ -99,6 +99,14 @@ the `earned` computation in `outro`. That is deliberate: oTree adds
 leaving it set splits what you owe across two numbers. It does not appear in the
 CSV export at all, so the split is invisible in your data.
 
+**On Prolific, each ending has its own completion code** — completed, declined
+consent, comprehension DQ, tab-monitor DQ and device screen-out. Only the
+completed one auto-approves; the other four are REQUEST_RETURN codes that prompt
+the participant to return the submission. Create all five before launch (the
+pre-launch check refuses to start while any is still a placeholder) and give each
+return code its own reason text. Full table: the README's "The five endings and
+their codes".
+
 One gap to know about: an experimenter can still edit the fee on a running
 session from oTree's own admin page, and that lands in the session row in the
 database — so no restart and no boot check will ever see it. That is treated as

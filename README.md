@@ -546,7 +546,7 @@ flowchart TD
     Game -. "tab-away violations reach<br>tab_monitor_max_violations<br>(one count across intro + main)" .-> EndedTM
     Payoff -- "after the last round" --> FbGate
 
-    subgraph OUTRO ["outro — ending (Demographics skipped: Prolific exports demographics itself). Tab monitor still watching, but RECORD-ONLY: violations here land in focus_loss_count_outro and NEVER eject — the task is over and the data collected. To READ any of this, sort on tab_monitor_flag — see CODEBOOK"]
+    subgraph OUTRO ["outro — ending. Each ending carries ITS OWN completion code: completed -> prolific_cc_code (auto-approve), declined consent -> prolific_noconsent_code, comprehension DQ -> prolific_dq_quiz_code, tab-monitor DQ -> prolific_dq_tab_code (all request-return); the device screen-out never reaches here and carries prolific_device_code. Demographics skipped: Prolific exports demographics itself. Tab monitor still watching, but RECORD-ONLY: violations here land in focus_loss_count_outro and NEVER eject. To READ any of this, sort on tab_monitor_flag — see CODEBOOK"]
         FbGate{"pilot_feedback<br>flag on?"}
         FbGate -. "yes (pilots only)" .-> Fb["Feedback — free-text pilot feedback"]
         Fb -.-> Results
@@ -1051,8 +1051,35 @@ scheme" section and `settings.py`). That bundle turns on:
   read the completion code out of the page source and self-approve. Pinned by
   `tests/gated_flow_test.py`.
 
-**Completion codes are shaped `REASON-XXXXXX`** — a semantic prefix plus six
-random alphanumerics (`COMP-K27XQ4`, `NOCONS-T8Q4R1`, `DQ-W3FM9K`): readable in a
+### The five endings and their codes
+
+**Every ending population has its own code.** A shared code collapses two
+populations irreversibly on Prolific's side — once a comprehension failure and a
+tab-monitor ejection have both submitted under one `DQ-` code, the submission
+list cannot tell them apart and nothing downstream recovers it.
+
+| Ending | Config key | Shipped placeholder | Prolific action |
+|---|---|---|---|
+| Completed | `prolific_cc_code` | `COMP-XXXXXX_REPLACE` | **auto-approve** (this is the one that pays) |
+| Declined consent | `prolific_noconsent_code` | `NOCONS-XXXXXX_REPLACE` | request return |
+| Comprehension DQ | `prolific_dq_quiz_code` | `DQ-QUIZ-XXXXXX_REPLACE` | request return |
+| Tab-monitor DQ | `prolific_dq_tab_code` | `DQ-TAB-XXXXXX_REPLACE` | request return |
+| Device screen-out | `prolific_device_code` | `DEVICE-XXXXXX_REPLACE` | request return |
+
+**Only the completed code auto-approves.** The other four are created on Prolific
+as **REQUEST_RETURN** codes, each with its own reason text — the API requires
+`return_reason` on such a code — so the participant is prompted to return the
+submission, which frees the place. That is why the screen-out now carries a code
+at all: the bare researcher URL it replaces left the submission in limbo. (This
+reverses an earlier decision; see `DECISIONS.md`, both entries.)
+
+Each ending is served **only its own code**, injected per page — never a bundle
+in the template context — so a disqualified participant cannot read the completed
+code out of the page source and self-approve. Pinned by
+`tests/completion_codes_test.py`, one browser journey per ending.
+
+**Codes are shaped `REASON-XXXXXX`** — a semantic prefix plus six random
+alphanumerics (`COMP-K27XQ4`, `NOCONS-T8Q4R1`, `DQ-QUIZ-M4P2W7`): readable in a
 Prolific submission list, unguessable by a participant. The template ships them as
 `COMP-XXXXXX_REPLACE` / `NOCONS-XXXXXX_REPLACE` / `DQ-XXXXXX_REPLACE`, so the
 placeholder itself teaches the convention — and **`scripts/prelaunch_check.py`

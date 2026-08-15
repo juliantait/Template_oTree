@@ -736,9 +736,12 @@ def prolific_screenout_return_url(config) -> str:
     point of use, in the template.
     """
     try:
-        return str(cfg(config, 'prolific_screenout_return_url') or '').strip()
+        code = str(cfg(config, 'prolific_device_code') or '').strip()
     except Exception:
         return ''
+    if not code:
+        return ''
+    return 'https://app.prolific.com/submissions/complete?cc=' + code
 
 
 # --- entry screen-out causes -------------------------------------------------

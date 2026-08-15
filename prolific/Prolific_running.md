@@ -55,6 +55,29 @@ Three codes, per session config, all shipping as `REPLACE_*` placeholders:
 | `prolific_noconsent_code` | Declined consent | `-1` |
 | `prolific_dq_code` | Disqualified (comprehension or tab monitor) | `-2` / `-3` |
 
+**FIVE CODES, ONE PER ENDING POPULATION** (2026-08-15). Create all five in the
+Prolific study UI and paste them into the matching config keys:
+
+| Ending | Config key | Prolific code type |
+|---|---|---|
+| Completed | `prolific_cc_code` | **COMPLETED — auto-approves the submission** |
+| Declined consent | `prolific_noconsent_code` | REQUEST_RETURN |
+| Comprehension DQ | `prolific_dq_quiz_code` | REQUEST_RETURN |
+| Tab-monitor DQ | `prolific_dq_tab_code` | REQUEST_RETURN |
+| Device screen-out | `prolific_device_code` | REQUEST_RETURN |
+
+**Only the completed code auto-approves and pays.** The other four are
+REQUEST_RETURN codes, which PROMPT the participant to return the submission and
+free the place — that is why the device screen-out carries a code now instead of
+a bare link, which used to leave the submission in limbo. **Each REQUEST_RETURN
+code needs its own reason text**, and Prolific's API requires `return_reason` on
+a code of that type, so write a short participant-facing sentence for each
+(what happened, and that they are not at fault where that is true).
+
+**Never reuse one code for two endings.** Once two populations have submitted
+under the same code, Prolific's submission list cannot tell them apart and
+nothing downstream recovers it.
+
 **COMPLETION CODE SHAPE — `REASON-XXXXXX`.** A semantic prefix plus six random
 alphanumerics: `COMP-K27XQ4` for a completion, `NOCONS-T8Q4R1` for a declined
 consent, `DQ-W3FM9K` for a disqualification. Readable in a Prolific submission

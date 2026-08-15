@@ -89,8 +89,9 @@ def main():
     REAL_CODES = dict(
         prolific_cc_code='C0FFEE01',
         prolific_noconsent_code='C0FFEE02',
-        prolific_dq_code='C0FFEE03',
-        prolific_screenout_return_url='https://app.prolific.com/',
+        prolific_dq_quiz_code='C0FFEE03',
+        prolific_dq_tab_code='C0FFEE04',
+        prolific_device_code='C0FFEE05',
     )
 
     section('one session created BEFORE a key existed, one AFTER — '
@@ -125,7 +126,7 @@ def main():
     section('plain value differences are REPORTED, never FAILED')
     # Both sessions carry real codes where the current settings ship REPLACE_*
     # placeholders — a genuine difference that is CORRECT, not broken.
-    check(any(code == fresh.code and key == 'prolific_dq_code'
+    check(any(code == fresh.code and key == 'prolific_dq_quiz_code'
               for code, key, *_ in diffs),
           'the fresh session\'s real dq code differs from the shipped '
           'placeholder and appears in the informational diffs')
