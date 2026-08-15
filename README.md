@@ -179,6 +179,46 @@ concrete to describe, not a pattern to copy.)
    → [`skills_claude/writing_tests.md`](skills_claude/writing_tests.md) and
    the Testing section below.
 
+### Rebranding a copied study (whose logos and whose university)
+
+This template ships the CREED and University of Amsterdam marks as its
+defaults. **If you are not us, changing them is two image files and one line.**
+
+| What | Where | Note |
+|---|---|---|
+| Your lab / centre mark | `_static/global/images/lab_logo.jpg` | replace the file, keep the name |
+| Your institution mark | `_static/global/images/university_logo.jpg` | replace the file, keep the name |
+| Your institution's name **in prose** | `settings.INSTITUTION_NAME` | read by the consent page's privacy sentence |
+
+Then bump `settings.STATIC_VERSION` and re-record the asset manifest
+(`python scripts/prelaunch_check.py --stamp-assets`), as with any change under
+`_static/`.
+
+Three things worth knowing before you swap:
+
+- **Both marks are sized by HEIGHT** (40px in the footer, 32px on a phone and
+  on a short screen), so their widths follow their aspect ratios. The shipped
+  marks are wide wordmarks; a tall, square mark will take much more width than
+  the row can give it and the strip will wrap. See the `.logo-row` note in
+  `base.css`.
+- **`lab_logo.jpg` appears in two places** — the footer strip on every page
+  where the institution speaks, and beside "Welcome to" on the lab gate
+  (`before/startpage.html`). One file, both places, on purpose: it is what
+  keeps the swap to two files. If you want a compact variant on the gate,
+  point that one `<img>` in `_static/global/html/welcome_header.html` at it and
+  mark the departure.
+- **The alt text is deliberately generic** ("University logo", "Research lab
+  logo") rather than read from `INSTITUTION_NAME`, and that is not an
+  oversight. The logo partials are also included by `_templates/room_welcome.html`,
+  which oTree renders with a context of only `has_participant_label_file` — no
+  session, no config, no `C` — so a constant referenced there would work on
+  every participant page and break the room gate, which is the lab's front
+  door. The institution is carried by the image; the name lives in settings for
+  the places that can read it.
+
+`INSTITUTION_NAME` carries its own article (`'the University of Amsterdam'`,
+but `'MIT'`): the sentence using it cannot know which one your name takes.
+
 ## Parameter scheme (read `conventions.md` and `settings.py` first)
 Three **independent axes** at the top of `settings.py` determine everything a
 participant experiences:

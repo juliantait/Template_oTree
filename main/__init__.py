@@ -2,7 +2,7 @@ from otree.api import *
 import random
 
 # Take NUM_ROUNDS from session defaults (static at import time for oTree).
-from settings import SESSION_CONFIG_DEFAULTS, STATIC_VERSION
+from settings import INSTITUTION_NAME, SESSION_CONFIG_DEFAULTS, STATIC_VERSION
 import common
 import monitoring
 num_experimental_rounds = SESSION_CONFIG_DEFAULTS['num_experimental_rounds']
@@ -21,6 +21,12 @@ class C(BaseConstants):
     # a session config is frozen at creation, so the template read 500s
     # for in-flight participants when the parameter post-dates them.
     STATIC_VERSION = STATIC_VERSION
+    # The institution named in participant COPY. Defined once in
+    # settings.INSTITUTION_NAME and re-exported here, exactly as
+    # STATIC_VERSION is, because a template can only read page context.
+    # NB the logo partials deliberately do NOT use it — see the note in
+    # settings.py; the room page renders them with no `C` at all.
+    INSTITUTION_NAME = INSTITUTION_NAME
     NAME_IN_URL = 'main'
     PLAYERS_PER_GROUP = None
     # FIXED AT IMPORT: oTree builds its round tables from this constant, so it

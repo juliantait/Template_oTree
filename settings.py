@@ -154,13 +154,25 @@ RECRUITMENT_PROFILES = {
 # study UI and pasted per config; the prelaunch banner flags any REPLACE_*
 # sentinel that survives to launch.
 #
-# THERE IS NO SCREENED-OUT COMPLETION CODE, and none must be added here. A
-# device screened out at entry is sent back to Prolific by a PLAIN LINK with no
-# code at all (`prolific_screenout_return_url`), because submitting a code closes the
-# participant's submission, and a returned submission can never be retaken —
-# which forecloses the very thing the screen-out page asks them to do, namely
-# come back on a computer and finish. The old `error_code` / 'REPLACE_ERR' pair
-# was removed on 2026-08-12 for exactly that reason; do not reintroduce it.
+# THE SCREEN-OUT HAS ITS OWN CODE, and that REVERSES what this comment said
+# until 2026-08-15 ("there is no screened-out completion code, and none must be
+# added here") — a prohibition that was sitting directly above the
+# `DEVICE-XXXXXX_REPLACE` placeholder it forbade. Corrected rather than
+# deleted, because the superseded reasoning is worth knowing: a completion code
+# CLOSES a Prolific submission and a returned submission can never be retaken,
+# so the 2026-08-12 rule sent a screened-out participant back by a plain,
+# codeless link to keep their submission open.
+#
+# What changed the answer (DECISIONS.md, 2026-08-15): an open submission is not
+# a kindness, it is LIMBO — it occupies a place, tells Prolific nothing, and
+# expires on a timer. A REQUEST_RETURN code prompts the participant to return
+# it, which frees the place. So the screen-out exit is now
+# `prolific_device_code` rendered as a full completion URL by
+# `common.prolific_screenout_return_url`, and the separate
+# `prolific_screenout_return_url` SETTING is gone (one value in two places
+# drifts). The old `error_code` / 'REPLACE_ERR' pair, removed 2026-08-12, is
+# still not to be reintroduced — that was a SHARED error code across
+# populations, which is a different thing and remains wrong.
 PROLIFIC_CODE_PLACEHOLDERS = ('COMP-XXXXXX_REPLACE', 'NOCONS-XXXXXX_REPLACE',
                               'DQ-QUIZ-XXXXXX_REPLACE', 'DQ-TAB-XXXXXX_REPLACE',
                               'DEVICE-XXXXXX_REPLACE')
@@ -288,7 +300,33 @@ DASHBOARD_RETURN_GRACE_SECONDS = 90
 # Appended as ?v=... to every CSS/JS href so a redeploy is never served a stale
 # cached asset. BUMP THIS ON EVERY CHANGE to a file under _static/. Each app
 # exposes it as C.STATIC_VERSION, which is what the templates read.
-STATIC_VERSION = '14'
+# 14 -> 15 on 2026-08-15: the logo files were renamed (see INSTITUTION_NAME
+# below). Re-record the manifest with
+# `python scripts/prelaunch_check.py --stamp-assets`.
+STATIC_VERSION = '15'
+
+# --- whose study this is ------------------------------------------------------
+# THE ONE PLACE A COPIED STUDY NAMES ITS INSTITUTION IN PROSE (Julian,
+# 2026-08-15). Rebranding a copied template is meant to be two image files plus
+# this line, and nothing else — see "Rebranding a copied study" in README.md.
+#
+# WHAT READS IT: participant-facing COPY that names the institution, which today
+# is the consent page's privacy sentence. Each app re-exports it as
+# `C.INSTITUTION_NAME`, the same pattern STATIC_VERSION uses, so templates read
+# it from page context.
+#
+# WHAT DELIBERATELY DOES NOT READ IT: the two logo partials
+# (`_static/global/html/logo_section.html`, `welcome_header.html`). They are
+# also included by `_templates/room_welcome.html`, which oTree renders with a
+# context of ONLY `has_participant_label_file` — no session, no config, no `C`
+# — so a constant referenced there would render on every participant page and
+# break the lab's front door. Their alt text is generic and the institution is
+# carried by the IMAGE. That asymmetry is the reason this comment exists.
+#
+# THE ARTICLE IS PART OF THE VALUE ("the University of Amsterdam", but "MIT"),
+# because the sentence that uses it cannot know which one your name takes. Write
+# whichever reads correctly after "researchers at ...".
+INSTITUTION_NAME = 'the University of Amsterdam'
 
 
 SESSION_CONFIG_DEFAULTS = dict(

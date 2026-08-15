@@ -61,7 +61,7 @@ from http_flow_test import FormParser, build_payload, END_MARKERS
 from device_gate_test import (PHONE_UA, TABLET_UA, DESKTOP_UA, NO_UA, BLANK_UA,
                               LONG_UA, CONSENT_MARKER, SCREENOUT_MARKER,
                               visible_text, page_name, participant_code,
-                              create, session_vars)
+                              create, session_vars, CODES, COMPLETION_URL_RE)
 import common
 
 # See device_gate_test: `requests` will not send a malformed header, and the
@@ -257,14 +257,43 @@ def scenario_way_out(base):
     check('class="exit-button"' in html,
           'it is NOT .next-button: global.js Enter-clicks the first one of '
           'those, and an irreversible exit must not be one keystroke away')
-    # NO COMPLETION CODE, anywhere on the page.
-    check('submissions/complete' not in html and 'REPLACE_' not in html,
-          'no completion code: their Prolific submission stays OPEN')
+    # THE WAY OUT CARRIES THE SCREEN-OUT POPULATION'S OWN COMPLETION CODE.
+    #
+    # REWRITTEN 2026-08-15 — this assertion was RED ON MAIN. It read "no
+    # completion code: their Prolific submission stays OPEN", which was the
+    # rule until the screen-out was given its own code that day (DECISIONS.md;
+    # the reasoning is on common.prolific_screenout_return_url). An open
+    # submission was judged to be limbo rather than kindness: a REQUEST_RETURN
+    # code prompts the return that frees the place.
+    #
+    # PRESENCE AND ABSENCE, as in device_gate_test: a page carrying SOME code
+    # would satisfy a bare presence check while leaking another population's,
+    # which is the thing per-population codes exist to prevent.
+    #
+    # IF THE CODELESS EXIT IS EVER RESTORED (the copy/ethics question put to
+    # Julian on 2026-08-15 — the soft wall invites a return on an accepted
+    # device, and a returned submission cannot be retaken), this assertion is
+    # one of the two places that must flip back with it; the other is
+    # device_gate_test.expect_screened_out.
+    urls = COMPLETION_URL_RE.findall(html)
+    check(set(urls) == {CODES['prolific_device_code']},
+          f"the way out carries the DEVICE code and nothing else (got {sorted(set(urls))})")
+    for key, code in CODES.items():
+        if key != 'prolific_device_code':
+            check(code not in html, f'no {key} anywhere on the page ({code})')
     flat = visible_text(html)
     check('you will be asked to return your submission' in flat,
           'the page says what pressing it does')
-    check('Once you do this you will not be able to take part later' in flat,
-          'the page says the consequence is permanent')
+    # THE FINALITY SENTENCE NAMES THE ROUTE IT CLOSES (Julian, 2026-08-15).
+    # The old copy — "you will not be able to take part later" — was true but
+    # read as "not later today", on a page whose primary ask is to switch
+    # device and come back. Asserting the accepted-device clause specifically
+    # is what stops the sentence being softened back to something a
+    # participant could read as compatible with the invitation above it.
+    check('Once you return it you cannot take part again, even on an accepted device'
+          in flat,
+          'the page says the exit is FINAL, and that it closes the '
+          'switch-device route it invites above')
     check('Do not press the button below' in flat,
           'the SWITCH-DEVICE path tells them not to press it')
 

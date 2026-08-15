@@ -2,7 +2,7 @@ from otree.api import *
 import numbers, json
 import common
 import monitoring
-from settings import STATIC_VERSION
+from settings import INSTITUTION_NAME, STATIC_VERSION
 from .payment_rule import select_random_payouts
 
 PROLIFIC_COMPLETE_URL = "https://app.prolific.com/submissions/complete?cc="
@@ -154,11 +154,16 @@ def is_completer(player) -> bool:
 def completion_link(player) -> str:
     """Build the Prolific completion URL for this participant's outcome.
 
-    THERE IS NO SCREENED-OUT BRANCH, and there must not be one: a screened-out
-    participant gets a CODELESS link back to Prolific (see
-    `common.prolific_screenout_return_url`), because a completion code closes their
-    submission and a returned submission can never be retaken. `Ended` renders
-    that link instead of this one for them.
+    THERE IS NO SCREENED-OUT BRANCH, and there must not be one — but NOT for
+    the reason this docstring gave until 2026-08-15, which was that a
+    screened-out participant gets a CODELESS link. They do not, and have not
+    since that day: they get a completion URL carrying `prolific_device_code`,
+    their own population's code (the why is on
+    `common.prolific_screenout_return_url`, which builds it).
+    The no-branch rule survives its old justification because it never depended
+    on it: that URL is built in ONE place, and it is not this function. `Ended`
+    renders it instead of this one for them, and adding a screened-out branch
+    here would make two builders for one link.
 
     THE CODES ARE READ THROUGH `common.cfg`, NOT a raw `.get` — the repo's own
     accessor rule (see `common.flag`: raw `.get` is for module flags, `cfg` is
@@ -203,6 +208,12 @@ class C(BaseConstants):
     # a session config is frozen at creation, so the template read 500s
     # for in-flight participants when the parameter post-dates them.
     STATIC_VERSION = STATIC_VERSION
+    # The institution named in participant COPY. Defined once in
+    # settings.INSTITUTION_NAME and re-exported here, exactly as
+    # STATIC_VERSION is, because a template can only read page context.
+    # NB the logo partials deliberately do NOT use it — see the note in
+    # settings.py; the room page renders them with no `C` at all.
+    INSTITUTION_NAME = INSTITUTION_NAME
     NAME_IN_URL = 'outro'
     PLAYERS_PER_GROUP = None
     NUM_ROUNDS = 1

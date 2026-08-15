@@ -30,7 +30,7 @@ unusable User-Agent, all of which must sail through:
      exactly like the other three.
 
 The SOFT WALL (screen-out cleared by returning on an accepted device, the
-asymmetry of the no-decision sentinel, the codeless way out) is
+asymmetry of the no-decision sentinel, the way out) is
 tests/screenout_softwall_test.py. Identity and re-entry are
 tests/identity_test.py.
 
@@ -47,7 +47,6 @@ sys.path.insert(0, __file__.rsplit('/', 1)[0])
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from http_flow_test import FormParser, build_payload, END_MARKERS
 import common
-import settings as _settings
 
 # `requests` REFUSES to send a header value with leading whitespace or control
 # characters — it validates client-side. A broken browser, a proxy, a privacy
@@ -161,19 +160,36 @@ def participant_code(url):
     return m.group(1) if m else None
 
 
-# The return URL a CONFIGURED study has. `prolific_screenout_return_url` ships as a
-# REPLACE_* placeholder on purpose (settings.SCREENOUT_RETURN_URL_PLACEHOLDER:
-# a working default never gets verified, and this is the one way off the
-# screen-out page), and the pre-launch guard refuses to launch while it is
-# unreplaced. Every scenario here is therefore driven as a study that HAS
-# replaced it — which is what the way-out assertions are about. The placeholder
-# state itself is covered by the pre-launch guard, not by these walks.
-CONFIGURED_RETURN_URL = 'https://app.prolific.com/'
+# FIVE DISTINCT COMPLETION CODES, ONE PER ENDING POPULATION, set explicitly on
+# every session this file creates.
+#
+# WHY THE TEST SETS THEM RATHER THAN READING THE SHIPPED PLACEHOLDERS. The
+# screen-out exit is a completion URL carrying `prolific_device_code`
+# (DECISIONS.md, 2026-08-15), and the thing worth asserting is that it carries
+# THAT code and none of the other four — the presence-plus-absence pairing in
+# CLAUDE.md. Sentinels make both halves exact: distinct strings that cannot be
+# substrings of one another, so "the device code is present" cannot be
+# satisfied by another population's code and "no other code leaks" cannot pass
+# because two placeholders happened to look alike. They also keep the
+# assertions true for a study that has replaced its placeholders.
+#
+# (The `prolific_screenout_return_url` SETTING this block used to configure is
+# gone — the exit is derived from the device code now, one value in one place.
+# See common.prolific_screenout_return_url.)
+CODES = {
+    'prolific_device_code': 'DEVICE-SENTINEL01',
+    'prolific_cc_code': 'COMP-SENTINEL02',
+    'prolific_noconsent_code': 'NOCONS-SENTINEL03',
+    'prolific_dq_quiz_code': 'DQ-QUIZ-SENTINEL04',
+    'prolific_dq_tab_code': 'DQ-TAB-SENTINEL05',
+}
+COMPLETION_URL_RE = re.compile(
+    r'https://app\.prolific\.com/submissions/complete\?cc=([A-Za-z0-9_.-]+)')
 
 
 def create(base, allowed, config='prolific', **modified):
-    fields = {'allowed_devices': allowed,
-              'prolific_screenout_return_url': CONFIGURED_RETURN_URL}
+    fields = {'allowed_devices': allowed}
+    fields.update(CODES)
     fields.update(modified)
     return requests.post(
         base + '/api/sessions',
@@ -263,13 +279,30 @@ def expect_screened_out(base, label, ua, allowed, cause, must_say, must_not_say=
           f"{label}: screenout_cause is the DETECTED TYPE {cause!r} (got {got!r})")
     check(extra_of(base, session_code, p_code, 'entry_device_type') == cause,
           f'{label}: entry_device_type records the same classification')
-    # THERE IS NO SCREENED-OUT COMPLETION CODE. The way out is a plain link to
-    # Prolific carrying nothing, so their submission stays open and they can
-    # still come back on a computer and finish.
-    check(not _settings.is_placeholder(r.text),
-          f'{label}: the page carries NO completion code of any kind')
-    check('submissions/complete' not in r.text,
-          f'{label}: the way out is NOT a Prolific completion URL')
+    # THE WAY OUT IS A COMPLETION URL CARRYING THIS POPULATION'S OWN CODE.
+    #
+    # REWRITTEN 2026-08-15, and the old version is worth naming because it was
+    # RED ON MAIN: it asserted "the page carries NO completion code of any
+    # kind" and "the way out is NOT a Prolific completion URL", which had been
+    # the rule until the screen-out got its own code that same day. The suite
+    # was asserting a superseded contract against shipped behaviour.
+    #
+    # PRESENCE **AND** ABSENCE, per CLAUDE.md: "carries a code" is not the
+    # claim — a page carrying the COMPLETER's code would pass that and would be
+    # the exact leak per-population codes exist to prevent. So: the exit is a
+    # completion URL, the code IN it is the device code, and none of the other
+    # four appears anywhere on the page.
+    urls = COMPLETION_URL_RE.findall(r.text)
+    check(bool(urls),
+          f'{label}: the way out IS a Prolific completion URL')
+    check(set(urls) == {CODES['prolific_device_code']},
+          f"{label}: that URL carries the DEVICE code "
+          f"{CODES['prolific_device_code']!r} and nothing else (got {sorted(set(urls))})")
+    for key, code in CODES.items():
+        if key == 'prolific_device_code':
+            continue
+        check(code not in r.text,
+              f'{label}: no {key} anywhere on the page ({code})')
     flat = visible_text(r.text)
     for phrase in must_say:
         check(phrase in flat, f'{label}: page says {phrase!r}')

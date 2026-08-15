@@ -11,6 +11,94 @@ working.
 
 ---
 
+## The screen-out exit says it is FINAL, because the code that frees the place forecloses the return — 2026-08-15
+
+Decided by Julian, the same day as the per-population completion codes, and it
+is the consequence of that decision rather than a separate one.
+
+**What forced it.** The soft wall was designed around a re-decidable verdict: a
+participant turned away at entry is HELD on `before.welcome`, the page's primary
+ask is "switch to an accepted device and come back", and returning on an
+accepted device before consent CLEARS the screen-out. The reversal recorded
+above gave the screen-out its own completion code, chosen because an open
+submission is limbo — it occupies a place and tells Prolific nothing. But a
+completion code RETURNS the submission, and a returned submission can never be
+retaken. **So for anybody who presses the exit, the route the page invites them
+to take is gone.** Freeing the place was judged the better trade; being silent
+about what it costs the participant was not.
+
+**What the page now says**, in the `show_return_link` branch of
+`before/screened_out.html`: *"Once you return it you cannot take part again,
+even on an accepted device."* It replaces *"Once you do this you will not be
+able to take part later"* — true, but on this page it reads as "not later
+today", three inches under an invitation to come back on a different device.
+The new sentence names the route it closes.
+
+**What was deliberately NOT done.** It is one sentence in the page's existing
+register, not a warning banner, and the control is untouched: it stays
+`.exit-button`, never `.next-button`, because `global.js` Enter-clicks the first
+`.next-button` on a page and an irreversible exit must not be one keystroke
+away. The primary ask is still switching device, and the switch-device branch
+still says *"Do not press the button below."*
+
+**The honest statement of what survives.** The soft wall still exists and still
+clears on an accepted device before consent — but only for somebody who has NOT
+taken the exit. Those are now two different populations and the page has to be
+readable by both.
+**Enforced:** `tests/screenout_softwall_test.py` asserts the accepted-device
+clause specifically (not merely that some permanence wording exists, which the
+old sentence would also have satisfied), that the control carries
+`.exit-button`, and that the way out is a real `<a href>` needing no script;
+`tests/render_check.py` asserts the switch-device branch's "Do not press the
+button below".
+
+## The website's screen previews are GENERATED from the template, not drawn — 2026-08-15
+
+Decided by Julian. The academic site shows four screens of the study (welcome
+lab, instructions, a decision screen, results lab). They used to be hand-written
+one-off HTML snapshots, and by August they no longer looked anything like the
+template.
+
+**The failure is not that they were wrong; it is that nothing could tell.** A
+snapshot has no relationship to the CSS it imitates, so when a shared component
+moved, the snapshot went on rendering perfectly — just as a picture of an older
+study. No error, no failing test, no visible symptom: the same silent-drift
+shape as the client-side traps in `CLAUDE.md`. So the previews are now DERIVED —
+`previews/build_site_previews.py` inlines `_static/global/css/` **verbatim**
+(the stylesheets are never re-typed) and embeds the logos as data URIs, giving
+one standalone file per screen with no external reference of any kind, because
+they load in an iframe on a static site with no access to this repo.
+
+**Source is tracked; output is not.** The script and
+`previews/site_preview_bodies/` are in the repo; the four built files land in
+gitignored `_ai/site_previews/`. A generator living in `_ai/` would die with the
+container and the next person would hand-write another one-off — which is the
+defect, restored.
+
+**The screen is drawn on a fixed 1920x1080 canvas inside a nested `srcdoc`
+frame**, scaled to the iframe by `calc(100vw / 1920px)` (a length over a length
+is a number; no script, so it survives scripts being blocked). The frame is not
+decoration: the template sizes itself in viewport units — the card is `88vh` and
+`base.css` tightens its rhythm below 820px of height — so "what the template
+looks like" is only defined at a given screen size, and rendered raw a small
+iframe would be a different, clipped layout from a large one. Inside the nested
+context those units resolve as they do for a participant on a 1080p display.
+
+**Two honest departures, stated in the artefacts themselves** rather than only
+in the hand-off message the files outlive: the decision screen is INVENTED (this
+template ships no game screen — `main/game.html` is a placeholder — so it is
+built only from real components, and must not be copied back into `main/`), and
+the results screen is TRIMMED (the real page is the longest in the study and
+genuinely scrolls inside its card; with the payoff table open it does not fit
+16:9 at any size, so the greeting line is dropped and a short session shown).
+**Enforced:** `previews/check_site_previews.py` — measured in headless Chromium
+at four 16:9 sizes with JavaScript on and off: no external request, the canvas
+viewport is the one composed for, no cut-off scroll region, the card fills, and
+the lab screens name Prolific in no **rendered** text (asserted on `innerText`,
+paired with a minimum-text assertion, because an absence check alone passes
+against a blank page). Re-running after a CSS change is enforced by nothing —
+it is a note in `CLAUDE.md`'s styling section and in `previews/SUMMARY.md`.
+
 ## Every ending population gets its own completion code — 2026-08-15
 
 Decided by Julian. Five endings, five codes, one per population:

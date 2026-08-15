@@ -4,7 +4,7 @@ import json
 import time
 import common
 import monitoring
-from settings import STATIC_VERSION
+from settings import INSTITUTION_NAME, STATIC_VERSION
 from .quiz_items import QUIZ_ITEMS
 
 # One implementation, in common.flag (raw config.get — see its docstring for
@@ -20,6 +20,12 @@ class C(BaseConstants):
     # a session config is frozen at creation, so the template read 500s
     # for in-flight participants when the parameter post-dates them.
     STATIC_VERSION = STATIC_VERSION
+    # The institution named in participant COPY. Defined once in
+    # settings.INSTITUTION_NAME and re-exported here, exactly as
+    # STATIC_VERSION is, because a template can only read page context.
+    # NB the logo partials deliberately do NOT use it — see the note in
+    # settings.py; the room page renders them with no `C` at all.
+    INSTITUTION_NAME = INSTITUTION_NAME
     NAME_IN_URL = 'Introduction'
     # Instructions + quiz are individual; no grouping.
     PLAYERS_PER_GROUP = None
