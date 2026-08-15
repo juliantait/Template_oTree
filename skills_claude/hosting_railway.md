@@ -129,6 +129,18 @@ Dockerfile (needed behind any TLS proxy).
 
 Participant link: `https://<domain>/room/<room_name>?participant_label={{%PROLIFIC_PID%}}`.
 Real Prolific completion codes must be committed in settings before launch (the
-boot banner lists what is still placeholder). Export data periodically from the
+boot banner lists what is still placeholder).
+
+**Launch sequence — order is load-bearing:** codes committed → deploy → **bind a
+FRESH session**. A session's config is frozen at creation, so any session created
+before the codes commit keeps the placeholder frozen inside it: its completers
+get sent to `cc=<placeholder>` unpaid while the boot banner reads clean (it only
+inspects today's settings). Never reuse a pre-codes session, however tempting.
+Note the boot-time room bind only verifies an existing binding — it will not
+replace one — so binding the fresh session is an explicit manual step; verify via
+`/api/rooms` that the bound `session_code` is NEW. `screenout_return_url` is a
+plain URL, not a code: it must be ABSOLUTE (`https://…`) — a relative value
+silently loops screened-out phones back into the study (found by live fuzzing
+2026-08-14). Export data periodically from the
 admin panel during the run. After the study: export, then delete the app service
 (keep Postgres briefly if the data should stay live, then delete it too).

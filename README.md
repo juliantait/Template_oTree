@@ -1,5 +1,91 @@
 # oTree-Template
- This is a template for oTree experimental apps useful for running experiments in the lab. See `template.html` for an example of the pre-coded design and how to use it.
+
+A ready-to-run oTree study: four apps (consent → instructions + quiz → task →
+endings), a design system, recruitment plumbing for **a physical lab** and for
+**Prolific**, and the guards that stop a live study breaking quietly. Copy it,
+put your game in `main/`, run it.
+
+## START HERE — which door is yours
+
+Five documents exist and they are for different readers. Open the one that
+matches what you are doing; you do not need the others yet.
+
+| If you are… | Start with | It answers |
+| --- | --- | --- |
+| **running a study** built from this template | **[`docs/README.md`](docs/README.md)** | what to change, what to check before launch, how to look at your instructions, how participants get paid |
+| **editing the template** (human or agent) | **[`CLAUDE.md`](CLAUDE.md)** | the rules that must not be broken, and why each one exists |
+| **wondering why something odd is the way it is** | **[`DECISIONS.md`](DECISIONS.md)** | every decision with its reasoning, the rejected alternative, and where it is enforced — or the admission that nothing enforces it |
+| **reading exported data** | **[`CODEBOOK.md`](CODEBOOK.md)** | every field, every exit code, and what a value does and does not mean |
+| **writing a task, quiz, instructions or tests** | **[`skills_claude/README.md`](skills_claude/README.md)** | the authoring playbook for each of those jobs |
+
+**This file** is the reference manual behind all of them: the repository layout,
+the parameter scheme, the participant flow, the scripts, testing, Docker and
+Prolific. Skim the layout table below, then read the section you need.
+
+### If you are completely new, in this order
+
+1. **Set up and run it** (below), then open `http://localhost:8000/demo` and click
+   through a session. Nothing needs configuring first.
+2. **[`docs/README.md`](docs/README.md)** — the three controls that decide
+   everything a participant sees, and what to do before a real launch.
+3. **"Parameter scheme"** below — the flags, and how a recruitment profile
+   resolves into explicit config keys.
+4. **[`conventions.md`](conventions.md)** — the design principles, if you are
+   going to change code.
+5. **[`CLAUDE.md`](CLAUDE.md)** — before your first edit. Short, and every rule
+   in it shipped a real bug once.
+
+## Setting up (once)
+
+Python 3.9+ and one `pip install`. **Install only the group you need** — running
+a study does not require the browser-test stack.
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate            # Windows: .venv\Scripts\activate
+
+# 1. RUN A STUDY — the only group most people need.
+pip install otree==6.0.15
+otree devserver                      # then http://localhost:8000/demo
+
+# 2. PREVIEW THE INSTRUCTIONS without running a session
+pip install jinja2 playwright
+playwright install chromium          # only needed for the PDF; the HTML works without it
+
+# 3. RUN THE TESTS (HTTP suites, and the measured render checks)
+pip install requests pillow playwright
+playwright install chromium
+
+# 4. FORMAT EXPORTED DATA (scripts/format_session_data.py)
+pip install pandas
+
+# 5. RUN AGAINST POSTGRES outside Docker (the image already has it)
+pip install psycopg2-binary==2.9.12
+```
+
+**Why these and no others.** `otree==6.0.15` brings SQLAlchemy, Starlette,
+uvicorn and WTForms with it, so the study itself needs nothing else. The four
+extra groups are tooling: `jinja2` for the preview generator, `playwright` +
+`pillow` for the browser render checks, `requests` for the HTTP-driven test
+suites, `pandas` for the one data-formatting script. `otree` and
+`psycopg2-binary` are pinned to exactly what the `Dockerfile` installs, so local
+and container agree; the tooling is left unpinned because it is not the study.
+
+**One known noise:** installing `jinja2` upgrades `markupsafe` past the version
+`otree==6.0.15` pins, and pip prints a dependency-conflict warning. It is a
+warning, not a break — the full test suite passes with the upgraded package. If
+you would rather keep pip quiet, install `jinja2==2.11.3`.
+
+**Do NOT run `otree resetdb` first.** `otree devserver` creates its own database;
+`resetdb` is for the deploy path (see Docker). Running `resetdb` and then
+`devserver` on the same tree makes the server refuse to start with *"oTree has
+been updated. Please delete your database (db.sqlite3)"* — `resetdb` writes the
+tables without the sqlite `user_version` stamp that devserver's in-memory loader
+checks, so it reads as a version mismatch. It is not one. **The fix is to delete
+`db.sqlite3` and just run `otree devserver`.**
+
+On a machine without root, headless Chromium needs nine unpacked system
+libraries — the whole recipe is `docs/headless_chromium_recipe.md`.
 
 ## App Timeline
 - before (welcome + consent; online: external-ID + device capture)
@@ -17,13 +103,18 @@ The project root holds the four oTree apps plus a small set of top-level items:
 | `scripts/` | operational scripts: `start.sh`, `prelaunch_check.py` (config guard), `predeploy_check.sh`/`.py` (upgrade gate), `export_data.py`, `format_session_data.py`, `set_up_otree.bat`. |
 | `tests/` | HTTP-driven flow tests, escaping/frozen-config regressions, and the browser render check (see "Testing"). |
 | `prolific/` | Prolific operational guide (`Prolific_running.md`). |
-| `skills_claude/` | authoring playbooks (e.g. writing instructions). |
+| `docs/` | **the tracked reference a copied study inherits** — start at `docs/README.md`. Hosting an online study, the headless-Chromium recipe the render checks need, the open Postgres gaps, and a group-matching reference implementation. |
+| `skills_claude/` | authoring playbooks for an agent working ON the template: writing the task, instructions, quiz, tests, and the Railway hosting procedure. Index: `skills_claude/README.md`. |
+| `_templates/` | templates rendered OUTSIDE oTree's page system. Currently `room_welcome.html`, the styled room entry gate (see "The room welcome gate"). |
 | `settings.py` | oTree settings: session configs, recruitment profiles, feature flags, completion codes. |
 | `common.py` | shared, oTree-free helpers — **must stay at the project root** (every app does `import common`). |
 | `identity.py` | participant-label identity: one row per external id, and the guard that stops a duplicate label 500-ing at entry. Also root-level, for the same reason. |
+| `fee_guard.py` | the BOOT guard that refuses to start a build whose session configs (or app source) set oTree's built-in `participation_fee` to anything but 0. One payment ledger: see "Paying participants". Called from `before/__init__.py` beside the payoff guard. |
 | `payoff_guard.py` | the BOOT guard that refuses to start a build whose app modules write oTree's per-round `player.payoff`. Called from `before/__init__.py`. It exists because the alternative — `AUTO_TABULATE_PAYOFFS=False` making oTree's setter raise — fires inside a participant's request, so on a live upgrade it is a dead page mid-round rather than a data error. Root-level for the same reason as the others. |
 | `experimenter_dashboard.py` | the live operator view at `/experimenter_dashboard` (see "Experimenter dashboard"). Root-level for the same reason as the two above. |
-| `README.md` `conventions.md` `CODEBOOK.md` `TODO.md` | project docs: overview, design principles, field/exit-code reference, and pending work. |
+| `README.md` `CLAUDE.md` `DECISIONS.md` `conventions.md` `CODEBOOK.md` | the five documents in the START HERE table above: reference manual, rules for editors, decision record, design principles, data codebook. |
+| `Preview_Instructions.command` | double-clickable (macOS): view the instructions as a coauthor would, with **no terminal** — see "Collaborating on the instructions flow". |
+| `TODO.md` | pending work. **Gitignored — local only, not in a copy.** |
 | `ideas/` | briefs for features that are scoped but not (yet) part of the template. Each file records the SPECIFICATION as it was given, and is deliberately not updated to match what gets built — so specified and built can be compared afterwards. |
 | `MACMINI_HOSTING.md` | private Mac mini hosting runbook (gitignored — kept local). |
 | dotfiles | `.gitignore`, `.gitattributes`, etc. |
@@ -31,11 +122,17 @@ The project root holds the four oTree apps plus a small set of top-level items:
 Not tracked in git: `_ai/` (agent scaffolding — pilot snapshots, performance reviews, audits), `previews/` (regenerable instruction previews), `TODO.md`, `MACMINI_HOSTING.md`, the SQLite DB, `__pycache__`, and OS cruft. Reference material a copied study genuinely needs is tracked in **`docs/`** instead — start at `docs/README.md` if you are running a study rather than editing the template.
 
 ## Running the template
-It runs out of the box with no setup: `otree devserver` uses a local SQLite file
-(no Postgres needed unless you set `DB_NAME`), and dev admin credentials default
+It runs out of the box with no setup: `otree devserver` uses a local SQLite file,
+and dev admin credentials default
 to `admin`/`admin`. Set real values via env in production (`OTREE_ADMIN_USERNAME`,
-`OTREE_ADMIN_PASSWORD`, `OTREE_SECRET_KEY`, `DB_*`). `DEBUG` is derived by oTree
+`OTREE_ADMIN_PASSWORD`, `OTREE_SECRET_KEY`). `DEBUG` is derived by oTree
 from `OTREE_PRODUCTION` — never hardcode it.
+
+**The database backend is chosen by `DATABASE_URL` and nothing else.** Unset
+means the local SQLite file. The `DB_NAME`/`DB_HOST` block in `settings.py`
+*looks* like it selects Postgres and does not — oTree 6 dropped Django and never
+reads `DATABASES`, so setting those gets you SQLite, silently. Recorded, with the
+options for fixing it, in `docs/postgres_assumptions.md` (item 4).
 
 ## How to use and edit this template
 
@@ -321,6 +418,37 @@ out.
 | `tests/render_check.py` leg L, AD | the screen-out page's copy and its two unequal paths; the way out measured **with JavaScript disabled** (present, visible, pressable, secondary) |
 | `tests/render_check.py` leg AE | a 640px-wide **desktop** window still reaches consent — width screens nobody out |
 
+## The room welcome gate
+
+oTree 6 serves an interstitial on every room entry — a GET on `/room/<name>`
+without `welcome_page_ok=1` — that oTree 5 had no equivalent of. Stock it is bare
+framework markup, and it is the FIRST thing a participant sees. This template
+ships a styled copy at `_templates/room_welcome.html`, wired through
+`welcome_page` on the `ROOMS` entry in `settings.py`.
+
+It also **auto-passes anyone whose URL already identifies them** — a lab seat link
+or a Prolific arrival (`?participant_label=…` or `?PROLIFIC_PID=…`) flows straight
+through to the study and never perceives the page. Three properties are
+load-bearing and must not be traded away:
+
+- **A bare URL still shows the button, and no slot is claimed without a click.**
+  That is what keeps bots out: they arrive with no id and usually run no
+  JavaScript.
+- **`form.requestSubmit()`, never `form.submit()`.** `submit()` does not fire
+  submit-event listeners, so it would bypass oTree's own gate handler and — in
+  any study with a participant-labels file — loop the page forever, for
+  id-carrying arrivals only, which is to say for real participants and never
+  while you test with a bare URL.
+- **A loop guard**: auto-pass fires at most once per tab, so a failure leaves a
+  clickable button rather than a participant who never arrives and leaves no
+  trace.
+
+With JavaScript disabled the gate cannot be passed at all — oTree's handler *is*
+the mechanism — so the page says so plainly. Behaviour is covered end to end by
+`tests/room_gate_test.py` (id present, bare URL, the loop guard in the config
+where the loop is real, and the no-session lab prep flow); the look is measured by
+`tests/render_check.py` leg AR.
+
 ## Rebinding a room mid-study orphans participants
 
 **Operational rule, not a bug we can fix.** oTree matches a participant label
@@ -418,7 +546,7 @@ flowchart TD
     Game -. "tab-away violations reach<br>tab_monitor_max_violations<br>(one count across intro + main)" .-> EndedTM
     Payoff -- "after the last round" --> FbGate
 
-    subgraph OUTRO ["outro — ending (Demographics skipped: Prolific exports demographics itself). Tab monitor still watching, but RECORD-ONLY: violations here land in focus_loss_count_outro and NEVER eject — the task is over and the data collected"]
+    subgraph OUTRO ["outro — ending (Demographics skipped: Prolific exports demographics itself). Tab monitor still watching, but RECORD-ONLY: violations here land in focus_loss_count_outro and NEVER eject — the task is over and the data collected. To READ any of this, sort on tab_monitor_flag — see CODEBOOK"]
         FbGate{"pilot_feedback<br>flag on?"}
         FbGate -. "yes (pilots only)" .-> Fb["Feedback — free-text pilot feedback"]
         Fb -.-> Results
@@ -523,7 +651,15 @@ computers would pass anyway.
 
 
 ## Collaborating on the instructions flow with others?
-You can share the instructions with coauthors who don't have the codebase installed. The generator lives in the intro app it previews: run `python3 intro/generate_instructions_preview.py` (from the project root) to produce three self-contained files in a gitignored `previews/` output dir it creates on demand: a long stacked HTML (every block on one page), an interactive single-page HTML (one block at a time, with a floating treatment switcher), and a PDF rendition. All three are fully self-contained — no external dependencies, no internet — so you can email them or drop them into a doc and they'll render the same anywhere. The interactive HTML lets coauthors click through the instructions exactly as participants would and flip between treatments live via the corner buttons; the PDF is good for printing or marking up on paper. The generated files are regenerable and never tracked in git.
+You can share the instructions with coauthors who don't have the codebase installed.
+
+**No terminal? Double-click `Preview_Instructions.command`** (macOS). It picks a
+Python, checks the two packages the generator needs, runs it against saved
+settings if you have them, and opens the interactive preview in your browser. It
+drives the maintained generator in `intro/` — never the stale copy that the
+regenerable `previews/` output directory may also contain.
+
+Otherwise the generator lives in the intro app it previews: run `python3 intro/generate_instructions_preview.py` (from the project root) to produce three self-contained files in a gitignored `previews/` output dir it creates on demand: a long stacked HTML (every block on one page), an interactive single-page HTML (one block at a time, with a floating treatment switcher), and a PDF rendition. All three are fully self-contained — no external dependencies, no internet — so you can email them or drop them into a doc and they'll render the same anywhere. The interactive HTML lets coauthors click through the instructions exactly as participants would and flip between treatments live via the corner buttons; the PDF is good for printing or marking up on paper. The generated files are regenerable and never tracked in git.
 
 ## Pages by app (edit guidance)
 - before
@@ -569,6 +705,17 @@ You can share the instructions with coauthors who don't have the codebase instal
 > `scripts/`) on `sys.path`, so moving it would break every app's import.
 
 ## Paying participants — the itemisation rule
+
+> **ONE LEDGER.** Everything a participant is owed ends in `participant.payoff`,
+> written once by `outro.compute_final_payoff`. Two boot guards hold that:
+> `payoff_guard.py` refuses a build that writes oTree's per-round
+> `player.payoff`, and `fee_guard.py` refuses one that sets oTree's built-in
+> `participation_fee` to anything but 0 — oTree adds that fee ON TOP of
+> `participant.payoff` on the admin Payments page, so a non-zero value splits
+> what you owe across two numbers, and it never reaches the CSV export at all.
+> **A study copied from here that already sets a fee will refuse to boot until
+> the money is moved into the ledger** (into `showup`, or into `earned`). That
+> cost is deliberate — see `DECISIONS.md`.
 
 > **ANY PAYMENT COMPONENT PAID OUTSIDE OTREE MUST STILL BE REPRESENTED INSIDE
 > OTREE, OR THE ADMIN PAYMENTS PAGE BECOMES A PARTIAL FIGURE THAT LOOKS LIKE A
@@ -711,6 +858,8 @@ configs, browser rendering checks) rather than just listing these files.
 
 | Check | What it is evidence of | What it CANNOT catch | When to run it |
 |---|---|---|---|
+| **`tests/room_gate_test.py`** — the room welcome gate in a real browser: id present, bare URL, the loop guard, and the no-session lab prep flow | that an identified arrival flows straight through, that a bare URL still needs a click, and that a failing gate leaves a clickable button instead of looping | anything past the gate | after any change to `_templates/room_welcome.html` or the `ROOMS` wiring |
+| **`tests/tab_monitor_detail_test.py`** — per-event tab-monitor detail and the at-least drop evidence | that a focus loss records the SERVER's page name (not the client's), that `tab_monitor_where` names pages, and that a client count BEHIND ours is never recorded as a loss | anything the client never sends — see CODEBOOK on what a clean row does and does not mean | after any change to `common._apply_focus_loss` |
 | **`tests/full_journey_test.py`** — ONE participant, **room entry to the final page**, over real HTTP, at the config's **real round count**, **failing the quiz once** on the way. **NEVER TRIM OR DELETE THIS** (the file says why) | **that a participant can actually FINISH**: every screen in the real order, every round walked, the failed-attempt retry path, and `exit_code == 1` read back over the REST API | rendering; anything that only breaks for an EXISTING participant; the configs and edge cases the slice suites cover | before any launch, and after any change to the page sequence, the quiz rule or the round count |
 | **`tests/http_flow_test.py`** — walks every shipped config entry→ending over real HTTP, including a POST with the JS-produced hidden fields deliberately **empty** | a participant can complete the study in each config; no page 5xxs; the no-JS participant is not stranded | anything about how a page looks or reads; anything that only breaks for an EXISTING participant. **It cannot tell finishing from being thrown out** — its end markers ("Back to Prolific", "participation has ended") are on `Ended.html` as well as `Results.html`; that is what `full_journey_test.py` is for | after any change to a page, form field or flow |
 | **`tests/gated_flow_test.py`** — lab vs Prolific scenarios: the one-time re-read offer, comprehension DQ, pilot feedback, the two-variant consent rule | the three orthogonal controls actually route people where the design says | rendering; data written to the export | after touching `settings.py` profiles, gates, or the intro/outro flow |
@@ -721,7 +870,7 @@ configs, browser rendering checks) rather than just listing these files.
 | **`tests/dashboard_render_check.py`** — real uvicorn + real headless Chromium at 1280/1512/1152, staging 13 participants across every state | that the operator screen is actually USABLE: the login wall stands in a browser, the poll paints and ticks without a reload, the six timeline steps are **measured** equal to within 2px, the mid-task marker reads "2 of 3", the amber row differs in sampled PIXELS rather than by class, entry-only rows dim and the toggle hides them, no horizontal page scroll, and no time/earnings/stall cell is ever clipped | server-side correctness (that is `dashboard_test.py`'s job); whether the numbers are RIGHT — it checks that cells render legibly, not that they say the truth; anything about a real operator's screen size or emoji font | after ANY change to the dashboard's HTML, CSS or JS — a broken operator layout produces no error anywhere |
 | **`tests/xss_escaping_test.py`** — hostile participant- and URL-supplied values through the real entry URL, in production mode | every hand-interpolated value is HTML-escaped (oTree's ibis does **not** auto-escape) and round-trips un-truncated | injection through anything you did not render in the walk | after adding any template that prints a participant- or URL-supplied value |
 | **`tests/frozen_config_test.py`** — deletes parameters from a created session's stored config, then walks it | a session created BEFORE a parameter existed still completes; `common.cfg` falls back to the shipped default | a schema change (that needs a real database copy — see the pre-deploy gate) | whenever you add a session-config parameter (and add its name to the test's `STRIPPED` list) |
-| **`tests/render_check.py`** — real headless Chromium at three viewports; screenshots to `_ai/render_check/`, assertions on measured element geometry and on rendered pixels | the pages are actually laid out, visible, scrollable and clickable — the failures that produce no error at all | data correctness; anything server-side | after any CSS or template-structure change |
+| **`tests/render_check.py`** — real headless Chromium at three viewports; screenshots to `_ai/render_check/` (gitignored; the run creates it), assertions on measured element geometry and on rendered pixels | the pages are actually laid out, visible, scrollable and clickable — the failures that produce no error at all | data correctness; anything server-side | after any CSS or template-structure change |
 | **`tests/render_check.py --diff`** — the same run, compared against the committed baseline `tests/geometry_baseline.json` (±3px) | a layout **regression**: something that still passes every threshold but MOVED (the Next button 40px up, a band narrowing, an eyebrow drifting). Prints page · viewport · element, old → new and the delta | anything the baseline deliberately excludes — page text, colours, pixel-darkness readings, content-random figures (all listed at the top of the baseline file) | before shipping a CSS/template change. **When the movement is INTENTIONAL, adopt it with `python tests/render_check.py --update-baseline` and let the file's own diff be the record of what moved.** |
 | **`tests/example_quiz_content_test.py`** — **an EXAMPLE to copy**, not a suite member | what a page SAYS (prompts and options reach the participant, in order; answers absent in production) | anything you did not assert — content tests are only as good as their list | write your study's own version when you write your quiz |
 | **`scripts/prelaunch_check.py`** — static config guard, no server, instant | the configuration is safe to open to participants: no `REPLACE_*` completion codes, `DEBUG` off, no testing loosenings left on | anything dynamic — it never runs a page | in the target environment, before opening a study |
@@ -898,6 +1047,19 @@ scheme" section and `settings.py`). That bundle turns on:
   completion code: normal completion, declined consent (no-consent) and
   disqualification (comprehension / tab monitor). The entry screen-out is the
   exception: it returns them with NO code, so their submission stays open.
+  **Each ending is served ONLY its own code** — a disqualified participant cannot
+  read the completion code out of the page source and self-approve. Pinned by
+  `tests/gated_flow_test.py`.
+
+**Completion codes are shaped `REASON-XXXXXX`** — a semantic prefix plus six
+random alphanumerics (`COMP-K27XQ4`, `NOCONS-T8Q4R1`, `DQ-W3FM9K`): readable in a
+Prolific submission list, unguessable by a participant. The template ships them as
+`COMP-XXXXXX_REPLACE` / `NOCONS-XXXXXX_REPLACE` / `DQ-XXXXXX_REPLACE`, so the
+placeholder itself teaches the convention — and **`scripts/prelaunch_check.py`
+refuses to launch while any `REPLACE` survives**, matching by shape rather than by
+exact string. The COMPLETION code is the one to guard hardest: on Prolific it can
+auto-approve a payment, so keep its random part six or more characters and never
+a short number. Full operational detail: `prolific/Prolific_running.md`.
 - the **integrity modules** — `tab_monitor`, `comprehension_dq`, plus
   `passive_capture` and `device_capture`. With `tab_monitor` on, **every page
   after the agreement screen is monitored by default** (`monitoring.py` — a
@@ -1013,7 +1175,7 @@ See `MACMINI_HOSTING.md` for the full self-contained guide: how the Mac mini ser
 ## Template HTML Layout
 The file [`_static/global/html/template.html`](./_static/global/html/template.html) serves as the core visual template for most experimental pages. It is located in the `_static/global/html/` directory of your project. This template demonstrates and defines how all of the pre-defined CSS sections will look and behave, providing a live preview of your main screen layout.
 
-- **Header Section**: Shows how the experimental screen header appears, including the title and subtitle, styled using the shared CSS (`global/style.css` and the imports in that file).
+- **Header Section**: Shows how the experimental screen header appears, including the title and subtitle, styled using the shared CSS (`_static/global/css/base.css` and the per-page files beside it, linked together by `_static/global/html/css_bundle.html`).
 - **Main Content Area**: Contains a section for page headings and standard paragraph text, both vertically and horizontally centered within a card. This section uses classes such as `.experimental-content`, `.section-title`, and `.section-text` to illustrate their styling.
 - **Navigation Buttons**: Displays the "Back" and "Next" buttons with their associated styles (`.button-row`, `.next-button`).
 - **Logos Section**: Includes a common logos area displayed at the bottom of the intro and outro screens.

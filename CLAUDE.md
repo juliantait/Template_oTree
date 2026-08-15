@@ -106,7 +106,7 @@ truth about a question the server already answers. When the two disagree, the
 script simply declines to run: no error, no exception, no failing test — the
 column fills with clean values for everybody and a dead feature looks like good
 news. `exp_pilots` shipped exactly this (a hard `return` on any `/outro/` path
-in `tabmonitor.js`), so its questionnaire pages could have been wired perfectly
+in `_static/global/js/ai_safety_monitor.js`), so its questionnaire pages could have been wired perfectly
 server-side and still recorded nothing.
 
 The general rule: **wiring can be verified, a silent refusal to run cannot** —
