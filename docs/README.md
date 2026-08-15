@@ -57,8 +57,12 @@ one page, an interactive HTML that steps through one block at a time with a
 treatment switcher, and a PDF. No server, no session, no database. Email them to
 a coauthor or mark up the PDF on paper.
 
-Pass `--config .preview_state.json` to reuse saved settings; without it the
-generator waits for you to fill in a form in the browser.
+**A fresh clone has no saved settings** — `.preview_state.json` is gitignored.
+Run `python3 intro/generate_instructions_preview.py --no-popup` once: it writes a
+`.preview_state.json` template and exits, you edit the values, and every run after
+that can use `--config .preview_state.json`. With neither flag the generator opens
+a form to fill in, which is what `Preview_Instructions.command` does for you on a
+first run — and which will appear to hang on a machine with no display.
 
 ## 4. Checking a change
 
