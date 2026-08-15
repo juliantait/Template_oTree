@@ -47,6 +47,25 @@ a code key, is one value in two places and they drift.
 an override. Two sources for one value is the defect this repo has spent the
 week removing.
 
+**THE HAZARD THE SPLIT CREATES, AND THE RULE THAT CLOSES IT** (bossman-52, same
+day). Splitting the DQ code invents a failure mode that could not exist while one
+code served both populations: **if the displayed reason text and the completion
+code are derived independently, they can silently disagree** — a comprehension
+failure reads the quiz explanation and carries the TAB code back to Prolific. No
+error, normal-looking data, and the population distinction corrupted at exactly
+the point it was created to exist, findable only by reconciling submissions by
+hand. **So the message and the code must come from ONE read of the cause.**
+
+Verified today, and it is the safe shape already: `outro.dq_cause` is the only
+implementation (`outro/__init__.py:51`); `Ended.vars_for_template` passes
+`dq_cause=dq_cause(player)` and `outro/Ended.html` branches on that variable;
+`completion_link` does `cause = dq_cause(player)`. No template reads
+`ai_safety_disqualified` or `comprehension_disqualified` directly — checked
+across every `.html` in the repo. Two calls to one deterministic function in one
+request cannot disagree; two implementations could, which is why the invariant is
+written on `dq_cause` itself. **The next reader will see two calls and want to
+refactor one away — that is the thing not to do.**
+
 **Enforced, and each part separately verified:**
 
 - `settings.PROLIFIC_CODE_KEYS` is the ONE enumeration; `_prelaunch_problems`
