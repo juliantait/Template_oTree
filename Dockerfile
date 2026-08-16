@@ -29,7 +29,7 @@ WORKDIR /app
 
 # The four apps import nothing outside the standard library except oTree itself
 # (`import common` is this repo's own root module). pandas / requests /
-# playwright / jinja2 appear only in scripts/, tests/ and the previews
+# playwright / jinja2 appear only in scripts/ (including scripts/tests/) and the previews
 # generator — host-side tooling, not the served study — so they stay out of the
 # image. Pinned rather than floating: an oTree minor bump must be a deliberate,
 # reviewed change, not something a rebuild picks up silently.

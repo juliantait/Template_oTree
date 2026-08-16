@@ -44,7 +44,7 @@
 # refuses a prolific config that has no `prolific_screenout_return_url`, so the broken
 # combination cannot reach a participant at all. A rule in prose is one somebody
 # can configure their way past. The full argument is above `common.is_lab`;
-# tests/copy_routing_test.py asserts the impossibility.
+# scripts/tests/copy_routing_test.py asserts the impossibility.
 
 from otree.api import *
 import common
@@ -77,7 +77,7 @@ identity.assert_duplicate_label_guard()
 # served, where the operator sees it while the old build is still running. The
 # check reads app SOURCE, so it is complete regardless of import order and of
 # which paths a test happens to walk; the indirection it cannot see is covered
-# from the other side by tests/payoff_ledger_test.py §7. Full argument in
+# from the other side by scripts/tests/payoff_ledger_test.py §7. Full argument in
 # payoff_guard.py's docstring.
 payoff_guard.assert_no_player_payoff_writes()
 
@@ -121,7 +121,7 @@ class Player(BasePlayer):
     participant_label = models.StringField(blank=True)
     treatment_group = models.StringField(blank=True)
     # NO `initial=` AND NO `blank=True`, both deliberate and both load-bearing
-    # (`skills_claude/writing_welcome_consent.md`: "Consent is an explicit
+    # (`docs/skills_claude/writing_welcome_consent.md`: "Consent is an explicit
     # affirmative action … never a pre-checked box"):
     #   * `initial=True` made oTree render the "I consent" radio with `checked`,
     #     so consent was pre-ticked — measured 2026-08-10, and on a 1280x720
@@ -481,7 +481,7 @@ class welcome(Page):
         server-side (oTree's page hooks receive the player, not the request), and
         it runs before a single byte of the consent page exists.
 
-        Instrumentation must never break a page (conventions.md): if anything in
+        Instrumentation must never break a page (docs/conventions.md): if anything in
         the gate raises, the participant simply proceeds to consent.
         """
         try:
@@ -609,7 +609,7 @@ class welcome(Page):
             # messaging is the participant's only channel. Worse, the screen-out
             # page next door was making the same guess from a DIFFERENT flag
             # (`prolific_completion_redirects`), so one config could name Prolific here
-            # and offer no way out there — see tests/copy_routing_test.py.
+            # and offer no way out there — see scripts/tests/copy_routing_test.py.
             is_lab=common.is_lab(cfg),
             names_prolific=common.is_prolific(cfg),
         )
@@ -631,7 +631,7 @@ class welcome(Page):
         # Copy the pre-assigned treatment onto the player for display/testing.
         # Read participant vars with .vars.get(), never getattr() (KeyError trap;
         # the oTree vars descriptor raises KeyError, so a getattr default does not
-        # protect you — see conventions.md).
+        # protect you — see docs/conventions.md).
         player.treatment_group = player.participant.vars.get('treatment_group', '')
 
         # The id arrived in the URL (if at all). Keep it on the player for the

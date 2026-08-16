@@ -16,7 +16,7 @@ matches what you are doing; you do not need the others yet.
 | **editing the template** (human or agent) | **[`CLAUDE.md`](CLAUDE.md)** | the rules that must not be broken, and why each one exists |
 | **wondering why something odd is the way it is** | **[`DECISIONS.md`](DECISIONS.md)** | every decision with its reasoning, the rejected alternative, and where it is enforced — or the admission that nothing enforces it |
 | **reading exported data** | **[`CODEBOOK.md`](CODEBOOK.md)** | every field, every exit code, and what a value does and does not mean |
-| **writing a task, quiz, instructions or tests** | **[`skills_claude/README.md`](skills_claude/README.md)** | the authoring playbook for each of those jobs |
+| **writing a task, quiz, instructions or tests** | **[`docs/skills_claude/README.md`](docs/skills_claude/README.md)** | the authoring playbook for each of those jobs |
 
 **This file** is the reference manual behind all of them: the repository layout,
 the parameter scheme, the participant flow, the scripts, testing, Docker and
@@ -30,7 +30,7 @@ Prolific. Skim the layout table below, then read the section you need.
    everything a participant sees, and what to do before a real launch.
 3. **"Parameter scheme"** below — the flags, and how a recruitment profile
    resolves into explicit config keys.
-4. **[`conventions.md`](conventions.md)** — the design principles, if you are
+4. **[`docs/conventions.md`](docs/conventions.md)** — the design principles, if you are
    going to change code.
 5. **[`CLAUDE.md`](CLAUDE.md)** — before your first edit. Short, and every rule
    in it shipped a real bug once.
@@ -101,10 +101,10 @@ The project root holds the four oTree apps plus a small set of top-level items:
 | `before/` `intro/` `main/` `outro/` | the four oTree apps, run in this order (see App Timeline). `intro/` also holds `generate_instructions_preview.py`. |
 | `_static/` | shared CSS/JS/HTML/images (the design system and `template.html`). |
 | `scripts/` | operational scripts: `start.sh`, `prelaunch_check.py` (config guard), `predeploy_check.sh`/`.py` (upgrade gate), `export_data.py`, `format_session_data.py`, `set_up_otree.bat`. |
-| `tests/` | HTTP-driven flow tests, escaping/frozen-config regressions, and the browser render check (see "Testing"). |
-| `prolific/` | Prolific operational guide (`Prolific_running.md`). |
-| `docs/` | **the tracked reference a copied study inherits** — start at `docs/README.md`. Hosting an online study, the headless-Chromium recipe the render checks need, the open Postgres gaps, and a group-matching reference implementation. |
-| `skills_claude/` | authoring playbooks for an agent working ON the template: writing the task, instructions, quiz, tests, and the Railway hosting procedure. Index: `skills_claude/README.md`. |
+| `scripts/tests/` | HTTP-driven flow tests, escaping/frozen-config regressions, and the browser render check (see "Testing"). |
+| `scripts/site_previews/` | builds the self-contained screen previews the academic website embeds, from the live template (`build_site_previews.py`), plus the measured check that they render uncut (`check_site_previews.py`). Output lands in gitignored `_ai/site_previews/`. Re-run after changing `_static/global/css/`. |
+| `docs/` | **the tracked reference a copied study inherits** — start at `docs/README.md`. Hosting an online study, running one on Prolific, the design principles (`conventions.md`), the headless-Chromium recipe the render checks need, the open Postgres gaps, a group-matching reference implementation, and the experimenter-dashboard brief as it was specified. |
+| `docs/skills_claude/` | authoring playbooks for an agent working ON the template: writing the task, instructions, quiz, tests, and the Railway hosting procedure. Index: `docs/skills_claude/README.md`. |
 | `_templates/` | templates rendered OUTSIDE oTree's page system. Currently `room_welcome.html`, the styled room entry gate (see "The room welcome gate"). |
 | `settings.py` | oTree settings: session configs, recruitment profiles, feature flags, completion codes. |
 | `common.py` | shared, oTree-free helpers — **must stay at the project root** (every app does `import common`). |
@@ -112,10 +112,9 @@ The project root holds the four oTree apps plus a small set of top-level items:
 | `fee_guard.py` | the BOOT guard that refuses to start a build whose session configs (or app source) set oTree's built-in `participation_fee` to anything but 0. One payment ledger: see "Paying participants". Called from `before/__init__.py` beside the payoff guard. |
 | `payoff_guard.py` | the BOOT guard that refuses to start a build whose app modules write oTree's per-round `player.payoff`. Called from `before/__init__.py`. It exists because the alternative — `AUTO_TABULATE_PAYOFFS=False` making oTree's setter raise — fires inside a participant's request, so on a live upgrade it is a dead page mid-round rather than a data error. Root-level for the same reason as the others. |
 | `experimenter_dashboard.py` | the live operator view at `/experimenter_dashboard` (see "Experimenter dashboard"). Root-level for the same reason as the two above. |
-| `README.md` `CLAUDE.md` `DECISIONS.md` `conventions.md` `CODEBOOK.md` | the five documents in the START HERE table above: reference manual, rules for editors, decision record, design principles, data codebook. |
+| `README.md` `CLAUDE.md` `DECISIONS.md` `docs/conventions.md` `CODEBOOK.md` | the five documents in the START HERE table above: reference manual, rules for editors, decision record, design principles, data codebook. |
 | `Preview_Instructions.command` | double-clickable (macOS): view the instructions as a coauthor would, with **no terminal** — see "Collaborating on the instructions flow". |
 | `TODO.md` | pending work. **Gitignored — local only, not in a copy.** |
-| `ideas/` | briefs for features that are scoped but not (yet) part of the template. Each file records the SPECIFICATION as it was given, and is deliberately not updated to match what gets built — so specified and built can be compared afterwards. |
 | `MACMINI_HOSTING.md` | private Mac mini hosting runbook (gitignored — kept local). |
 | dotfiles | `.gitignore`, `.gitattributes`, etc. |
 
@@ -137,7 +136,7 @@ options for fixing it, in `docs/postgres_assumptions.md` (item 4).
 ## How to use and edit this template
 
 An ordered walkthrough for starting a new study, for people and agents alike.
-Each step names what to edit and links the `skills_claude/` file that holds
+Each step names what to edit and links the `docs/skills_claude/` file that holds
 the method — read the matching skill file **before** editing that surface.
 The order matters: the game is built in `main` **before** `intro` is written,
 because `intro` *describes* the game and describing before building is
@@ -149,7 +148,7 @@ concrete to describe, not a pattern to copy.)
    chosen via the `recruitment` profile plus the module flags and (for
    Prolific) the completion codes; see the parameter scheme below. Then shape
    the entry pages: welcome + consent live in `before/welcome+consent.html`
-   and `before/__init__.py` → [`skills_claude/writing_welcome_consent.md`](skills_claude/writing_welcome_consent.md).
+   and `before/__init__.py` → [`docs/skills_claude/writing_welcome_consent.md`](docs/skills_claude/writing_welcome_consent.md).
    Treatment assignment: edit `before/treatment_assignment.py` — treatments
    are assigned when the session is created (via `creating_session` in the
    `before` app); adjust `assign_treatments` to set the treatment groups you
@@ -157,18 +156,18 @@ concrete to describe, not a pattern to copy.)
 2. **Build the game in `main/`** — replace the placeholder task pages,
    subclassing `TaskPage` and keeping the machinery you inherit (round loop,
    progress strip, monitoring, payoff plumbing); update
-   `tests/main_contract.py` in the same change
-   → [`skills_claude/writing_task.md`](skills_claude/writing_task.md), the
+   `scripts/tests/main_contract.py` in the same change
+   → [`docs/skills_claude/writing_task.md`](docs/skills_claude/writing_task.md), the
    full manifest of everything a game swap touches.
 3. **Write `intro` to match the game you built.**
    Instructions content: edit `intro/instructions_text.html` — each
    `<div class="instruction-block">` is shown as one page to participants;
    add, edit, or reorder blocks there to change the instruction pages
-   → [`skills_claude/writing_instructions.md`](skills_claude/writing_instructions.md).
+   → [`docs/skills_claude/writing_instructions.md`](docs/skills_claude/writing_instructions.md).
    Quiz questions: edit `intro/quiz_items.py` — define `QUIZ_ITEMS` entries
    with `field`, `prompt`, `choices`, and `answer`; the intro quiz reads
    directly from this file
-   → [`skills_claude/writing_quiz.md`](skills_claude/writing_quiz.md).
+   → [`docs/skills_claude/writing_quiz.md`](docs/skills_claude/writing_quiz.md).
 4. **The `outro` work.** Experimental payoff: edit `outro/payment_rule.py` to
    determine how participants are actually paid — the logic inside this file
    controls which rounds and payoffs are selected for payment at the end.
@@ -176,7 +175,7 @@ concrete to describe, not a pattern to copy.)
 5. **Test what you built** — real HTTP, a no-JS submit, and a measured render
    check; before launch run `scripts/prelaunch_check.py` and
    `scripts/predeploy_check.sh`
-   → [`skills_claude/writing_tests.md`](skills_claude/writing_tests.md) and
+   → [`docs/skills_claude/writing_tests.md`](docs/skills_claude/writing_tests.md) and
    the Testing section below.
 
 ### Rebranding a copied study (whose logos and whose university)
@@ -219,7 +218,7 @@ Three things worth knowing before you swap:
 `INSTITUTION_NAME` carries its own article (`'the University of Amsterdam'`,
 but `'MIT'`): the sentence using it cannot know which one your name takes.
 
-## Parameter scheme (read `conventions.md` and `settings.py` first)
+## Parameter scheme (read `docs/conventions.md` and `settings.py` first)
 Three **independent axes** at the top of `settings.py` determine everything a
 participant experiences:
 
@@ -285,7 +284,7 @@ that lives in the browser: the check runs server-side before the consent page
 exists, and none of that has been sent yet. Two consequences, both deliberate:
 
 - a **desktop browser in a narrow window is NOT screened out** (proved at 640px
-  by `tests/render_check.py`, leg AE);
+  by `scripts/tests/render_check.py`, leg AE);
 - a **phone held in landscape IS screened out**, because it is still a phone.
 
 `device_capture` separately records what the client says about itself
@@ -446,17 +445,17 @@ out.
 
 | Test | What it proves |
 | --- | --- |
-| `tests/device_gate_test.py` §A1–A2 | desktop Chrome, Safari, Firefox, Edge, Chrome OS, a touchscreen Windows laptop, an iPad and an Android tablet are **never** screened — under the shipped list, and under a computers-only list |
-| `tests/device_gate_test.py` §A3 | a missing, empty, whitespace-only, absurdly long, or "long and says iPhone" User-Agent proceeds to consent with **no verdict recorded** |
-| `tests/device_gate_test.py` §A3b | control-character/`None`/non-string values classify as `UNDETERMINED` (uvicorn rejects control-character headers before app code, so there is no HTTP leg for that one) |
-| `tests/device_gate_test.py` §B–C | an excluded type never sees consent, gets exit `-4` with the DETECTED type as its cause and copy written for that type; any type can be excluded; `unknown` is configurable like the rest |
-| `tests/screenout_softwall_test.py` §1–4 | verdict written immediately (closed tab still exports `-4`); cleared on returning from an accepted device with **both** verdicts in the history; re-screened on going back; a cleared participant completes as an ordinary `exit_code=1` |
-| `tests/screenout_softwall_test.py` §5 | a participant who consented on a computer and then switches to a phone is **never** touched, whatever the allow-list says |
-| `tests/screenout_softwall_test.py` §6–7 | the way out is a real `<a href>` with no completion code and no `onclick`; re-entry after pressing it does not silently revive the row |
-| `tests/screenout_softwall_test.py` §8 | the asymmetry, both directions, side by side: the same unusable header allows a fresh participant and does **not** clear an already-screened one |
-| `tests/identity_test.py` | one row per id across re-entry, two tabs and case/whitespace variants; a clashing id claim is refused silently; a duplicate label that exists anyway does not 500; a rebound room orphans people |
-| `tests/render_check.py` leg L, AD | the screen-out page's copy and its two unequal paths; the way out measured **with JavaScript disabled** (present, visible, pressable, secondary) |
-| `tests/render_check.py` leg AE | a 640px-wide **desktop** window still reaches consent — width screens nobody out |
+| `scripts/tests/device_gate_test.py` §A1–A2 | desktop Chrome, Safari, Firefox, Edge, Chrome OS, a touchscreen Windows laptop, an iPad and an Android tablet are **never** screened — under the shipped list, and under a computers-only list |
+| `scripts/tests/device_gate_test.py` §A3 | a missing, empty, whitespace-only, absurdly long, or "long and says iPhone" User-Agent proceeds to consent with **no verdict recorded** |
+| `scripts/tests/device_gate_test.py` §A3b | control-character/`None`/non-string values classify as `UNDETERMINED` (uvicorn rejects control-character headers before app code, so there is no HTTP leg for that one) |
+| `scripts/tests/device_gate_test.py` §B–C | an excluded type never sees consent, gets exit `-4` with the DETECTED type as its cause and copy written for that type; any type can be excluded; `unknown` is configurable like the rest |
+| `scripts/tests/screenout_softwall_test.py` §1–4 | verdict written immediately (closed tab still exports `-4`); cleared on returning from an accepted device with **both** verdicts in the history; re-screened on going back; a cleared participant completes as an ordinary `exit_code=1` |
+| `scripts/tests/screenout_softwall_test.py` §5 | a participant who consented on a computer and then switches to a phone is **never** touched, whatever the allow-list says |
+| `scripts/tests/screenout_softwall_test.py` §6–7 | the way out is a real `<a href>` with no completion code and no `onclick`; re-entry after pressing it does not silently revive the row |
+| `scripts/tests/screenout_softwall_test.py` §8 | the asymmetry, both directions, side by side: the same unusable header allows a fresh participant and does **not** clear an already-screened one |
+| `scripts/tests/identity_test.py` | one row per id across re-entry, two tabs and case/whitespace variants; a clashing id claim is refused silently; a duplicate label that exists anyway does not 500; a rebound room orphans people |
+| `scripts/tests/render_check.py` leg L, AD | the screen-out page's copy and its two unequal paths; the way out measured **with JavaScript disabled** (present, visible, pressable, secondary) |
+| `scripts/tests/render_check.py` leg AE | a 640px-wide **desktop** window still reaches consent — width screens nobody out |
 
 ## The room welcome gate
 
@@ -485,9 +484,9 @@ load-bearing and must not be traded away:
 
 With JavaScript disabled the gate cannot be passed at all — oTree's handler *is*
 the mechanism — so the page says so plainly. Behaviour is covered end to end by
-`tests/room_gate_test.py` (id present, bare URL, the loop guard in the config
+`scripts/tests/room_gate_test.py` (id present, bare URL, the loop guard in the config
 where the loop is real, and the no-session lab prep flow); the look is measured by
-`tests/render_check.py` leg AR.
+`scripts/tests/render_check.py` leg AR.
 
 ## Rebinding a room mid-study orphans participants
 
@@ -501,7 +500,7 @@ So: **never rebind the room while participants are running.** `scripts/start.sh`
 deliberately reuses a room's already-bound session for this reason. If you must
 create a new session, treat everyone in the old one as finished, and expect
 duplicate ids **across** sessions (which is fine — the constraint is per
-session). Pinned by `tests/identity_test.py` §6.
+session). Pinned by `scripts/tests/identity_test.py` §6.
 
 ## Duplicate participant labels
 
@@ -737,7 +736,7 @@ Otherwise the generator lives in the intro app it previews: run `python3 intro/g
   or `$SESSION_DATA_EMAIL`).
 - `scripts/set_up_otree.bat` : starts oTree on the experimenter's Windows PC in
   the lab.
-- `tests/` : HTTP-driven flow tests, escaping and frozen-config regression
+- `scripts/tests/` : HTTP-driven flow tests, escaping and frozen-config regression
   tests, and a measured browser render check (see "Testing" below).
 
 > **`common.py` stays at the project root** — it is *not* in `scripts/`. All four
@@ -794,7 +793,7 @@ today from the export**, even though the admin Payments page shows only the
 total. The participant's own receipt already itemises; the gap is on the
 payer's side.
 
-**Pinned by** `tests/payoff_ledger_test.py` §9, which walks a *prolific*
+**Pinned by** `scripts/tests/payoff_ledger_test.py` §9, which walks a *prolific*
 session and asserts the bonus in isolation as well as the total — because a
 study can get the total right while making the actionable number unreadable,
 and a test that only checks the total will not notice. §9 also records the
@@ -892,27 +891,27 @@ JavaScript-filled field empty and never carry a User-Agent, and three live
 outages in the pilot study this template was distilled from went green under
 bots while real participants got a 500. Everything below drives the real thing.
 
-Writing a new one: read **`skills_claude/writing_tests.md`** first — it teaches
+Writing a new one: read **`docs/skills_claude/writing_tests.md`** first — it teaches
 the method (drivers, the no-JS submit, visible-text assertions, escaping, frozen
 configs, browser rendering checks) rather than just listing these files.
 
 | Check | What it is evidence of | What it CANNOT catch | When to run it |
 |---|---|---|---|
-| **`tests/room_gate_test.py`** — the room welcome gate in a real browser: id present, bare URL, the loop guard, and the no-session lab prep flow | that an identified arrival flows straight through, that a bare URL still needs a click, and that a failing gate leaves a clickable button instead of looping | anything past the gate | after any change to `_templates/room_welcome.html` or the `ROOMS` wiring |
-| **`tests/tab_monitor_detail_test.py`** — per-event tab-monitor detail and the at-least drop evidence | that a focus loss records the SERVER's page name (not the client's), that `tab_monitor_where` names pages, and that a client count BEHIND ours is never recorded as a loss | anything the client never sends — see CODEBOOK on what a clean row does and does not mean | after any change to `common._apply_focus_loss` |
-| **`tests/full_journey_test.py`** — ONE participant, **room entry to the final page**, over real HTTP, at the config's **real round count**, **failing the quiz once** on the way. **NEVER TRIM OR DELETE THIS** (the file says why) | **that a participant can actually FINISH**: every screen in the real order, every round walked, the failed-attempt retry path, and `exit_code == 1` read back over the REST API | rendering; anything that only breaks for an EXISTING participant; the configs and edge cases the slice suites cover | before any launch, and after any change to the page sequence, the quiz rule or the round count |
-| **`tests/http_flow_test.py`** — walks every shipped config entry→ending over real HTTP, including a POST with the JS-produced hidden fields deliberately **empty** | a participant can complete the study in each config; no page 5xxs; the no-JS participant is not stranded | anything about how a page looks or reads; anything that only breaks for an EXISTING participant. **It cannot tell finishing from being thrown out** — its end markers ("Back to Prolific", "participation has ended") are on `Ended.html` as well as `Results.html`; that is what `full_journey_test.py` is for | after any change to a page, form field or flow |
-| **`tests/gated_flow_test.py`** — lab vs Prolific scenarios: the one-time re-read offer, comprehension DQ, pilot feedback, the two-variant consent rule | the three orthogonal controls actually route people where the design says | rendering; data written to the export | after touching `settings.py` profiles, gates, or the intro/outro flow |
-| **`tests/device_gate_test.py`** — the entry allow-list, weighted towards FALSE POSITIVES: eleven real browsers (desktop Chrome/Safari/Firefox/Edge, Chrome OS, a touchscreen laptop, an iPad, an Android tablet, phones) plus every shape of unusable User-Agent | the listed types are admitted and nothing else is screened by accident: those browsers are never removed, an unusable User-Agent always proceeds recording nothing, an excluded type gets `-4` with the DETECTED type as its cause, and the default list does nothing at all | client-side behaviour; anything past entry | after touching the entry gate, the classifier or `allowed_devices` |
-| **`tests/screenout_softwall_test.py`** — the screen-out lifecycle over real HTTP: screened → cleared → re-screened → completes, the post-consent immunity, the way out, and the no-decision asymmetry | the verdict is written immediately (a closed tab still exports `-4`), clears only on POSITIVE evidence of an accepted device before consent, never touches anyone after consent, and the way out is a codeless real link | rendering; anything a browser does with the page | after touching the gate, the clear rules or the screen-out page |
-| **`tests/identity_test.py`** — in-process: re-entry, two tabs on one id, case/whitespace variants, a clashing id claim, a PLANTED duplicate label, and a room rebound to a new session | one participant row per id (which is what re-entry and the soft wall depend on); a clashing claim is refused silently with the owner's code recorded; a duplicate that exists anyway does not 500 | anything about the pages themselves | after touching label writes, `identity.py` or the entry sequence |
-| **`tests/dashboard_test.py`** — in-process, production + `AUTH_LEVEL=STUDY`: the install discipline, the two dashboard acceptance criteria, row truth for every stage and all four terminal states, the entry-block boundary, an unmapped app, and read-only | that the dashboard is **unreachable without an admin login** (page, data and index, for an anonymous client AND for a mid-study participant's own cookies; the redirect leaks nothing; POST is 405); that a raising handler yields the **error panel** and `ok:false` JSON rather than a 500, and one poisoned ROW leaves the table `ok:true` with every other row live; that it **writes nothing** (byte-identical participant rows plus an ORM dirty-flag check); that an app missing from `APP_STEPS` is visibly unplaced instead of silently at Entry | **it is NOT proof that the wrapper is what protects participants.** Section C's participant walks are a regression guard: participant survival rests partly on oTree's `NEW_IDMAP_EACH_REQUEST` giving every request a fresh DB session, and those checks still pass with the wrapper deleted (check C0 pins that oTree property so a future version changing it goes red). The checks that fail when the wrapper is removed are the error-panel ones. Also blind to: anything about how the page LOOKS, and concurrency — the polls here are sequential | after touching `experimenter_dashboard.py`, the entry-block stamps, or any app's `page_sequence`/app list |
-| **`tests/dashboard_render_check.py`** — real uvicorn + real headless Chromium at 1280/1512/1152, staging 13 participants across every state | that the operator screen is actually USABLE: the login wall stands in a browser, the poll paints and ticks without a reload, the six timeline steps are **measured** equal to within 2px, the mid-task marker reads "2 of 3", the amber row differs in sampled PIXELS rather than by class, entry-only rows dim and the toggle hides them, no horizontal page scroll, and no time/earnings/stall cell is ever clipped | server-side correctness (that is `dashboard_test.py`'s job); whether the numbers are RIGHT — it checks that cells render legibly, not that they say the truth; anything about a real operator's screen size or emoji font | after ANY change to the dashboard's HTML, CSS or JS — a broken operator layout produces no error anywhere |
-| **`tests/xss_escaping_test.py`** — hostile participant- and URL-supplied values through the real entry URL, in production mode | every hand-interpolated value is HTML-escaped (oTree's ibis does **not** auto-escape) and round-trips un-truncated | injection through anything you did not render in the walk | after adding any template that prints a participant- or URL-supplied value |
-| **`tests/frozen_config_test.py`** — deletes parameters from a created session's stored config, then walks it | a session created BEFORE a parameter existed still completes; `common.cfg` falls back to the shipped default | a schema change (that needs a real database copy — see the pre-deploy gate) | whenever you add a session-config parameter (and add its name to the test's `STRIPPED` list) |
-| **`tests/render_check.py`** — real headless Chromium at three viewports; screenshots to `_ai/render_check/` (gitignored; the run creates it), assertions on measured element geometry and on rendered pixels | the pages are actually laid out, visible, scrollable and clickable — the failures that produce no error at all | data correctness; anything server-side | after any CSS or template-structure change |
-| **`tests/render_check.py --diff`** — the same run, compared against the committed baseline `tests/geometry_baseline.json` (±3px) | a layout **regression**: something that still passes every threshold but MOVED (the Next button 40px up, a band narrowing, an eyebrow drifting). Prints page · viewport · element, old → new and the delta | anything the baseline deliberately excludes — page text, colours, pixel-darkness readings, content-random figures (all listed at the top of the baseline file) | before shipping a CSS/template change. **When the movement is INTENTIONAL, adopt it with `python tests/render_check.py --update-baseline` and let the file's own diff be the record of what moved.** |
-| **`tests/example_quiz_content_test.py`** — **an EXAMPLE to copy**, not a suite member | what a page SAYS (prompts and options reach the participant, in order; answers absent in production) | anything you did not assert — content tests are only as good as their list | write your study's own version when you write your quiz |
+| **`scripts/tests/room_gate_test.py`** — the room welcome gate in a real browser: id present, bare URL, the loop guard, and the no-session lab prep flow | that an identified arrival flows straight through, that a bare URL still needs a click, and that a failing gate leaves a clickable button instead of looping | anything past the gate | after any change to `_templates/room_welcome.html` or the `ROOMS` wiring |
+| **`scripts/tests/tab_monitor_detail_test.py`** — per-event tab-monitor detail and the at-least drop evidence | that a focus loss records the SERVER's page name (not the client's), that `tab_monitor_where` names pages, and that a client count BEHIND ours is never recorded as a loss | anything the client never sends — see CODEBOOK on what a clean row does and does not mean | after any change to `common._apply_focus_loss` |
+| **`scripts/tests/full_journey_test.py`** — ONE participant, **room entry to the final page**, over real HTTP, at the config's **real round count**, **failing the quiz once** on the way. **NEVER TRIM OR DELETE THIS** (the file says why) | **that a participant can actually FINISH**: every screen in the real order, every round walked, the failed-attempt retry path, and `exit_code == 1` read back over the REST API | rendering; anything that only breaks for an EXISTING participant; the configs and edge cases the slice suites cover | before any launch, and after any change to the page sequence, the quiz rule or the round count |
+| **`scripts/tests/http_flow_test.py`** — walks every shipped config entry→ending over real HTTP, including a POST with the JS-produced hidden fields deliberately **empty** | a participant can complete the study in each config; no page 5xxs; the no-JS participant is not stranded | anything about how a page looks or reads; anything that only breaks for an EXISTING participant. **It cannot tell finishing from being thrown out** — its end markers ("Back to Prolific", "participation has ended") are on `Ended.html` as well as `Results.html`; that is what `full_journey_test.py` is for | after any change to a page, form field or flow |
+| **`scripts/tests/gated_flow_test.py`** — lab vs Prolific scenarios: the one-time re-read offer, comprehension DQ, pilot feedback, the two-variant consent rule | the three orthogonal controls actually route people where the design says | rendering; data written to the export | after touching `settings.py` profiles, gates, or the intro/outro flow |
+| **`scripts/tests/device_gate_test.py`** — the entry allow-list, weighted towards FALSE POSITIVES: eleven real browsers (desktop Chrome/Safari/Firefox/Edge, Chrome OS, a touchscreen laptop, an iPad, an Android tablet, phones) plus every shape of unusable User-Agent | the listed types are admitted and nothing else is screened by accident: those browsers are never removed, an unusable User-Agent always proceeds recording nothing, an excluded type gets `-4` with the DETECTED type as its cause, and the default list does nothing at all | client-side behaviour; anything past entry | after touching the entry gate, the classifier or `allowed_devices` |
+| **`scripts/tests/screenout_softwall_test.py`** — the screen-out lifecycle over real HTTP: screened → cleared → re-screened → completes, the post-consent immunity, the way out, and the no-decision asymmetry | the verdict is written immediately (a closed tab still exports `-4`), clears only on POSITIVE evidence of an accepted device before consent, never touches anyone after consent, and the way out is a codeless real link | rendering; anything a browser does with the page | after touching the gate, the clear rules or the screen-out page |
+| **`scripts/tests/identity_test.py`** — in-process: re-entry, two tabs on one id, case/whitespace variants, a clashing id claim, a PLANTED duplicate label, and a room rebound to a new session | one participant row per id (which is what re-entry and the soft wall depend on); a clashing claim is refused silently with the owner's code recorded; a duplicate that exists anyway does not 500 | anything about the pages themselves | after touching label writes, `identity.py` or the entry sequence |
+| **`scripts/tests/dashboard_test.py`** — in-process, production + `AUTH_LEVEL=STUDY`: the install discipline, the two dashboard acceptance criteria, row truth for every stage and all four terminal states, the entry-block boundary, an unmapped app, and read-only | that the dashboard is **unreachable without an admin login** (page, data and index, for an anonymous client AND for a mid-study participant's own cookies; the redirect leaks nothing; POST is 405); that a raising handler yields the **error panel** and `ok:false` JSON rather than a 500, and one poisoned ROW leaves the table `ok:true` with every other row live; that it **writes nothing** (byte-identical participant rows plus an ORM dirty-flag check); that an app missing from `APP_STEPS` is visibly unplaced instead of silently at Entry | **it is NOT proof that the wrapper is what protects participants.** Section C's participant walks are a regression guard: participant survival rests partly on oTree's `NEW_IDMAP_EACH_REQUEST` giving every request a fresh DB session, and those checks still pass with the wrapper deleted (check C0 pins that oTree property so a future version changing it goes red). The checks that fail when the wrapper is removed are the error-panel ones. Also blind to: anything about how the page LOOKS, and concurrency — the polls here are sequential | after touching `experimenter_dashboard.py`, the entry-block stamps, or any app's `page_sequence`/app list |
+| **`scripts/tests/dashboard_render_check.py`** — real uvicorn + real headless Chromium at 1280/1512/1152, staging 13 participants across every state | that the operator screen is actually USABLE: the login wall stands in a browser, the poll paints and ticks without a reload, the six timeline steps are **measured** equal to within 2px, the mid-task marker reads "2 of 3", the amber row differs in sampled PIXELS rather than by class, entry-only rows dim and the toggle hides them, no horizontal page scroll, and no time/earnings/stall cell is ever clipped | server-side correctness (that is `dashboard_test.py`'s job); whether the numbers are RIGHT — it checks that cells render legibly, not that they say the truth; anything about a real operator's screen size or emoji font | after ANY change to the dashboard's HTML, CSS or JS — a broken operator layout produces no error anywhere |
+| **`scripts/tests/xss_escaping_test.py`** — hostile participant- and URL-supplied values through the real entry URL, in production mode | every hand-interpolated value is HTML-escaped (oTree's ibis does **not** auto-escape) and round-trips un-truncated | injection through anything you did not render in the walk | after adding any template that prints a participant- or URL-supplied value |
+| **`scripts/tests/frozen_config_test.py`** — deletes parameters from a created session's stored config, then walks it | a session created BEFORE a parameter existed still completes; `common.cfg` falls back to the shipped default | a schema change (that needs a real database copy — see the pre-deploy gate) | whenever you add a session-config parameter (and add its name to the test's `STRIPPED` list) |
+| **`scripts/tests/render_check.py`** — real headless Chromium at three viewports; screenshots to `_ai/render_check/` (gitignored; the run creates it), assertions on measured element geometry and on rendered pixels | the pages are actually laid out, visible, scrollable and clickable — the failures that produce no error at all | data correctness; anything server-side | after any CSS or template-structure change |
+| **`scripts/tests/render_check.py --diff`** — the same run, compared against the committed baseline `scripts/tests/geometry_baseline.json` (±3px) | a layout **regression**: something that still passes every threshold but MOVED (the Next button 40px up, a band narrowing, an eyebrow drifting). Prints page · viewport · element, old → new and the delta | anything the baseline deliberately excludes — page text, colours, pixel-darkness readings, content-random figures (all listed at the top of the baseline file) | before shipping a CSS/template change. **When the movement is INTENTIONAL, adopt it with `python scripts/tests/render_check.py --update-baseline` and let the file's own diff be the record of what moved.** |
+| **`scripts/tests/example_quiz_content_test.py`** — **an EXAMPLE to copy**, not a suite member | what a page SAYS (prompts and options reach the participant, in order; answers absent in production) | anything you did not assert — content tests are only as good as their list | write your study's own version when you write your quiz |
 | **`scripts/prelaunch_check.py`** — static config guard, no server, instant | the configuration is safe to open to participants: no `REPLACE_*` completion codes, `DEBUG` off, no testing loosenings left on | anything dynamic — it never runs a page | in the target environment, before opening a study |
 | **`scripts/predeploy_check.sh`** — boots the candidate build against a **copy of the live database** and drives real participants | the *upgrade* is safe: an existing mid-flow participant, a fresh one and a no-JS one all survive the new code | placeholder codes and other configuration problems | before every deploy onto a database that has participants |
 
@@ -928,10 +927,10 @@ a missing database copy fails the deploy instead of quietly passing degraded.
 Running them: the HTTP suites (`full_journey_test`, `http_flow_test`,
 `gated_flow_test`, `device_gate_test`, `screenout_softwall_test`) want a server
 you started on a **throwaway** database (`OTREE_ADMIN_PASSWORD=admin otree devserver 8000`, then
-`python tests/http_flow_test.py http://localhost:8000`). The rest
+`python scripts/tests/http_flow_test.py http://localhost:8000`). The rest
 (`identity_test`, `frozen_config_test`, `xss_escaping_test`,
 `quiz_attempt_log_test`) boot oTree in-process against their own temp database
-and need no server — `python tests/frozen_config_test.py`. `render_check.py` needs a headless
+and need no server — `python scripts/tests/frozen_config_test.py`. `render_check.py` needs a headless
 Chromium; on a box without root see `docs/headless_chromium_recipe.md`.
 
 ### Two gates: pre-launch and pre-deploy (they check different things)
@@ -1089,7 +1088,7 @@ scheme" section and `settings.py`). That bundle turns on:
   exception: it returns them with NO code, so their submission stays open.
   **Each ending is served ONLY its own code** — a disqualified participant cannot
   read the completion code out of the page source and self-approve. Pinned by
-  `tests/gated_flow_test.py`.
+  `scripts/tests/gated_flow_test.py`.
 
 ### The five endings and their codes
 
@@ -1116,7 +1115,7 @@ reverses an earlier decision; see `DECISIONS.md`, both entries.)
 Each ending is served **only its own code**, injected per page — never a bundle
 in the template context — so a disqualified participant cannot read the completed
 code out of the page source and self-approve. Pinned by
-`tests/completion_codes_test.py`, one browser journey per ending.
+`scripts/tests/completion_codes_test.py`, one browser journey per ending.
 
 **Codes are shaped `REASON-XXXXXX`** — a semantic prefix plus six random
 alphanumerics (`COMP-K27XQ4`, `NOCONS-T8Q4R1`, `DQ-QUIZ-M4P2W7`): readable in a
@@ -1126,7 +1125,7 @@ placeholder itself teaches the convention — and **`scripts/prelaunch_check.py`
 refuses to launch while any `REPLACE` survives**, matching by shape rather than by
 exact string. The COMPLETION code is the one to guard hardest: on Prolific it can
 auto-approve a payment, so keep its random part six or more characters and never
-a short number. Full operational detail: `prolific/Prolific_running.md`.
+a short number. Full operational detail: `docs/running_on_prolific.md`.
 - the **integrity modules** — `tab_monitor`, `comprehension_dq`, plus
   `passive_capture` and `device_capture`. With `tab_monitor` on, **every page
   after the agreement screen is monitored by default** (`monitoring.py` — a
@@ -1155,7 +1154,7 @@ a codeless link back to Prolific instead, so its submission stays open — see
 [The device check](#the-device-check-what-it-inspects-and-what-it-cannot).
 
 For the operational walkthrough — creating the Prolific study, wiring the URLs,
-and the finish-screen routing in practice — see **`prolific/Prolific_running.md`**.
+and the finish-screen routing in practice — see **`docs/running_on_prolific.md`**.
 
 ## Docker (build and run the container)
 The root `Dockerfile` builds a self-contained image that serves the study, so

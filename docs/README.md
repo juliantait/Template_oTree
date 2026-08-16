@@ -16,6 +16,10 @@ so you know the file is deliberately absent rather than missing.
 | `hosting_a_prolific_study.md` | Reference for putting an online study on managed hosting. **Reference, not machinery** — this repo deliberately ships no deploy config. Irrelevant to a lab study. |
 | `postgres_assumptions.md` | The gaps you inherit if you host on Postgres. Read before a hosted launch. |
 | `group_matching_reference.py` | Reference implementation to read first if your design needs participants matched into groups. |
+| `running_on_prolific.md` | **Operating guide for a study running on Prolific** — the ID capture, the five completion codes, the device gate, what each ending does. Moved here from a top-level `prolific/` folder on 2026-08-16; it is an operating guide, not a conversion plan. Irrelevant to a lab study. |
+| `conventions.md` | The design principles behind the template: what the parameter scheme is for, how the three controls interact, the naming rules. Moved from the repo root on 2026-08-16. Read it before adding a parameter or a page. |
+| `skills_claude/` | Authoring playbooks for whoever (or whatever) edits the template: writing the task, the instructions, the quiz, the tests, and the Railway hosting procedure. Kept as a group — start at `skills_claude/README.md`. |
+| `experimenter_dashboard_brief.md` | The dashboard **as it was specified**, kept deliberately un-updated so the brief can be compared against what was built. Not a description of the code. |
 
 ## 1. The three controls
 
@@ -73,7 +77,7 @@ of. The two rules worth knowing before you start:
   over real HTTP, including a submit with the JavaScript-filled hidden fields
   left empty — that is what a participant with a blocked script sends.
 - **A layout or copy change needs a measured render check, not a look.**
-  `tests/render_check.py` drives real headless Chromium at three viewports and
+  `scripts/tests/render_check.py` drives real headless Chromium at three viewports and
   asserts on element geometry and rendered pixels. Layout failures produce no
   error at all: nothing returns a 500 and no test goes red while the participant
   gets a broken page. On a machine without root, the recipe that makes this

@@ -28,7 +28,7 @@
         adapted from used onclick="completed()" with no href, so a participant
         whose JavaScript had not run had NO way off the page at all — a dead end
         on the one page whose entire job is to offer a way out. Pinned by
-        tests/screenout_softwall_test.py (JS-free link) and render_check's
+        scripts/tests/screenout_softwall_test.py (JS-free link) and render_check's
         screened_out_nojs scenario.
       * NOT .next-button: global.js's Enter handler clicks the first
         .next-button on the page, and an irreversible exit must never be one
@@ -125,7 +125,7 @@
                   4. neutral fallback, so a study that is neither still reads
                      correctly.
 
-                Pinned both ways by tests/copy_routing_test.py: every shape of
+                Pinned both ways by scripts/tests/copy_routing_test.py: every shape of
                 study renders an answer here, AND the config that would not is
                 refused by the guard. #}
             {% if show_return_link %}

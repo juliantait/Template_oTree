@@ -11,6 +11,49 @@ working.
 
 ---
 
+## The repo root is found by walking up to `settings.py`, never by counting directories — 2026-08-16
+
+Decided by Julian, on the evidence of the restructure that same day.
+
+**What it cost.** Nineteen files each answered "where is the project root?" by
+counting levels up from their own location, in four different spellings —
+`os.path.dirname(os.path.dirname(__file__))`, `dirname(_TESTS_DIR)`,
+`Path(__file__).parent.parent`, `__file__.rsplit('/', 2)[0]`. Moving `tests/`
+to `scripts/tests/` made **all nineteen wrong at once**: eighteen were silently
+one level short, and the nineteenth — the `rsplit` spelling — hid from the sweep
+that fixed the other eighteen and surfaced only as `ModuleNotFoundError: No
+module named 'settings'` on the first full-suite run. One concept, nineteen
+implementations, each encoding how deep it happened to sit.
+
+**The fix is one implementation, in `scripts/tests/_repo.py`**, exporting
+`REPO_ROOT` and putting it on `sys.path` on import. Every suite and every tool
+in `scripts/` now imports it; no depth-to-root count survives anywhere.
+
+**Why a MARKER WALK and not a corrected count.** A count is only right for the
+layout it was written against, so fixing the number just re-arms the trap for
+the next move. What actually *defines* this root is that `settings.py` sits in
+it — oTree requires that, and `common.py` records that it can never move. The
+helper walks up from `__file__` until it finds that marker: correct at any
+depth, from any working directory, with nobody needing to remember a number. It
+also resolves correctly from a **staged copy** of the repo, which is how the
+HTTP suites run.
+
+**The bootstrap is deliberately depth-free too.** A file puts its OWN directory
+on `sys.path` (zero levels — stable under any move) and imports `_repo` from
+there. The two tools outside `scripts/tests/` reference it as a child
+(`prelaunch_check.py`) or a sibling (`scripts/site_previews/*`) — facts about
+`scripts/` itself, not assumptions about how far the root is.
+
+**Rejected:** correcting the nineteen counts and moving on. That is what was
+done first, and it is why the nineteenth was found by a failing run rather than
+by the sweep.
+**Enforced:** by construction (there is nothing left to count) and by a mutation
+check: with `scripts/tests/` moved one and then two levels deeper, both old
+spellings resolve to the wrong directory (`scripts/deeper`, `scripts/`) while
+the helper still returns the true root and the suites still pass. Re-run that
+check after any future move: it is three lines and it is the only thing that
+proves the helper solves the problem rather than re-encoding it.
+
 ## The screen-out exit says it is FINAL, because the code that frees the place forecloses the return — 2026-08-15
 
 Decided by Julian, the same day as the per-population completion codes, and it
@@ -45,11 +88,11 @@ still says *"Do not press the button below."*
 clears on an accepted device before consent — but only for somebody who has NOT
 taken the exit. Those are now two different populations and the page has to be
 readable by both.
-**Enforced:** `tests/screenout_softwall_test.py` asserts the accepted-device
+**Enforced:** `scripts/tests/screenout_softwall_test.py` asserts the accepted-device
 clause specifically (not merely that some permanence wording exists, which the
 old sentence would also have satisfied), that the control carries
 `.exit-button`, and that the way out is a real `<a href>` needing no script;
-`tests/render_check.py` asserts the switch-device branch's "Do not press the
+`scripts/tests/render_check.py` asserts the switch-device branch's "Do not press the
 button below".
 
 ## The website's screen previews are GENERATED from the template, not drawn — 2026-08-15
@@ -64,13 +107,13 @@ snapshot has no relationship to the CSS it imitates, so when a shared component
 moved, the snapshot went on rendering perfectly — just as a picture of an older
 study. No error, no failing test, no visible symptom: the same silent-drift
 shape as the client-side traps in `CLAUDE.md`. So the previews are now DERIVED —
-`previews/build_site_previews.py` inlines `_static/global/css/` **verbatim**
+`scripts/site_previews/build_site_previews.py` inlines `_static/global/css/` **verbatim**
 (the stylesheets are never re-typed) and embeds the logos as data URIs, giving
 one standalone file per screen with no external reference of any kind, because
 they load in an iframe on a static site with no access to this repo.
 
 **Source is tracked; output is not.** The script and
-`previews/site_preview_bodies/` are in the repo; the four built files land in
+`scripts/site_previews/bodies/` are in the repo; the four built files land in
 gitignored `_ai/site_previews/`. A generator living in `_ai/` would die with the
 container and the next person would hand-write another one-off — which is the
 defect, restored.
@@ -91,7 +134,7 @@ built only from real components, and must not be copied back into `main/`), and
 the results screen is TRIMMED (the real page is the longest in the study and
 genuinely scrolls inside its card; with the payoff table open it does not fit
 16:9 at any size, so the greeting line is dropped and a short session shown).
-**Enforced:** `previews/check_site_previews.py` — measured in headless Chromium
+**Enforced:** `scripts/site_previews/check_site_previews.py` — measured in headless Chromium
 at four 16:9 sizes with JavaScript on and off: no external request, the canvas
 viewport is the one composed for, no cut-off scroll region, the card fills, and
 the lab screens name Prolific in no **rendered** text (asserted on `innerText`,
@@ -165,13 +208,13 @@ refactor one away — that is the thing not to do.**
   clean, which is the trap this template keeps meeting.
 - The frozen-session audit needs no enumeration: it walks every key in the
   current config, so the new keys are covered the moment they exist.
-- `tests/completion_codes_test.py` — **one browser-driven journey per ending**,
+- `scripts/tests/completion_codes_test.py` — **one browser-driven journey per ending**,
   each asserting it carries ITS OWN code and NOT the other four. 30 checks, all
   passing. The absence half is the point: a disqualified participant who can
   read the COMPLETED code out of page source can self-approve and be paid, so
   every path checks all four others, and the codes are injected per page rather
   than bundled into the template context.
-- `tests/render_check.py` leg AD asserted the screen-out carried NO code; that
+- `scripts/tests/render_check.py` leg AD asserted the screen-out carried NO code; that
   expectation is now reversed to assert it carries the DEVICE code and none of
   the other four.
 - Two test-construction faults were found and fixed while writing the above,
@@ -289,9 +332,9 @@ a deliberate absence from a missing file at a glance. `_ai/render_check/` and
 created by running the checks, not documents to read, and marking them would
 teach the reader that the tool is broken.
 
-**Why `docs/` rather than the repo root or `skills_claude/`.** The root already
+**Why `docs/` rather than the repo root or `docs/skills_claude/`.** The root already
 carries the six documents everybody is told to read; adding second-tier reference
-beside them makes the first tier harder to see. `skills_claude/` is method
+beside them makes the first tier harder to see. `docs/skills_claude/` is method
 material addressed to an agent working ON the template, which is a different
 audience from a researcher running a study. `docs/README.md` states the rule for
 what may be added, so the next person has a test rather than a habit.
@@ -561,8 +604,8 @@ pins itself to a staged **sqlite** file, validates its input by the sqlite magic
 header, and proves its isolation with `PRAGMA database_list` — all sqlite-only,
 all by design and documented in its header. The documented way to obtain its
 input is `docker cp <container>:/app/data/db.sqlite3`, a file that does not exist
-under Postgres. Every suite is likewise sqlite (`tests/otree_inprocess.py`,
-`tests/render_check.py`), as is the `_ai/live_data/` fixture (local only — `_ai/` is gitignored; not in a clone) that makes upgrade
+under Postgres. Every suite is likewise sqlite (`scripts/tests/otree_inprocess.py`,
+`scripts/tests/render_check.py`), as is the `_ai/live_data/` fixture (local only — `_ai/` is gitignored; not in a clone) that makes upgrade
 mode meaningful.
 
 **So the one backend a hosted study actually uses is the one with no coverage at
@@ -658,7 +701,7 @@ never renders can only drift from the copy that does.
 **The deletion was not made on the unreachability claim alone.** This repo
 has been bitten by untested claims (the 2026-08-13 monitor-coverage entry
 below: four documents asserting something untrue), so the claim was made
-ENFORCED in the same change: `tests/screenout_softwall_test.py` scenario 9
+ENFORCED in the same change: `scripts/tests/screenout_softwall_test.py` scenario 9
 hammers a screened-out participant with forced submits and a direct
 `/outro/Ended/` URL and requires every response to re-serve the held page.
 If routing ever changes, the test goes red before a participant reads the
@@ -681,7 +724,7 @@ written at DECISION time (`common.set_screened_out`: a closed tab still
 exports as screened out, not abandoned), and `set_screened_out`'s docstring,
 the softwall test header and the footer include all state it correctly.
 
-**Enforced:** `tests/screenout_softwall_test.py` scenario 9 (the deletion
+**Enforced:** `scripts/tests/screenout_softwall_test.py` scenario 9 (the deletion
 guard); the header note in `outro/Ended.html` points at it.
 
 ## Explicit consent is its own flag (`explicit_consent`), split from `prolific_completion_redirects` — 2026-08-14
@@ -724,10 +767,10 @@ precisely so behaviour is never re-derived silently; and keeping the old
 wiring with a comment — the rename made the misreading legible, a comment
 would only apologise for it.
 
-**Enforced:** `tests/explicit_consent_test.py` (radio present+required when
+**Enforced:** `scripts/tests/explicit_consent_test.py` (radio present+required when
 on, absent with implicit copy when off, in BOTH recruitment profiles — flag
 decides mechanics, recruitment decides copy — plus the resolved values on
-both shipped configs); `explicit_consent` in `tests/frozen_config_test.py`'s
+both shipped configs); `explicit_consent` in `scripts/tests/frozen_config_test.py`'s
 STRIPPED list pins the frozen-session behaviour.
 
 ## One short-viewport rhythm for every `.stacked-form` option row — a leak ratified into the rule — 2026-08-14
@@ -759,8 +802,8 @@ it would honour the written intent by making the same control obey two
 rhythms, which is the defect class, not the fix.
 **Enforced:** the rewritten comment at the block (base.css) states the
 everywhere-rule and forbids re-scoping without a new decision;
-`tests/geometry_baseline.json` pins the shared rhythm at all three viewports;
-the affordance and touch-target legs of `tests/render_check.py` assert the
+`scripts/tests/geometry_baseline.json` pins the shared rhythm at all three viewports;
+the affordance and touch-target legs of `scripts/tests/render_check.py` assert the
 pages still behave.
 
 ## The tab monitor is monitored-by-default after the agreement page — and the claim preceded the behaviour — 2026-08-13
@@ -809,7 +852,7 @@ and no warning modal in the outro — the modal's threat would be a lie there.
 The asymmetry is stated, with its why, at every site that could read as
 inconsistent: `common._apply_focus_loss`, `monitoring.py`, the top of
 `outro/__init__.py`, settings' integrity block, README (section + diagram),
-CODEBOOK ("Tab-monitor violation counts"), conventions.md.
+CODEBOOK ("Tab-monitor violation counts"), docs/conventions.md.
 **Rejected:** page-by-page opt-in (the model that produced the gap — a
 checklist cannot make forgetting impossible); ejecting in the outro
 (cost-without-benefit above, plus a mechanical trap: `Ended` sits FIRST in
@@ -819,7 +862,7 @@ old threatening modal in the outro (each a new collapsed distinction).
 **Enforced:** `monitoring.assert_monitored_page_sequence` runs at IMPORT at
 the bottom of `intro`, `main` and `outro` and refuses to BOOT over a page
 that is neither monitored nor explicitly opted out — you can only get an
-unmonitored page by asking for one. `tests/task_page_test.py` (reworked)
+unmonitored page by asking for one. `scripts/tests/task_page_test.py` (reworked)
 pins the bindings by identity, the quiz page's served monitor config
 end-to-end, the record-only outro (violations past the threshold disqualify
 nobody and stay in their own column), the Results dispatcher (one live
@@ -860,7 +903,7 @@ screen now appears, which is what the neighbouring pages already assumed);
 blast radius today is zero — no live sessions, the same window the
 `prolific_` rename used.
 **Enforced:** `grep "config.get('recruitment')"` returns nothing outside
-`common.py`; `tests/copy_routing_test.py` pins the single-implementation rule
+`common.py`; `scripts/tests/copy_routing_test.py` pins the single-implementation rule
 the accessor carries.
 
 ## Task pages inherit their wiring from `TaskPage` — the template's one use of page inheritance — 2026-08-13
@@ -888,7 +931,7 @@ subclass, never copy, or the drift returns. Page inheritance is used nowhere
 else in the template, deliberately.
 **Rejected:** staying explicit-per-page with a checklist — the checklist
 cannot make forgetting impossible, and the failure it guards is silent.
-**Enforced:** `tests/task_page_test.py` — structurally (an empty-bodied
+**Enforced:** `scripts/tests/task_page_test.py` — structurally (an empty-bodied
 subclass is fully armed; identity of the bindings, not lookalikes) and
 end-to-end (the served page carries the monitor config; the inherited
 live_method counts a violation), plus the unbind-by-override gotcha proven in
@@ -918,7 +961,7 @@ carry no tab (the scan is frozen into the session row).
 **Rejected:** injecting into oTree's admin page structure (templating over /
 DOM patching) — far more upgrade-exposed than our routing-level install, and
 unnecessary given the supported point.
-**Enforced:** `tests/dashboard_test.py` §D9 — the tab appears in oTree's own
+**Enforced:** `scripts/tests/dashboard_test.py` §D9 — the tab appears in oTree's own
 tab bar, the standalone URL works with it present, a broken dashboard leaves
 the admin pages serving, a broken import leaves the tab serving via the
 fallback, and the drift check reports ok against the installed oTree.
@@ -952,7 +995,7 @@ leaves a round column summing to a number nobody was paid.
 
 **Caught by the exp_pilots bossman**, verified against the installed oTree
 before acting: this entry, `settings.py`, `main/__init__.py`,
-`outro/__init__.py`, `CODEBOOK.md` and `skills_claude/writing_task.md` all
+`outro/__init__.py`, `CODEBOOK.md` and `docs/skills_claude/writing_task.md` all
 said `AUTO_TABULATE_PAYOFFS=False` "makes the old habit RAISE rather than
 drift back silently" — presenting a **participant-facing crash as a safety
 feature**. The setter is oTree's own (`otree/models/player.py:41-46`), it
@@ -990,14 +1033,14 @@ collapsed-distinction rule, since a name-only check would refuse to boot over
 deploy can skip — the whole point is that the server will not come up; and
 `import`-and-introspect instead of parsing, which would execute
 `intro/generate_instructions_preview.py` and its browser driver at boot.
-**Enforced:** `payoff_guard.py`; `tests/payoff_ledger_test.py` §7 (a walked
+**Enforced:** `payoff_guard.py`; `scripts/tests/payoff_ledger_test.py` §7 (a walked
 journey leaves every round row's `_payoff` at 0) and §8 (the guard catches six
 write forms including `setattr` with a literal name, refuses a synthetic build
 naming file and line, does NOT fire on the participant write or on prose,
 declares its `setattr`-with-computed-name blind spot, and reports an
 unparseable module as "cannot answer" rather than as a payoff write).
 
-**Enforced:** `tests/payoff_ledger_test.py` (the two figures agree on the
+**Enforced:** `scripts/tests/payoff_ledger_test.py` (the two figures agree on the
 admin page itself; the value survives re-renders; oTree's setter does raise;
 the export column is absent while `round_payoff` is present) — plus the boot
 guard above.
@@ -1039,7 +1082,7 @@ distinction rule in the measurement rather than in the code: "the payment is
 correct" and "the payment is payable" were one assertion.
 
 **DONE NOW (safe, and independent of the open config decision):**
-`tests/payoff_ledger_test.py` §9 walks a *prolific* session and asserts the
+`scripts/tests/payoff_ledger_test.py` §9 walks a *prolific* session and asserts the
 BONUS IN ISOLATION as well as the total — each component recorded on its own,
 the three reconstructing `earned` with zero residue, the bonus
 (`selected_sum + quiz_bonus_awarded`) derived from the stored components
@@ -1095,7 +1138,7 @@ effect of adding a test.
 sum to `earned` — a component nobody can reconcile is a number, not an
 itemisation; and deriving the bonus as `total − base` in the test, which passes
 whatever the data says.
-**Enforced:** `tests/payoff_ledger_test.py` §9; the rule is stated in
+**Enforced:** `scripts/tests/payoff_ledger_test.py` §9; the rule is stated in
 README "Paying participants — the itemisation rule" and in CODEBOOK "THE
 ITEMISATION RULE".
 
@@ -1132,8 +1175,8 @@ with the pill carrying the facts.
 finished tint at all (superseded — the tint was re-added as the outcome
 CHANNEL once the channel rule made "green row + red pill" coherent rather
 than contradictory).
-**Enforced:** `tests/dashboard_test.py` §D7/§D8;
-`tests/dashboard_render_check.py` `check_pills` measures one row carrying the
+**Enforced:** `scripts/tests/dashboard_test.py` §D7/§D8;
+`scripts/tests/dashboard_render_check.py` `check_pills` measures one row carrying the
 finished tick and the Non-SEPA pill together, that the finished tint is
 distinct from the amber and from the pills' own background, and that the red
 pill stays white-on-red against the green row.
@@ -1147,7 +1190,7 @@ even a hand-edited `sepa=0` in a Prolific session shows nothing, because
 payment there goes through the platform and the pill would send the operator
 chasing a form that does not exist.
 **Enforced:** `experimenter_dashboard._non_sepa_ids` (the one predicate);
-`tests/dashboard_test.py` §D7 pins all three narrowings.
+`scripts/tests/dashboard_test.py` §D7 pins all three narrowings.
 
 ## The BIC requirement and the Non-SEPA flag are two predicates, not one — 2026-08-13
 
@@ -1161,7 +1204,7 @@ collapsed-distinction rule, applied in the direction that keeps the questions
 apart and the mechanism shared).
 **Rejected:** one combined predicate — it would either flag every German
 account or let a US account through without a BIC.
-**Enforced:** `tests/bank_details_test.py` pins both halves of the asymmetry,
+**Enforced:** `scripts/tests/bank_details_test.py` pins both halves of the asymmetry,
 next to each other.
 
 ## The timing warning shows the number the threshold judged — per phase — 2026-08-13
@@ -1175,7 +1218,7 @@ definition), questionnaire since `task_done`. Falls back to page time where a
 stamp is missing (mid-flow deploys).
 **Rejected:** page-time detection with a phase-labelled display — the pill
 would name a phase the verdict never measured.
-**Enforced:** `tests/dashboard_test.py` §D3 (page-ageing alone must NOT trip
+**Enforced:** `scripts/tests/dashboard_test.py` §D3 (page-ageing alone must NOT trip
 the intro phase; stamp-ageing must); the render check asserts the pill text.
 
 ## The return click is best-effort instrumentation, and the pill is gated on the button existing — 2026-08-13
@@ -1194,7 +1237,7 @@ JS-free, but it puts instrumentation INSIDE the one path every completer
 needs, and instrumentation must never be able to break a page (CLAUDE.md); the
 link stays a plain href that works with the whole mechanism dead.
 **Enforced:** `outro.results_live_method` (gated the same way);
-`tests/dashboard_test.py` §D8 pins the gate from both sides; CODEBOOK.md
+`scripts/tests/dashboard_test.py` §D8 pins the gate from both sides; CODEBOOK.md
 documents the stamp's best-effort nature.
 
 ## The shipped quiz items are machinery placeholders, not model items — 2026-08-13
@@ -1207,9 +1250,9 @@ as content to keep, and the previous item ("If you fail the quiz twice…") also
 hard-coded the failure threshold into participant copy and described behaviour
 the shipped config doesn't produce.
 **Enforced:** the comment atop `intro/quiz_items.py`;
-`tests/example_quiz_content_test.py` §3 pins the placeholders and is designed
+`scripts/tests/example_quiz_content_test.py` §3 pins the placeholders and is designed
 to fail when a study writes its own items, forcing the test to be rewritten
-with them (see `skills_claude/writing_quiz.md` for what real items look like).
+with them (see `docs/skills_claude/writing_quiz.md` for what real items look like).
 
 ## The quiz-bonus rule is stated in two places, deliberately — 2026-08-13
 
@@ -1229,7 +1272,7 @@ failure "nobody replaced the placeholder": anyone seeing `REPLACE_CC` knows
 instantly what it means and what to do, while `?cc=None` looks like a bug of
 ours and tells the operator nothing.
 **Enforced:** `outro.completion_link` (reasoning in its docstring); pinned by
-`tests/frozen_config_test.py`.
+`scripts/tests/frozen_config_test.py`.
 
 ## The config-drift check has two severities, so it stays trustworthy — 2026-08-13
 
@@ -1254,7 +1297,7 @@ breakpoint).
 **Rejected:** each template getting the markup order right — a new page copies
 whichever page its author happened to open.
 **Enforced:** the LOGO FOOTER RULE block in `_static/global/css/base.css`;
-logo geometry is in `tests/geometry_baseline.json`.
+logo geometry is in `scripts/tests/geometry_baseline.json`.
 
 ## Styling is shared components, never page-local patches — 2026-08-13
 
@@ -1266,7 +1309,7 @@ templates and defined nowhere, one concept carrying two widths, and an inline
 `height` beating the component's own rule. Genuine one-screen exceptions are
 marked `EXCEPTION` with the reason.
 **Enforced:** the Styling section of `CLAUDE.md`; layout drift is caught by
-`tests/render_check.py` against the geometry baseline. The no-inline-style rule
+`scripts/tests/render_check.py` against the geometry baseline. The no-inline-style rule
 itself relies on review. Full working: `_ai/css_divergence_report.md` (local only — `_ai/` is gitignored; not in a clone).
 
 ## "Flags decide mechanics, `recruitment` decides copy" — 2026-08-13
@@ -1279,7 +1322,7 @@ friend-test config told a participant to seek help through Prolific and then
 gave them no way out at all — no error, no failing test.
 **Rejected:** letting whichever flag is nearest stand in for the study type.
 **Enforced:** `common.is_lab` / `common.is_prolific` are the only two
-implementations; `tests/copy_routing_test.py` asserts the impossibility;
+implementations; `scripts/tests/copy_routing_test.py` asserts the impossibility;
 `settings._prelaunch_problems` refuses the config combination that created the
 dead end.
 
@@ -1292,7 +1335,7 @@ genuinely essential**, because every divergence can be true in one variant and
 quietly wrong in the other, forever. A participant who closes the tab without
 clicking has still finished; the click is Prolific's concern, not the data's.
 **Enforced:** `outro/__init__.py` (`Results.vars_for_template`, idempotent);
-`tests/full_journey_test.py` asserts exit code 1 at Results. The
+`scripts/tests/full_journey_test.py` asserts exit code 1 at Results. The
 minimal-divergence principle itself has no guard — the caller-list warning on
 `common.is_lab` and review are what hold it.
 
@@ -1308,7 +1351,7 @@ dependency is enforced, not documented.
 **Enforced:** the no-screened-out-code note in `settings.py`;
 `settings._prelaunch_problems` refuses a `recruitment='prolific'` config with a
 blank or unreplaced `prolific_screenout_return_url`;
-`tests/copy_routing_test.py` walks the codeless way out end to end.
+`scripts/tests/copy_routing_test.py` walks the codeless way out end to end.
 
 > **SUPERSEDED 2026-08-15 by "Every ending population gets its own completion
 > code" (below/newest).** The reasoning above is kept, not deleted, because a
@@ -1347,7 +1390,7 @@ history never is — "how many did the gate turn away" is counted from
 `screenout_history`, not the exit code.
 **Rejected:** routing to a proper ending page (irreversible in oTree), and a
 write-once `-4` (would leave genuine finishers recorded as screened out).
-**Enforced:** `tests/screenout_softwall_test.py`; the consent boundary is the
+**Enforced:** `scripts/tests/screenout_softwall_test.py`; the consent boundary is the
 durable `participant.consent_submitted` fact, not a page index. Full working:
 `_ai/screenout_softwall_log.md` (local only — `_ai/` is gitignored; not in a clone).
 
@@ -1361,7 +1404,7 @@ is the single carve-out — no usable header is not a device, and treating it as
 a clear would let anyone lift their own screen-out by sending no User-Agent.
 **Enforced:** `common.device_clears_screenout` (explicit membership, so
 `undetermined` cannot satisfy it whatever a config says);
-`tests/screenout_softwall_test.py` §8 states the two asymmetric assertions side
+`scripts/tests/screenout_softwall_test.py` §8 states the two asymmetric assertions side
 by side.
 
 ## `unknown` and `undetermined` are different states — 2026-08-12
@@ -1371,7 +1414,7 @@ study may accept or reject like any other; no usable header at all
 (`undetermined`) is *not a device type* and must always be allowed. Collapsed,
 a study rejecting `unknown` starts ejecting laptops behind privacy proxies.
 This is the model case of the collapsed-distinction rule in `CLAUDE.md`.
-**Enforced:** `common.classify_device`; `tests/device_gate_test.py`, which is
+**Enforced:** `common.classify_device`; `scripts/tests/device_gate_test.py`, which is
 deliberately weighted toward false positives (browsers that must NOT be
 screened). Full working: `_ai/device_allowlist_log.md` (local only — `_ai/` is gitignored; not in a clone).
 
@@ -1388,9 +1431,9 @@ should raise a hand instead of brute-forcing radio items.
 **Rejected:** disqualification in the lab (there is a human in the room), and
 keying the notice on the module (left a module-off lab session with no help at
 all).
-**Enforced:** `tests/gated_flow_test.py` (lab-reread and prolific-dq
+**Enforced:** `scripts/tests/gated_flow_test.py` (lab-reread and prolific-dq
 scenarios); the prelaunch check refuses `comprehension_dq` in a lab config;
-attempts proven uncapped by `tests/quiz_attempt_log_test.py`. Full working:
+attempts proven uncapped by `scripts/tests/quiz_attempt_log_test.py`. Full working:
 `_ai/lab_comprehension_proposal.md` (local only — `_ai/` is gitignored; not in a clone).
 
 ## Every graded quiz submission is logged — uncapped, and unable to break the page — 2026-08-12
@@ -1400,7 +1443,7 @@ the time* (never re-graded — the item set changes between studies), with no ca
 on entries, and the whole write is wrapped so instrumentation can never cost a
 participant their page.
 **Enforced:** `intro.log_quiz_attempt` (never raises);
-`tests/quiz_attempt_log_test.py` proves 25 attempts stored and the page still
+`scripts/tests/quiz_attempt_log_test.py` proves 25 attempts stored and the page still
 standing.
 
 ## The tab monitor is armed before the instructions and quiz, not after — 2026-08-12
@@ -1417,7 +1460,7 @@ quiz, the very check that gates entry was unmonitored — a participant could
 consult an AI assistant during it, which is exactly what the page warns
 against.
 **Enforced:** the page lives in `before.AISafetyAgree`; a comment in
-`intro/__init__.py` forbids moving it back; `tests/gated_flow_test.py` asserts
+`intro/__init__.py` forbids moving it back; `scripts/tests/gated_flow_test.py` asserts
 the agreement is not after the quiz.
 
 ## Participant identity is decided in one place — 2026-08-12
@@ -1427,13 +1470,13 @@ Python (case-folded) and row lookup in SQL (collation-dependent) — so a
 returning `ABC123` took a fresh row against a stored `abc123`, and behaviour
 differed between sqlite (dev) and postgres (production). One implementation,
 called by both.
-**Enforced:** `identity.py`; `tests/identity_test.py`. This bug pattern is
+**Enforced:** `identity.py`; `scripts/tests/identity_test.py`. This bug pattern is
 generalised as the inverted collapsed-distinction rule in `CLAUDE.md`.
 
 ## The layout geometry baseline is committed, so intentional change is reviewable — 2026-08-12
 
-`tests/render_check.py` measures element geometry at three viewports;
-`tests/geometry_baseline.json` is committed **on purpose** (to `tests/`, not
+`scripts/tests/render_check.py` measures element geometry at three viewports;
+`scripts/tests/geometry_baseline.json` is committed **on purpose** (to `scripts/tests/`, not
 gitignored `_ai/`) so an intentional layout change shows up as a reviewable
 diff of that file, and an unintentional one fails `--diff`. Layout failures
 produce no error otherwise — nothing 500s while the participant gets a broken
@@ -1453,7 +1496,7 @@ behaviour silently at runtime.
 ship), and profiles consulted at runtime (invisible in the admin, mutable under
 running sessions).
 **Enforced:** `settings.resolve_recruitment_profile`;
-`tests/frozen_config_test.py`; DEBUG derived from `OTREE_PRODUCTION` presence.
+`scripts/tests/frozen_config_test.py`; DEBUG derived from `OTREE_PRODUCTION` presence.
 
 ## Exit codes: initialised at creation, `0` means "never reached an ending" — 2026-08-07 (ported from the pilot)
 
@@ -1478,7 +1521,7 @@ live outage). `common.flag` is the deliberate exception: a module flag missing
 from a frozen config means the module post-dates the session and must read as
 OFF.
 **Enforced:** `common.pvar` / `common.cfg` / `common.flag`;
-`tests/frozen_config_test.py` strips keys and walks; the rules are in
+`scripts/tests/frozen_config_test.py` strips keys and walks; the rules are in
 `CLAUDE.md`'s correctness list.
 
 ## A test that cannot fail is not evidence — standing principle
@@ -1488,7 +1531,7 @@ green under bots); a content test loosened until it survives a content change
 was never testing the content; a drift check that fails on everything gets
 ignored and then catches nothing (see the two-severity entry above). Every
 check must correspond to a participant it could save.
-**Enforced:** as method, in `skills_claude/writing_tests.md` (real HTTP, no-JS
+**Enforced:** as method, in `docs/skills_claude/writing_tests.md` (real HTTP, no-JS
 submits, phone User-Agents, visible-text assertions, measured rendering);
 structurally, nowhere — this one is held by review and by the suites being the
 shape they are.

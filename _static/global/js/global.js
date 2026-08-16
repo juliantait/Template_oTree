@@ -213,7 +213,7 @@
     // This only ever ADDS: with the script blocked no class is ever set, no mask
     // applies, and the styled scrollbar plus the background shadows still say
     // the region scrolls. The whole block is wrapped so instrumentation can
-    // never break a page (conventions.md).
+    // never break a page (docs/conventions.md).
     onReady(function initScrollAffordance() {
         try {
             var EPS = 2;

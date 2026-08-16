@@ -131,7 +131,7 @@
            the one that had to be redone: the strip used to sit inside
            .experimental-content because pinning it cost ~90px and pushed the
            consent options below the fold at 1280x720. Re-measured at three
-           viewports by tests/render_check.py — the consent control and the Next
+           viewports by scripts/tests/render_check.py — the consent control and the Next
            button both stay above the fold. If a future edit makes this strip
            taller, MEASURE AGAIN: a layout regression here produces no error and
            no failing test on its own. #}
@@ -180,7 +180,7 @@
     // Prolific appends ?PROLIFIC_PID=...; oTree's own spelling is
     // ?participant_label=... . Accept either, preferring the participant label
     // oTree has already resolved. Wrapped so instrumentation can never break the
-    // page (conventions.md).
+    // page (docs/conventions.md).
     (function () {
         try {
             var q = new URLSearchParams(window.location.search);

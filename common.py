@@ -204,7 +204,7 @@ def pvar(participant, name, default=None):
     ``getattr(participant, name, default)``. oTree's participant-vars descriptor
     raises ``KeyError`` — NOT ``AttributeError`` — for a field that has not been
     set yet, so a ``getattr`` default does not protect you and the page 500s.
-    (Learnt from a live outage; see conventions.md.)
+    (Learnt from a live outage; see docs/conventions.md.)
     """
     return participant.vars.get(name, default)
 
@@ -281,7 +281,7 @@ def flag(player, name) -> bool:
 # config for a friend test — therefore told a participant on the consent page to
 # contact the researchers *through Prolific*, and then served a screen-out page
 # with no way-out section at all: a DEAD END, with nothing on screen to say so,
-# no error and no failing test. Pinned now by tests/copy_routing_test.py.
+# no error and no failing test. Pinned now by scripts/tests/copy_routing_test.py.
 #
 # Read through `cfg`, never a raw `.get`: `recruitment` is a study-type axis with
 # a shipped default, NOT a module flag (see `flag` for why that distinction

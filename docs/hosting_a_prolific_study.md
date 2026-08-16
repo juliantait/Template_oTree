@@ -39,7 +39,7 @@ different reason. See "What is already in the image, and why" below.
    builds `http://` links on an `https://` site and redirects and assets break.
 5. **The Prolific wiring** — study URL, completion codes, and the return URL for
    a screened-out participant — which is study configuration, not hosting. It is
-   in `prolific/Prolific_running.md` and guarded by
+   in `running_on_prolific.md` and guarded by
    `scripts/prelaunch_check.py`.
 6. **A deploy that maps to an exact commit**, so you can say which code a given
    participant saw. A private repo holding only the experiment is the usual

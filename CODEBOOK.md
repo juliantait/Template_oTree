@@ -191,7 +191,7 @@ anything else is screened out with the detected type recorded here. The
 screen-out page (`before/screened_out.html` — the ONLY page that writes
 screen-out copy; the duplicate branch `outro/Ended.html` carried was deleted
 2026-08-14 as unreachable, and the unreachability is pinned by
-`tests/screenout_softwall_test.py`) writes a different sentence per type.
+`scripts/tests/screenout_softwall_test.py`) writes a different sentence per type.
 
 | Cause | Meaning | Set where |
 |-------|---------|-----------|
@@ -383,7 +383,7 @@ admin Payments page shows the total ONLY (`participation_fee` ships 0.00, so
 that one figure covers base plus bonus) — correct, but not actionable where two
 mechanisms pay. Whether `participation_fee` should carry the base is an open
 decision; it changes what these columns mean, so nothing has moved yet.
-`tests/payoff_ledger_test.py` §9 asserts the bonus in isolation as well as the
+`scripts/tests/payoff_ledger_test.py` §9 asserts the bonus in isolation as well as the
 total, and records the admin-page gap as measured.
 
 **What is NOT a payment record:**
@@ -413,7 +413,7 @@ total, and records the admin-page gap as measured.
   participants are handled outside this pipeline (Prolific pays through the
   platform).
 
-Pinned by `tests/payoff_ledger_test.py`: the admin-visible figure equals
+Pinned by `scripts/tests/payoff_ledger_test.py`: the admin-visible figure equals
 `earned`, the value survives a Results re-render, `player.payoff` writes
 raise, and the per-round column is absent from the export.
 

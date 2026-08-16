@@ -1,0 +1,90 @@
+<!-- RESULTS — LAB VARIANT.
+     Mirrors outro/Results.html rendered with is_lab = True and
+     prolific_completion_redirects = False, so:
+       * the "stay seated until the experimenter tells you" line is present;
+       * there is NO completion link and therefore NO button row — the logo
+         strip is the card's last child, exactly as the lab ending renders it;
+       * the accordion ships OPEN in the lab (results_open), which is why the
+         caret carries .open and the wrapper is not .is-hidden.
+     The per-round table is the real .results-table component, paid rounds
+     carrying the row wash, the inset bar and the "paid" pill.
+
+     TWO DEPARTURES FROM THE PAGE AS SHIPPED, both to fit a 16:9 canvas with
+     the payoff table OPEN, which the real page does not do (it is the longest
+     page in the study and scrolls inside the card on any ordinary display):
+       * the "Thank you, you're all done." greeting line above the total is
+         dropped — it is unconditional in outro/Results.html;
+       * a short 3-round session is shown.
+     Everything else — the receipt, the lab note, the accordion, the table —
+     is the page as a lab participant sees it. -->
+<div class="experimental-screen">
+    <div class="screen-card">
+        <div class="experimental-header">
+            <h2 class="header-title">Results</h2>
+        </div>
+        <div class="experimental-content">
+            <div class="payment-summary">
+                <div class="payout">
+                    <div class="payout-label">Total earned</div>
+                    <div class="payout-total">&euro;10.50</div>
+                </div>
+
+                <div class="payout-lines">
+                    <div class="payout-line">
+                        <span>Base payment</span><span class="amount">&euro;2.50</span>
+                    </div>
+                    <div class="payout-line">
+                        <span>Bonus from your decisions</span>
+                        <span class="amount">&euro;8.00</span>
+                    </div>
+                    <div class="payout-line total">
+                        <span>Total</span><span class="amount">&euro;10.50</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section-text results-notes">
+                <p>
+                    Please <strong>stay seated</strong> until the experimenter
+                    tells you that you can leave.
+                </p>
+            </div>
+
+            <div class="results-section">
+                <p class="section-text results-lead">
+                    <strong>2</strong> rounds counted for payment; they are
+                    highlighted below.
+                </p>
+                <button type="button" id="results-toggle" class="section-header results-toggle"
+                        aria-expanded="true" aria-controls="results-table-wrapper">
+                    <span id="results-arrow" class="results-arrow open" aria-hidden="true"></span>
+                    <span>See Payoff by Round</span>
+                </button>
+                <div id="results-table-wrapper" class="results-collapsible">
+                    <div class="table-scroll">
+                        <table class="results-table">
+                            <thead>
+                                <tr>
+                                    <th>Round</th>
+                                    <th>Payoff</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="selected-row"><td>Round 1<span class="tag paid-tag">paid</span></td><td>&euro;4.00</td></tr>
+                                <tr><td>Round 2</td><td>&euro;2.00</td></tr>
+                                <tr class="selected-row"><td>Round 3<span class="tag paid-tag">paid</span></td><td>&euro;4.00</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="logo-section">
+            <div class="logo-row">
+                <img src="__LOGO_UNIVERSITY__" alt="University logo">
+                <img src="__LOGO_LAB__" alt="Research lab logo">
+            </div>
+        </div>
+    </div>
+</div>

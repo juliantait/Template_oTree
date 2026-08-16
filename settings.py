@@ -574,7 +574,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     # deployed CODE. A session config is frozen at creation, so a template
     # reading `session.config.static_version` 500s for every in-flight
     # participant of a study that adds the parameter later (measured; see
-    # tests/frozen_config_test.py), and a cache-busting token should follow the
+    # scripts/tests/frozen_config_test.py), and a cache-busting token should follow the
     # build anyway, not the session.
     static_version=STATIC_VERSION,
 
@@ -602,7 +602,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     # itself (the axis, not a Prolific parameter).
     #
     # The study's ENTRY URL is configured on Prolific's side (see
-    # prolific/Prolific_running.md); the completion codes below are created in
+    # docs/running_on_prolific.md); the completion codes below are created in
     # the Prolific study UI and pasted per config — the prelaunch banner flags
     # any REPLACE_* placeholder that survives to launch.
     prolific_capture_participant_id=False,  # capture the Prolific ID at entry

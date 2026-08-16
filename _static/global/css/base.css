@@ -184,7 +184,7 @@ a { color: var(--accent); }
        a 94px jump every time the participant moved between them.
        HOW THE NUMBER IS DERIVED, so it stays stable rather than following
        whatever the placeholder task screen happens to contain today:
-       tests/render_check.py renders the task pages with the floor DISABLED and
+       scripts/tests/render_check.py renders the task pages with the floor DISABLED and
        records their NATURAL height (geometry.json -> card_min_derivation). For
        this template that is ~300px at 1280x720 — far BELOW the tall pages — so
        the binding constraint is "never shorter than the tall pages" and the
@@ -441,7 +441,7 @@ a { color: var(--accent); }
    changed is that it is no longer a reserved band ABOVE the fold — it is the
    last thing on the card, after the action, so a short page gets it for free and
    a long page pushes it down with everything else. Re-measured at three
-   viewports by tests/render_check.py. If a future edit makes the strip taller,
+   viewports by scripts/tests/render_check.py. If a future edit makes the strip taller,
    MEASURE AGAIN: a layout regression here produces no error and no red test.
 
    THE PRIORITY, and it decides future arguments rather than describing a past
@@ -895,7 +895,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
    THIS IS A SUPPRESSION WITH A REPLACEMENT, NOT A REMOVAL. Never delete a focus
    outline without one: the rule immediately below (.mc-option:focus-within) is
    what a keyboard user actually sees, it is asserted by
-   tests/render_check.py's focus leg, and if that rule is ever dropped this one
+   scripts/tests/render_check.py's focus leg, and if that rule is ever dropped this one
    must go with it.
 
    THE BOOTSTRAP RESET STAYS. oTree loads bootstrap5 before this file, and it
@@ -1065,7 +1065,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
    the gutters the header strips were offset by. The eyebrow rules for the
    narrative and instructions families subtract those same gutters, so both must
    be zeroed here or the eyebrow ends up one or two gutters right of the copy it
-   introduces (measured by the eyebrow leg in tests/render_check.py, which is
+   introduces (measured by the eyebrow leg in scripts/tests/render_check.py, which is
    what catches it).
 
    The card KEEPS its min-height, so a one-line page still fills the screen
@@ -1195,7 +1195,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
        consent choice may do. And when the budget runs out, STOP TIGHTENING —
        shorten the copy, or accept that the card scrolls. The scroll affordance
        is real and is asserted (conditionally, both ways, in
-       tests/render_check.py), and the guarantee that actually stops somebody
+       scripts/tests/render_check.py), and the guarantee that actually stops somebody
        consenting blind is elsewhere: the radio ships un-pre-checked and an
        untouched submit is REJECTED. The fold is a courtesy, not the control. */
     .stacked-form .mc-option,
@@ -1499,7 +1499,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
    reason). `bottom: 100%` + `translateY(50%)` centres each bar's box exactly on
    that edge, so the V spans edge-8px .. edge+8px and both halves are in
    reserved whitespace. It is measured off the rendered pixels in
-   tests/render_check.py: with the cue suppressed, its band must be blank card.
+   scripts/tests/render_check.py: with the cue suppressed, its band must be blank card.
 
    NO CUE ON A CARD WITH NO BUTTON ROW (the lab results page). The only band
    available there is the logo strip's top rule, and a V drawn across a

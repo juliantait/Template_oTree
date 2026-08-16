@@ -27,7 +27,14 @@ import os
 import sys
 
 # Make the project root importable when run from anywhere.
-_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# The repo root comes from the ONE marker-walking helper, never a level
+# count (see scripts/tests/_repo.py for what that cost on 2026-08-16).
+# `tests` is a CHILD of this directory, so this reference says nothing
+# about how deep scripts/ itself sits.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tests'))
+from _repo import REPO_ROOT  # noqa: E402
+
+_ROOT = REPO_ROOT
 sys.path.insert(0, _ROOT)
 
 import settings  # noqa: E402  (importing prints the banner)

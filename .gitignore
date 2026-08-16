@@ -5,28 +5,12 @@ __pycache__/
 .DS_Store
 .env
 .venv/
-.venv-linux/
 *.bak
 *.log
 
-# Instructions preview generator (intro/generate_instructions_preview.py):
-# runtime state and generated outputs — regenerable, never tracked. Running the
-# generator recreates a gitignored previews/ output dir for its HTML/PDF/SUMMARY.
-.preview_state.json
-.preview_config.json
+# Generated instruction previews — regenerable output, never tracked.
 /previews/
 
-# Agent scaffolding (pilot snapshots, performance reviews) — never synced
+# Agent working notes: briefs, review dumps, intermediate reasoning. Not
+# deliverables, so they stay local rather than shipping to a copied study.
 _ai/
-
-TODO.md
-
-# Julian's own Mac mini sync launcher (git-adds everything and pushes, so he can
-# keep the mini in step by double-clicking it). Personal convenience, not part
-# of the template — it must not travel into a copied study. Named explicitly
-# rather than as `*.command` so a launcher that IS template material would
-# still have to be ignored on purpose.
-GitHub_sync.command
-
-# Private Mac mini hosting runbook (tunnel IDs, ports, credential env names) — keep local
-MACMINI_HOSTING.md

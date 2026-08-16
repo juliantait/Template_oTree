@@ -68,7 +68,7 @@
        centred band's edge.
    The two regimes cross over at the same width (card inner = band + 4 gutters),
    which is why one pair of values holds at every viewport. Measured by
-   tests/render_check.py's eyebrow check, which fails loudly at >2px. */
+   scripts/tests/render_check.py's eyebrow check, which fails loudly at >2px. */
 .screen-card:has(.instructions) .experimental-header {
     width: 100%;
     max-width: calc(var(--instructions-band, 720px) + 4 * var(--scroll-gutter));
@@ -312,7 +312,7 @@
 
    The counter sits between them as the flex row's middle item, so it stays
    centred in the narrower span with nothing extra. All of it is asserted from
-   rendered geometry at three viewports by tests/render_check.py leg W, never
+   rendered geometry at three viewports by scripts/tests/render_check.py leg W, never
    from this stylesheet.
    The phone breakpoint below is unaffected: at <=520px both this and the text
    are the full width of the card anyway. */

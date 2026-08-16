@@ -166,7 +166,7 @@ URL_BASE = '/experimenter_dashboard'
 #   * the connector inset — half a track, __TL_INSET__
 #   * the page's JS STEPS — injected as JSON, never retyped
 # Add, rename or reorder a step HERE and all five follow.
-# `tests/dashboard_test.py` §D6 asserts they still agree — including that no
+# `scripts/tests/dashboard_test.py` §D6 asserts they still agree — including that no
 # placeholder survived unreplaced into the served page, which would be invalid
 # CSS and would collapse the timeline with nothing in any log. A future edit that
 # reintroduces a second copy fails there rather than drifting quietly.
