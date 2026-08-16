@@ -1,7 +1,7 @@
 # oTree-Template — rules for agents working in this template
 
 This template is copied to start new experiments, so a mistake here propagates to
-every study built from it. `conventions.md` holds the design principles and the
+every study built from it. `docs/conventions.md` holds the design principles and the
 README explains the parameter scheme; this file is the short list of rules you
 must not break.
 
@@ -154,8 +154,8 @@ screen). Mark them `EXCEPTION` with the reason, so the next reader can tell a
 deliberate departure from an accreted patch.
 
 **A change here also ages the website.** The screens on the academic site are
-built from these stylesheets by `previews/build_site_previews.py` (checked by
-`previews/check_site_previews.py`); re-run both after touching
+built from these stylesheets by `scripts/site_previews/build_site_previews.py` (checked by
+`scripts/site_previews/check_site_previews.py`); re-run both after touching
 `_static/global/css/`. Nothing fails if you don't — the site simply goes on
 showing an older study, which is exactly how the hand-written snapshots it
 replaced went stale.
@@ -186,14 +186,14 @@ server's mode, so a leak test pointed at a DEBUG server measures oTree's
 `vars_for_template` debug panel rather than what a participant can see. Assert
 what a real participant reaches — start the server in production mode.
 
-**Read `skills_claude/writing_tests.md` before writing or editing any test.** It
+**Read `docs/skills_claude/writing_tests.md` before writing or editing any test.** It
 holds the method (the two drivers, the no-JS submit, phone User-Agents,
 asserting on rendered visible text rather than raw HTML, escaping, frozen
 configs, measured browser rendering checks); the README's Testing table says what
 each kind of check is and is not evidence of.
 
 **A layout or copy change needs a MEASURED render check**, not a look:
-`tests/render_check.py` drives real headless Chromium at three viewports and
+`scripts/tests/render_check.py` drives real headless Chromium at three viewports and
 asserts on element geometry and rendered pixels. Layout failures produce no
 error at all — nothing 500s and no test goes red while the participant gets a
 broken page. Headless Chromium runs here without root; the recipe is

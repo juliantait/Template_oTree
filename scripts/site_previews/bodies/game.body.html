@@ -1,0 +1,71 @@
+<!-- GAME / DECISION SCREEN — A DUMMY, FOR THE WEBSITE ONLY.
+     There is no such page in the template: main/game.html is a placeholder
+     that says "Here's your game. Press Next to generate your payoff!". This
+     screen invents a plausible stag-hunt decision page out of REAL shipped
+     components only — the round-of-total progress strip
+     (_static/global/html/task_progress_strip.html), the .mc-option choice
+     cards, the .panel callout, the .payoff-matrix reminder and the card's
+     button row. Nothing here may be copied back into main/. -->
+<div class="experimental-screen">
+    <div class="screen-card">
+        <div class="experimental-header">
+            <div class="progress-strip">
+                <div class="progress-count">Round 3 of 10</div>
+                <div class="progress-track">
+                    <div class="progress-fill" style="width: 30%;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="experimental-content">
+            <p class="section-text">
+                Choose your action for this round. Your partner chooses at the
+                same time and cannot see your choice.
+            </p>
+
+            <div class="mc-options">
+                <label class="mc-option">
+                    <input type="radio" name="action" value="stag" checked>
+                    <span class="mc-option-body"><strong>Stag</strong> &mdash; 4 points if your partner also hunts stag, 0 if not</span>
+                </label>
+                <label class="mc-option">
+                    <input type="radio" name="action" value="hare">
+                    <span class="mc-option-body"><strong>Hare</strong> &mdash; 2 points whatever your partner does</span>
+                </label>
+            </div>
+
+            <table class="payoff-matrix">
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th></th>
+                        <th colspan="2" class="axis">Partner chooses</th>
+                    </tr>
+                    <tr>
+                        <th></th>
+                        <th></th>
+                        <th>Stag</th>
+                        <th>Hare</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <th rowspan="2" class="axis">You<br>choose</th>
+                        <th>Stag</th>
+                        <td>(<span class="your-payoff">4</span>, 4)</td>
+                        <td>(<span class="your-payoff">0</span>, 2)</td>
+                    </tr>
+                    <tr>
+                        <th>Hare</th>
+                        <td>(<span class="your-payoff">2</span>, 0)</td>
+                        <td>(<span class="your-payoff">2</span>, 2)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="button-row">
+            <input type="submit" value="Next" class="next-button">
+        </div>
+    </div>
+</div>

@@ -58,7 +58,7 @@ ever walks that line: `x.payoff = v`, `x.payoff += v`, `x.payoff: T = v`, and
 NOT CAUGHT — indirection, which is what a source scan is structurally blind to:
 `setattr(obj, name, v)` with a computed name, a write inside a library, a write
 built by `exec`. Those are covered from the other side by
-`tests/payoff_ledger_test.py` §7, which walks a real journey and then asserts
+`scripts/tests/payoff_ledger_test.py` §7, which walks a real journey and then asserts
 the underlying `_payoff` column is still untouched on every round row. That test
 is blind to code no walk reaches; this scan is blind to indirection. Their blind
 spots are disjoint, which is why BOTH exist and neither replaces the other.
@@ -96,15 +96,15 @@ _ROOT = os.path.dirname(os.path.abspath(__file__))
 # any `app_sequence` is scanned too — it is one config edit away from being
 # live, and this is a build check, not a coverage check.
 #
-# WHAT IS NOT, AND WHY EXACTLY THESE THREE. `tests/` and `scripts/` have no
+# WHAT IS NOT, AND WHY EXACTLY THESE THREE. `scripts/tests/` and `scripts/` have no
 # `__init__.py` today, so the package rule already skips them — but
-# `tests/payoff_ledger_test.py` DELIBERATELY writes `pl.payoff = 5` to prove
-# oTree's setter still raises. If somebody ever adds `tests/__init__.py` the
+# `scripts/tests/payoff_ledger_test.py` DELIBERATELY writes `pl.payoff = 5` to prove
+# oTree's setter still raises. If somebody ever adds `scripts/tests/__init__.py` the
 # rule would silently pull that line in and refuse the boot over the test that
 # proves the guard works, so it is named here rather than left to luck.
 #
-# THE LIST IS SHORT ON PURPOSE. `prolific/`, `previews/`, `ideas/`, `_ai/`,
-# `_static/`, `skills_claude/` are NOT listed even though nothing in them
+# THE LIST IS SHORT ON PURPOSE. `docs/`, `previews/`, `_ai/`,
+# `_static/`, `docs/skills_claude/` are NOT listed even though nothing in them
 # should ever be scanned: they are not packages, so they are skipped anyway,
 # and naming them would create a real hazard — an app later called `prolific`
 # would be silently exempted from the guard, which is the failure mode this
@@ -170,7 +170,7 @@ def _scan_tree(tree, rel):
 
         # `setattr(x, 'payoff', v)` — the indirection this CAN see. A computed
         # name (`setattr(x, name, v)`) is the half it cannot; that half belongs
-        # to tests/payoff_ledger_test.py §7.
+        # to scripts/tests/payoff_ledger_test.py §7.
         if (isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Name)
                 and node.func.id == 'setattr'

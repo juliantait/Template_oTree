@@ -1,0 +1,44 @@
+<!-- WELCOME — LAB.  THE LAB GATE, before/startpage.html.
+
+     WHICH PAGE THIS IS, because there are two candidates and the first build
+     of this preview picked the wrong one (Julian, 2026-08-15):
+
+       * before/startpage.html — THIS PAGE. The wait-to-be-seated hold screen
+         an experimenter advances. It is shown ONLY in a lab session, and it is
+         the one page in the study that carries the "Welcome to [lab]" header
+         (welcome_header.html says so in its own contract). If a lab welcome
+         preview does not carry that header, it is not showing the lab gate.
+       * before/welcome+consent.html — the SHARED welcome/consent page, which
+         renders in both study types and must NEVER carry the lab header. Its
+         lab rendering is a separate preview (consent_lab.html).
+
+     WHAT THIS PAGE ACTUALLY CONTAINS, and why it looks sparse: one sentence
+     and the institutional marks. That is the whole page — no button (the
+     template ships the Next control commented out, because an experimenter
+     advances the room), no form, nothing to read. base.css calls the lab gate
+     out by name as one of the short pages that sits at the card's height
+     floor, so a mostly-empty card IS this screen rendered correctly, and the
+     logo strip sitting along the foot is THE LOGO FOOTER RULE's `margin-top:
+     auto` doing its job. Do not pad it to look busier. -->
+<div class="experimental-screen">
+    <div class="screen-card narrative-card">
+        <div class="experimental-header">
+            <div class="welcome-header-row">
+                <h2 class="header-title">Welcome to</h2>
+                <img src="__LOGO_LAB__" alt="Research lab logo">
+            </div>
+        </div>
+        <div class="experimental-content">
+            <div class="section-text">
+                The experiment will start when everyone has taken their places.
+            </div>
+        </div>
+
+        <div class="logo-section">
+            <div class="logo-row">
+                <img src="__LOGO_UNIVERSITY__" alt="University logo">
+                <img src="__LOGO_LAB__" alt="Research lab logo">
+            </div>
+        </div>
+    </div>
+</div>

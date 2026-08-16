@@ -1,0 +1,78 @@
+<!-- INSTRUCTIONS — one representative step.
+     Mirrors intro/templates/instructing.html with a single
+     .instruction-block from intro/instructions_text.html (the payoff-matrix
+     step), so the pager, the eyebrow and the reading band are the real ones.
+     The step counter is written by instructions.js at runtime; here it is
+     filled in statically. -->
+<div class="experimental-screen">
+    <div class="screen-card">
+        <div class="experimental-header">
+            <div class="eyebrow">Please read carefully</div>
+        </div>
+        <div class="experimental-content">
+            <div class="instructions">
+                <div id="instruction-wrapper" class="instruction-wrapper">
+                    <div class="instruction-block">
+                        <h2>The payoff matrix</h2>
+                        <p>The table below shows the points each player earns for every combination of choices.</p>
+                        <table class="payoff-matrix">
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th></th>
+                                    <th colspan="2" class="axis">Column player chooses</th>
+                                </tr>
+                                <tr>
+                                    <th></th>
+                                    <th></th>
+                                    <th>Stag</th>
+                                    <th>Hare</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <th rowspan="2" class="axis">Row player<br>chooses</th>
+                                    <th>Stag</th>
+                                    <td>(4, 4)</td>
+                                    <td>(0, 2)</td>
+                                </tr>
+                                <tr>
+                                    <th>Hare</th>
+                                    <td>(2, 0)</td>
+                                    <td>(2, 2)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <p>
+                            Reminder: you are the row player. Your payoff is the
+                            <strong>first</strong> number in the cell selected by your row and
+                            your partner's column.
+                        </p>
+                        <ul>
+                            <li>If <strong>both</strong> of you choose Stag, you each earn 4 points.</li>
+                            <li>If <strong>both</strong> of you choose Hare, you each earn 2 points.</li>
+                            <li>If you choose Stag but your partner chooses Hare, the Stag-chooser
+                                earns 0 and the Hare-chooser earns 2.</li>
+                        </ul>
+                        <div class="panel">
+                            <strong>Remember:</strong> Stag pays 4 points only when
+                            <em>both</em> of you choose it. Hare always pays 2.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="instruction-controls">
+                    <button type="button" id="prevBtn" class="next-button ghost">
+                        Back
+                    </button>
+                    <div class="instruction-progress">
+                        <span id="instruction-counter">Page 4 of 6</span>
+                    </div>
+                    <button type="button" id="nextBtn" class="next-button">
+                        Next
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

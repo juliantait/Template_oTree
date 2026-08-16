@@ -185,15 +185,34 @@ def parse_part_blocks(text: str) -> list[dict]:
     ]
 
 
-def _strip_html_comments(text: str) -> str:
-    """Remove <!-- ... --> comments so block markers inside them don't match."""
-    return re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
+def _strip_comments(text: str) -> str:
+    """Remove BOTH comment syntaxes the content files use.
+
+    `<!-- ... -->` was already stripped, so block markers inside a commented-out
+    example could not match. `{# ... #}` was NOT, and that is a defect fixed on
+    2026-08-16: oTree's own comment syntax carries the AUTHOR notes in
+    `intro/instructions_text.html` and `intro/prequiz_text.html` — notes naming
+    people, dates, change-request item numbers and internal file paths — and
+    every one of them rendered as body text at the top of the first slide, in
+    all three previews.
+
+    NOTHING WAS WRONG IN THE STUDY ITSELF, which is exactly why it survived:
+    ibis strips `{# #}` when oTree renders the page, so a participant never saw
+    them and no test went red. Only the previews showed them — and the
+    interactive preview is the one going on the public website.
+
+    Two comment syntaxes, one stripped and one not, is the collapsed-distinction
+    shape in CLAUDE.md: keep them together here so a third syntax has an obvious
+    home rather than being handled somewhere else.
+    """
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
+    return re.sub(r"\{#.*?#\}", "", text, flags=re.DOTALL)
 
 
 def parse_blocks(path: Path) -> list[dict]:
     if not path.exists():
         return []
-    text = _strip_html_comments(path.read_text(encoding="utf-8"))
+    text = _strip_comments(path.read_text(encoding="utf-8"))
     div_blocks = parse_div_blocks(text)
     if div_blocks:
         return div_blocks

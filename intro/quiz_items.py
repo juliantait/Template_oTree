@@ -8,7 +8,7 @@ Edit this file to change quiz questions, choices, and solutions.
 # 2026-08-13). These shipped items exist so the template's quiz machinery can
 # be exercised — wrong answers, retries, the attempt log, the thresholds — not
 # to be exemplary comprehension items. They are expected to be replaced
-# WHOLESALE by a real study; see skills_claude/writing_quiz.md for what a real
+# WHOLESALE by a real study; see docs/skills_claude/writing_quiz.md for what a real
 # item should look like (and for why an item must never quiz the study's own
 # mechanics or the measured effect).
 QUIZ_ITEMS = [

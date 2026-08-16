@@ -340,7 +340,7 @@ TERMINAL_PAGES |= {p.strip() for p in
 # upgrade actually 500s. Unknown pages (anything a study added) simply sort
 # last; they are still tried.
 # NB the task-page names ('GameStart', 'payoff') also live in
-# tests/main_contract.py — the one contract the test suite imports. Update
+# scripts/tests/main_contract.py — the one contract the test suite imports. Update
 # them there on a game swap; this list only degrades (unknown names sort
 # last), it does not break.
 RESUME_PREFERENCE = ['quiz', 'GameStart', 'payoff', 'instructing',
@@ -1138,7 +1138,7 @@ def check_frozen_session_configs(log, degraded):
     audit_frozen_session_configs).
 
     NOT ALREADY TESTED ELSEWHERE, though it looks like it might be:
-    tests/frozen_config_test.py proves RESILIENCE — it strips keys from a
+    scripts/tests/frozen_config_test.py proves RESILIENCE — it strips keys from a
     session's stored config and walks a participant to prove nothing 500s. It
     never asks whether a stale session actually EXISTS in the live data.
     Resilience to the problem and detection of it are different things, and

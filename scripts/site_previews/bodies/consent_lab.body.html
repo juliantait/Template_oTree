@@ -1,0 +1,74 @@
+<!-- CONSENT — THE LAB RENDERING of before/welcome+consent.html.
+
+     THE COPY IS THE TEMPLATE'S OWN, VERBATIM (Julian, 2026-08-15). Every
+     sentence below is what `before/welcome+consent.html` renders for a lab
+     participant out of the box — nothing added, nothing lengthened. A fuller,
+     realistic-density consent page was tried here and REVERSED, and the
+     reasoning is worth keeping because it decides the next such question:
+     this screen goes on the website as what the template produces, so it has
+     to BE what the template produces. A departure explained in a file header
+     is invisible to somebody looking at the picture.
+
+     THE SHIPPED COPY IS SHORT, AND THE CANVAS IS SIZED FOR IT rather than the
+     copy being padded to fill the canvas. See CANVASES in
+     previews/build_site_previews.py: this screen is composed on a smaller 16:9
+     canvas than the others, so the card renders at its natural proportions
+     instead of floating in a void.
+
+     WHAT THE LAB PROFILE RESOLVES, and therefore what is on screen:
+       explicit_consent      False -> NO consent control of any kind. Consent in
+                                      the lab is implicit, by continuing, an
+                                      ethics choice made because there is an
+                                      experimenter in the room; the radio is
+                                      added by `before.welcome.get_form_fields`
+                                      only under that flag. An early build of
+                                      this preview showed a pre-selected
+                                      "I consent" radio — a screen no lab
+                                      participant has ever seen.
+       show_duration_and_fee False -> no duration sentence, no fee sentence.
+       collect_bank_details  True  -> the bank-details wording in the panel.
+       is_lab                True  -> "raise your hand to speak to the
+                                      experimenter", never "through Prolific".
+     NO "WELCOME TO [lab]" HEADER: that belongs to the gate page alone
+     (welcome_lab.html), and this page renders in both study types.
+
+     The institution in the privacy sentence comes from
+     `settings.INSTITUTION_NAME` in the real page; it is written out here. -->
+<div class="experimental-screen">
+    <div class="screen-card narrative-card">
+        <div class="experimental-header">
+            <div class="eyebrow">Before you begin</div>
+            <h2 class="header-title">Welcome</h2>
+        </div>
+
+        <div class="experimental-content">
+            <div class="panel panel--hug">
+                All recorded data are stored anonymously and used solely for
+                research purposes by researchers at the University of Amsterdam.
+                Your contact and bank details are used only to arrange your
+                payment and are never linked to the published data.
+            </div>
+
+            <p class="section-text">
+                <strong>By continuing to the next page you consent</strong> to
+                recording your experimental data.
+            </p>
+
+            <p class="section-text">
+                If you have any questions at any time, please raise your hand to
+                speak to the experimenter.
+            </p>
+        </div>
+
+        <div class="button-row">
+            <input type="submit" value="Next" class="next-button">
+        </div>
+
+        <div class="logo-section">
+            <div class="logo-row">
+                <img src="__LOGO_UNIVERSITY__" alt="University logo">
+                <img src="__LOGO_LAB__" alt="Research lab logo">
+            </div>
+        </div>
+    </div>
+</div>

@@ -185,7 +185,7 @@ def completion_link(player) -> str:
     therefore appears at RUNTIME for that participant, not at launch. Either
     way the submission is not auto-approved on Prolific and needs manual
     handling — the value is that the diagnosis is instant rather than an
-    investigation. Pinned by tests/frozen_config_test.py.
+    investigation. Pinned by scripts/tests/frozen_config_test.py.
     """
     config = player.session.config
     cause = dq_cause(player)
@@ -363,7 +363,7 @@ class Ended(monitoring.OutroMonitoredPage):
             # builder before/screened_out.html uses. THIS PAGE NO LONGER WRITES
             # SCREEN-OUT COPY (the duplicate device-sentence branch was
             # deleted 2026-08-14 — a screened-out participant is held in
-            # `before`, enforced by tests/screenout_softwall_test.py). The
+            # `before`, enforced by scripts/tests/screenout_softwall_test.py). The
             # spread is kept because the shared footer include reads
             # `prolific_screenout_return_url` from it to pick the CODELESS
             # exit for reason == 'screened_out' — the second line of defence
@@ -374,7 +374,7 @@ class Ended(monitoring.OutroMonitoredPage):
             # stripped below for anybody who is not screened out. It carries
             # `prolific_device_code`, and a comprehension-DQ participant has no
             # business receiving another population's code: found by
-            # tests/gated_flow_test.py when the per-ending codes landed
+            # scripts/tests/gated_flow_test.py when the per-ending codes landed
             # (2026-08-15), which is what that assertion is for.
             **_screenout_context(player),
             completionlink=completion_link(player),
@@ -484,7 +484,7 @@ def compute_final_payoff(p):
         return  # already computed (e.g. Results re-rendered)
 
     # Extract RANDOM selected payoffs from the participant's payoff vector as ordered tuples (round_number, payoff)
-    # Read participant vars with .vars.get(), never getattr() (KeyError trap; see conventions.md).
+    # Read participant vars with .vars.get(), never getattr() (KeyError trap; see docs/conventions.md).
     payoffs_vector = p.participant.vars.get('payoff_vector', []) or []
     # The "no payoff recorded" codes are the module-level MISSING_PAYOFF_SENTINELS
     # — a contract with the game in `main`; see the constant's comment.
@@ -518,7 +518,7 @@ def compute_final_payoff(p):
     # page mid-round (exp_pilots review, 2026-08-14; see payoff_guard.py). And
     # nothing in oTree recomputes participant.payoff afterwards (verified
     # against oTree 6.0.15: the player.payoff setter's delta is the only other
-    # writer; tests/payoff_ledger_test.py pins that this value sticks, and §7
+    # writer; scripts/tests/payoff_ledger_test.py pins that this value sticks, and §7
     # pins that a walked journey leaves every round row's _payoff at 0).
     #
     # The admin page displays payoff.to_real_world_currency(session) +
@@ -579,7 +579,7 @@ def results_live_method(player, data):
     because instrumentation must never break a page (CLAUDE.md).
 
     WHY A LIVE MESSAGE and not the hidden-field convention: the hidden-field
-    rule (conventions.md) rides measurement on the page's OWN form POST — but
+    rule (docs/conventions.md) rides measurement on the page's OWN form POST — but
     Results is the LAST page; there is no further submit to ride on. The live
     socket is the template's one sanctioned server-side channel that exists
     without a submit (the tab monitor already uses it). BEST-EFFORT by nature:

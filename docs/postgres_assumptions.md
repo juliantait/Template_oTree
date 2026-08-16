@@ -42,7 +42,7 @@ study survive being upgraded to this code?" runs on sqlite, and only on sqlite:
 - The documented way to obtain the input is
   `docker cp <container>:/app/data/db.sqlite3` — a file that does not exist under
   Postgres.
-- `tests/otree_inprocess.py` and `tests/render_check.py` create throwaway sqlite
+- `scripts/tests/otree_inprocess.py` and `scripts/tests/render_check.py` create throwaway sqlite
   databases. Every other suite is in-process or HTTP against sqlite.
 - `_ai/live_data/db_generated_*.sqlite3` (local only — `_ai/` is gitignored; not in a clone), the fixture that makes upgrade mode
   meaningful, is a sqlite file.
@@ -177,7 +177,7 @@ splitting if the file is being edited anyway; not worth a change on its own.
 
 ## Not on this list, checked and clean
 
-- `tests/otree_inprocess.py:134`, `tests/render_check.py:102` — both **override**
+- `scripts/tests/otree_inprocess.py:134`, `scripts/tests/render_check.py:102` — both **override**
   `DATABASE_URL` before importing oTree and chdir into a temp dir. Safe even
   when a live Postgres URL is exported in the shell.
 - `has_otree()` in `predeploy_check.sh` — `import otree` alone creates no file

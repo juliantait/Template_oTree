@@ -71,7 +71,7 @@ class Player(BasePlayer):
     # `before/__init__.py`, is what actually protects them: a build containing
     # the write refuses to START, so it is caught at deploy time while the old
     # build is still serving. oTree's raise stays underneath as the floor for
-    # the indirection a source scan cannot see; tests/payoff_ledger_test.py
+    # the indirection a source scan cannot see; scripts/tests/payoff_ledger_test.py
     # §7/§8 pin both halves.
     round_payoff = models.CurrencyField(blank=True)
     # Passive measurement: time on page in ms, filled by a hidden field on the
@@ -82,7 +82,7 @@ class Player(BasePlayer):
     # --- spare columns (future-proofing) -------------------------------------
     # Never rename in place. To repurpose one, record the mapping (with a date)
     # in CODEBOOK.md and add a rename-before-launch todo. See the repurpose
-    # convention in CODEBOOK.md and conventions.md.
+    # convention in CODEBOOK.md and docs/conventions.md.
     spare_str_1 = models.LongStringField(blank=True)
     spare_str_2 = models.LongStringField(blank=True)
 
@@ -181,7 +181,7 @@ class TaskPage(monitoring.MonitoredPage):
       * SUBCLASS THIS; never copy its attributes into a new page class —
         the page whose copy goes stale is the silently-unarmed page again.
 
-    ``tests/task_page_test.py`` proves the arming structurally — a fresh
+    ``scripts/tests/task_page_test.py`` proves the arming structurally — a fresh
     subclass is armed by subclassing alone, and the served page carries the
     monitor config end-to-end.
     """

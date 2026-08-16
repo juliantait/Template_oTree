@@ -130,7 +130,7 @@ $SCRATCH/sysroot/
 ```bash
 export LD_LIBRARY_PATH=$SCRATCH/sysroot/root/usr/lib/x86_64-linux-gnu
 ldd ~/.cache/ms-playwright/chromium-*/chrome-linux64/chrome | grep 'not found'   # → nothing
-LD_LIBRARY_PATH=$LD_LIBRARY_PATH "$SCRATCH/otreevenv/bin/python" tests/render_check.py
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH "$SCRATCH/otreevenv/bin/python" scripts/tests/render_check.py
 ```
 
 `LD_LIBRARY_PATH` must be set for the process that **launches** the browser —
@@ -205,7 +205,7 @@ Playwright worked here as-is.
 
 ## Where this is used
 
-- `tests/render_check.py` — renders every participant-facing page at three
+- `scripts/tests/render_check.py` — renders every participant-facing page at three
   viewports into `_ai/render_check/`, then asserts the layout contract by
   measurement (card gaps, scrolling, focus rings, the monitor overlay, the
   scroll affordance measured off the pixels).
