@@ -102,7 +102,7 @@ The project root holds the four oTree apps plus a small set of top-level items:
 | `_static/` | shared CSS/JS/HTML/images (the design system and `template.html`). |
 | `scripts/` | operational scripts: `start.sh`, `prelaunch_check.py` (config guard), `predeploy_check.sh`/`.py` (upgrade gate), `export_data.py`, `format_session_data.py`, `set_up_otree.bat`. |
 | `scripts/tests/` | HTTP-driven flow tests, escaping/frozen-config regressions, and the browser render check (see "Testing"). |
-| `scripts/site_previews/` | builds the self-contained screen previews the academic website embeds, from the live template (`build_site_previews.py`), plus the measured check that they render uncut (`check_site_previews.py`). Output lands in gitignored `_ai/site_previews/`. Re-run after changing `_static/global/css/`. |
+| `scripts/site_previews/` | builds the six self-contained screen previews the academic website embeds, from the live template (`build_site_previews.py`), plus the measured check that they render uncut and at one shared scale (`check_site_previews.py`). Five are participant screens built from `bodies/`; the sixth is the experimenter monitor, which is rendered by the dashboard's own JavaScript over the invented session in `monitor_session.py` and then frozen, so that step needs Playwright. Output lands in gitignored `_ai/site_previews/`. Re-run after changing `_static/global/css/` — or, for the monitor, `experimenter_dashboard.py`. |
 | `docs/` | **the tracked reference a copied study inherits** — start at `docs/README.md`. Hosting an online study, running one on Prolific, the design principles (`conventions.md`), the headless-Chromium recipe the render checks need, the open Postgres gaps, a group-matching reference implementation, and the experimenter-dashboard brief as it was specified. |
 | `docs/skills_claude/` | authoring playbooks for an agent working ON the template: writing the task, instructions, quiz, tests, and the Railway hosting procedure. Index: `docs/skills_claude/README.md`. |
 | `_templates/` | templates rendered OUTSIDE oTree's page system. Currently `room_welcome.html`, the styled room entry gate (see "The room welcome gate"). |
@@ -561,7 +561,7 @@ flowchart TD
         Welcome["welcome + consent<br>explicit consent question,<br>Prolific ID + device capture"]
         ScreenOut["screened_out — shown INSTEAD of consent,<br>at the same page index (exit code -4).<br>Codeless link back to Prolific."]
         ConfirmID["ConfirmProlificID — confirm the platform id"]
-        Arm["AISafetyAgree — ARMS THE TAB MONITOR.<br>EVERY page after this one is monitored by default<br>(monitoring.py): intro + main EJECT at the cap,<br>outro RECORDS ONLY — see the outro subgraph"]
+        Arm["AISafetyAgree — ARMS THE TAB MONITOR.<br>EVERY page after this one is monitored by default<br>(participant_tab_monitor.py): intro + main EJECT at the cap,<br>outro RECORDS ONLY — see the outro subgraph"]
     end
     Gate -. "a type the study excludes:<br>consent is never shown" .-> ScreenOut
     ScreenOut -. "returns on an accepted device<br>BEFORE consent: verdict CLEARED" .-> Welcome
@@ -865,13 +865,22 @@ column header lists all four, read from these settings on every poll, so an
 operator can see what counts as too long without opening `settings.py`. An amber
 row additionally names the limit it tripped.
 
-**The two summary pills at the foot average over DIFFERENT populations**, and
-each says which: **intro time** over everyone who has *completed the intro*
-(whatever they are doing now — a participant in round 4 finished the intro long
-ago, so their measurement is complete), and **earnings** over *finished*
+**The summary pills at the foot each state their POPULATION**, and it differs
+from one to the next: **avg intro time** over everyone who has *completed the
+intro* (whatever they are doing now — a participant in round 4 finished the intro
+long ago, so their measurement is complete), and **avg earnings** over *finished*
 participants only, because `earned` does not exist until the results page
 computes it. A still-running intro timer is excluded from the first: averaging a
 number that is still going up would move the mean every two seconds.
+
+A third pill, **total payments**, sums the *same* `earned` figure the rows show,
+over that same *finished* population (`of N finished`), so the one dashboard tab
+carries the payment picture and nobody has to open oTree's own Payments page. It
+is computed **server-side** from the same earnings read the row cells come from —
+not re-added in the browser — so the strip total can never disagree with the
+column it totals. Its mean is not repeated on it: the `avg earnings` pill beside
+it already shows exactly that. There is no `participation_fee` line — the
+template keeps that fee at zero (one payment ledger; see the fee guard).
 
 **Adding a column** is three marked places and nothing else — compute the value
 in `_participant_row` (`ADD A COLUMN HERE`), add a `<th>` to `_COLGROUP_HTML`,
@@ -1128,7 +1137,7 @@ auto-approve a payment, so keep its random part six or more characters and never
 a short number. Full operational detail: `docs/running_on_prolific.md`.
 - the **integrity modules** — `tab_monitor`, `comprehension_dq`, plus
   `passive_capture` and `device_capture`. With `tab_monitor` on, **every page
-  after the agreement screen is monitored by default** (`monitoring.py` — a
+  after the agreement screen is monitored by default** (`participant_tab_monitor.py` — a
   page can only be unmonitored by opting out explicitly), with one deliberate
   asymmetry: same monitor, same counting, **different consequence by phase**.
   During the instructions, quiz and task, violations count toward
@@ -1203,7 +1212,7 @@ docker run -d --name otree-template --restart unless-stopped \
 
 Then open `http://localhost:8101/` (admin) or `/demo`. Port **8101** is the
 standing test-hosting convention below; keep it unless you have a reason not to.
-To bind a session to the `experiment` room, run the host-side script against the
+To bind a session to the `study` room, run the host-side script against the
 container: `OTREE_BASE_URL=http://localhost:8101 scripts/start.sh`.
 
 Environment variables that matter:

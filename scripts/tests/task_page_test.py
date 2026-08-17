@@ -2,8 +2,9 @@
 
 This file began as the TaskPage test (J2: a task page silently unarmed for
 the tab monitor is found in the data, not in a test). The same reasoning now
-covers EVERY page after the agreement screen (monitoring.MonitoredPage /
-OutroMonitoredPage — the 2026-08-13 inversion), so this file proves the
+covers EVERY page after the agreement screen
+(participant_tab_monitor.MonitoredPage / OutroMonitoredPage — the 2026-08-13
+inversion), so this file proves the
 generalised structure:
 
   1. every page of intro, main and outro IS a MonitoredPage subclass, and the
@@ -38,7 +39,7 @@ from otree_inprocess import boot, path_of, page_name_of
 ot = boot(production=True)          # MUST come before any app import
 
 import common
-import monitoring
+import participant_tab_monitor
 import main
 import intro
 import outro
@@ -80,21 +81,21 @@ def main_test():
     section('1. every post-agreement page inherits the wiring — identity, not copies')
     # The ejecting phase: intro's pages and the task pages.
     for cls in (intro.instructing, intro.quiz, main.GameStart, main.payoff):
-        check(issubclass(cls, monitoring.MonitoredPage),
+        check(issubclass(cls, participant_tab_monitor.MonitoredPage),
               f'{cls.__module__}.{cls.__name__} subclasses MonitoredPage')
         check(cls.live_method is common.focus_live_method,
               f'{cls.__name__}.live_method IS common.focus_live_method '
               f'(the ejecting handler, one implementation)')
         check(cls.js_vars is common.monitor_js_vars,
               f'{cls.__name__}.js_vars IS common.monitor_js_vars')
-    check(issubclass(main.TaskPage, monitoring.MonitoredPage),
+    check(issubclass(main.TaskPage, participant_tab_monitor.MonitoredPage),
           'TaskPage itself subclasses MonitoredPage (generalised, not duplicated)')
     for cls in (main.GameStart, main.payoff):
         check(cls.is_displayed is main.task_page_visible,
               f'{cls.__name__}.is_displayed IS task_page_visible')
     # The record-only phase: the outro pages.
     for cls in (outro.Ended, outro.Demographics, outro.Feedback):
-        check(issubclass(cls, monitoring.OutroMonitoredPage),
+        check(issubclass(cls, participant_tab_monitor.OutroMonitoredPage),
               f'outro.{cls.__name__} subclasses OutroMonitoredPage')
         check(cls.live_method is common.focus_live_method_outro,
               f'{cls.__name__}.live_method IS the record-only handler')
@@ -120,7 +121,7 @@ def main_test():
     class Dodger(Page):
         pass
     try:
-        monitoring.assert_monitored_page_sequence('fake_app', [Dodger])
+        participant_tab_monitor.assert_monitored_page_sequence('fake_app', [Dodger])
         check(False, 'the checker REFUSES a plain-Page dodger')
     except TypeError as exc:
         check('monitored' in str(exc),
@@ -129,7 +130,7 @@ def main_test():
                      ('main', main.page_sequence),
                      ('outro', outro.page_sequence)):
         try:
-            monitoring.assert_monitored_page_sequence(app, seq)
+            participant_tab_monitor.assert_monitored_page_sequence(app, seq)
             check(True, f'{app}.page_sequence passes the checker')
         except TypeError as exc:
             check(False, f'{app}.page_sequence passes the checker ({exc})')
@@ -242,15 +243,15 @@ def main_test():
         s.close()
 
     section('5. the documented opt-out — one explicit switch, not omission')
-    class OptedOut(monitoring.MonitoredPage):
+    class OptedOut(participant_tab_monitor.MonitoredPage):
         monitored = False
 
     check(OptedOut.live_method is None,
           '`monitored = False` unbinds the live handler')
-    check(OptedOut.js_vars is monitoring.unmonitored_js_vars,
+    check(OptedOut.js_vars is participant_tab_monitor.unmonitored_js_vars,
           '…and swaps js_vars for the empty builder — CALLABLE, never None '
           '(oTree calls js_vars at render, so None would be a 500)')
-    class OwnFeature(monitoring.MonitoredPage):
+    class OwnFeature(participant_tab_monitor.MonitoredPage):
         monitored = False
         @staticmethod
         def live_method(player, data):

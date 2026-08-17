@@ -1,7 +1,7 @@
 from otree.api import *
 import numbers, json
 import common
-import monitoring
+import participant_tab_monitor
 from settings import INSTITUTION_NAME, STATIC_VERSION
 from .payment_rule import select_random_payouts
 
@@ -9,8 +9,9 @@ PROLIFIC_COMPLETE_URL = "https://app.prolific.com/submissions/complete?cc="
 
 # =============================================================================
 # THE TAB MONITOR IN THIS APP: SAME COUNTING, DIFFERENT CONSEQUENCE (Julian,
-# 2026-08-13). Every page below is monitored (monitoring.OutroMonitoredPage) —
-# but a violation here is RECORDED ONLY, in its own column
+# 2026-08-13). Every page below is monitored
+# (participant_tab_monitor.OutroMonitoredPage) — but a violation here is RECORDED
+# ONLY, in its own column
 # (focus_loss_count_outro), and NEVER disqualifies. That is not drift from the
 # intro/main behaviour; it is the point: by this app the task is over and the
 # data is already collected, so ejecting somebody who has completed the whole
@@ -331,7 +332,7 @@ def _screenout_context(player) -> dict:
     return ctx
 
 
-class Ended(monitoring.OutroMonitoredPage):
+class Ended(participant_tab_monitor.OutroMonitoredPage):
     """Finish screen for participants who did NOT complete normally: the two
     integrity disqualifications and a declined consent. When completion
     redirects are on it sends them back to Prolific with the matching code.
@@ -394,7 +395,7 @@ class Ended(monitoring.OutroMonitoredPage):
         )
 
 
-class Demographics(monitoring.OutroMonitoredPage):
+class Demographics(participant_tab_monitor.OutroMonitoredPage):
     form_model = 'player'
     # KEEP THE ANSWERS ON A VALIDATION ERROR (change_requests item 10). oTree
     # implements this client-side: it stores each named input in sessionStorage
@@ -543,7 +544,7 @@ def compute_final_payoff(p):
     p.participant.payoff = cu(target)
 
 
-class Feedback(monitoring.OutroMonitoredPage):
+class Feedback(participant_tab_monitor.OutroMonitoredPage):
     """Free-text pilot feedback (pilot_feedback axis).
 
     Shown to completers when the pilot_feedback flag is on — a pilot or friend
@@ -566,8 +567,8 @@ def results_live_method(player, data):
     return-click stamp below, and the tab monitor's focus messages, which are
     DELEGATED to the outro's record-only handler at the end (the
     four-pieces-travel-together rule: overriding the monitored base's
-    live_method must keep delegating, or this page's monitoring silently dies
-    — see monitoring.py's gotcha list, and the test that pins this).
+    live_method must keep delegating, or this page's monitoring silently dies —
+    see participant_tab_monitor.py's gotcha list, and the test that pins this).
 
     THE CLICK STAMP: records the click on the "Back to Prolific" link, so the
     dashboard can flag a finisher who never went back to the platform (their
@@ -608,7 +609,7 @@ def results_live_method(player, data):
     return common.focus_live_method_outro(player, data)
 
 
-class Results(monitoring.OutroMonitoredPage):
+class Results(participant_tab_monitor.OutroMonitoredPage):
 
     @staticmethod
     def is_displayed(player):
@@ -750,11 +751,12 @@ def vars_for_admin_report(subsession):
 # error, just wrong pages served and wrong data collected.
 page_sequence = [Ended, Demographics, Feedback, Results]
 
-# MONITORED BY DEFAULT — every page above must be a monitoring.MonitoredPage
-# subclass (here, OutroMonitoredPage: record-only — the phase note at the top
+# MONITORED BY DEFAULT — every page above must be a
+# participant_tab_monitor.MonitoredPage subclass (here, OutroMonitoredPage:
+# record-only — the phase note at the top
 # of this file) or explicitly opted out; a page that dodged the rule fails the
-# BOOT here, never a participant (see monitoring.py).
-monitoring.assert_monitored_page_sequence(__name__, page_sequence)
+# BOOT here, never a participant (see participant_tab_monitor.py).
+participant_tab_monitor.assert_monitored_page_sequence(__name__, page_sequence)
 
 # EXPERIMENTER DASHBOARD INSTALL — deliberately the LAST lines of the LAST app
 # module, and deliberately in `outro` rather than `before` or `settings.py`:

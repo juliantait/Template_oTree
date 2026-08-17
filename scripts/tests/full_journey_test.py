@@ -71,7 +71,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from http_flow_test import FormParser, build_payload  # noqa: E402
 from main_contract import TASK_PAGES  # noqa: E402  (the one task-page contract)
 
-ROOM = 'experiment'
+ROOM = 'study'
 DESKTOP_UA = ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
               '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36')
 

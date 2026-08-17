@@ -473,6 +473,12 @@ def session_snapshot(session) -> dict:
         stall_legend=stall_legend(),
         poll_seconds=poll_seconds(),
         currency=str(_setting('REAL_WORLD_CURRENCY_CODE', '')),
+        # TOTAL PAYMENTS for the summary strip (below the table): summed
+        # server-side from the SAME earnings map the row cells use, so the strip
+        # total can never disagree with the per-row figures. Its POPULATION
+        # (finished participants — those with a computed `earned`) and count
+        # ride along in the dict; see _earnings_total.
+        earnings_total=_earnings_total(ctx['earnings']),
         now=int(now),
     )
 
@@ -539,6 +545,40 @@ def _earnings_map(session) -> dict:
     except Exception:
         logger.exception('[dashboard] earnings read failed')
     return out
+
+
+def _earnings_total(earnings_map) -> dict:
+    """TOTAL PAYMENTS for the summary strip: the SUM of the very same `earned`
+    figures the rows show, over the participants who HAVE one.
+
+    Summed here, server-side, from the SAME dict the row cells are filled from
+    (`ctx['earnings']` = _earnings_map), NOT re-added in the client from the
+    rendered cells — so the strip total and the per-row earnings cannot
+    disagree, the one-value-for-display-and-detection discipline the timing
+    pill is built on (see _stall_elapsed / stall_elapsed). The mean falls out
+    of the same two numbers, but is deliberately NOT returned: the adjacent
+    `avg earnings` pill already shows exactly that mean over exactly this
+    population, and a second copy would be one concept with two implementations
+    — the inverted collapsed-distinction defect (CLAUDE.md). Total is the new
+    fact here; the mean is already on screen.
+
+    THE POPULATION is stated to the operator in words next to the pill: an
+    `earned` value exists only once the Results page has computed it, i.e. for
+    FINISHED participants — the same denominator the `avg earnings` pill names,
+    and `n` carries it so "total 148.00" over two of twenty is never read as
+    over twenty.
+
+    Defensive like _earnings_map, which it draws on: any failure degrades to
+    total=None (no pill), never a raise and never a dead dashboard.
+    """
+    try:
+        values = list(earnings_map.values())
+        if not values:
+            return dict(total=None, n=0)
+        return dict(total=float(sum(values)), n=len(values))
+    except Exception:
+        logger.exception('[dashboard] earnings total failed')
+        return dict(total=None, n=0)
 
 
 def _quiz_outcome_map(session) -> dict:
@@ -1947,7 +1987,14 @@ function renderRow(row, meta) {
    The count and its POPULATION are shown next to each pill, because "average
    intro time 4:12" over two of twenty participants is a different fact from the
    same number over twenty — and because two pills side by side with different
-   denominators would otherwise be read as having the same one. */
+   denominators would otherwise be read as having the same one.
+
+   A THIRD PILL, TOTAL PAYMENTS, joins them so the payment picture lives on this
+   tab. It is the ONE pill NOT computed here: it reads data.earnings_total,
+   summed server-side from the same earnings map the rows are filled from (see
+   _earnings_total), because a total that display and detection could disagree
+   on is the trap the timing pill exists to avoid. Its population is FINISHED
+   participants — the same denominator as avg earnings, stated the same way. */
 function summaryHTML(data) {
   var times = [], money = [];
   data.rows.forEach(function (r) {
@@ -1974,6 +2021,28 @@ function summaryHTML(data) {
            '<span class="pill pill-earn">' + mean(money).toFixed(2) +
            (data.currency ? ' ' + esc(data.currency) : '') +
            '</span><span class="sum-n">of ' + money.length +
+           ' finished</span></span>';
+  /* TOTAL PAYMENTS — so this one dashboard tab carries the payment picture and
+     nobody opens oTree's own Payments page. COMPUTED SERVER-SIDE
+     (data.earnings_total), never re-summed here from the row cells: the total
+     and the per-row earnings must be one number in one place, the same
+     discipline the timing pill follows so display and detection cannot
+     disagree. Its POPULATION is stated in words and its count carried, exactly
+     like the two averages — an `earned` figure exists only for a FINISHED
+     participant, the same denominator as `avg earnings`. The mean is NOT
+     repeated here: that pill already shows it (see _earnings_total). */
+  if (data.earnings_total && data.earnings_total.total != null &&
+      data.earnings_total.n > 0)
+    out += '<span class="sum-item" title="Total of the SAME earnings the rows ' +
+           'show, over FINISHED participants only — summed on the server from ' +
+           'the same figures, so it can never disagree with the per-row ' +
+           'cells. So the payment picture lives on this tab, not oTree’s ' +
+           'Payments page.">' +
+           '<span class="sum-label">total payments</span>' +
+           '<span class="pill pill-earn">' +
+           data.earnings_total.total.toFixed(2) +
+           (data.currency ? ' ' + esc(data.currency) : '') +
+           '</span><span class="sum-n">of ' + data.earnings_total.n +
            ' finished</span></span>';
   return out;
 }

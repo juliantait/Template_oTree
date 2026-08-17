@@ -138,8 +138,8 @@ def assert_monitored_page_sequence(app_name, page_sequence):
         if not (isinstance(page, type) and issubclass(page, MonitoredPage)):
             raise TypeError(
                 f"{app_name}.{page.__name__} is in page_sequence but is not a "
-                f"monitoring.MonitoredPage subclass. Every page after the "
-                f"agreement screen is monitored BY DEFAULT: subclass "
+                f"participant_tab_monitor.MonitoredPage subclass. Every page "
+                f"after the agreement screen is monitored BY DEFAULT: subclass "
                 f"MonitoredPage (or OutroMonitoredPage in the outro), or opt "
                 f"out EXPLICITLY with `monitored = False` on such a subclass. "
                 f"A plain Page here would be silently unwatched, which is the "

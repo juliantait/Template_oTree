@@ -163,7 +163,7 @@ documented. See `settings.EXIT_CODES` and the CODEBOOK.md exit-code table.
 - **tab_monitor** — server-authoritative tab-switch / AI-safety monitor: an
   arming page (`before.AISafetyAgree`), a live handler counting deduped
   violations, and a disqualified ending. **Every page after the arming page is
-  monitored BY DEFAULT** (`monitoring.MonitoredPage`; a page opts out only by
+  monitored BY DEFAULT** (`participant_tab_monitor.MonitoredPage`; a page opts out only by
   saying `monitored = False`), with one deliberate asymmetry — same monitor,
   same counting, different consequence by phase: during the instructions,
   quiz and task, violations eject at the threshold

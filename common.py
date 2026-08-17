@@ -1040,7 +1040,7 @@ def extra_set(participant, key, value):
 # a replayed event id cannot be counted once per phase.
 #
 # The page wiring that binds these — monitored BY DEFAULT for every page after
-# the agreement screen — lives in monitoring.py (MonitoredPage /
+# the agreement screen — lives in participant_tab_monitor.py (MonitoredPage /
 # OutroMonitoredPage); the client half is _static/global/js/ai_safety_monitor.js.
 
 # --------------------------------------------------------------------------
@@ -1269,7 +1269,7 @@ def _apply_focus_loss(player, data, ejects):
 
 def focus_live_method(player, data):
     """Server-authoritative tab-switch handler for the EJECTING phases
-    (intro + main — bound by monitoring.MonitoredPage).
+    (intro + main — bound by participant_tab_monitor.MonitoredPage).
 
     Counts each real focus-loss once (deduped by client-supplied event_id) and
     disqualifies at the configured threshold, broadcasting {action:'disqualified'}
@@ -1280,9 +1280,9 @@ def focus_live_method(player, data):
 
 
 def focus_live_method_outro(player, data):
-    """The OUTRO's handler (bound by monitoring.OutroMonitoredPage): the same
-    counting, RECORDED ONLY — it never disqualifies, never touches the exit
-    code, and never broadcasts (Julian, 2026-08-13; the full why is the phase
+    """The OUTRO's handler (bound by participant_tab_monitor.OutroMonitoredPage):
+    the same counting, RECORDED ONLY — it never disqualifies, never touches the
+    exit code, and never broadcasts (Julian, 2026-08-13; the full why is the phase
     note above). Violations land in `focus_loss_count_outro`, a separate
     column, so the export can tell post-task violations from the ones that
     counted toward ejection.
@@ -1315,10 +1315,12 @@ def _monitor_js_vars(player, ejects):
 
 
 def monitor_js_vars(player):
-    """js_vars for the EJECTING phases (bound by monitoring.MonitoredPage)."""
+    """js_vars for the EJECTING phases
+    (bound by participant_tab_monitor.MonitoredPage)."""
     return _monitor_js_vars(player, ejects=True)
 
 
 def monitor_js_vars_outro(player):
-    """js_vars for the record-only OUTRO phase (monitoring.OutroMonitoredPage)."""
+    """js_vars for the record-only OUTRO phase
+    (bound by participant_tab_monitor.OutroMonitoredPage)."""
     return _monitor_js_vars(player, ejects=False)

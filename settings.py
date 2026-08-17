@@ -499,12 +499,12 @@ SESSION_CONFIG_DEFAULTS = dict(
     # guarantee on resolve_recruitment_profile).
     # COVERAGE AND THE PHASE ASYMMETRY (Julian, 2026-08-13): with the module
     # on, EVERY page after the agreement screen is monitored by default
-    # (monitoring.py) — but the consequence differs by phase, deliberately:
-    # violations EJECT during the instructions, quiz and task (the pages the
-    # agreement protects), and are RECORDED ONLY during the outro (the task is
-    # over and the data collected; ejecting a completer over their bank-details
-    # page would cost a real participant for no benefit). Outro violations land
-    # in their own column, focus_loss_count_outro. Full why:
+    # (participant_tab_monitor.py) — but the consequence differs by phase,
+    # deliberately: violations EJECT during the instructions, quiz and task (the
+    # pages the agreement protects), and are RECORDED ONLY during the outro (the
+    # task is over and the data collected; ejecting a completer over their
+    # bank-details page would cost a real participant for no benefit). Outro
+    # violations land in their own column, focus_loss_count_outro. Full why:
     # common._apply_focus_loss.
     tab_monitor=False,              # tab-switch / AI-safety monitor
     tab_monitor_max_violations=2,   # disqualify on the Nth recorded tab-away (intro/main only)
@@ -847,8 +847,8 @@ INSTALLED_APPS = ['otree']
 # one per boot (which would strand in-progress participants).
 ROOMS = [
     dict(
-        name='experiment',
-        display_name='Experimental Session',
+        name='study',
+        display_name='Study Session',
         # THE ROOM WELCOME GATE, STYLED. oTree 6 serves an interstitial on every
         # room entry (a GET without `welcome_page_ok=1`), and its stock template
         # is bare framework markup — the FIRST thing a participant sees looking

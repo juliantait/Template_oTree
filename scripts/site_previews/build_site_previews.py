@@ -3,7 +3,7 @@
 build_site_previews.py
 ======================
 
-Build the five screen previews shown on the academic website.
+Build the six screen previews shown on the academic website.
 
 WHAT THIS IS FOR, AND WHY IT IS TRACKED
 ---------------------------------------
@@ -22,8 +22,8 @@ defect this replaces.
 
 WHAT IT PRODUCES
 ----------------
-Five standalone files in `_ai/site_previews/` (gitignored — they are build
-ARTEFACTS, this script and `bodies/` are the source):
+Six standalone files in `_ai/site_previews/` (gitignored — they are build
+ARTEFACTS, this script, `bodies/` and `monitor_session.py` are the source):
 
     welcome_lab.html     the LAB GATE (before/startpage.html) — sparse by design
     consent_lab.html     the shared consent page AS THE LAB RESOLVES IT
@@ -31,6 +31,11 @@ ARTEFACTS, this script and `bodies/` are the source):
     instructions.html    one representative instruction step, with its pager
     game.html            an INVENTED stag-hunt decision screen (see below)
     results_lab.html     the lab variant of the results screen
+    monitor.html         the EXPERIMENTER MONITOR over an invented lab session
+                         — the one screen nobody in the study ever sees
+
+THE FIRST FIVE ARE PARTICIPANT SCREENS AND ARE BUILT FROM `bodies/`; THE SIXTH
+IS BUILT DIFFERENTLY, and it has to be — see BUILDING THE MONITOR below.
 
 EVERY SCREEN MUST BE THE PROFILE AS RESOLVED, NOT AS REMEMBERED. Both lab
 screens were built wrong first time by inventing config values (an explicit
@@ -78,6 +83,31 @@ The ONLY hand-written CSS in the output is the seven-line shell below. It
 styles the canvas, never the screen: everything inside the frame is the
 template's own stylesheets, untouched.
 
+BUILDING THE MONITOR, AND WHY IT NEEDS A BROWSER
+------------------------------------------------
+`monitor.html` cannot be written as a body file, because the experimenter
+monitor's rows are not markup anywhere. `experimenter_dashboard.py` serves a
+shell whose `<tbody>` says `Waiting for first data…`, and every row, marker,
+pill and quiz cell is built by that same file's `renderRow` / `stateHTML` /
+`timelineHTML` — in JavaScript, from the poll's JSON. Hand-writing those rows
+here would be a SECOND IMPLEMENTATION of renderRow, drifting silently from the
+first (`CLAUDE.md`, the inverted collapsed-distinction rule).
+
+So the monitor preview is built by RUNNING THE REAL PAGE: the dashboard's own
+`_PAGE_HTML` — its stylesheet, its script, its header cells, its step list, all
+imported rather than copied — is loaded in headless Chromium with `fetch`
+stubbed to return the invented session in `monitor_session.py`, and the DOM it
+paints is then FROZEN into static HTML with every `<script>` removed. The result
+is markup the dashboard itself produced, that needs no server and no JavaScript
+to display.
+
+That makes this one screen depend on Playwright + Chromium at BUILD time (the
+five participant screens still build on the standard library alone, and the
+check step has always needed a browser anyway). The recipe for running Chromium
+here without root is `docs/headless_chromium_recipe.md`. Freezing is what buys
+the no-JavaScript guarantee the other five have for free — a website visitor
+with scripts blocked must not be shown an empty table.
+
 CHECKING THE OUTPUT
 -------------------
 Writing the files proves nothing — a layout fault here produces no error and no
@@ -89,12 +119,15 @@ headless Chromium without root is `docs/headless_chromium_recipe.md`.
 Usage:
     python3 scripts/site_previews/build_site_previews.py
 Dependencies:
-    none (standard library only)
+    the five participant screens: none (standard library only)
+    monitor.html: Playwright + Chromium, for the reason given above
 """
 
 import base64
 import html
+import json
 import pathlib
+import re
 import sys
 
 # The repo root comes from the ONE marker-walking helper rather than a
@@ -110,45 +143,54 @@ IMG = REPO / '_static/global/images'
 BODIES = pathlib.Path(__file__).resolve().parent / 'bodies'
 OUT = REPO / '_ai/site_previews'
 
-# --- THE CANVAS, AND WHY IT IS PER SCREEN ------------------------------------
-# Each screen is drawn on a fixed canvas and scaled into the site's iframe (see
-# the header). TWO RULES DECIDE THE NUMBERS, and the second one is a real
-# constraint rather than a preference:
+# --- THE CANVAS: ONE SIZE, THE SAME FOR EVERY SCREEN -------------------------
+# Each screen is drawn on this fixed canvas and scaled into the site's iframe
+# (see the header). THE NUMBER IS NOT FREE-FLOATING — two facts pin it:
 #
 #   1. THE CANVAS MUST BE 16:9. The shell scales by WIDTH
 #      (`calc(100vw / canvas-width)`), so a canvas of any other aspect leaves a
-#      band of bare background along the bottom of a 16:9 iframe. Height is not
-#      free: pick the width, and 16:9 fixes the height.
-#   2. A SMALLER CANVAS MAKES THE CONTENT LOOK BIGGER. Type is capped at 19px by
-#      base.css's clamp() from roughly 800px of width upward, so shrinking the
-#      canvas shrinks the CARD (88vh) while the text stays the same size — the
-#      content therefore fills more of the card. That is the lever used below.
+#      band of bare background along the bottom of a 16:9 iframe. Pick the
+#      width and 16:9 fixes the height.
+#   2. IT MUST BE THE SAME FOR EVERY SCREEN, because the site shows them side by
+#      side in equally sized tiles. The scale a tile applies is
+#      tile_width / canvas_width, so a screen on a smaller canvas is scaled UP
+#      more than its neighbours and renders larger at the same tile size.
 #
-# THE COST, STATED RATHER THAN HIDDEN (Julian, 2026-08-15): screens on different
-# canvases render at different apparent text sizes when scaled into
-# same-sized iframes. consent_lab sits on a 1152-wide canvas against 1920 for
-# the rest, so its text renders 1920/1152 = 1.67x larger in a tile of the same
-# width. There is no single canvas that suits every screen — the shipped
-# consent page carries 242px of copy where the instructions step carries ~700px,
-# a threefold spread — so the choice is: one canvas and the sparse screens float
-# in a void, or one canvas per screen and the tiles differ in zoom. This picks
-# the second. If the website shows the five side by side and the mismatch reads
-# badly, the fix is to put them all back on 1920x1080 and accept the void on
-# the two short screens, NOT to pad the copy: what these screens show has to be
-# what the template produces.
-DEFAULT_CANVAS = (1920, 1080)
-CANVASES = {
-    # MEASURED 2026-08-15, shipped copy, at each candidate 16:9 canvas
-    # (content / region / headroom, and the same content under a substituted
-    # serif, since these files render on a visitor's machine with their fonts):
-    #     1920x1080   262 / 622 / 360      serif 293   — the void Julian saw
-    #     1440x810    242 / 466 / 224      serif 273
-    #     1280x720    242 / 387 / 145      serif 273
-    #     1152x648    242 / 328 /  86      serif 273   <- chosen: 74% filled,
-    #                                                     55px clear under serif
-    #     1024x576    242 / 268 /  26      serif 273   — OVERFLOWS under serif
-    'consent_lab.html': (1152, 648),
-}
+# THIS WAS TRIED THE OTHER WAY AND REVERSED — the reasoning is the useful part.
+# A smaller canvas makes content look bigger: type is capped at 19px by
+# base.css's clamp() from roughly 800px of width upward, so shrinking the canvas
+# shrinks the CARD (88vh) while the text stays the same size, and the copy
+# therefore fills more of the card. consent_lab was put on 1152x648 for exactly
+# that reason, because the shipped lab consent copy is genuinely short (242px of
+# content where the instructions step carries ~700px) and floated in a white
+# void on 1920x1080. MEASURED 2026-08-15, shipped copy, at each candidate 16:9
+# canvas (content / region / headroom, and the same content under a substituted
+# serif, since these files render on a visitor's machine with their fonts):
+#
+#     1920x1080   262 / 622 / 360      serif 293   — the void
+#     1440x810    242 / 466 / 224      serif 273
+#     1280x720    242 / 387 / 145      serif 273
+#     1152x648    242 / 328 /  86      serif 273   — 74% filled
+#     1024x576    242 / 268 /  26      serif 273   — OVERFLOWS under serif
+#
+# JULIAN SAW THE RESULT IN THE SITE GRID AND DECIDED AGAINST IT (2026-08-16):
+# 1152 against 1920 is a 1.67x difference in apparent size, and that one tile
+# rendering half again as large as its neighbours reads worse than the void
+# does. So every screen is back on 1920x1080 and THE VOID ON THE SHORT SCREENS
+# IS THE ACCEPTED OUTCOME — the shipped consent page really is that short.
+#
+# THE REJECTED ALTERNATIVE, so nobody re-proposes it: do NOT pad or lengthen the
+# consent copy to fill the frame. These screens go on the website as what the
+# template produces, so they must carry the LITERAL SHIPPED COPY; a preview that
+# invents a fuller consent page is a picture of a study nobody ran, and no file
+# header disclaims what somebody sees in the picture.
+#
+# It is therefore ONE constant and not a per-screen table. A table of overrides
+# that all happen to hold the same value is an invitation to differ again; the
+# uniformity is the decision, so it is expressed as something that cannot vary.
+# check_site_previews.py IMPORTS this rather than restating it — it is the same
+# fact, and two copies of one fact drift.
+CANVAS = (1920, 1080)
 
 
 def data_uri(name):
@@ -306,6 +348,96 @@ SCREENS = [
 ]
 
 
+MONITOR_NOTE = (
+    'THE EXPERIMENTER MONITOR — the operator\'s screen, not a participant\'s.\n'
+    '  It is a live view of one running session: one row per participant, a\n'
+    '  six-step timeline showing where each of them is, and pills for the\n'
+    '  things somebody in the room has to act on.\n\n'
+    '  THE SESSION IS INVENTED. Nineteen rows, no real participant behind any of\n'
+    '  them: no Prolific IDs (a Prolific row\'s label IS the platform ID), no\n'
+    '  completion codes, no contact or bank details — the screen has no column\n'
+    '  for any of those. The rows are in scripts/site_previews/monitor_session.py.\n\n'
+    '  IT IS A LAB SESSION, AND THAT IS WHY THERE ARE NO RED "ENDED EARLY" ROWS.\n'
+    '  All four terminal states (screened out, declined consent, comprehension\n'
+    '  DQ, tab-monitor DQ) need a module the lab profile switches OFF, so a lab\n'
+    '  monitor genuinely never shows one. An online session does; showing them\n'
+    '  here would be a picture of a configuration this study does not run.\n\n'
+    '  THE ROWS WERE DRAWN BY THE DASHBOARD ITSELF. This is not a mock-up of the\n'
+    '  monitor: experimenter_dashboard.py\'s own JavaScript rendered every row\n'
+    '  below, and the DOM it produced was then frozen so the page needs no\n'
+    '  server and no scripts. The controls are therefore inert here — the live\n'
+    '  screen refreshes itself every two seconds.')
+
+
+def build_monitor():
+    """Freeze the experimenter monitor, RENDERED BY ITS OWN JAVASCRIPT.
+
+    The dashboard is imported, never copied: `_PAGE_HTML` already carries its
+    stylesheet, its script, the header cells and the step list, all resolved
+    from `STEP_LABELS` at that module's import. Only three things are changed,
+    and each is a consequence of the page leaving the server:
+
+      1. the `<link>` to base.css becomes the stylesheet INLINE — the file
+         loads on a static site with no access to this repo;
+      2. `fetch` is stubbed to hand back the invented session instead of
+         polling `/data`, and `setInterval` is neutered so the frozen DOM is
+         one deterministic paint rather than whichever tick we caught;
+      3. `toLocaleTimeString` returns a fixed time, so rebuilding the preview
+         does not produce a different file every run for no reason.
+
+    Then every `<script>` is removed. What is left is the dashboard's own
+    output as static markup: no server, no poll, no JavaScript — which is what
+    lets this screen pass the same scripts-disabled check as the other five.
+    """
+    from playwright.sync_api import sync_playwright   # build-time only
+
+    sys.path.insert(0, str(REPO))
+    import experimenter_dashboard as dash             # stdlib-only at import
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import monitor_session
+
+    live = (dash._PAGE_HTML
+            .replace('<link rel="stylesheet" href="__CSS_HREF__">',
+                     '<style>\n%s\n</style>' % css('base.css'))
+            .replace('__SESSION_TITLE__', html.escape(monitor_session.SESSION_TITLE))
+            .replace('__SESSION_CODE__', html.escape(monitor_session.SESSION_CODE))
+            .replace('__DATA_URL__', 'about:blank')
+            .replace('__POLL_MS__', '2000'))
+    # The stub goes in the HEAD, so it is installed before the page's own
+    # script (which is at the end of the body) ever runs.
+    stub = """<script>
+window.fetch = function () {
+  return Promise.resolve({json: function () { return %s; }});
+};
+window.setInterval = function () { return 0; };
+Date.prototype.toLocaleTimeString = function () { return '10:42:18 AM'; };
+</script>""" % json.dumps(monitor_session.payload())
+    live = live.replace('<html><head><meta charset="utf-8">',
+                        '<html><head><meta charset="utf-8">' + stub, 1)
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page(viewport={'width': CANVAS[0], 'height': CANVAS[1]})
+        page.set_content(live)
+        # Wait for the POLL to have painted: until the first tick lands the
+        # tbody still holds the shell's "Waiting for first data…" placeholder,
+        # and freezing that would produce a preview of an empty dashboard that
+        # looks, at thumbnail size, exactly like a working one.
+        page.wait_for_function(
+            '() => document.querySelectorAll("#rows tr").length === %d'
+            % len(monitor_session.ROWS))
+        frozen = page.evaluate('() => document.documentElement.outerHTML')
+        browser.close()
+
+    # EVERY script out: the stub, and the dashboard's own poll loop. What
+    # remains has to stand up with scripts disabled, because a visitor who
+    # blocks them must not be shown an empty table.
+    frozen = re.sub(r'<script\b[^>]*>.*?</script>', '', frozen, flags=re.S)
+    if '<script' in frozen:
+        raise SystemExit('monitor: a script survived the freeze — not shippable')
+    return '<!DOCTYPE html>\n' + frozen
+
+
 def main():
     # THE SAME TWO FILES A REBRAND REPLACES (README, "Rebranding a copied
     # study"). Named by ROLE, never by institution, so a copied study that
@@ -314,17 +446,31 @@ def main():
     logo_lab = data_uri('lab_logo.jpg')
 
     OUT.mkdir(parents=True, exist_ok=True)
-    for name, title, sheets, note in SCREENS:
-        body = (BODIES / name.replace('.html', '.body.html')).read_text()
-        body = (body.replace('__LOGO_UNIVERSITY__', logo_university)
-                    .replace('__LOGO_LAB__', logo_lab))
-        inner = INNER.format(title=title, css=css(*sheets), body=body)
-        cw, ch = CANVASES.get(name, DEFAULT_CANVAS)
+    cw, ch = CANVAS
+
+    def write(name, title, note, inner):
+        """ONE shell, ONE canvas, for every screen — the participant pages and
+        the monitor alike. The monitor differs only in how its inner document
+        was obtained; it must not differ in how it is framed, or it stops
+        scaling like its neighbours in the site's grid (see CANVAS)."""
         page = OUTER.format(title=title, srcdoc=html.escape(inner, quote=True),
                             note=note, cw=cw, ch=ch)
         (OUT / name).write_text(page)
         print('%-22s %8.1f kB  canvas %dx%d  ->  %s'
               % (name, len(page) / 1024, cw, ch, OUT / name))
+
+    for name, title, sheets, note in SCREENS:
+        body = (BODIES / name.replace('.html', '.body.html')).read_text()
+        body = (body.replace('__LOGO_UNIVERSITY__', logo_university)
+                    .replace('__LOGO_LAB__', logo_lab))
+        write(name, title, note, INNER.format(title=title, css=css(*sheets),
+                                              body=body))
+
+    # The monitor last: it is the only screen that needs a browser to build, so
+    # a missing Chromium leaves the five participant screens already written
+    # and fails with a message naming the recipe, rather than failing the whole
+    # run before anything is produced.
+    write('monitor.html', 'Experimenter monitor', MONITOR_NOTE, build_monitor())
 
 
 if __name__ == '__main__':

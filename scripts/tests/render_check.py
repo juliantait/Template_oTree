@@ -916,7 +916,7 @@ def check_room_welcome_gate(server, browser):
     page has no measured check at all.
     """
     section('AR. The room welcome gate: styled, legible, and still a gate')
-    url = f'{server.base}/room/experiment'
+    url = f'{server.base}/room/study'
 
     for vp_name, vp in VIEWPORTS.items():
         context = browser.new_context(viewport=vp)

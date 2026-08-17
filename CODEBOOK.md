@@ -48,7 +48,7 @@ removed on those grounds; `-4` was wired up instead of removed.)
 
 Same monitor, same counting, **different consequence by phase** (Julian,
 2026-08-13). With `tab_monitor` on, every page after the agreement screen is
-monitored (`monitoring.py`), but violations split into two exported
+monitored (`participant_tab_monitor.py`), but violations split into two exported
 participant fields by WHERE they happened:
 
 | Column | Counts violations on | Consequence |
@@ -72,7 +72,7 @@ The two-column split is what keeps that legible in the data:
   focus loss is never counted in both columns.
 
 The full reasoning lives at `common._apply_focus_loss`; the per-phase wiring
-at `monitoring.py`.
+at `participant_tab_monitor.py`.
 
 ### `tab_monitor_flag` — the column to sort when you want the attention cases
 

@@ -1,8 +1,8 @@
 // ── AI-safety / tab-switch monitor ───────────────────────────────────────────
 // Client half of the integrity module. Server authority is
 // participant.ai_safety_disqualified, set by common.focus_live_method (bound
-// on every monitored page by monitoring.MonitoredPage — pages are monitored
-// BY DEFAULT after the agreement screen; see monitoring.py).
+// on every monitored page by participant_tab_monitor.MonitoredPage — pages are monitored
+// BY DEFAULT after the agreement screen; see participant_tab_monitor.py).
 //
 // CREDITED TO NICOLAS ORLINK (original client logic).
 //

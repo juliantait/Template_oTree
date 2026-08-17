@@ -9,11 +9,14 @@
      to BE what the template produces. A departure explained in a file header
      is invisible to somebody looking at the picture.
 
-     THE SHIPPED COPY IS SHORT, AND THE CANVAS IS SIZED FOR IT rather than the
-     copy being padded to fill the canvas. See CANVASES in
-     previews/build_site_previews.py: this screen is composed on a smaller 16:9
-     canvas than the others, so the card renders at its natural proportions
-     instead of floating in a void.
+     THE SHIPPED COPY IS SHORT AND THIS SCREEN THEREFORE HAS EMPTY SPACE BELOW
+     IT. That is accepted, not an unfinished job (Julian, 2026-08-16). Shrinking
+     the canvas to close the gap was tried and reversed — it scaled this tile up
+     1.67x against its neighbours in the site grid, which read worse than the
+     void; see CANVAS in scripts/site_previews/build_site_previews.py for the
+     measurements. Every screen is on 1920x1080. Do not close the gap by adding
+     or lengthening copy: the whole point of this file is that it shows what a
+     lab participant actually renders.
 
      WHAT THE LAB PROFILE RESOLVES, and therefore what is on screen:
        explicit_consent      False -> NO consent control of any kind. Consent in

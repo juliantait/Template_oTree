@@ -14,7 +14,7 @@
 #
 # Configuration (env vars, with lab defaults):
 #   OTREE_BASE_URL         base URL of the running server (default http://localhost:8000)
-#   OTREE_ROOM             room name in settings.ROOMS (default: experiment)
+#   OTREE_ROOM             room name in settings.ROOMS (default: study)
 #   OTREE_SESSION_CONFIG   session config to create (default: lab)
 #   OTREE_NUM_PARTICIPANTS room size to create (default: 30)
 #   OTREE_AUTH_LEVEL       if 'STUDY', REST calls are authenticated (see below)
@@ -23,7 +23,7 @@
 set -euo pipefail
 
 BASE_URL="${OTREE_BASE_URL:-http://localhost:8000}"
-export ROOM_NAME="${OTREE_ROOM:-experiment}"
+export ROOM_NAME="${OTREE_ROOM:-study}"
 SESSION_CONFIG="${OTREE_SESSION_CONFIG:-lab}"
 NUM_PARTICIPANTS="${OTREE_NUM_PARTICIPANTS:-30}"
 

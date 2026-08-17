@@ -4,7 +4,7 @@ import random
 # Take NUM_ROUNDS from session defaults (static at import time for oTree).
 from settings import INSTITUTION_NAME, SESSION_CONFIG_DEFAULTS, STATIC_VERSION
 import common
-import monitoring
+import participant_tab_monitor
 num_experimental_rounds = SESSION_CONFIG_DEFAULTS['num_experimental_rounds']
 
 # One implementation, in common.flag (raw config.get — see its docstring for
@@ -154,15 +154,16 @@ def task_template_vars(player) -> dict:
     return dict(progress_vars(player))
 
 
-class TaskPage(monitoring.MonitoredPage):
+class TaskPage(participant_tab_monitor.MonitoredPage):
     """THE BASE EVERY TASK PAGE SUBCLASSES — the task-specific wiring, once.
 
     THE MONITOR WIRING IS NOT HERE ANY MORE — it generalised upward
     (2026-08-13, whole-app review B1): TaskPage began as the template's one
     use of page inheritance (J2: a page silently not armed for the monitor is
     worse than the cost of a base class), and that same reasoning now covers
-    EVERY page after the agreement screen through `monitoring.MonitoredPage`,
-    which this subclasses. live_method and js_vars are inherited from there;
+    EVERY page after the agreement screen through
+    `participant_tab_monitor.MonitoredPage`, which this subclasses. live_method
+    and js_vars are inherited from there;
     what stays HERE is what makes a page a TASK page:
       * ``is_displayed = task_page_visible`` — round capping plus the
         removed-from-study belt;
@@ -174,7 +175,8 @@ class TaskPage(monitoring.MonitoredPage):
     monitor's script/stylesheet ship to every page via css_bundle.html — no
     per-template include left to forget.)
 
-    TWO GOTCHAS, still live — monitoring.py's docstring carries the full set:
+    TWO GOTCHAS, still live — participant_tab_monitor.py's docstring carries the
+    full set:
       * oTree resolves page attributes AT IMPORT: a page that must NOT be
         monitored cannot just omit something — it says ``monitored = False``
         (never ``js_vars = None``, which 500s at render);
@@ -282,7 +284,8 @@ class payoff(TaskPage):
 
 page_sequence = [GameStart, payoff]
 
-# MONITORED BY DEFAULT — every page above must be a monitoring.MonitoredPage
-# subclass or explicitly opted out; a page that dodged the rule fails the BOOT
-# here, never a participant (see monitoring.py).
-monitoring.assert_monitored_page_sequence(__name__, page_sequence)
+# MONITORED BY DEFAULT — every page above must be a
+# participant_tab_monitor.MonitoredPage subclass or explicitly opted out; a page
+# that dodged the rule fails the BOOT here, never a participant (see
+# participant_tab_monitor.py).
+participant_tab_monitor.assert_monitored_page_sequence(__name__, page_sequence)
