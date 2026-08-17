@@ -221,6 +221,32 @@ Three things worth knowing before you swap:
 `INSTITUTION_NAME` carries its own article (`'the University of Amsterdam'`,
 but `'MIT'`): the sentence using it cannot know which one your name takes.
 
+### Notification tiers (popups)
+
+Every message you put in front of a participant is a choice between **four
+documented behaviours**, numbered 0–3 by how far *outside the experiment frame*
+the message sits. The tier fixes the behaviour (backdrop? how is it dismissed?
+can it move the page layout?); your call site supplies the words. Add
+`class="popup popup--<tier>"` and the shared CSS (`_static/global/css/base.css`,
+"THE NOTIFICATION TIER LADDER") plus the shared JS (`_static/global/js/global.js`,
+"POPUP LADDER") give you the ARIA, keyboard and dismissal for free — you write
+markup only. A working specimen of each is in
+`_static/global/html/template.html` (CARD 3).
+
+| Tier | Class | Backdrop | Dismissal | Use it for |
+|---|---|---|---|---|
+| 0 anchored | `popup--anchored` | none | outside-click / Escape | something the participant **opened by clicking** — an explainer beside a label, a term, how the bonus works. Not for anything that must be acknowledged, reports a broken rule, or is time-critical. (For a passive hover hint use `.popover-anchor` instead.) |
+| 1 toast (sidetone) | `popup--toast` | none | auto-clears (≈4s, or `data-popup-timeout`) | a **fading acknowledgement** of what they just did. Never dismissed by hand. Its host must be `position: relative` (use `.popup-toast-host`). |
+| 2 modal | `popup--modal` | dimmed | Escape **by default**; `popup--acknowledge` makes it button-only | a **decision they must make** before continuing. Keeps the study's own card language (the shared `.modal-card`). |
+| 3 takeover | `popup--takeover` | opaque, blurred | **none** — clears only when the condition clears | **the study has stopped**. A takeover never carries a close control; if it needs a button it is a modal. |
+
+Wiring at the call site: a `data-popup-open="ID"` button opens tier 0/2/3;
+`data-popup-toast="ID"` shows a toast; `data-popup-close` inside a modal closes
+it. Tiers 2 and 3 already had live instances when the ladder landed — the
+shared warning modal, the quiz dialogs, and the tab monitor's red away-overlay
+(tier 3) — so those keep their own behaviour and are brought in *by name*, not
+rewired; see `DECISIONS.md`.
+
 ## Parameter scheme (read `docs/conventions.md` and `settings.py` first)
 Three **independent axes** at the top of `settings.py` determine everything a
 participant experiences:

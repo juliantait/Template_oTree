@@ -307,7 +307,9 @@ DASHBOARD_RETURN_GRACE_SECONDS = 90
 # which is what the templates read.
 # 14 -> 15 on 2026-08-15: the logo files were renamed (see INSTITUTION_NAME
 # below).
-STATIC_VERSION = '15'
+# 15 -> 16 on 2026-08-17: the notification tier ladder (base.css, tabmonitor.css,
+# global.js, quiz.js, template.html) — see DECISIONS.md.
+STATIC_VERSION = '16'
 
 # --- whose study this is ------------------------------------------------------
 # THE ONE PLACE A COPIED STUDY NAMES ITS INSTITUTION IN PROSE (Julian,

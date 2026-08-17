@@ -1581,7 +1581,177 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
     transition: width .3s ease;
 }
 
-/* --- COMPONENT: warning modal ------------------------------------------------
+/* ===========================================================================
+   THE NOTIFICATION TIER LADDER — the study's four ways of putting something in
+   front of a participant, numbered 0–3 by how far OUTSIDE the experiment frame
+   the message sits. ONE place, so a new pop-up is a CHOICE BETWEEN FOUR
+   DOCUMENTED BEHAVIOURS rather than a fresh invention with its own z-index and
+   its own idea of how to be dismissed (Julian, 2026-08-17; brief in
+   _ai/template_adoption_brief.md, Topic A — local only, _ai/ is gitignored).
+
+   The tier decides BEHAVIOUR (backdrop? how is it dismissed? can it move the
+   page layout?); the component keeps its own SKIN. Apply as
+   `class="popup popup--<tier>"`, plus the component's own skin class.
+
+     popup--anchored  (tier 0) NO backdrop. A small panel floated beside the
+                      control that opened it, absolute and out of flow, so
+                      opening it can never push the page down. Dismissed by an
+                      outside click or Escape. The page underneath stays usable.
+
+     popup--toast     (tier 1) NO backdrop, NOT dismissible by hand, absolutely
+                      positioned so it can never move layout, and it CLEARS
+                      ITSELF after a few seconds (or when the action completes).
+                      Julian calls this the SIDETONE. Announced politely
+                      (role="status") so a screen reader hears it without focus
+                      being stolen.
+
+     popup--modal     (tier 2) DIMMED BACKDROP, EXPLICIT DISMISSAL: it blocks
+                      the page until the participant acts. Escape-dismissible BY
+                      DEFAULT; a modal that must be ACKNOWLEDGED opts in to
+                      button-only dismissal with `popup--acknowledge`. It KEEPS
+                      THE STUDY'S VISUAL LANGUAGE — the card radius, the lift
+                      shadow, the shared button — because it is still the study
+                      talking, not the browser. IMPLEMENTED BY the warning-modal
+                      component below (.modal-backdrop / .modal-card); popup--modal
+                      is its ladder name, one rule block, not a second modal.
+
+     popup--takeover  (tier 3) FULL-BLEED and BLURRED, opaque backdrop, NO
+                      DISMISSAL AT ALL — it clears only when the blocking
+                      CONDITION clears, never by a button. The study has stopped
+                      and the participant cannot carry on from here. IMPLEMENTED
+                      BY .tabmon-overlay (tabmonitor.css, the red away-overlay),
+                      which predates this ladder; popup--takeover is its alias
+                      there, so tier 3 is catalogued, not rebuilt.
+
+   HOW A TIER IS CHOSEN AT THE CALL SITE — the one-line test:
+     in flow beside a control            → anchored
+     a fading acknowledgement of an act  → toast
+     must be decided before continuing   → modal
+     the study has stopped               → takeover
+   A takeover NEVER has a close control; if you need a button, it is a modal.
+   Copy is study-specific and passed in the markup (counts/prizes/rounds come
+   from config, per the no-hardcoded-quantities rule); the toast timeout is the
+   one allowed literal, an interaction timing, exposed as data-popup-timeout.
+
+   The BEHAVIOUR (open/close, ARIA, keyboard, focus trap, auto-dismiss) lives in
+   ONE place — global.js's "POPUP LADDER" block — keyed off these classes and
+   data-popup-* attributes, so a study author writes MARKUP ONLY. Specimens of
+   all four are in _static/global/html/template.html (CARD 3). Tiers 2 and 3
+   already had live instances when the ladder landed; those keep their own JS
+   (the warning modal, the quiz dialogs, the tab monitor) and are brought in by
+   NAME + the shared focus trap, not rewired — the tab-switch warning modal in
+   particular is left on its own tabmonitor chrome on purpose (it owns the
+   disqualification route; see DECISIONS.md).
+   =========================================================================== */
+
+/* Every popup sits above the page and never inherits the surrounding text
+   alignment. Nothing here positions anything — each tier does that itself,
+   because "does this take part in layout" is exactly what separates them. */
+.popup { text-align: left; }
+.popup[hidden] { display: none; }
+
+/* --- TIER 0: ANCHORED --------------------------------------------------------
+   INTENTION (lifted verbatim from the TODO entry that commissioned it): tier 0
+   is for something the participant ASKED FOR BY CLICKING — an explainer beside a
+   figure or a label, the meaning of a term, a reminder of the exchange rate or
+   of how the bonus is worked out; content that does not interrupt, does not
+   require a decision, and can be dismissed by looking away. What does NOT belong
+   here: anything the study needs the participant to acknowledge, anything that
+   reports a rule being broken, anything time-critical.
+
+   Distinct from .popover-anchor / .popover-panel above: THAT is a CSS-only
+   hover/focus tooltip (role="tooltip"), shown while hovered and gone when not.
+   THIS is CLICK-to-open and stays open until dismissed (role="dialog"), which is
+   why it needs the JS in global.js. Use the popover for a passive hint, tier 0
+   for something the participant deliberately opened.
+
+   The trigger is wrapped in .popup-anchor (position: relative) and the panel is
+   absolute under it, so opening the panel never pushes the page down. */
+.popup-anchor { position: relative; display: inline-flex; }
+
+.popup-trigger {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 0 0 auto;
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid var(--line-strong);
+    background: var(--card-bg);
+    color: var(--ink-mute);
+    font: inherit;
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    transition: border-color .14s ease, color .14s ease, background-color .14s ease;
+}
+.popup-trigger:hover,
+.popup-trigger[aria-expanded="true"] {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.popup--anchored {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 40;
+    width: min(320px, 78vw);
+    padding: 12px 14px;
+    background: var(--card-bg);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-lift);
+    font-size: .84em;
+    line-height: 1.5;
+    color: var(--ink-soft);
+}
+.popup--anchored p { margin: 0; }
+.popup--anchored p + p { margin-top: .6em; }
+
+/* --- TIER 1: TOAST (the sidetone) --------------------------------------------
+   CANNOT MOVE THE LAYOUT — that is the whole contract. Absolutely positioned
+   inside its host (which must be position: relative — use .popup-toast-host, or
+   any relatively-positioned wrapper), so it is out of flow in every state and
+   appearing or clearing shifts nothing. Centred over the control it is talking
+   about, and pointer-transparent so it can never swallow the click the
+   participant makes next. It auto-clears on a timer (global.js, default 4000ms,
+   overridable with data-popup-timeout) — never dismissed by hand. */
+.popup-toast-host { position: relative; }
+
+.popup--toast {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 60;
+    max-width: min(320px, 92%);
+    padding: .6em 1em;
+    background: var(--ink);
+    color: #fff;
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-lift);
+    font-size: .84em;
+    line-height: 1.4;
+    text-align: center;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .16s ease;
+}
+.popup--toast strong { color: #fff; }
+.popup--toast.is-visible { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+    .popup--toast { transition: none; }
+}
+
+/* --- COMPONENT: warning modal  (TIER 2 of the ladder above) ------------------
    ALL WARNINGS ARE CENTRED, SCREEN-DIMMING MODALS (change_requests item 9,
    Julian 2026-08-11) — never a banner that pushes the page down under the
    participant. These rules used to live in quiz.css and serve the lab's
@@ -1590,11 +1760,19 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
    exactly this chrome on every page. An overlay, so revealing it moves nothing
    underneath (the stability rule).
 
+   THIS IS TIER 2 (popup--modal) OF THE LADDER. `.popup--modal` is the ladder
+   name for exactly this backdrop; the two selectors share one rule block below
+   so there is one implementation, not two. A page adds `popup popup--modal` to
+   the backdrop and `.modal-card` (+ optional `popup--acknowledge` for button-only
+   dismissal) and gets the tier's behaviour from global.js.
+
    DELIBERATELY NOT SHARED: the tab monitor's full-screen red overlay
-   (tabmonitor.css). That is an ENFORCEMENT warning covering the whole viewport
-   on purpose, not a validation message, and Julian confirmed it stays as it is.
+   (tabmonitor.css). That is tier 3 (an ENFORCEMENT takeover covering the whole
+   viewport on purpose), not a validation message, and Julian confirmed it stays
+   as it is.
 
    [hidden] must win over the flex display. */
+.popup--modal,
 .modal-backdrop {
     position: fixed;
     inset: 0;
@@ -1606,6 +1784,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
     padding: 24px;
 }
 
+.popup--modal[hidden],
 .modal-backdrop[hidden] { display: none; }
 
 .modal-card {

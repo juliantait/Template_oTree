@@ -43,6 +43,12 @@ function skipQuiz() {
         var backdrop = document.getElementById('quiz-modal-backdrop');
         if (!backdrop) return;
         backdrop.hidden = false;
+        // Tier-2 focus trap (shared, global.js). This is a button-only modal
+        // (popup--acknowledge): no Escape/backdrop dismissal — unchanged from
+        // before; only the trap is added.
+        if (typeof popupTrapFocus === 'function') {
+            backdrop._trapRelease = popupTrapFocus(backdrop);
+        }
         var primary = backdrop.querySelector('.modal-actions .next-button');
         if (primary) primary.focus();
     } catch (e) { /* never block the quiz */ }
@@ -51,7 +57,9 @@ function skipQuiz() {
 function dismissQuizModal() {
     try {
         var backdrop = document.getElementById('quiz-modal-backdrop');
-        if (backdrop) backdrop.hidden = true;
+        if (!backdrop) return;
+        backdrop.hidden = true;
+        if (backdrop._trapRelease) { backdrop._trapRelease(); backdrop._trapRelease = null; }
     } catch (e) { /* never block the quiz */ }
 }
 
@@ -95,6 +103,10 @@ function openReread() {
         backdrop.dataset.returnFocus = 'rereadOpen';
         backdrop.hidden = false;
         _rereadSetSubmitsDisabled(true);
+        // Tier-2 focus trap (shared, global.js): Tab stays inside the dialog.
+        if (typeof popupTrapFocus === 'function') {
+            backdrop._trapRelease = popupTrapFocus(backdrop);
+        }
         var close = document.getElementById('rereadClose');
         if (close) close.focus();
         var body = document.getElementById('reread-body');
@@ -107,6 +119,7 @@ function closeReread() {
         var backdrop = document.getElementById('reread-backdrop');
         if (!backdrop) return;
         backdrop.hidden = true;
+        if (backdrop._trapRelease) { backdrop._trapRelease(); backdrop._trapRelease = null; }
         _rereadSetSubmitsDisabled(false);
         var back = document.getElementById(backdrop.dataset.returnFocus || '');
         if (back) back.focus();
