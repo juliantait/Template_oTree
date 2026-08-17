@@ -63,6 +63,7 @@ from device_gate_test import (PHONE_UA, TABLET_UA, DESKTOP_UA, NO_UA, BLANK_UA,
                               LONG_UA, CONSENT_MARKER, SCREENOUT_MARKER,
                               visible_text, page_name, participant_code,
                               create, session_vars, CODES, COMPLETION_URL_RE)
+from quiz_answers import CORRECT as QUIZ_CORRECT  # answers derived from the shipped items
 import common
 
 # See device_gate_test: `requests` will not send a malformed header, and the
@@ -114,7 +115,13 @@ def enter(base, url, ua, label=''):
 
 def walk_on(base, s, r, label, budget=60):
     """Keep submitting forms until an ending, the screen-out page, or a dead end."""
-    answers = {}
+    # Seed the quiz answers from the shipped items (quiz_answers.py): in
+    # production the DEBUG-only solutions blob is absent, so a walker that only
+    # read solutions off the page would fail the quiz and, with comprehension_dq
+    # on, land on the DQ ending (exit -2) — which is exactly what made the two
+    # "completes with exit code 1" checks below fail. The solutions_json read is
+    # kept so the walk still works under DEBUG, where it re-affirms these values.
+    answers = dict(QUIZ_CORRECT)
     for _ in range(budget):
         if r.status_code >= 500:
             check(False, f'{label}: HTTP {r.status_code} at {page_name(r.url)}')

@@ -58,7 +58,6 @@ mid-study" in README.md).
 
 Exit 0 = the participant finished. Never touches a real database.
 """
-import importlib.util
 import os
 import re
 import sys
@@ -95,29 +94,15 @@ def section(title):
     print(f'\n=== {title} ===')
 
 
-def load_quiz_items():
-    """The quiz items, loaded straight from the file.
-
-    By path, not `from intro.quiz_items import …`: that would execute
-    `intro/__init__.py`, which needs oTree configured, and this test drives a
-    SEPARATE server process. Loading the module by path also means the correct
-    answers do not come from the page under test — a quiz that stopped sending
-    its DEBUG solutions, or sent the wrong ones, cannot make this test agree
-    with it.
-    """
-    path = os.path.join(REPO_ROOT,
-                        'intro', 'quiz_items.py')
-    spec = importlib.util.spec_from_file_location('_quiz_items', path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.QUIZ_ITEMS
-
-
-QUIZ_ITEMS = load_quiz_items()
-CORRECT = {i['field']: i['answer'] for i in QUIZ_ITEMS}
-# A definite WRONG answer per item: any listed choice that is not the answer.
-WRONG = {i['field']: next(c for c in i['choices'] if c != i['answer'])
-         for i in QUIZ_ITEMS}
+# The quiz answers come from quiz_answers.py — ONE derivation from
+# intro/quiz_items.py, shared by every walker that has to pass or fail the quiz
+# (this file's loader used to live here; it is now the shared implementation, so
+# it cannot drift from the copies the other suites once each kept). Loaded by
+# path there, not `from intro.quiz_items import …`, because this test drives a
+# SEPARATE server process and must not configure oTree; deriving the answers
+# rather than reading the page's DEBUG solutions also means a quiz that stopped
+# sending its solutions, or sent the wrong ones, cannot make this test agree.
+from quiz_answers import CORRECT, WRONG  # noqa: E402
 
 
 def page_name(url):
