@@ -326,24 +326,24 @@ def init_participant(participant):
     when the participant actually finishes.
     """
     participant.exit_code = EXIT_CODES['abandoned']   # 0 until they finish
-    participant.failed_attempts = 0
+    participant.comprehension_failed_attempts = 0
     participant.payoff_vector = []
     participant.stage_timestamps = {}
     participant.participant_extra = {}
     participant.participant_id_external = participant.vars.get('participant_id_external', '')
-    participant.ai_safety_disqualified = False
-    participant.focus_loss_count = 0
+    participant.tab_monitor_disqualified = False
+    participant.tab_monitor_focus_loss_count = 0
     # Post-task violations: recorded, NEVER disqualifying — a separate column
-    # from focus_loss_count so an analyst can tell a completed-with-violations
+    # from tab_monitor_focus_loss_count so an analyst can tell a completed-with-violations
     # participant from a nearly-ejected one (the phase asymmetry note above
     # _apply_focus_loss).
-    participant.focus_loss_count_outro = 0
-    participant.focus_event_ids = []
+    participant.tab_monitor_focus_loss_count_outro = 0
+    participant.tab_monitor_focus_event_ids = []
     # Per-event detail behind the counters, and the at-least evidence that
     # earlier events never reached the server (see _record_focus_event and
     # _note_missed_events).
-    participant.focus_events = []
-    participant.focus_losses_missed_at_least = 0
+    participant.tab_monitor_focus_events = []
+    participant.tab_monitor_focus_losses_missed_at_least = 0
     # Reader-facing tab-monitor columns (see derive_tab_monitor_flag). Set here
     # rather than left to the first violation, so a participant who never trips
     # the monitor still exports a meaningful pair — and so `tab_monitor_where`
@@ -352,9 +352,9 @@ def init_participant(participant):
     monitored = bool(participant.session.config.get('tab_monitor'))
     refresh_tab_monitor_flag(participant, monitored=monitored)
     participant.comprehension_disqualified = False
-    participant.instructions_reread_used = False
+    participant.comprehension_reread_used = False
     participant.device_info = {}
-    participant.screened_out = False
+    participant.screenout_active = False
     # True once a screen-out has EVER been lifted for this participant. Stays
     # True even if they are later screened again, so "this person switched
     # device" is one column in the export instead of a JSON blob to parse.
@@ -516,7 +516,7 @@ def is_screened_out(participant) -> bool:
     it later in the flow. Reads participant vars with .vars.get() — never
     getattr().
     """
-    return bool(participant.vars.get('screened_out'))
+    return bool(participant.vars.get('screenout_active'))
 
 
 def removed_from_study(participant) -> bool:
@@ -546,7 +546,7 @@ def removed_from_study(participant) -> bool:
     v = participant.vars
     return bool(
         is_screened_out(participant)
-        or v.get('ai_safety_disqualified')
+        or v.get('tab_monitor_disqualified')
         or v.get('comprehension_disqualified')
         or v.get('exit_code') == EXIT_CODES['no_consent']
     )
@@ -835,7 +835,7 @@ def set_screened_out(participant, cause):
     participant who reads that page and closes the tab must still export as a
     screen-out rather than as an abandoner.
     """
-    participant.screened_out = True
+    participant.screenout_active = True
     set_exit_code(participant, EXIT_CODES['screened_out'])
     extra_set(participant, SCREENOUT_CAUSE_KEY, cause)
 
@@ -867,7 +867,7 @@ def clear_screened_out(participant):
     and `screenout_cleared` plus the history is how you tell such a row apart
     from one that never moved.
     """
-    participant.screened_out = False
+    participant.screenout_active = False
     participant.screenout_cleared = True
     if participant.vars.get('exit_code') == EXIT_CODES['screened_out']:
         set_exit_code(participant, EXIT_CODES['abandoned'])
@@ -928,7 +928,7 @@ def screenout_vars(participant, config) -> dict:
 # to diagnose a false positive after the fact, or to see that somebody switched
 # device. Lives in the free JSON bucket rather than in its own column because it
 # is a variable-length record; the flat facts an analyst filters on
-# (`screened_out`, `screenout_cleared`, `exit_code`) are all first-class fields.
+# (`screenout_active`, `screenout_cleared`, `exit_code`) are all first-class fields.
 SCREENOUT_HISTORY_KEY = 'screenout_history'
 MAX_SCREENOUT_HISTORY = 20
 SCREENOUT_UA_TRUNC = 300      # an audit note, not a payload
@@ -1028,15 +1028,15 @@ def extra_set(participant, key, value):
 # THE TWO PHASES ARE TWO COLUMNS, so an analyst can tell a completed-with-
 # violations participant from a nearly-ejected one:
 #
-#   focus_loss_count        violations while ejection applied (intro + main).
+#   tab_monitor_focus_loss_count        violations while ejection applied (intro + main).
 #                           Crossing tab_monitor_max_violations HERE
 #                           disqualifies (exit code -3).
-#   focus_loss_count_outro  violations after the task (outro pages). NEVER
+#   tab_monitor_focus_loss_count_outro  violations after the task (outro pages). NEVER
 #                           disqualifies, whatever the count — a nonzero value
 #                           on a finished participant does NOT mean they came
 #                           close to ejection. See CODEBOOK.md.
 #
-# Event dedup (focus_event_ids) is deliberately SHARED across both phases, so
+# Event dedup (tab_monitor_focus_event_ids) is deliberately SHARED across both phases, so
 # a replayed event id cannot be counted once per phase.
 #
 # The page wiring that binds these — monitored BY DEFAULT for every page after
@@ -1052,7 +1052,7 @@ def extra_set(participant, key, value):
 # the raw columns requires knowing which phase ejects, which does not, and what
 # `tab_monitor_max_violations` was set to for THAT session. A reader who has
 # never opened CODEBOOK.md cannot get there, and a reader who half-remembers it
-# gets there wrongly: a nonzero `focus_loss_count_outro` on a finished
+# gets there wrongly: a nonzero `tab_monitor_focus_loss_count_outro` on a finished
 # participant looks alarming and means "keep and pay them".
 #
 # So one column says what to DO, in an ordered vocabulary, most severe winning:
@@ -1068,8 +1068,8 @@ def extra_set(participant, key, value):
 #   'disqualified' the threshold was crossed. EXCLUDE from analysis — the row
 #                  is flagged, not deleted.
 #
-# It REPLACES NOTHING. `focus_loss_count`, `focus_loss_count_outro` and
-# `ai_safety_disqualified` remain exactly as they were and are what this is
+# It REPLACES NOTHING. `tab_monitor_focus_loss_count`, `tab_monitor_focus_loss_count_outro` and
+# `tab_monitor_disqualified` remain exactly as they were and are what this is
 # derived from; the flag is a reading of them, not a substitute.
 #
 # DERIVED IN ONE PLACE (`derive_tab_monitor_flag`) and written from the ONE
@@ -1089,13 +1089,13 @@ def derive_tab_monitor_flag(pvars) -> str:
     Pure and read-only so it can be applied to a live participant, an exported
     row, or a test fixture without special-casing any of them.
     """
-    if pvars.get('ai_safety_disqualified'):
+    if pvars.get('tab_monitor_disqualified'):
         return 'disqualified'
-    if int(pvars.get('focus_loss_count') or 0) > 0:
-        # Under the threshold: crossing it sets ai_safety_disqualified above, so
+    if int(pvars.get('tab_monitor_focus_loss_count') or 0) > 0:
+        # Under the threshold: crossing it sets tab_monitor_disqualified above, so
         # reaching here means enforcing-phase violations that did NOT eject.
         return 'warned'
-    if int(pvars.get('focus_loss_count_outro') or 0) > 0:
+    if int(pvars.get('tab_monitor_focus_loss_count_outro') or 0) > 0:
         return 'observed'
     return ''
 
@@ -1109,13 +1109,13 @@ def derive_tab_monitor_where(pvars, monitored=True) -> str:
     the study the observations came from.
 
     IT NAMES THE PAGES when they are known: `questionnaire: Demographics,
-    Feedback`. That is the point of recording `focus_events` — 'questionnaire'
+    Feedback`. That is the point of recording `tab_monitor_focus_events` — 'questionnaire'
     alone spans Results, Demographics, Feedback and Ended, so it could not tell
     a reader whether to distrust the demographics answers or the feedback typed
     on the page after them.
 
     THE REGION WORD STAYS THE PREFIX, deliberately. Values were region-only
-    before `focus_events` existed, and a participant recorded then still has no
+    before `tab_monitor_focus_events` existed, and a participant recorded then still has no
     page list — so `startswith('questionnaire')` keeps working across the
     change, and an old row degrades to the old value instead of becoming
     unreadable.
@@ -1127,8 +1127,8 @@ def derive_tab_monitor_where(pvars, monitored=True) -> str:
     """
     if not monitored:
         return 'not-monitored'
-    task = int(pvars.get('focus_loss_count') or 0) > 0
-    outro = int(pvars.get('focus_loss_count_outro') or 0) > 0
+    task = int(pvars.get('tab_monitor_focus_loss_count') or 0) > 0
+    outro = int(pvars.get('tab_monitor_focus_loss_count_outro') or 0) > 0
     if task and outro:
         region = 'task+questionnaire'
     elif task:
@@ -1141,9 +1141,9 @@ def derive_tab_monitor_where(pvars, monitored=True) -> str:
     # Distinct page names, in the order they were first seen — reading order is
     # what a reader wants ("distracted on Demographics, then again on
     # Feedback"), not alphabetical. Silently absent for a participant recorded
-    # before focus_events existed, which is why the region word stands alone.
+    # before tab_monitor_focus_events existed, which is why the region word stands alone.
     seen, pages = set(), []
-    for event in (pvars.get('focus_events') or []):
+    for event in (pvars.get('tab_monitor_focus_events') or []):
         page = (event or {}).get('page')
         if page and page not in seen:
             seen.add(page)
@@ -1176,9 +1176,9 @@ def _record_focus_event(player, region):
     """
     try:
         page = getattr(player.participant, '_current_page_name', None) or ''
-        events = list(player.participant.vars.get('focus_events') or [])
+        events = list(player.participant.vars.get('tab_monitor_focus_events') or [])
         events.append(dict(page=page, region=region, ts=int(time.time())))
-        player.participant.focus_events = events
+        player.participant.tab_monitor_focus_events = events
     except Exception:
         pass
 
@@ -1203,7 +1203,7 @@ def _note_missed_events(player, data):
     2. The gap is EVIDENCE OF A DROP, NOT A COUNT OF DROPPED EVENTS. Client 4
        against our 2 means AT LEAST two were lost — there may have been more
        that the client itself never counted. Hence the field name
-       `focus_losses_missed_at_least`, and hence `max()` rather than `+=`:
+       `tab_monitor_focus_losses_missed_at_least`, and hence `max()` rather than `+=`:
        summing successive observations of the same gap would multiply one drop
        into many.
     """
@@ -1211,14 +1211,14 @@ def _note_missed_events(player, data):
         client_count = data.get('count')
         if not isinstance(client_count, int) or isinstance(client_count, bool):
             return                                   # unusable -> say nothing
-        server_total = (int(player.participant.vars.get('focus_loss_count') or 0)
-                        + int(player.participant.vars.get('focus_loss_count_outro') or 0))
+        server_total = (int(player.participant.vars.get('tab_monitor_focus_loss_count') or 0)
+                        + int(player.participant.vars.get('tab_monitor_focus_loss_count_outro') or 0))
         gap = client_count - server_total
         if gap <= 0:
             return                                   # distinction 1
         previous = int(player.participant.vars.get(
-            'focus_losses_missed_at_least') or 0)
-        player.participant.focus_losses_missed_at_least = max(previous, gap)
+            'tab_monitor_focus_losses_missed_at_least') or 0)
+        player.participant.tab_monitor_focus_losses_missed_at_least = max(previous, gap)
     except Exception:
         pass
 
@@ -1233,18 +1233,18 @@ def _apply_focus_loss(player, data, ejects):
     if not isinstance(data, dict) or data.get('type') != 'focus_loss':
         return
     event_id = data.get('event_id')
-    seen = player.participant.vars.get('focus_event_ids') or []
+    seen = player.participant.vars.get('tab_monitor_focus_event_ids') or []
     if event_id in seen:
         return  # dedup: count each real loss once
     seen.append(event_id)
-    player.participant.focus_event_ids = seen
+    player.participant.tab_monitor_focus_event_ids = seen
     if not ejects:
         # OUTRO: record in the outro's OWN column and stop. Deliberately not
         # the same counter — see the phase note above: the ejecting count must
         # stay readable as "how close to disqualification", and this must not
         # push it over a threshold that no longer applies.
-        count = (player.participant.vars.get('focus_loss_count_outro') or 0) + 1
-        player.participant.focus_loss_count_outro = count
+        count = (player.participant.vars.get('tab_monitor_focus_loss_count_outro') or 0) + 1
+        player.participant.tab_monitor_focus_loss_count_outro = count
         # Detail and drop-detection AFTER the counter, so a participant is
         # counted even if either of them cannot describe the event. Both use the
         # same region vocabulary as tab_monitor_where.
@@ -1254,13 +1254,13 @@ def _apply_focus_loss(player, data, ejects):
         # inside the ONE place that changes them.
         refresh_tab_monitor_flag(player.participant)
         return
-    count = (player.participant.vars.get('focus_loss_count') or 0) + 1
-    player.participant.focus_loss_count = count
+    count = (player.participant.vars.get('tab_monitor_focus_loss_count') or 0) + 1
+    player.participant.tab_monitor_focus_loss_count = count
     _record_focus_event(player, 'task')
     _note_missed_events(player, data)
     max_violations = int(cfg(config, 'tab_monitor_max_violations'))
     if count >= max_violations:
-        player.participant.ai_safety_disqualified = True
+        player.participant.tab_monitor_disqualified = True
         set_exit_code(player.participant, EXIT_CODES['tab_monitor'])
         refresh_tab_monitor_flag(player.participant)
         return {player.id_in_group: dict(action='disqualified')}
@@ -1283,7 +1283,7 @@ def focus_live_method_outro(player, data):
     """The OUTRO's handler (bound by participant_tab_monitor.OutroMonitoredPage):
     the same counting, RECORDED ONLY — it never disqualifies, never touches the
     exit code, and never broadcasts (Julian, 2026-08-13; the full why is the phase
-    note above). Violations land in `focus_loss_count_outro`, a separate
+    note above). Violations land in `tab_monitor_focus_loss_count_outro`, a separate
     column, so the export can tell post-task violations from the ones that
     counted toward ejection.
     """

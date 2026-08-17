@@ -265,10 +265,10 @@ def journey(base, config, label):
             check('otree-form-errors' in r.text,
                   'the re-rendered quiz carries oTree\'s validation error')
             st = participant_state(base, session_code,
-                                   ['failed_attempts', 'comprehension_disqualified'])
-            check(st.get('failed_attempts') == 1,
-                  f'the failure was RECORDED (failed_attempts='
-                  f'{st.get("failed_attempts")!r}, expected 1)')
+                                   ['comprehension_failed_attempts', 'comprehension_disqualified'])
+            check(st.get('comprehension_failed_attempts') == 1,
+                  f'the failure was RECORDED (comprehension_failed_attempts='
+                  f'{st.get("comprehension_failed_attempts")!r}, expected 1)')
             check(not st.get('comprehension_disqualified'),
                   'one failure does not disqualify (the threshold is higher)')
     else:
@@ -316,14 +316,14 @@ def journey(base, config, label):
 
     # THE ASSERTION THE WHOLE TEST EXISTS FOR.
     st = participant_state(base, session_code,
-                           ['exit_code', 'failed_attempts', 'payoff_vector',
+                           ['exit_code', 'comprehension_failed_attempts', 'payoff_vector',
                             'participant_id_external'])
     check(st.get('exit_code') == 1,
           f'EXIT CODE IS finished (1) — the participant actually completed '
           f'the study (got {st.get("exit_code")!r})')
-    check(st.get('failed_attempts') == 1,
+    check(st.get('comprehension_failed_attempts') == 1,
           f'exactly one quiz failure is on the record '
-          f'(failed_attempts={st.get("failed_attempts")!r})')
+          f'(comprehension_failed_attempts={st.get("comprehension_failed_attempts")!r})')
     check(len(st.get('payoff_vector') or []) == rounds,
           f'a payoff was recorded for every round '
           f'({len(st.get("payoff_vector") or [])} of {rounds})')

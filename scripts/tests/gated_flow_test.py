@@ -223,7 +223,7 @@ def scenario_lab_reread(base):
           f'taking the offer returns to the instructions (round 2) [{page_name(r.url)}]')
     # THE PRE-QUIZ PROMPT, ROUND 2 (round-2 item 2). By this point the
     # participant has failed, so the quiz bonus is already gone —
-    # compute_final_payoff pays it only when failed_attempts == 0 — and the
+    # compute_final_payoff pays it only when comprehension_failed_attempts == 0 — and the
     # round-1 sentence would both state a condition that can no longer be met
     # and imply a second "first attempt". Neither the bonus nor the phrase may
     # appear here, and asserting on VISIBLE TEXT is the point: a template that

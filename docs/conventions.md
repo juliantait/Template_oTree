@@ -74,6 +74,44 @@ session creation (`common.init_participant`) or read defensively with `.vars.get
 *Where:* `common.pvar` / `common.init_participant`; every participant read in
 `before`, `intro`, `main`, `outro`.
 
+## Naming participant fields — family first, unit last, so an export groups by outcome
+
+Name a participant tracking field **family first, unit last** — roughly
+`family_object_measure`, with an optional unit suffix (`_ms`, `_count`,
+`_outro`). Every field about one outcome shares that outcome's prefix, so when
+the fields are read as export columns they sort into families instead of
+scattering the same instrument across the alphabet. The tab monitor's fields all
+begin `tab_monitor_` (`tab_monitor_disqualified`, `tab_monitor_focus_loss_count`,
+`tab_monitor_focus_loss_count_outro`, `tab_monitor_focus_event_ids`,
+`tab_monitor_focus_events`, `tab_monitor_focus_losses_missed_at_least`,
+`tab_monitor_flag`, `tab_monitor_where`); comprehension's begin `comprehension_`
+(`comprehension_failed_attempts`, `comprehension_reread_used`,
+`comprehension_disqualified`); the screen-out's begin `screenout_`
+(`screenout_active`, `screenout_cleared`, plus the `screenout_cause` /
+`screenout_history` keys inside `participant_extra`). Prefer a name that says the
+mechanism it measures over one that borrows the participant-facing cover story:
+the AI-safety agreement's disqualification is stored as `tab_monitor_disqualified`
+because the data should name the tab-switch monitor, even though the participant
+never reads those words.
+
+**The one sanctioned exemption is the `t_` timestamp prefix**, a namespace of its
+own that marks a field as a measured time and is not folded into an outcome
+family.
+
+**This is a CONVENTION, not a rule, and it is deliberately NOT enforced** — there
+is no import-time or boot-time check that field names match the pattern, and that
+absence is a considered exception to this template's habit of enforcing invariants
+at boot (see `prelaunch_check.py`, the frozen-config guard, the exit-code table).
+A study copied from this template may reasonably want different field names for
+its own outcomes, and a boot check would turn that ordinary choice into a failure
+to work around. Read the missing check as intentional, not as an oversight. The
+full reasoning is in `DECISIONS.md` ("Participant tracking fields are named
+family-first").
+
+*Where:* `settings.PARTICIPANT_FIELDS` (the single central list, with a
+description block) and `CODEBOOK.md` are the documented source of the field
+names; nothing enforces the pattern by design.
+
 ## Feature flags and recruitment profiles — resolved once, visible, never silent
 
 Three independent axes (top of `settings.py`) determine what a participant
@@ -169,7 +207,7 @@ documented. See `settings.EXIT_CODES` and the CODEBOOK.md exit-code table.
   quiz and task, violations eject at the threshold
   (`common.focus_live_method` → exit code `-3`); during the **outro they are
   recorded only** (`common.focus_live_method_outro` →
-  `focus_loss_count_outro`) and never eject, because by then the task is over
+  `tab_monitor_focus_loss_count_outro`) and never eject, because by then the task is over
   and the data collected — disqualifying a completer would cost a real
   participant for no benefit. Thresholds are config values; the client JS
   reads them via `js_vars` and shows no warnings in the record-only phase.

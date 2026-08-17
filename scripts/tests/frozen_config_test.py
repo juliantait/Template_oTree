@@ -177,9 +177,9 @@ def main():
               f'the quiz re-rendered after the wrong answer '
               f'({visited.count("quiz")} quiz renders)')
         v = ot.participant_vars(codes[1])
-        check((v.get('failed_attempts') or 0) >= 1,
-              f'the failure was counted (failed_attempts='
-              f'{v.get("failed_attempts")!r})')
+        check((v.get('comprehension_failed_attempts') or 0) >= 1,
+              f'the failure was counted (comprehension_failed_attempts='
+              f'{v.get("comprehension_failed_attempts")!r})')
         check(visited[-1] in TERMINAL,
               f'and the participant still reached an ending ({visited[-1]})')
 

@@ -12,7 +12,7 @@ PROLIFIC_COMPLETE_URL = "https://app.prolific.com/submissions/complete?cc="
 # 2026-08-13). Every page below is monitored
 # (participant_tab_monitor.OutroMonitoredPage) — but a violation here is RECORDED
 # ONLY, in its own column
-# (focus_loss_count_outro), and NEVER disqualifies. That is not drift from the
+# (tab_monitor_focus_loss_count_outro), and NEVER disqualifies. That is not drift from the
 # intro/main behaviour; it is the point: by this app the task is over and the
 # data is already collected, so ejecting somebody who has completed the whole
 # study — for tabbing away while typing bank details, or to fetch their
@@ -76,7 +76,7 @@ def dq_cause(player) -> str:
     Two calls to one deterministic function on the same player in the same
     request cannot disagree. TWO IMPLEMENTATIONS COULD. So do not "tidy" either
     call into a separate flag read, a template conditional on
-    `ai_safety_disqualified` / `comprehension_disqualified`, or a second lookup.
+    `tab_monitor_disqualified` / `comprehension_disqualified`, or a second lookup.
     """
     """WHICH integrity module removed this participant ('' if none).
 
@@ -86,7 +86,7 @@ def dq_cause(player) -> str:
     the participant was warned about on screen.
     """
     v = player.participant.vars
-    if v.get('ai_safety_disqualified'):
+    if v.get('tab_monitor_disqualified'):
         return 'tab_monitor'
     if v.get('comprehension_disqualified'):
         return 'comprehension'
@@ -500,7 +500,7 @@ def compute_final_payoff(p):
     p.selected_sum = sum(float(pay) for _, pay in payouts)
     # Quiz bonus awarded only if no failed attempts and quiz_bonus is positive
     # (.vars.get() rather than getattr()/attribute access — KeyError trap.)
-    participant_failed_attempts = p.participant.vars.get('failed_attempts', 0) or 0
+    participant_failed_attempts = p.participant.vars.get('comprehension_failed_attempts', 0) or 0
     quiz_bonus = common.cfg(p.session.config, 'quiz_bonus')
     quiz_bonus_awarded = quiz_bonus if (participant_failed_attempts == 0 and quiz_bonus > 0) else 0
     p.quiz_bonus_awarded = quiz_bonus_awarded

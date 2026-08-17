@@ -525,7 +525,7 @@ def main():
     # tab monitor: plant the authoritative flags (the full live flow is
     # full_journey_test.py's job); mid-task stamps so 'reached' is the task.
     walk(ot.client(), pcodes[3], correct, stop_after='quiz', headers=DESKTOP)
-    set_participant(pcodes[3], **{'vars.ai_safety_disqualified': True,
+    set_participant(pcodes[3], **{'vars.tab_monitor_disqualified': True,
                                   'vars.exit_code': -3})
 
     data, rows = rows_by_code(admin, pro)
@@ -751,7 +751,7 @@ def main():
     # _submit_current_page): it POSTs an EMPTY form flagged as a timeout with
     # the admin secret code. oTree calls error_message anyway
     # (otree/views/abstract.py, the _process_auto_submitted_form branch), our
-    # grading marks every item wrong and increments failed_attempts, and the
+    # grading marks every item wrong and increments comprehension_failed_attempts, and the
     # page then ADVANCES REGARDLESS because a timeout submission discards the
     # error. So `quiz_done` is stamped by somebody who never answered.
     #
@@ -1031,7 +1031,7 @@ def main():
           'the live handler is gated on the same flag (no stamp in the lab)')
 
     # --- 2. TAB-MONITOR VIOLATIONS WHILE THEY CLIMB (item 2): count and
-    # limit together, from focus_loss_count and tab_monitor_max_violations —
+    # limit together, from tab_monitor_focus_loss_count and tab_monitor_max_violations —
     # never a number in the markup.
     import common as _common
     mon = ot.create_session('prolific', num_participants=1)
@@ -1040,7 +1040,7 @@ def main():
     _, mrows = rows_by_code(admin, mon)
     check(mrows[mcode]['monitor_count'] is None,
           'no violations -> no count shipped (no pill, not a "0 of 3")')
-    set_participant(mcode, **{'vars.focus_loss_count': 2})
+    set_participant(mcode, **{'vars.tab_monitor_focus_loss_count': 2})
     _, mrows = rows_by_code(admin, mon)
     from otree.models import Session as _S2
     _mon = _db2.query(_S2).filter_by(code=mon.code).one()
@@ -1050,7 +1050,7 @@ def main():
           f"a climbing count ships WITH the configured limit "
           f"(got {mrows[mcode]['monitor_count']} of "
           f"{mrows[mcode]['monitor_max']}, limit {expected_max})")
-    set_participant(mcode, **{'vars.ai_safety_disqualified': True,
+    set_participant(mcode, **{'vars.tab_monitor_disqualified': True,
                               'vars.exit_code': -3})
     _, mrows = rows_by_code(admin, mon)
     check(mrows[mcode]['terminal'] == 'tab_monitor'
@@ -1058,7 +1058,7 @@ def main():
           'once disqualified the terminal pill takes over — no climbing count '
           'next to a DQ')
     # tab_monitor OFF (every lab session): a planted count ships nothing.
-    set_participant(scodes[0], **{'vars.focus_loss_count': 2})
+    set_participant(scodes[0], **{'vars.tab_monitor_focus_loss_count': 2})
     _, srows = rows_by_code(admin, sepa_lab)
     check(srows[scodes[0]]['monitor_count'] is None,
           'with the tab_monitor module off, no count is ever shipped')

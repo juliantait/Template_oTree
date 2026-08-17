@@ -71,7 +71,7 @@ class Player(BasePlayer):
     # True on the quiz POST that takes the lab's one-time re-read offer.
     redoinstructions = models.BooleanField(initial=0, blank=True)
     # Wrong quiz submissions THIS ROUND (the participant-level total lives in
-    # participant.failed_attempts; see quiz_modal_state for why both exist).
+    # participant.comprehension_failed_attempts; see quiz_modal_state for why both exist).
     num_failed_attempts = models.IntegerField(initial=0)
     # EVERY GRADED QUIZ SUBMISSION, as a JSON list (see log_quiz_attempt and
     # CODEBOOK.md for the shape). It answers "which items do people get
@@ -112,9 +112,9 @@ def reread_available(player) -> bool:
     if player.round_number >= C.NUM_ROUNDS:
         return False  # no re-read round left to enter
     # Participant fields via .vars.get(), never getattr() (KeyError trap).
-    if player.participant.vars.get('instructions_reread_used'):
+    if player.participant.vars.get('comprehension_reread_used'):
         return False
-    failed = player.participant.vars.get('failed_attempts', 0) or 0
+    failed = player.participant.vars.get('comprehension_failed_attempts', 0) or 0
     return failed >= comprehension_threshold(cfg)
 
 
@@ -162,7 +162,7 @@ def in_reread_pass(player) -> bool:
     """True on round-2 pages, which only the lab re-read pass reaches."""
     if player.round_number == 1:
         return False
-    return bool(player.participant.vars.get('instructions_reread_used'))
+    return bool(player.participant.vars.get('comprehension_reread_used'))
 
 
 def intro_page_visible(player) -> bool:
@@ -174,7 +174,7 @@ def intro_page_visible(player) -> bool:
 
     Never a participant with a recorded removal — `common.removed_from_study`,
     the ONE downstream belt (whole-app review A1; this used to check
-    `screened_out` alone). The tab-monitor half is LIVE, not a belt: these
+    `screenout_active` alone). The tab-monitor half is LIVE, not a belt: these
     pages are monitored (participant_tab_monitor.MonitoredPage), so a mid-quiz
     disqualification's reload must land on the ending, not back on the quiz.
     The screen-out half stays the belt to the soft wall's brace — the gate
@@ -237,12 +237,12 @@ def quiz_modal_state(player) -> dict:
     submission IN THIS ROUND (num_failed_attempts is a per-round player field,
     so entering round 2 never pops a stale modal). offer_reread: the one-time
     re-read offer is open. show_experimenter: no offer is open — a dismissible
-    "raise your hand" notice; nothing is recorded for it (failed_attempts is
+    "raise your hand" notice; nothing is recorded for it (comprehension_failed_attempts is
     the experimenter's record).
 
     THE NOTICE IS KEYED ON THE THRESHOLD AND THE STUDY TYPE, NOT ON THE
     quiz_reread MODULE (Julian, 2026-08-12). It used to require quiz_reread
-    AND instructions_reread_used, which meant a lab session that turned the
+    AND comprehension_reread_used, which meant a lab session that turned the
     re-read module off got NO help at all: no offer, no at-will dialog
     (suppressed for lab below) and no notice — just the inline error, forever,
     with the experimenter never called. The lab rule is "crossing
@@ -271,7 +271,7 @@ def quiz_modal_state(player) -> dict:
     offer_reread = failed_this_round and reread_available(player)
     threshold = comprehension_threshold(cfg)
     # Participant fields via .vars.get(), never getattr() (KeyError trap).
-    failed_total = player.participant.vars.get('failed_attempts', 0) or 0
+    failed_total = player.participant.vars.get('comprehension_failed_attempts', 0) or 0
     show_experimenter = (
         failed_this_round
         and common.is_lab(cfg)
@@ -355,14 +355,14 @@ class quiz(participant_tab_monitor.MonitoredPage):
         log_quiz_attempt(player, {k: values.get(k, '') for k in QUIZ_SOLUTIONS}, wrong)
         if wrong:
             player.num_failed_attempts += 1
-            player.participant.failed_attempts += 1
+            player.participant.comprehension_failed_attempts += 1
             cfg = player.session.config
             # COMPREHENSION-FAILURE DISQUALIFICATION (module, off by default).
             # When enabled, a participant who fails too many times is not blocked
             # again — they are flagged and allowed through to the disqualified
             # ending (see app_after_this_page and the outro Disqualified page).
             if _flag(player, 'comprehension_dq'):
-                if player.participant.failed_attempts >= comprehension_threshold(cfg):
+                if player.participant.comprehension_failed_attempts >= comprehension_threshold(cfg):
                     player.participant.comprehension_disqualified = True
                     common.set_exit_code(
                         player.participant, common.EXIT_CODES['comprehension'])
@@ -400,7 +400,7 @@ class quiz(participant_tab_monitor.MonitoredPage):
         # participant leaves for the second pass — not when the modal opened.
         # (field_maybe_none: redoinstructions is blank=True and may arrive empty.)
         if player.field_maybe_none('redoinstructions') and reread_available(player):
-            player.participant.instructions_reread_used = True
+            player.participant.comprehension_reread_used = True
             common.stamp_stage(player.participant, common.STAGE_REREAD_TAKEN)
 
     @staticmethod

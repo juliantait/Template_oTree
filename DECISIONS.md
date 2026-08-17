@@ -11,6 +11,54 @@ working.
 
 ---
 
+## Participant tracking fields are named family-first, so an export groups by outcome — 2026-08-17
+
+Decided by Julian. Every participant field about one outcome now shares that
+outcome's prefix, so the columns sort into families instead of scattering: the
+tab monitor's fields (`tab_monitor_disqualified`, `tab_monitor_focus_loss_count`,
+`tab_monitor_focus_loss_count_outro`, `tab_monitor_focus_event_ids`,
+`tab_monitor_focus_events`, `tab_monitor_focus_losses_missed_at_least`, joining
+`tab_monitor_flag` / `tab_monitor_where` which already read this way);
+comprehension's (`comprehension_failed_attempts`, `comprehension_reread_used`,
+joining `comprehension_disqualified`); and the screen-out's `screenout_active`
+(joining `screenout_cleared`, and the `screenout_cause` / `screenout_history`
+keys already inside `participant_extra`). The shape is **family first, unit
+last** — roughly `family_object_measure` — and it is written up in
+`docs/conventions.md`.
+
+The old names named the *measure* and lost the family: `focus_loss_count`,
+`failed_attempts`, `screened_out` each sat alone in the export next to unrelated
+columns, and a reader could not see at a glance that six columns were all one
+instrument. The rename is deliberately **data-facing and complete** — a
+half-renamed field is a `KeyError` at runtime, not an import error, because
+`participant.vars` is a string-keyed store — so it reached every read and write
+across the apps, the guards, the dashboard, the templates, the JS, the tests and
+the docs, verified by grepping each old name to zero.
+
+**`tab_monitor_disqualified` is the one rename that crosses the cover story.**
+The field was `ai_safety_disqualified` because the participant-facing framing is
+an "AI-safety" agreement; the data should name the *mechanism* (a tab-switch
+monitor), so the column is `tab_monitor_*` like its siblings. The framing itself
+did **not** move: the `AISafetyAgree` page, `_static/global/js/ai_safety_monitor.js`,
+and every word a participant reads stay exactly as they were. Only the data name
+changed.
+
+**This is a CONVENTION, not a rule, and there is deliberately no import-time or
+boot-time check that enforces it** — a considered exception to this template's
+habit of enforcing invariants at boot (`prelaunch_check.py`, the frozen-config
+guard, the exit-code table). A study copied from this template may reasonably
+want different field names for its own outcomes, and a boot check would turn that
+ordinary choice into a failure to work around. The absence of a check is the
+decision, not an oversight. **Rejected:** keeping the measure-first names (the
+export does not group, and the tab-monitor family is invisible); renaming the
+participant-facing AI-safety wording too (that is the study framing, not data);
+adding a boot check that field names match the pattern (wrong for a copied
+study). **Enforced:** nothing at boot, by design — held by `docs/conventions.md`,
+this entry, and the field lists in `settings.PARTICIPANT_FIELDS` and `CODEBOOK.md`
+being the single documented source. The suites that touch these fields
+(`dashboard_test`, `task_page_test`, `identity_test`, `tab_monitor_detail_test`,
+`full_journey_test`, `screenout_softwall_test`) go red on a half-done rename.
+
 ## The single oTree room was renamed `experiment` → `study`, so the URL reads `/room/study` — 2026-08-17
 
 Decided by Julian. The participant-facing room URL is the one bit of plumbing a
@@ -344,7 +392,7 @@ Verified today, and it is the safe shape already: `outro.dq_cause` is the only
 implementation (`outro/__init__.py:51`); `Ended.vars_for_template` passes
 `dq_cause=dq_cause(player)` and `outro/Ended.html` branches on that variable;
 `completion_link` does `cause = dq_cause(player)`. No template reads
-`ai_safety_disqualified` or `comprehension_disqualified` directly — checked
+`tab_monitor_disqualified` or `comprehension_disqualified` directly — checked
 across every `.html` in the repo. Two calls to one deterministic function in one
 request cannot disagree; two implementations could, which is why the invariant is
 written on `dq_cause` itself. **The next reader will see two calls and want to
@@ -997,8 +1045,8 @@ never ejects.** By the outro the task is over and the data already collected,
 so disqualifying somebody who has completed the whole study — for tabbing
 away while typing bank details, or to fetch their Prolific tab — would cost a
 real participant for no benefit. Outro violations land in their OWN column
-(`focus_loss_count_outro`), so a completed-with-violations participant is
-distinguishable from a nearly-ejected one (`focus_loss_count` keeps meaning
+(`tab_monitor_focus_loss_count_outro`), so a completed-with-violations participant is
+distinguishable from a nearly-ejected one (`tab_monitor_focus_loss_count` keeps meaning
 "how close to disqualification"); the dedup set is shared so no event counts
 twice. The client is told its phase (`ejects: false`) and shows no overlay
 and no warning modal in the outro — the modal's threat would be a lie there.

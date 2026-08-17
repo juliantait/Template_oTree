@@ -45,7 +45,7 @@ consequence — the full why is at common._apply_focus_loss):
 
   MonitoredPage       intro + main: violations EJECT at the threshold.
   OutroMonitoredPage  outro: violations are RECORDED ONLY (their own column,
-                      focus_loss_count_outro) and NEVER eject — the task is
+                      tab_monitor_focus_loss_count_outro) and NEVER eject — the task is
                       over and the data collected; disqualifying a completer
                       would cost a real participant for no benefit.
 
@@ -114,7 +114,7 @@ class MonitoredPage(Page):
 class OutroMonitoredPage(MonitoredPage):
     """The outro's base: monitored, but violations are RECORDED ONLY — never a
     disqualification, never an exit-code write, never a broadcast (Julian,
-    2026-08-13). Post-task violations land in `focus_loss_count_outro`, their
+    2026-08-13). Post-task violations land in `tab_monitor_focus_loss_count_outro`, their
     own column, so the export can tell a completed-with-violations participant
     from a nearly-ejected one. The client is told (`ejects: false`) and shows
     no overlay and no warning modal — the modal's threat would be a lie here.
