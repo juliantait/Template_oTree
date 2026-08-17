@@ -69,6 +69,25 @@ def assert_only_its_own(page_text, own_key, D, where):
               f'{where}: does NOT carry {other}')
 
 
+def exit_code_of(pcode):
+    """A participant's exit_code, read from a FRESH DB session.
+
+    The POSITIVE half of every check here (CLAUDE.md: never assert an absence
+    without the matching presence). The absence assertions above pass against
+    ANY page blank of the four foreign codes — including a page the walker never
+    meant to reach — so each walk also pins the exit code its population owns,
+    which a walk that ended up on the wrong ending cannot satisfy. The server
+    writes over HTTP in another thread; a fresh session sees the committed row.
+    """
+    from otree.database import DBSession
+    from otree.models import Participant
+    ses = DBSession()
+    try:
+        return ses.query(Participant).filter_by(code=pcode).one().exit_code
+    finally:
+        ses.close()
+
+
 def main():
     from render_check import Server, VIEWPORTS
     from playwright.sync_api import sync_playwright
@@ -123,6 +142,9 @@ def main():
             txt = body(page)
             check('computer' in txt.lower() or 'phone' in txt.lower(),
                   'the phone is held at the screen-out page')
+            check(exit_code_of(codes[0]) == _settings.EXIT_CODES['screened_out'],
+                  'device screen-out: exit code -4 recorded (this IS the '
+                  'screen-out ending, not merely a page blank of other codes)')
             assert_only_its_own(txt, 'prolific_device_code', D,
                                 'device screen-out')
             context.close()
@@ -141,6 +163,11 @@ def main():
             page.evaluate("() => document.querySelector('form').requestSubmit()")
             page.wait_for_timeout(800)
             txt = body(page)
+            check('/outro/' in page.url,
+                  f'declined consent: routed to an outro ending '
+                  f'({page.url.split("/p/")[-1][:40]!r})')
+            check(exit_code_of(codes[1]) == _settings.EXIT_CODES['no_consent'],
+                  'declined consent: exit code -1 (no_consent) recorded')
             assert_only_its_own(txt, 'prolific_noconsent_code', D,
                                 'declined consent')
             context.close()
@@ -167,7 +194,7 @@ def main():
                 # the next page.
                 import requests as _rq
                 from http_flow_test import FormParser as _FP, build_payload as _bp
-                from gated_flow_test import RIGHT as _RIGHT
+                from quiz_answers import CORRECT as _RIGHT  # derived from the shipped items
                 # A SESSION WITHOUT the device restriction. Case 1's session
                 # only admits `computer`, and the HTTP walker's User-Agent
                 # (`python-requests/...`) classifies as `unknown` — so these two
@@ -206,6 +233,17 @@ def main():
                     fp = _FP(); fp.feed(r.text)
                     r = sess.post(r.url, data=_bp(fp.inputs, {}, {}, warn=False),
                                   allow_redirects=True)
+                # POSITIVE: the DQ'd participant reached the Ended ending (NOT
+                # Results, the completer page), with the exit code its
+                # population owns. `Ended.html` and `Results.html` are different
+                # pages; landing on Results here would mean the walker was never
+                # disqualified, and the absence checks below could still pass.
+                check('/outro/' in r.url and '/Ended/' in r.url,
+                      f'{label}: routed to the Ended outro page '
+                      f'({r.url.split("/p/")[-1][:40]!r})')
+                check(exit_code_of(pp.code) == _settings.EXIT_CODES[exit_name],
+                      f'{label}: exit code {_settings.EXIT_CODES[exit_name]} '
+                      f'recorded on the ending')
                 assert_only_its_own(r.text, key, D, label)
 
             # ---------------------------------------------------------------
@@ -216,7 +254,7 @@ def main():
             # Drive the real journey with the HTTP walker the other suites use,
             # then render the ending in the browser and read it.
             from http_flow_test import FormParser, build_payload  # noqa: F401
-            from gated_flow_test import RIGHT
+            from quiz_answers import CORRECT as RIGHT  # derived from the shipped items
             import requests
             sess = requests.Session()
             r = sess.get(f'{server.base}/InitializeParticipant/{p.code}',
@@ -232,8 +270,20 @@ def main():
                 payload = build_payload(
                     fp.inputs, {'consent': 'True', **RIGHT}, {}, warn=False)
                 r = sess.post(r.url, data=payload, allow_redirects=True)
-            check('Results' in r.url or 'Ended' in r.url,
-                  f'the completer reached an ending ({r.url.split("/p/")[-1][:40]!r})')
+            # POSITIVE, and specifically RESULTS: a comprehension-DQ landing
+            # also matches "reached an ending" and is blank of the completer's
+            # four foreign codes, so it would pass every other check on this
+            # walk. Requiring the Results page AND exit code 1 is what makes
+            # "the walker actually completed" the thing under test — the exact
+            # failure this file's own history warns about (a walk asserting a
+            # code on the wrong page). If the quiz answers ever drift from the
+            # shipped items, the walker fails the quiz, lands on Ended with exit
+            # -2, and BOTH of these go red instead of silently passing.
+            check('Results' in r.url,
+                  f'the completer reached RESULTS, not an early ending '
+                  f'({r.url.split("/p/")[-1][:40]!r})')
+            check(exit_code_of(p.code) == _settings.EXIT_CODES['finished'],
+                  'completed: exit code 1 (finished) recorded')
             assert_only_its_own(r.text, 'prolific_cc_code', D, 'completed')
 
             browser.close()

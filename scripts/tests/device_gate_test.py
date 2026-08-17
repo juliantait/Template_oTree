@@ -47,6 +47,7 @@ sys.path.insert(0, __file__.rsplit('/', 1)[0])
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _repo import REPO_ROOT  # noqa: E402  (also puts REPO_ROOT on sys.path)
 from http_flow_test import FormParser, build_payload, END_MARKERS
+from quiz_answers import CORRECT as QUIZ_CORRECT  # answers derived from the shipped items
 import common
 
 # `requests` REFUSES to send a header value with leading whitespace or control
@@ -228,7 +229,15 @@ def run(base, label, user_agent, allowed):
     s.headers['User-Agent'] = user_agent
     r = s.get(created['session_wide_url'], allow_redirects=True)
 
-    pages, saw_consent, saw_screenout, answers = [], False, False, {}
+    # ANSWER THE QUIZ FROM THE SHIPPED ITEMS, not from the page. In production
+    # the DEBUG-only solutions blob is absent, so a walker that read answers off
+    # the page would fail the quiz and — Prolific's comprehension_dq being on —
+    # be routed to the comprehension-DQ ending (exit -2) instead of completing.
+    # The admitted-device checks below assert exit code 1, so that misroute used
+    # to fail every one of them. QUIZ_CORRECT is derived from intro/quiz_items.py
+    # (see quiz_answers.py) and stays right when a study swaps its items.
+    pages, saw_consent, saw_screenout = [], False, False
+    answers = dict(QUIZ_CORRECT)
     for _ in range(80):
         if r.status_code >= 500:
             check(False, f"HTTP {r.status_code} at {page_name(r.url)}")

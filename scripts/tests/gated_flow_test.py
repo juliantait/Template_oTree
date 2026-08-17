@@ -36,8 +36,11 @@ from _repo import REPO_ROOT  # noqa: E402  (also puts REPO_ROOT on sys.path)
 from http_flow_test import FormParser, build_payload, END_MARKERS
 import settings as _settings
 
-WRONG = {'quiz1': 'NO', 'quiz2': 'Metal'}
-RIGHT = {'quiz1': 'YES', 'quiz2': 'Water'}
+# The quiz answers come from quiz_answers.py — ONE derivation from the shipped
+# intro/quiz_items.py, shared by every walker, so a study that swaps its quiz
+# items does not leave a hardcoded map here quietly answering the wrong quiz.
+# RIGHT is the passing map; WRONG a definite failing one.
+from quiz_answers import CORRECT as RIGHT, WRONG  # noqa: E402
 
 REREAD_MARKER = 'value="Re-read the instructions"'
 # Asserted against VISIBLE TEXT, never the raw HTML: the notice bolds "raise
