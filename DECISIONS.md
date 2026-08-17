@@ -11,6 +11,72 @@ working.
 
 ---
 
+## The dashboard may fail a LAUNCH loudly, but never a running session silently — 2026-08-17
+
+Decided by Julian, from the empirical blast-radius study
+(`_ai/dashboard_blast_radius.md` — local only, `_ai/` is gitignored — which broke
+the experimenter dashboard five ways against a real oTree and recorded what each
+did to oTree's own admin pages). **The governing rule: failing at LAUNCH is
+acceptable, because whoever is setting the study up sees the error and fixes it;
+failing LATER is not, because a study that boots clean and then dies when an
+operator clicks the admin Report tab mid-session costs a session.** A boot-time
+failure is therefore NOT to be softened into a silent one.
+
+**What was fixed — the one gap that boots clean and fails later (scenario 4).**
+`URL_BASE` renamed consistently *inside* `experimenter_dashboard.py` while the
+cross-file read in `outro.vars_for_admin_report` is missed. The boot succeeds; the
+first click on oTree's own Report tab (which oTree calls **unguarded**,
+`AdminReport.get_context_data`) then 500s on the `AttributeError`. Fixed in **both
+directions**: at RUNTIME, `vars_for_admin_report`'s `except ImportError` is widened
+to `except Exception`, so *any* failure reading the constant falls back to the
+literal `/experimenter_dashboard` URL instead of 500ing — its docstring, which had
+argued the import was the only thing that could fail, is corrected because the
+study proved otherwise. At LAUNCH, `scripts/prelaunch_check.py` gains a
+`dashboard_problems()` section (module imports, `URL_BASE` exists,
+`vars_for_admin_report` returns a plausible URL without raising, routes install),
+so the rename is caught before launch rather than by a curious click three hours
+in. The two are complementary: the runtime fallback stops the 500, `URL_BASE
+exists` stops the stale link ever shipping.
+
+**What was deliberately LEFT failing at boot.** An earlier instinct was to wrap
+the `import experimenter_dashboard` trailer at the end of `outro/__init__.py` in a
+`try/except` so a module-level error there (scenario 3), or a wholly missing
+`URL_BASE` definition, would fail soft. **Rejected on Julian's rule:** a genuine
+import-time error in the dashboard module is a code breakage the person launching
+must see and fix, and softening it to a silent 404 is exactly the later-invisible
+failure the rule forbids. The bare `import experimenter_dashboard` stays
+unguarded, and it stays the LAST lines of the LAST app module for the reason
+already documented there.
+
+**The one boot-time defect that WAS fixed — a reporter that fails on what it
+reports (scenario 4′).** `install_dashboard_route_or_note` builds its "NOT
+INSTALLED" message with an f-string that interpolated `{URL_BASE}` — so when
+`URL_BASE` is the missing symbol, the handler raised a SECOND `NameError` while
+formatting the message meant to reassure the reader, and that escaped the
+unguarded call site and killed the boot. This is not the same as scenario 3: the
+message must never depend on the symbol that may be the very thing missing. The
+messages now use the literal `/experimenter_dashboard` (the same string `URL_BASE`
+holds and the same fallback `vars_for_admin_report` trusts); the sibling
+`note_admin_tab_problems` was hardened the same way. A failure-reporter that can
+fail on the thing it reports is no reporter — fixing it lets an install failure be
+*reported and swallowed as designed* rather than double-faulting the boot.
+
+**Rejected:** wrapping the outro import to fail soft (softens scenarios 3/4′ into
+silent 404s — against the rule); leaving `except ImportError` and calling the
+Report-tab 500 "narrow, one tab" (an operator loses a live monitoring surface
+mid-session for a rename a launch guard can catch); a boot-time assert on the
+dashboard (identity's discipline is right for a participant 500, wrong for an
+operator convenience — the module's own first rule). **Enforced:**
+`scripts/tests/dashboard_test.py` §D9 drives `/AdminReport` over real HTTP with
+`URL_BASE` deleted and asserts the tab renders (200 + a working link, not merely
+"< 500"), asserts the install reporter returns `drift` without raising when
+`URL_BASE` is absent, and §D10 asserts `prelaunch_check.dashboard_problems()` is
+clean on the healthy template and reports a `URL_BASE` problem when the constant
+is renamed away — each paired with its positive control (CLAUDE.md: never assert
+an absence without the matching presence).
+
+---
+
 ## Participant tracking fields are named family-first, so an export groups by outcome — 2026-08-17
 
 Decided by Julian. Every participant field about one outcome now shares that
@@ -1356,47 +1422,73 @@ stated reason — the last one ran for years with nobody able to say what it was
 for, which is why the review flagged it.
 **Enforced:** nothing but grep — there is no cookie code left to guard.
 
-## The dashboard summary strip carries a TOTAL PAYMENTS pill, summed server-side over finished participants — 2026-08-17
+## The dashboard summary strip: earnings is ONE pill carrying avg AND total; the total summed server-side over finished participants — 2026-08-17
 
-Requested by Julian: put the payment picture on the one dashboard tab, so
-nobody has to open oTree's own Payments page to see what a running session is
-paying out. Added as a third item in the `dash-summary` strip beneath the
-table (`experimenter_dashboard.py`), beside the two averages.
+Requested by Julian, from the live page. The payment picture lives on the one
+dashboard tab, so nobody opens oTree's own Payments page to see what a running
+session is paying out. The `dash-summary` strip beneath the table
+(`experimenter_dashboard.py`) has TWO items: **avg intro time**, and a single
+**earnings** pill carrying an **avg** and a **total** subsection.
 
-**Summed SERVER-SIDE, in the same place the row earnings come from.** The total
-is `_earnings_total(ctx['earnings'])` — the sum of the exact `earned` figures
-`_earnings_map` already fills the row cells with — shipped in the snapshot as
-`earnings_total` and merely *rendered* by `summaryHTML`. It is deliberately NOT
-re-added in the client from the rendered cells: a total that display and
-detection could compute two different ways is the collapsed-distinction trap the
-timing pill is built to avoid (`_stall_elapsed` — one number for the value shown
-and the value judged). So the strip total can never disagree with the column it
-totals.
+**Why ONE earnings pill, not two items.** avg and total run over the *same*
+population — FINISHED participants, the only ones with an `earned` figure — so
+two separate items sitting side by side read as two different denominators,
+which they were not. Merged, the population is stated ONCE (`of N finished`) and
+its count carried once. The avg/total subsections are labelled in words inside
+the pill so a reader tells them apart at a glance, without a tooltip — the whole
+point of merging them. (It briefly WAS two items: a client-side `avg earnings`
+mean beside a server-side `total payments` pill; this supersedes that.)
 
-**Its POPULATION is stated, the way the two averages state theirs.** An `earned`
-value exists only once the Results page has computed it — i.e. for FINISHED
-participants — so the pill is labelled in words and carries its count (`of N
-finished`), the same denominator and the same discipline as the adjacent `avg
-earnings` pill. It degrades exactly like the earnings read it draws on: any
-failure gives `total=None` and no pill, never a raise, never a dead dashboard.
+**The total summed SERVER-SIDE, and the avg derived from it — one source.** The
+total is `_earnings_total(ctx['earnings'])`, the sum of the exact `earned`
+figures `_earnings_map` already fills the row cells with, shipped as
+`earnings_total` and merely *rendered* by `summaryHTML`; it is NOT re-added in
+the client. The avg is that one server figure over its count (`total / n`), NOT
+a second client-side sum of the cells. So neither subsection can disagree with
+the other, nor with the column they aggregate — the collapsed-distinction trap
+the timing pill is built to avoid (`_stall_elapsed`: one number for the value
+shown and the value judged). The MERGE STRENGTHENED this: the old separate `avg
+earnings` pill computed the mean a *second* way (client-side `mean(money)`),
+which was exactly the one-concept-two-implementations drift `CLAUDE.md` warns
+of; there is now one implementation.
 
-**Rejected — repeating the MEAN in the total pill.** The mean falls out of the
-same two numbers for free, so the brief allowed it. It is left out because the
-`avg earnings` pill already shows that mean over that same population, and a
-second copy would be one concept with two implementations (the inverted
-collapsed-distinction rule in `CLAUDE.md`) — invisible drift waiting to happen,
-for no new information. The TOTAL is the new fact; the mean was already on
-screen. **Also rejected:** a `participation_fee` line — the template holds
-`participation_fee` at zero on purpose (the fee guard), and there is no second
-ledger to add up. **Not added:** any `stopped_at` field or new participant
-variable (Julian ruled that out); the pill reads only what `_earnings_map`
-already read.
+**Degrades to nothing.** Gated on `earnings_total.total` being present, so the
+whole pill is shown in full or not at all — any failure gives `total=None` and
+no pill, never a raise, never a dead dashboard, like the earnings read it draws
+on.
+
+**The intro-time item stays SEPARATE** because it averages a DIFFERENT
+population (everyone PAST intro, whose measurement is complete even mid-task),
+and its wording (`past intro`) is kept deliberately distinct from the earnings
+item's (`finished`) now that they sit next to each other. **Also rejected:** a
+`participation_fee` line — the template holds `participation_fee` at zero on
+purpose (the fee guard), and there is no second ledger to add up. **Not added:**
+any `stopped_at` field or new participant variable (Julian ruled that out); the
+pill reads only what `_earnings_map` already read.
+
 **Enforced:** `scripts/tests/dashboard_test.py` §D — `earnings_total.n` counts
 exactly the rows that have an earnings figure and `earnings_total.total` equals
 their sum, and §D7 asserts the served page ships the pill reading
-`data.earnings_total` rather than re-summing cells. The website monitor preview
-exercises `summaryHTML` when it freezes the real page, so a broken pill would
-fail the paint that `check_site_previews.py` guards.
+`data.earnings_total` rather than re-summing cells. `dashboard_render_check.py`
+measures the strip in a real browser: TWO items, the earnings pill naming BOTH
+its avg and total subsections and stating its `finished` population exactly once,
+distinct from the intro item's `past intro`. The website monitor preview
+exercises `summaryHTML` when it freezes the real page (its payload now ships
+`earnings_total`), so a broken or vanished pill fails the paint that
+`check_site_previews.py` guards.
+
+## The dashboard header dropped its standalone participant count — the "X of Y arrived" segment already carries the total — 2026-08-17
+
+Requested by Julian, from the live page. The header read `N participants · 👤 X
+of Y arrived · …`, and `Y` is that same `N` (`data.rows.length` — every
+participant row), so the total was stated twice in one line. Removed the leading
+`N participants ·`; the `👤 X of Y arrived` segment is now the ONE place the
+total lives. Verified before cutting that `Y` really is the total (it is
+`n`), rather than, say, an arrived-only figure that would have made the leading
+count non-redundant. No participant variable and no data changed — this is
+purely the header string in `repaint`. `scripts/tests/dashboard_test.py` still
+asserts the arrival segment ships (`👤` and `arrived` in the page), which is the
+surviving carrier of the total.
 
 ## The dashboard's state column is a collection of pills, and conditions survive outcomes — 2026-08-13
 

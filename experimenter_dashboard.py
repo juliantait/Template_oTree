@@ -1241,6 +1241,17 @@ def install_dashboard_route_or_note():
     every participant's boot over an operator page would invert the module's
     own first rule. Drift is still LOUD: logged at error level and printed,
     with the reason, so the operator who finds the 404 finds this next.
+
+    THE FAILURE MESSAGES MUST NOT INTERPOLATE URL_BASE — they use the literal
+    '/experimenter_dashboard' instead. This is not cosmetic: URL_BASE is the
+    likeliest symbol to BE the failure (a rename/delete of the constant is
+    what makes install raise in the first place — `_ai/dashboard_blast_radius.md`
+    scenario 4′), and an f-string that reads `{URL_BASE}` while REPORTING that
+    very failure raises a SECOND NameError, which escapes this handler and the
+    unguarded call site in outro/__init__.py and kills the boot. A
+    failure-reporter that can fail on the thing it is reporting is no reporter
+    at all. The literal is the same string URL_BASE holds and the same fallback
+    vars_for_admin_report trusts. See DECISIONS.md (2026-08-17).
     """
     try:
         outcome = install_dashboard_route()
@@ -1249,7 +1260,7 @@ def install_dashboard_route_or_note():
                 '[dashboard] EXPERIMENTER DASHBOARD NOT INSTALLED: otree.urls '
                 'was not importable at the app-import install point, which no '
                 'supported boot path should reach. Participants are '
-                f'unaffected; {URL_BASE} will 404. '
+                'unaffected; /experimenter_dashboard will 404. '
                 f'Attempts: {_install_log!r}')
             logger.error(message)
             print(message, flush=True)
@@ -1257,9 +1268,9 @@ def install_dashboard_route_or_note():
     except Exception as exc:
         message = (
             '[dashboard] EXPERIMENTER DASHBOARD NOT INSTALLED (version '
-            f'drift): {exc}\nParticipants are unaffected; {URL_BASE} will '
-            '404 until experimenter_dashboard.py is updated for the '
-            'installed oTree.')
+            f'drift): {exc}\nParticipants are unaffected; '
+            '/experimenter_dashboard will 404 until experimenter_dashboard.py '
+            'is updated for the installed oTree.')
         logger.error(message)
         print(message, flush=True)
         return 'drift'
@@ -1303,9 +1314,9 @@ def note_admin_tab_problems():
             'otree.models.session.Session no longer carries has_admin_report/'
             '_set_admin_report_app_names, the admin-report machinery the '
             'Report tab rides (verified against oTree 6.0.15). The dashboard '
-            f'itself is unaffected and stays at {URL_BASE}/<session_code>; '
-            'update outro/admin_report.html and this check for the installed '
-            'oTree.')
+            'itself is unaffected and stays at /experimenter_dashboard/'
+            '<session_code>; update outro/admin_report.html and this check '
+            'for the installed oTree.')
         logger.error(message)
         print(message, flush=True)
         return 'drift'
@@ -1319,7 +1330,7 @@ def note_admin_tab_problems():
             'cannot see outro/admin_report.html, so sessions created now get '
             'no Report tab. Either the file moved or the lookup convention '
             'drifted. The dashboard itself is unaffected and stays at '
-            f'{URL_BASE}/<session_code>.')
+            '/experimenter_dashboard/<session_code>.')
         logger.error(message)
         print(message, flush=True)
         return 'template_invisible'
@@ -1984,22 +1995,35 @@ function renderRow(row, meta) {
    not-arrived" toggle changes what is on screen and must not silently change
    what the average means.
 
-   The count and its POPULATION are shown next to each pill, because "average
+   The count and its POPULATION are shown next to each item, because "average
    intro time 4:12" over two of twenty participants is a different fact from the
-   same number over twenty — and because two pills side by side with different
+   same number over twenty — and because two items side by side with different
    denominators would otherwise be read as having the same one.
 
-   A THIRD PILL, TOTAL PAYMENTS, joins them so the payment picture lives on this
-   tab. It is the ONE pill NOT computed here: it reads data.earnings_total,
-   summed server-side from the same earnings map the rows are filled from (see
-   _earnings_total), because a total that display and detection could disagree
-   on is the trap the timing pill exists to avoid. Its population is FINISHED
-   participants — the same denominator as avg earnings, stated the same way. */
+   EARNINGS IS ONE ITEM, avg and total together (Julian, 2026-08-17). Both the
+   average and the total run over the SAME population — FINISHED participants,
+   because an `earned` figure exists only once the Results page computes it — so
+   a merged pill is honest and two separate items were not: side by side they
+   read as two populations. The population is therefore stated ONCE, on the
+   merged pill, and its count carried once. The intro-time item stays SEPARATE
+   because it averages a DIFFERENT population (everyone past intro), and its
+   wording ("past intro") is kept deliberately distinct from the earnings item's
+   ("finished") now that they sit next to each other.
+
+   THE TOTAL is still data.earnings_total.total, summed SERVER-SIDE from the
+   same earnings map the rows are filled from (see _earnings_total), never
+   re-added in the client — a total that display and detection could disagree on
+   is the trap the timing pill exists to avoid. THE AVERAGE is that one server
+   total divided by its count, NOT a second client-side sum of the row cells: one
+   source for both figures, so avg and total cannot disagree with each other or
+   with the rows. The whole item is gated on that server total being present, so
+   it degrades to nothing — no raise, no half-pill — when no earnings exist yet.
+   avg and total are labelled in words inside the pill so a reader tells them
+   apart at a glance, without a tooltip. */
 function summaryHTML(data) {
-  var times = [], money = [];
+  var times = [];
   data.rows.forEach(function (r) {
     if (r.intro_seconds != null && !r.intro_live) times.push(r.intro_seconds);
-    if (r.earnings != null) money.push(r.earnings);
   });
   var out = '';
   function mean(a) {
@@ -2013,37 +2037,31 @@ function summaryHTML(data) {
            '<span class="pill">' + fmtSecs(Math.round(mean(times))) +
            '</span><span class="sum-n">of ' + times.length +
            ' past intro</span></span>';
-  if (money.length)
-    out += '<span class="sum-item" title="Mean earnings over FINISHED ' +
-           'participants only — earnings do not exist until the results page ' +
-           'computes them. A different denominator from the intro-time pill.">' +
-           '<span class="sum-label">avg earnings</span>' +
-           '<span class="pill pill-earn">' + mean(money).toFixed(2) +
-           (data.currency ? ' ' + esc(data.currency) : '') +
-           '</span><span class="sum-n">of ' + money.length +
-           ' finished</span></span>';
-  /* TOTAL PAYMENTS — so this one dashboard tab carries the payment picture and
-     nobody opens oTree's own Payments page. COMPUTED SERVER-SIDE
-     (data.earnings_total), never re-summed here from the row cells: the total
-     and the per-row earnings must be one number in one place, the same
-     discipline the timing pill follows so display and detection cannot
-     disagree. Its POPULATION is stated in words and its count carried, exactly
-     like the two averages — an `earned` figure exists only for a FINISHED
-     participant, the same denominator as `avg earnings`. The mean is NOT
-     repeated here: that pill already shows it (see _earnings_total). */
-  if (data.earnings_total && data.earnings_total.total != null &&
-      data.earnings_total.n > 0)
-    out += '<span class="sum-item" title="Total of the SAME earnings the rows ' +
-           'show, over FINISHED participants only — summed on the server from ' +
-           'the same figures, so it can never disagree with the per-row ' +
-           'cells. So the payment picture lives on this tab, not oTree’s ' +
-           'Payments page.">' +
-           '<span class="sum-label">total payments</span>' +
+  /* EARNINGS — ONE pill, avg and total as two subsections. So this one
+     dashboard tab carries the payment picture and nobody opens oTree's own
+     Payments page. Both figures come from the ONE server-summed number
+     (data.earnings_total): total is it, avg is it over its count — so neither
+     can disagree with the per-row cells, the one-number-in-one-place discipline
+     the timing pill follows. Gated on that number, so the pill is present in
+     full or not at all. FINISHED is a different population from the intro-time
+     item's "past intro"; the two are stated distinctly. */
+  var et = data.earnings_total;
+  if (et && et.total != null && et.n > 0) {
+    var cur = data.currency ? ' ' + esc(data.currency) : '';
+    out += '<span class="sum-item" title="Earnings over FINISHED participants ' +
+           'only — the average and the total payments, both read off the ONE ' +
+           'figure summed on the server from the same earnings the rows show, ' +
+           'so neither can disagree with the per-row cells. Earnings do not ' +
+           'exist until the results page computes them: a different population ' +
+           'from the intro-time pill.">' +
+           '<span class="sum-label">earnings</span>' +
+           '<span class="sum-n">avg</span>' +
            '<span class="pill pill-earn">' +
-           data.earnings_total.total.toFixed(2) +
-           (data.currency ? ' ' + esc(data.currency) : '') +
-           '</span><span class="sum-n">of ' + data.earnings_total.n +
-           ' finished</span></span>';
+           (et.total / et.n).toFixed(2) + cur + '</span>' +
+           '<span class="sum-n">total</span>' +
+           '<span class="pill pill-earn">' + et.total.toFixed(2) + cur +
+           '</span><span class="sum-n">of ' + et.n + ' finished</span></span>';
+  }
   return out;
 }
 
@@ -2093,8 +2111,13 @@ function repaint(data) {
          has scrolled out of sight. */
       unmapped = data.rows.filter(function (r) {
         return r.step === 'unmapped'; }).length;
+  /* NO leading "N participants ·" here any more (Julian, 2026-08-17): the
+     "👤 X of Y arrived" segment already carries the total as its Y (n =
+     data.rows.length = every participant row), so a separate count said the
+     same number twice. The arrival segment is the ONE place the total lives
+     now — do not reintroduce a bare "N participants" alongside it. */
   document.getElementById('counts').textContent =
-    n + ' participants · 👤 ' + arrived + ' of ' + n + ' arrived · ' +
+    '👤 ' + arrived + ' of ' + n + ' arrived · ' +
     fin + ' finished · ' + term + ' ended early' +
     (stalled ? ' · ' + stalled + ' stalled' : '') +
     (unmapped ? ' · ⁉️ ' + unmapped + ' in an app not on the timeline' : '');

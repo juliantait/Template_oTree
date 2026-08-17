@@ -230,6 +230,15 @@ ROWS = [
 
 def payload():
     """The `/data` JSON, in `session_snapshot()`'s shape."""
+    # TOTAL PAYMENTS, summed here from the SAME row earnings the preview
+    # renders, exactly as _earnings_total does server-side (over the FINISHED
+    # rows — those that carry an `earnings` figure). Without it the merged
+    # EARNINGS pill, which is gated on data.earnings_total, would degrade to
+    # nothing and the website's monitor preview would silently drop the payment
+    # figures — the stale-preview trap CLAUDE.md warns about.
+    _earned = [r['earnings'] for r in ROWS if r.get('earnings') is not None]
+    earnings_total = (dict(total=float(sum(_earned)), n=len(_earned))
+                      if _earned else dict(total=None, n=0))
     return dict(
         ok=True,
         session=dict(code=SESSION_CODE, config_name='lab',
@@ -241,5 +250,6 @@ def payload():
         stall_legend=STALL_LEGEND,
         poll_seconds=2,
         currency=CURRENCY,
+        earnings_total=earnings_total,
         now=0,
     )
