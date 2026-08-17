@@ -3,7 +3,7 @@ from otree import settings as otree_settings
 import json
 import time
 import common
-import monitoring
+import participant_tab_monitor
 from settings import INSTITUTION_NAME, STATIC_VERSION
 from .quiz_items import QUIZ_ITEMS
 
@@ -175,7 +175,7 @@ def intro_page_visible(player) -> bool:
     Never a participant with a recorded removal — `common.removed_from_study`,
     the ONE downstream belt (whole-app review A1; this used to check
     `screened_out` alone). The tab-monitor half is LIVE, not a belt: these
-    pages are monitored (monitoring.MonitoredPage), so a mid-quiz
+    pages are monitored (participant_tab_monitor.MonitoredPage), so a mid-quiz
     disqualification's reload must land on the ending, not back on the quiz.
     The screen-out half stays the belt to the soft wall's brace — the gate
     HOLDS such a participant on before.welcome, so they never reach this app.
@@ -288,10 +288,10 @@ def quiz_modal_state(player) -> dict:
 
 
 # PAGES
-class instructing(monitoring.MonitoredPage):
-    # MONITORED (monitoring.MonitoredPage): the agreement page the participant
-    # just passed warns against consulting an AI assistant during exactly this
-    # reading — the pages it protects must be the pages it watches.
+class instructing(participant_tab_monitor.MonitoredPage):
+    # MONITORED (participant_tab_monitor.MonitoredPage): the agreement page the
+    # participant just passed warns against consulting an AI assistant during
+    # exactly this reading — the pages it protects must be the pages it watches.
     template_name = 'intro/templates/instructing.html'
     # NO form_model/form_fields: this page only advances. redoinstructions is
     # a QUIZ field (the POST that takes the re-read offer); declaring it here
@@ -320,10 +320,10 @@ class instructing(monitoring.MonitoredPage):
                  else common.STAGE_INSTRUCTIONS_REREAD_DONE)
         common.stamp_stage(player.participant, stage)
 
-class quiz(monitoring.MonitoredPage):
-    # MONITORED (monitoring.MonitoredPage): this is the very check that gates
-    # entry to the study — the page the 2026-08-12 agreement-page move existed
-    # to protect. A violation here ejects exactly as on a task page.
+class quiz(participant_tab_monitor.MonitoredPage):
+    # MONITORED (participant_tab_monitor.MonitoredPage): this is the very check
+    # that gates entry to the study — the page the 2026-08-12 agreement-page move
+    # existed to protect. A violation here ejects exactly as on a task page.
     template_name = 'intro/templates/quiz.html'
     form_model = 'player'
     is_displayed = staticmethod(intro_page_visible)
@@ -419,15 +419,16 @@ class quiz(monitoring.MonitoredPage):
 # very check that gates entry to the study, which is exactly what that page's
 # text warns against. It now sits after the consent/ID pages in `before`, AND
 # — since 2026-08-13 — these pages really are monitored (they subclass
-# monitoring.MonitoredPage), so everything a participant is asked to do alone
-# is covered. Between those two dates the previous sentence was a claim the
-# code did not honour: the agreement page had moved but no monitor wiring
+# participant_tab_monitor.MonitoredPage), so everything a participant is asked to
+# do alone is covered. Between those two dates the previous sentence was a claim
+# the code did not honour: the agreement page had moved but no monitor wiring
 # existed here, so the quiz stayed unwatched with nothing to say so — see the
 # 2026-08-13 DECISIONS.md entry. `before.AISafetyAgree` has the arming story.
 page_sequence = [instructing, quiz]
 
-# MONITORED BY DEFAULT — every page above must be a monitoring.MonitoredPage
-# subclass or explicitly opted out; a page that dodged the rule fails the BOOT
-# here, never a participant (see monitoring.py).
-monitoring.assert_monitored_page_sequence(__name__, page_sequence)
+# MONITORED BY DEFAULT — every page above must be a
+# participant_tab_monitor.MonitoredPage subclass or explicitly opted out; a page
+# that dodged the rule fails the BOOT here, never a participant (see
+# participant_tab_monitor.py).
+participant_tab_monitor.assert_monitored_page_sequence(__name__, page_sequence)
 

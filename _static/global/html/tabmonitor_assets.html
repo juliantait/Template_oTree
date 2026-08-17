@@ -13,7 +13,7 @@
         exactly common.flag's rule: a key absent from a frozen config means
         the module post-dates the session;
      2. the script REQUIRES AI_SAFETY_CONFIG in the page's js_vars
-        (common.monitor_js_vars via monitoring.MonitoredPage) — absent on the
+        (common.monitor_js_vars via participant_tab_monitor.MonitoredPage) — absent on the
         `before` pages and on any page opted out with `monitored = False`, so
         there it loads and does nothing;
      3. the participant must have armed it on the agreement page

@@ -482,6 +482,21 @@ def main():
           f"finished participant: step=done (got {r3['step']})")
     check(isinstance(r3['earnings'], float) and r3['earnings'] > 0,
           f"earnings shown once known (got {r3['earnings']})")
+    # TOTAL PAYMENTS (summary strip): summed SERVER-SIDE from the same place the
+    # row earnings come from (ctx['earnings']), so the strip total can never
+    # disagree with the per-row cells — the discipline the timing pill follows.
+    # Population = the participants who HAVE an earnings figure (finished), and
+    # the count rides along, the way the averages state their denominator.
+    et = data['earnings_total']
+    row_earnings = [r['earnings'] for r in data['rows']
+                    if r.get('earnings') is not None]
+    check(et['n'] == len(row_earnings) and len(row_earnings) >= 1,
+          f"earnings_total counts exactly the rows that HAVE earnings "
+          f"(n={et['n']}, rows-with-earnings={len(row_earnings)})")
+    check(et['total'] is not None
+          and abs(et['total'] - sum(row_earnings)) < 1e-6,
+          f"earnings_total.total is the SUM of the row earnings, computed "
+          f"server-side (got {et['total']}, sum of rows {sum(row_earnings)})")
     r4 = rows[codes[4]]
     check(r4['quiz']['state'] == 'progress'
           and r4['quiz']['attempts_wrong'] == 1,
@@ -948,6 +963,11 @@ def main():
     check('state-pills' in page and 'spill-nonsepa' in page
           and 'spill-stall' in page and 'spill-finished' in page,
           'the served page ships the pill renderer and all pill classes')
+    # The summary strip ships the TOTAL PAYMENTS pill, reading the server-side
+    # earnings_total rather than re-summing the rendered cells.
+    check('total payments' in page and 'data.earnings_total' in page,
+          'the served page ships the TOTAL PAYMENTS summary pill, computed '
+          'from the server-side earnings_total (not re-summed in the client)')
 
     section('D8. the no-return-click pill, the monitor count, the arrival '
             'count')

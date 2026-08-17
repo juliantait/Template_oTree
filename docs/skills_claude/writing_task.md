@@ -43,7 +43,7 @@ Most of `main/__init__.py` is not your problem — it is template machinery a
 new game inherits by subclassing, and helpfully "simplifying" it is how a
 study breaks silently. What you inherit:
 
-- **The monitoring wiring** (`monitoring.MonitoredPage`, which `TaskPage`
+- **The monitoring wiring** (`participant_tab_monitor.MonitoredPage`, which `TaskPage`
   subclasses): every page after the agreement screen is tab-monitored BY
   DEFAULT; a page opts out only explicitly (`monitored = False`). A page that
   dodges the rule refuses to BOOT (`assert_monitored_page_sequence`).

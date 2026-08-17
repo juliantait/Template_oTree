@@ -156,9 +156,10 @@ deliberate departure from an accreted patch.
 **A change here also ages the website.** The screens on the academic site are
 built from these stylesheets by `scripts/site_previews/build_site_previews.py` (checked by
 `scripts/site_previews/check_site_previews.py`); re-run both after touching
-`_static/global/css/`. Nothing fails if you don't — the site simply goes on
-showing an older study, which is exactly how the hand-written snapshots it
-replaced went stale.
+`_static/global/css/` — **and after touching `experimenter_dashboard.py`'s own
+stylesheet or its `renderRow`**, which the monitor preview is literally rendered
+by. Nothing fails if you don't — the site simply goes on showing an older study,
+which is exactly how the hand-written snapshots it replaced went stale.
 
 ## Testing standard
 

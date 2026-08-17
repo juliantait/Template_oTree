@@ -477,20 +477,33 @@ def check_overview(base, sess):
                     '#summary .sum-item',
                     'els => els.map(e => e.textContent.replace(/\\s+/g," ")'
                     '.trim())')
-                check(len(sums) == 2,
-                      f'the summary strip shows BOTH averages ({sums})')
-                check(all('avg' in s for s in sums),
-                      f'…and each says it is an AVERAGE in words, so it cannot '
-                      f'be read as another participant ({sums})')
+                # THREE pills now: the two averages plus TOTAL PAYMENTS
+                # (2026-08-17). Each says in WORDS what it is — "avg …" or
+                # "total …" — so none can be misread as another participant row.
+                avgs = [s for s in sums if 'avg' in s]
+                totals = [s for s in sums if 'total' in s]
+                check(len(sums) == 3 and len(avgs) == 2 and len(totals) == 1,
+                      f'the summary strip shows the two averages AND the total '
+                      f'payments pill ({sums})')
+                check(all('avg' in s for s in avgs)
+                      and all('total' in s for s in totals),
+                      f'…and each says in words WHAT it is (avg / total), so it '
+                      f'cannot be read as another participant ({sums})')
+                # TOTAL PAYMENTS sums the same earnings over the FINISHED
+                # population and states that denominator, the discipline the
+                # averages follow (2026-08-17).
+                check(all('finished' in s for s in totals),
+                      f'…and the total payments pill names its FINISHED '
+                      f'population ({totals})')
                 # THE TWO DENOMINATORS ARE DIFFERENT AND MUST SAY SO (item 18):
                 # intro time averages everyone PAST INTRO, earnings only the
                 # FINISHED, because earnings do not exist before the results
                 # page. Two pills side by side with unstated denominators would
                 # be read as sharing one.
-                check(any('past intro' in s for s in sums)
-                      and any('finished' in s for s in sums),
-                      f'…and each names its own population, because they are '
-                      f'not the same one ({sums})')
+                check(any('past intro' in s for s in avgs)
+                      and any('finished' in s for s in avgs),
+                      f'…and each average names its own population, because they '
+                      f'are not the same one ({avgs})')
                 # The intro-time average must count people still IN THE TASK —
                 # they finished the intro, so their measurement is complete.
                 # The staged session has exactly one finished participant, so a

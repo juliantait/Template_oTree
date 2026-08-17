@@ -11,6 +11,63 @@ working.
 
 ---
 
+## The single oTree room was renamed `experiment` → `study`, so the URL reads `/room/study` — 2026-08-17
+
+Decided by Julian. The participant-facing room URL is the one bit of plumbing a
+participant actually sees (it goes in the Prolific study link and on printed lab
+sheets), so its name should be neutral — not `experiment`, which reads as jargon,
+and deliberately not anything that commits the URL to a lab or an online framing.
+`study` is the right neutral word for both: it is what Prolific already calls the
+thing, and a lab participant reading `/room/study` is not misled either. The
+display name moved in step: `Experimental Session` → `Study Session`.
+
+There is still exactly **ONE** room. This is the whole point — the same room
+serves both study types (`prolific` and `lab`); the study type is one of the
+three orthogonal controls resolved in `settings.py`, and it is not the room's job
+to encode it. A second room for lab-vs-Prolific would duplicate the room-welcome
+gate and the start.sh binding for a distinction the config already draws.
+
+**Practical consequence — matters for a deployed study, not for this template:**
+a room is bound to a name, so any session already bound to `/room/experiment`,
+and any bookmarked or printed `/room/experiment` link, stops resolving the moment
+the name changes. For this template there is no live session and no circulated
+link, so the rename is free; for a study already in the field it would strand
+participants and must not be done mid-run. **Rejected:** two rooms (defeats the
+one-room-serves-both design); keeping `experiment` (leaks jargon into the one
+URL a participant sees). **Enforced:** `settings.ROOMS`; the room tests bind to
+`study` (`room_gate_test`, `identity_test`, `full_journey_test`,
+`render_check`), so a half-done rename fails to bind a session and goes red.
+
+## `monitoring.py` was renamed to `participant_tab_monitor.py` — the old name collided with the operator monitor — 2026-08-17
+
+A pure rename, decided by Julian, recorded because the old name was actively
+misleading and someone could later "fix" it back. The module holds the
+PARTICIPANT-side tab-monitor page wiring — the `MonitoredPage` /
+`OutroMonitoredPage` bases that arm each page against tab-switching, plus the
+`assert_monitored_page_sequence` boot guard. But "monitoring" also names the
+OPERATOR's job: `experimenter_dashboard.py` is the live session monitor the
+experimenter watches, the previews call it "the experimenter monitor", and
+`docs/` and `TODO.md` discuss "the monitor" meaning that screen. One word for
+two unrelated things is the collapsed-distinction rule wearing a filename — a
+reader chasing "the monitor" could not tell which was meant, and the two
+concepts have nothing to do with each other. `participant_tab_monitor` says
+exactly which monitor and for whom.
+
+Only the MODULE name changed. The class names (`MonitoredPage`,
+`OutroMonitoredPage`) and every function (`focus_live_method`,
+`monitor_js_vars`, `assert_monitored_page_sequence`, …) are untouched — they
+were never ambiguous, and renaming them would have churned the whole
+tab-monitor contract for nothing. English prose about "monitoring" as a
+concept, and every reference to the experimenter/operator monitor, was left
+alone; only mentions that name the FILE or the import symbol were changed.
+**Rejected:** renaming the classes too (needless blast radius); leaving the
+name (the ambiguity is real and this template is copied, so it propagates).
+**Enforced:** nothing structural — a rename needs none — but `git grep -i
+monitoring` returns only concept/operator uses, and the apps still import (so
+`participant_tab_monitor.assert_monitored_page_sequence` still fires at boot);
+`scripts/tests/task_page_test.py` imports the module under its new name and
+passes.
+
 ## The repo root is found by walking up to `settings.py`, never by counting directories — 2026-08-16
 
 Decided by Julian, on the evidence of the restructure that same day.
@@ -97,8 +154,9 @@ button below".
 
 ## The website's screen previews are GENERATED from the template, not drawn — 2026-08-15
 
-Decided by Julian. The academic site shows four screens of the study (welcome
-lab, instructions, a decision screen, results lab). They used to be hand-written
+Decided by Julian. The academic site shows several screens of the study (welcome
+lab, consent lab, instructions, a decision screen, results lab; the experimenter
+monitor was added 2026-08-16, see below). They used to be hand-written
 one-off HTML snapshots, and by August they no longer looked anything like the
 template.
 
@@ -113,7 +171,7 @@ one standalone file per screen with no external reference of any kind, because
 they load in an iframe on a static site with no access to this repo.
 
 **Source is tracked; output is not.** The script and
-`scripts/site_previews/bodies/` are in the repo; the four built files land in
+`scripts/site_previews/bodies/` are in the repo; the built files land in
 gitignored `_ai/site_previews/`. A generator living in `_ai/` would die with the
 container and the next person would hand-write another one-off — which is the
 defect, restored.
@@ -141,6 +199,101 @@ the lab screens name Prolific in no **rendered** text (asserted on `innerText`,
 paired with a minimum-text assertion, because an absence check alone passes
 against a blank page). Re-running after a CSS change is enforced by nothing —
 it is a note in `CLAUDE.md`'s styling section and in `previews/SUMMARY.md`.
+
+## The monitor preview is RENDERED BY THE DASHBOARD AND FROZEN, not hand-written — 2026-08-16
+
+Requested by Julian: put the experimenter monitor on the academic site as a
+sixth preview, same 1920x1080 canvas as the others.
+
+**It could not be built like the other five, and the reason is worth keeping.**
+Every participant preview is a hand-written body in
+`scripts/site_previews/bodies/` composed of real shipped components, with the
+real stylesheets inlined. The monitor has no body to write: `experimenter_dashboard.py`
+serves a shell whose `<tbody>` says `Waiting for first data…`, and every row,
+timeline marker, pill and quiz cell is built by that file's own `renderRow` /
+`stateHTML` / `timelineHTML` in JavaScript from the poll's JSON. Hand-writing
+those rows would have been **a second implementation of renderRow** — the
+inverted collapsed-distinction rule in `CLAUDE.md`, and the drift would have
+been invisible: a pill that changed shape in the dashboard would go on looking
+right in the preview forever.
+
+**So the build runs the real page.** `build_monitor` imports `_PAGE_HTML`
+(stylesheet, script, header cells and step list all already resolved from
+`STEP_LABELS`), inlines base.css in place of the `<link>`, stubs `fetch` to
+return the invented session in `scripts/site_previews/monitor_session.py`, loads
+it in headless Chromium, waits for the poll to paint, and **freezes the DOM with
+every `<script>` stripped**. The output is markup the dashboard itself produced,
+needing no server and no JavaScript — which is what earns it the same
+scripts-disabled guarantee the other five have for free. The cost, stated: this
+one screen makes the generator depend on Playwright at build time (the five
+participant screens still build on the standard library alone).
+
+**It is a LAB session, and that is why it shows no "ended early" rows.** All
+four terminal states need a module `RECRUITMENT_PROFILES['lab']` switches off —
+`device_capture` (📵 screened out), `explicit_consent` (✋ declined), `comprehension_dq`
+(❌), `tab_monitor` (👀) — so a real lab monitor never shows one. Putting them on
+anyway would repeat the exact error that once shipped a consent preview with a
+radio button no lab participant has ever seen. The built file says this in its
+own header, because an absence on a picture reads as a missing feature.
+
+**The data is invented and the file is public**: seat numbers, no Prolific IDs
+(a Prolific row's label IS the platform ID), no completion codes, no contact or
+bank details — the screen has no column for any of those.
+
+**Enforced:** `check_site_previews.py` asserts the frozen page has the expected
+row count (imported from the fixture, not typed) and at least one of each mark
+the fixture exists to demonstrate — the timeline markers, the done tick, green
+finished rows, amber stalled rows, dimmed not-arrived rows, all four quiz-cell
+states, the earnings and live-timer pills, the Non-SEPA pill, the code fallback
+and the averages strip. Without that, the way this preview fails is a freeze
+caught before the paint: an empty or half-drawn table, which trips no geometry
+check and is indistinguishable from a working one at thumbnail size.
+
+**Known and accepted: it is not readable at grid-thumbnail size.** Measured
+2026-08-16, apparent text in a two-up 590px tile is 3.3–5.7px; at a 1280px tile
+the smallest labels are 7.3px. The screen reads as *shape* — a session table
+with colour-coded rows — rather than as data at anything below full size. It is
+the one preview whose value IS the data, so it wants a full-width tile or a
+link to the full-size render; that is a website decision, left to Julian.
+
+## One canvas for every preview, and the empty space on the short screens is accepted — 2026-08-16
+
+Decided by Julian, reversing a change made the day before. `consent_lab.html`
+had been moved to a **1152x648** canvas while the other screens stayed on
+1920x1080. The reason was real: the shipped lab consent copy is genuinely short
+(242px of content against ~700px for an instructions step) and floated in a
+white void, and because `base.css` caps type at 19px from roughly 800px of width
+upward, a smaller canvas shrinks the 88vh card while the text stays put — so the
+copy fills more of it.
+
+**What that missed is that the screens are shown side by side.** A tile scales
+its canvas by `tile_width / canvas_width`, so the smaller canvas was scaled UP
+1920/1152 = **1.67x** more than its neighbours: the same tile size, half again
+the apparent text size. Julian saw it in the grid and chose the void. So the
+canvas is now ONE constant for every screen, and **the empty space on the short
+screens is the accepted outcome** — the shipped consent page really is that
+short, and consistent scale across the grid matters more than a filled frame.
+
+**The rejected alternative is the important half:** do *not* pad or lengthen the
+consent copy to fill the frame. This preview goes on the website as what the
+template produces, so it carries the literal shipped copy — a fuller consent
+page here would be a picture of a study nobody ran, and a disclaimer in a file
+header is invisible to somebody looking at the picture. (Same reasoning as the
+INVENTED/TRIMMED notes on the entry above; those two departures are stated on
+the artefacts because they could not be avoided. This one can be, so it is.)
+
+**Why a constant and not a table of overrides that happen to agree:** the
+uniformity *is* the decision, so it is expressed as something that cannot vary.
+`check_site_previews.py` **imports** the constant rather than restating it —
+one fact, one place, per `CLAUDE.md`'s two-implementations rule.
+
+**Enforced:** `scripts/site_previews/check_site_previews.py` now also measures
+the scale factor each tile applies and fails if the screens disagree by more
+than 0.005. No per-screen assertion could catch this — every screen filled its
+own tile perfectly on either canvas; the fault existed only *between* them.
+Measured 2026-08-16 at four 16:9 sizes: all five screens report canvas
+1920x1080 and identical scales (1.000 / 0.667 / 0.500 / 0.375), and the consent
+screen renders complete with overflow +0 and its card inside the canvas.
 
 ## Every ending population gets its own completion code — 2026-08-15
 
@@ -823,7 +976,7 @@ thing a future auditor must be able to date.
 
 **What closed it — an INVERSION, not page-by-page opt-in** (Julian's rule):
 everything after `before.AISafetyAgree` is monitored BY DEFAULT
-(`monitoring.MonitoredPage`, generalising TaskPage's J2 reasoning), and a
+(`participant_tab_monitor.MonitoredPage`, generalising TaskPage's J2 reasoning), and a
 page can only be unmonitored by asking (`monitored = False`, one switch that
 disarms all the wiring together — never `js_vars = None`, which 500s at
 render because oTree calls js_vars unconditionally). The four pieces travel
@@ -850,7 +1003,7 @@ distinguishable from a nearly-ejected one (`focus_loss_count` keeps meaning
 twice. The client is told its phase (`ejects: false`) and shows no overlay
 and no warning modal in the outro — the modal's threat would be a lie there.
 The asymmetry is stated, with its why, at every site that could read as
-inconsistent: `common._apply_focus_loss`, `monitoring.py`, the top of
+inconsistent: `common._apply_focus_loss`, `participant_tab_monitor.py`, the top of
 `outro/__init__.py`, settings' integrity block, README (section + diagram),
 CODEBOOK ("Tab-monitor violation counts"), docs/conventions.md.
 **Rejected:** page-by-page opt-in (the model that produced the gap — a
@@ -859,7 +1012,7 @@ checklist cannot make forgetting impossible); ejecting in the outro
 outro's sequence, so a mid-outro ejection has no ending page ahead of it to
 land on); and a client-side warning without counting or counting with the
 old threatening modal in the outro (each a new collapsed distinction).
-**Enforced:** `monitoring.assert_monitored_page_sequence` runs at IMPORT at
+**Enforced:** `participant_tab_monitor.assert_monitored_page_sequence` runs at IMPORT at
 the bottom of `intro`, `main` and `outro` and refuses to BOOT over a page
 that is neither monitored nor explicitly opted out — you can only get an
 unmonitored page by asking for one. `scripts/tests/task_page_test.py` (reworked)
@@ -910,7 +1063,7 @@ the accessor carries.
 
 > **SUPERSEDED IN PART, same day — see the monitored-by-default entry above.**
 > The J2 reasoning held and GENERALISED: the monitor wiring moved up into
-> `monitoring.MonitoredPage`, which every page after the agreement screen now
+> `participant_tab_monitor.MonitoredPage`, which every page after the agreement screen now
 > subclasses, so page inheritance is no longer "used nowhere else" — it is the
 > rule for three of the four apps, for exactly the reason this entry gives.
 > TaskPage survives as the task-specific layer (round gating + progress vars)
@@ -1154,6 +1307,48 @@ printCookies, cl) were already gone. Do not re-add a cookie sweep without a
 stated reason — the last one ran for years with nobody able to say what it was
 for, which is why the review flagged it.
 **Enforced:** nothing but grep — there is no cookie code left to guard.
+
+## The dashboard summary strip carries a TOTAL PAYMENTS pill, summed server-side over finished participants — 2026-08-17
+
+Requested by Julian: put the payment picture on the one dashboard tab, so
+nobody has to open oTree's own Payments page to see what a running session is
+paying out. Added as a third item in the `dash-summary` strip beneath the
+table (`experimenter_dashboard.py`), beside the two averages.
+
+**Summed SERVER-SIDE, in the same place the row earnings come from.** The total
+is `_earnings_total(ctx['earnings'])` — the sum of the exact `earned` figures
+`_earnings_map` already fills the row cells with — shipped in the snapshot as
+`earnings_total` and merely *rendered* by `summaryHTML`. It is deliberately NOT
+re-added in the client from the rendered cells: a total that display and
+detection could compute two different ways is the collapsed-distinction trap the
+timing pill is built to avoid (`_stall_elapsed` — one number for the value shown
+and the value judged). So the strip total can never disagree with the column it
+totals.
+
+**Its POPULATION is stated, the way the two averages state theirs.** An `earned`
+value exists only once the Results page has computed it — i.e. for FINISHED
+participants — so the pill is labelled in words and carries its count (`of N
+finished`), the same denominator and the same discipline as the adjacent `avg
+earnings` pill. It degrades exactly like the earnings read it draws on: any
+failure gives `total=None` and no pill, never a raise, never a dead dashboard.
+
+**Rejected — repeating the MEAN in the total pill.** The mean falls out of the
+same two numbers for free, so the brief allowed it. It is left out because the
+`avg earnings` pill already shows that mean over that same population, and a
+second copy would be one concept with two implementations (the inverted
+collapsed-distinction rule in `CLAUDE.md`) — invisible drift waiting to happen,
+for no new information. The TOTAL is the new fact; the mean was already on
+screen. **Also rejected:** a `participation_fee` line — the template holds
+`participation_fee` at zero on purpose (the fee guard), and there is no second
+ledger to add up. **Not added:** any `stopped_at` field or new participant
+variable (Julian ruled that out); the pill reads only what `_earnings_map`
+already read.
+**Enforced:** `scripts/tests/dashboard_test.py` §D — `earnings_total.n` counts
+exactly the rows that have an earnings figure and `earnings_total.total` equals
+their sum, and §D7 asserts the served page ships the pill reading
+`data.earnings_total` rather than re-summing cells. The website monitor preview
+exercises `summaryHTML` when it freezes the real page, so a broken pill would
+fail the paint that `check_site_previews.py` guards.
 
 ## The dashboard's state column is a collection of pills, and conditions survive outcomes — 2026-08-13
 

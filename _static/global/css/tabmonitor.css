@@ -8,7 +8,7 @@
    BUNDLED SINCE 2026-08-13 (this reverses the old "linked per page" rule, on
    purpose): css_bundle.html ships this to EVERY page via
    tabmonitor_assets.html, because pages are now monitored BY DEFAULT after
-   the agreement screen (monitoring.py) and a per-template link was the
+   the agreement screen (participant_tab_monitor.py) and a per-template link was the
    mechanism by which pages ended up silently unwired. Everything here is
    scoped to .tabmon-* and hidden until the JS adds `.is-visible`, so on the
    pages where the monitor does not run the file is inert bytes, not chrome.

@@ -734,8 +734,9 @@ class AISafetyAgree(Page):
     monitor JS (`_static/global/js/ai_safety_monitor.js`) stays dormant until
     that flag is set, so this page marks exactly where monitoring begins — and
     since 2026-08-13 everything after it really IS monitored by default
-    (monitoring.MonitoredPage: intro and main eject at the threshold, outro
-    records only — see monitoring.py). Between 2026-08-12 and then, "begins
+    (participant_tab_monitor.MonitoredPage: intro and main eject at the
+    threshold, outro records only — see participant_tab_monitor.py). Between
+    2026-08-12 and then, "begins
     here" was a claim the code did not honour: the page had moved but the
     intro pages carried no monitor wiring, so the instructions and the quiz
     stayed unwatched with nothing anywhere to say so (the whole-app review's

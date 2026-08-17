@@ -76,7 +76,7 @@ def browser(ua=DESKTOP_UA):
     return c
 
 
-def enter_room(client, room='experiment', label=None):
+def enter_room(client, room='study', label=None):
     """Enter through the room the way a Prolific link does.
 
     `welcome_page_ok=1` is what oTree's room welcome page adds when the
@@ -261,7 +261,7 @@ def main():
     # =====================================================================
     section('1. one row per id; case and whitespace are the same person')
     session = ot.create_session('prolific', num_participants=12,
-                                room_name='experiment')
+                                room_name='study')
     a = browser()
     r = enter_room(a, label='abc123xyz')
     first_code = code_of(r)
@@ -580,7 +580,7 @@ def main():
     old_code = code_of(r)
     check(old_code is not None, f'the mover entered the OLD session ({old_code})')
     new_session = ot.create_session('prolific', num_participants=4,
-                                    room_name='experiment')      # REBIND
+                                    room_name='study')      # REBIND
     r2 = enter_room(browser(), label='mover0001')
     check(r2.status_code < 500, 'entry after a rebind does not 500')
     check(code_of(r2) != old_code,
@@ -593,7 +593,7 @@ def main():
     section('7. LAB SEAT LABELS ARE NATIVE oTree, AND NEED NO PROLIFIC FLAG')
     # -------------------------------------------------------------------------
     # Julian's lab room links carry a SEAT as the participant label
-    # (`/room/experiment?participant_label=a2`), and the question is whether
+    # (`/room/study?participant_label=a2`), and the question is whether
     # `prolific_capture_participant_id` has anything to do with that. It does
     # not, and this section is here so that stays true — the label machinery was
     # touched twice recently (identity.py's duplicate guard, and the
@@ -610,7 +610,7 @@ def main():
     #     the script that reads `?PROLIFIC_PID=` (or `?participant_label=`) into
     #     it. With the flag off, none of that renders — and the label is already
     #     set regardless, by oTree, before our code sees the request.
-    lab = ot.create_session('lab', num_participants=4, room_name='experiment')
+    lab = ot.create_session('lab', num_participants=4, room_name='study')
     check(lab.config.get('prolific_capture_participant_id') is False,
           'the lab profile really does ship prolific_capture_participant_id OFF '
           '(so this section is evidence about the flag being off, not a config '
@@ -675,7 +675,7 @@ def main():
     # done, and the dashboard snapshot above reads its session directly from the
     # database rather than through the room.
     flag_on = ot.create_session(
-        'lab', num_participants=2, room_name='experiment',
+        'lab', num_participants=2, room_name='study',
         modified_session_config_fields={'prolific_capture_participant_id': True})
     r3 = enter_room(browser(), label='b7')
     check(r3.status_code < 500 and labels_in(flag_on) == ['b7'],

@@ -79,7 +79,7 @@ def main():
     from playwright.sync_api import sync_playwright
     import requests
 
-    ROOM_URL = '/room/experiment'
+    ROOM_URL = '/room/study'
 
     server = Server()
     server.start()
@@ -128,7 +128,7 @@ def main():
             resp = requests.post(
                 f'{server.base}/api/sessions',
                 json=dict(session_config_name='lab', num_participants=6,
-                          room_name='experiment'),
+                          room_name='study'),
                 timeout=30)
             check(resp.status_code == 200,
                   f'the experimenter creates the session over REST, as '
