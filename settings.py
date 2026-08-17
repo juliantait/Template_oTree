@@ -298,11 +298,15 @@ DASHBOARD_RETURN_GRACE_SECONDS = 90
 
 # --- static asset version ----------------------------------------------------
 # Appended as ?v=... to every CSS/JS href so a redeploy is never served a stale
-# cached asset. BUMP THIS ON EVERY CHANGE to a file under _static/. Each app
-# exposes it as C.STATIC_VERSION, which is what the templates read.
+# cached asset. BUMP THIS ON EVERY CHANGE to a file under _static/ (add, edit,
+# rename OR remove), AND re-record the manifest with
+# `python scripts/prelaunch_check.py --stamp-assets`. The re-stamp is the step
+# that gets forgotten (it did, 2026-08-15 → found 2026-08-17); it is now held by
+# scripts/tests/asset_manifest_test.py, which goes red on a stale manifest, and
+# by prelaunch_check itself at launch. Each app exposes this as C.STATIC_VERSION,
+# which is what the templates read.
 # 14 -> 15 on 2026-08-15: the logo files were renamed (see INSTITUTION_NAME
-# below). Re-record the manifest with
-# `python scripts/prelaunch_check.py --stamp-assets`.
+# below).
 STATIC_VERSION = '15'
 
 # --- whose study this is ------------------------------------------------------
