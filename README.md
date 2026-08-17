@@ -878,25 +878,67 @@ column header lists all four, read from these settings on every poll, so an
 operator can see what counts as too long without opening `settings.py`. An amber
 row additionally names the limit it tripped.
 
-**The summary items at the foot each state their POPULATION**, and it differs
-from one to the next. **avg intro time** averages everyone who has *completed the
-intro* (whatever they are doing now — a participant in round 4 finished the intro
-long ago, so their measurement is complete); a still-running intro timer is
-excluded, because averaging a number that is still going up would move the mean
-every two seconds.
+**The two summary items at the foot are each one merged pill, and both run over
+the *same* population — *finished* participants (`of N finished`, stated once).**
+This is a deliberate simplification (Julian, 2026-08-17): the strip is an
+at-a-glance operator impression, not an analysis statistic, so there is one
+denominator per pill and nothing to disambiguate.
+
+**time** carries an **avg intro** and an **avg completion** subsection. avg intro
+is the mean time in the intro app; avg completion is the mean time for the whole
+run, the first stamp to the finished stamp — both read from each finished
+participant's `stage_timestamps` (whose `common.STAGE_*` keys are frozen values)
+and both computed **server-side**, never re-derived in the browser. Because the
+population is the finished set, every value is a *completed* measurement, so the
+mean never drifts on its own between polls. (Until 2026-08-17, avg intro time was
+its own item averaging everyone *past intro*; it is now finished-only and merged
+here, matched to the earnings population.)
 
 **earnings** is one item carrying an **avg** and a **total** subsection, both over
-*finished* participants only (`of N finished`, stated once) — `earned` does not
-exist until the results page computes it. The two were separate items until
-2026-08-17; merged because both run over the *same* population, they no longer
-read as two different denominators sitting side by side. The **total** is summed
-**server-side** from the same earnings read the row cells come from — not re-added
-in the browser — so it can never disagree with the column it totals; the **avg**
-is that one server figure over its count, not a second sum of the cells, so the
-two subsections cannot disagree either. So the one dashboard tab carries the
-payment picture and nobody has to open oTree's own Payments page. There is no
-`participation_fee` line — the template keeps that fee at zero (one payment
-ledger; see the fee guard).
+*finished* participants only — `earned` does not exist until the results page
+computes it. The **total** is summed **server-side** from the same earnings read
+the row cells come from — not re-added in the browser — so it can never disagree
+with the column it totals; the **avg** is that one server figure over its count,
+not a second sum of the cells, so the two subsections cannot disagree either. So
+the one dashboard tab carries the payment picture and nobody has to open oTree's
+own Payments page. There is no `participation_fee` line — the template keeps that
+fee at zero (one payment ledger; see the fee guard).
+
+Both pills **degrade to no pill at all** early in a session, when nobody has
+finished — never a `0:00` or an empty shell. Each appears only once its finished
+population is non-empty.
+
+**What people got wrong on the quiz** is an on-demand panel, opened from a quiet
+ⓘ in the **Quiz** column header (the same `.th-info` affordance the State header
+uses, inert until clicked). It reads entirely from data that already exists —
+`intro.Player.quiz_attempt_log`, the per-round record of every graded submission
+— so there is **no new tracking and no schema change**. It is fetched from its
+**own route** (`/experimenter_dashboard/<code>/quiz_mistakes`) by **one fetch**
+when the operator opens it, and **never rides the 2-second poll**: the panel
+parses a JSON log per participant and aggregates across attempts, a cost that
+grows with attempts rather than rows, and that must not lengthen every hold of
+oTree's global commit lock for data nobody is watching second-by-second. Because
+it is a separate route and a separate fetch, a bug in it costs the panel and
+never the table (its own rule 2, one level tighter): a raising builder returns
+`ok:false` and the panel shows an error strip; a missing or renamed `intro`
+app degrades to a single "no data" message; **one** corrupt participant log
+renders that participant "unreadable" and drops them from the counts while every
+other participant still aggregates.
+
+What it shows, all computed **server-side** so the panel and the table cannot
+disagree, and every value **escaped at render** (the templates here do not
+auto-escape — a reflected XSS happened once): the **first attempt only** is the
+headline (later attempts are contaminated by guessing — kept underneath, never
+fed into the rates), the actual **chosen option text** with **how many chose
+it** worst-item-first, the **first pass and the post-re-read second pass kept
+separate** (round 1 vs round 2 — the log is a per-round column, so the two are
+separated for free and must never be pooled), and **blank admin-advance
+submissions excluded with their count stated** (an all-blank submission is what
+oTree posts for *advance slowest participants*, not a participant's answers).
+Scope is both the session-level aggregate and the per-participant detail. The
+panel is Escape-dismissible, styled from the dashboard's own tokens. Its look is
+the approved mock (`_ai/quiz_mistakes_mock.html`, local only); the reasoning is
+in DECISIONS.md (2026-08-17).
 
 **Adding a column** is three marked places and nothing else — compute the value
 in `_participant_row` (`ADD A COLUMN HERE`), add a `<th>` to `_COLGROUP_HTML`,
@@ -930,8 +972,8 @@ configs, browser rendering checks) rather than just listing these files.
 | **`scripts/tests/device_gate_test.py`** — the entry allow-list, weighted towards FALSE POSITIVES: eleven real browsers (desktop Chrome/Safari/Firefox/Edge, Chrome OS, a touchscreen laptop, an iPad, an Android tablet, phones) plus every shape of unusable User-Agent | the listed types are admitted and nothing else is screened by accident: those browsers are never removed, an unusable User-Agent always proceeds recording nothing, an excluded type gets `-4` with the DETECTED type as its cause, and the default list does nothing at all | client-side behaviour; anything past entry | after touching the entry gate, the classifier or `allowed_devices` |
 | **`scripts/tests/screenout_softwall_test.py`** — the screen-out lifecycle over real HTTP: screened → cleared → re-screened → completes, the post-consent immunity, the way out, and the no-decision asymmetry | the verdict is written immediately (a closed tab still exports `-4`), clears only on POSITIVE evidence of an accepted device before consent, never touches anyone after consent, and the way out is a codeless real link | rendering; anything a browser does with the page | after touching the gate, the clear rules or the screen-out page |
 | **`scripts/tests/identity_test.py`** — in-process: re-entry, two tabs on one id, case/whitespace variants, a clashing id claim, a PLANTED duplicate label, and a room rebound to a new session | one participant row per id (which is what re-entry and the soft wall depend on); a clashing claim is refused silently with the owner's code recorded; a duplicate that exists anyway does not 500 | anything about the pages themselves | after touching label writes, `identity.py` or the entry sequence |
-| **`scripts/tests/dashboard_test.py`** — in-process, production + `AUTH_LEVEL=STUDY`: the install discipline, the two dashboard acceptance criteria, row truth for every stage and all four terminal states, the entry-block boundary, an unmapped app, and read-only | that the dashboard is **unreachable without an admin login** (page, data and index, for an anonymous client AND for a mid-study participant's own cookies; the redirect leaks nothing; POST is 405); that a raising handler yields the **error panel** and `ok:false` JSON rather than a 500, and one poisoned ROW leaves the table `ok:true` with every other row live; that it **writes nothing** (byte-identical participant rows plus an ORM dirty-flag check); that an app missing from `APP_STEPS` is visibly unplaced instead of silently at Entry | **it is NOT proof that the wrapper is what protects participants.** Section C's participant walks are a regression guard: participant survival rests partly on oTree's `NEW_IDMAP_EACH_REQUEST` giving every request a fresh DB session, and those checks still pass with the wrapper deleted (check C0 pins that oTree property so a future version changing it goes red). The checks that fail when the wrapper is removed are the error-panel ones. Also blind to: anything about how the page LOOKS, and concurrency — the polls here are sequential | after touching `experimenter_dashboard.py`, the entry-block stamps, or any app's `page_sequence`/app list |
-| **`scripts/tests/dashboard_render_check.py`** — real uvicorn + real headless Chromium at 1280/1512/1152, staging 13 participants across every state | that the operator screen is actually USABLE: the login wall stands in a browser, the poll paints and ticks without a reload, the six timeline steps are **measured** equal to within 2px, the mid-task marker reads "2 of 3", the amber row differs in sampled PIXELS rather than by class, entry-only rows dim and the toggle hides them, no horizontal page scroll, and no time/earnings/stall cell is ever clipped | server-side correctness (that is `dashboard_test.py`'s job); whether the numbers are RIGHT — it checks that cells render legibly, not that they say the truth; anything about a real operator's screen size or emoji font | after ANY change to the dashboard's HTML, CSS or JS — a broken operator layout produces no error anywhere |
+| **`scripts/tests/dashboard_test.py`** — in-process, production + `AUTH_LEVEL=STUDY`: the install discipline, the two dashboard acceptance criteria, row truth for every stage and all four terminal states, the entry-block boundary, an unmapped app, and read-only | that the dashboard is **unreachable without an admin login** (page, data and index, for an anonymous client AND for a mid-study participant's own cookies; the redirect leaks nothing; POST is 405); that a raising handler yields the **error panel** and `ok:false` JSON rather than a 500, and one poisoned ROW leaves the table `ok:true` with every other row live; that it **writes nothing** (byte-identical participant rows plus an ORM dirty-flag check); that an app missing from `APP_STEPS` is visibly unplaced instead of silently at Entry; and that the **quiz-mistakes** endpoint returns the first-attempt aggregate (worst-item-first, chosen-option counts), keeps the two passes unpooled, excludes and counts blank admin-advance submissions, degrades to `ok:false`/`available:false` without touching the main table, and carries the answer text for the renderer to escape | **it is NOT proof that the wrapper is what protects participants.** Section C's participant walks are a regression guard: participant survival rests partly on oTree's `NEW_IDMAP_EACH_REQUEST` giving every request a fresh DB session, and those checks still pass with the wrapper deleted (check C0 pins that oTree property so a future version changing it goes red). The checks that fail when the wrapper is removed are the error-panel ones. Also blind to: anything about how the page LOOKS, and concurrency — the polls here are sequential | after touching `experimenter_dashboard.py`, the entry-block stamps, or any app's `page_sequence`/app list |
+| **`scripts/tests/dashboard_render_check.py`** — real uvicorn + real headless Chromium at 1280/1512/1152, staging 13 participants across every state | that the operator screen is actually USABLE: the login wall stands in a browser, the poll paints and ticks without a reload, the six timeline steps are **measured** equal to within 2px, the mid-task marker reads "2 of 3", the amber row differs in sampled PIXELS rather than by class, entry-only rows dim and the toggle hides them, no horizontal page scroll, and no time/earnings/stall cell is ever clipped; and that the **quiz-mistakes panel** opens on the ⓘ, shows the two passes side by side, **escapes** a hostile answer into the DOM (injecting no element), states the blank-exclusion count, expands later attempts and dismisses on Escape | server-side correctness (that is `dashboard_test.py`'s job); whether the numbers are RIGHT — it checks that cells render legibly, not that they say the truth; anything about a real operator's screen size or emoji font | after ANY change to the dashboard's HTML, CSS or JS — a broken operator layout produces no error anywhere |
 | **`scripts/tests/xss_escaping_test.py`** — hostile participant- and URL-supplied values through the real entry URL, in production mode | every hand-interpolated value is HTML-escaped (oTree's ibis does **not** auto-escape) and round-trips un-truncated | injection through anything you did not render in the walk | after adding any template that prints a participant- or URL-supplied value |
 | **`scripts/tests/frozen_config_test.py`** — deletes parameters from a created session's stored config, then walks it | a session created BEFORE a parameter existed still completes; `common.cfg` falls back to the shipped default | a schema change (that needs a real database copy — see the pre-deploy gate) | whenever you add a session-config parameter (and add its name to the test's `STRIPPED` list) |
 | **`scripts/tests/render_check.py`** — real headless Chromium at three viewports; screenshots to `_ai/render_check/` (gitignored; the run creates it), assertions on measured element geometry and on rendered pixels | the pages are actually laid out, visible, scrollable and clickable — the failures that produce no error at all | data correctness; anything server-side | after any CSS or template-structure change |
