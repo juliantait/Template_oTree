@@ -727,11 +727,11 @@ class ConfirmProlificID(Page):
         common.stamp_left_before_app(player.participant)
 
 
-class AISafetyAgree(Page):
+class TabMonitorAgree(Page):
     """Arms the tab-switch monitor. Shown only when `tab_monitor` is on.
 
-    On submit the template sets `sessionStorage.aiSafetyAgreed = '1'`; the
-    monitor JS (`_static/global/js/ai_safety_monitor.js`) stays dormant until
+    On submit the template sets `sessionStorage.tabMonitorAgreed = '1'`; the
+    monitor JS (`_static/global/js/tab_monitor.js`) stays dormant until
     that flag is set, so this page marks exactly where monitoring begins — and
     since 2026-08-13 everything after it really IS monitored by default
     (participant_tab_monitor.MonitoredPage: intro and main eject at the
@@ -772,7 +772,7 @@ class AISafetyAgree(Page):
     it. A lab session that deliberately turns the monitor on gets the agreement
     page too, which is correct — the two belong together.
     """
-    template_name = 'before/ai_safety.html'
+    template_name = 'before/tab_monitor_agree.html'
 
     @staticmethod
     def is_displayed(player):
@@ -806,10 +806,10 @@ class AISafetyAgree(Page):
         # every page of this app calls `common.stamp_left_before_app`, which
         # OVERWRITES, so the end of the entry block is that one stamp whichever
         # pages a config happens to show. The max of `consent` / `confirm_id` /
-        # `ai_safety_agreed` survives only as the fallback in
+        # `tab_monitor_agreed` survives only as the fallback in
         # `experimenter_dashboard._intro_seconds`, for participants who were
         # already mid-flow when `left_before_app` was deployed.
-        common.stamp_stage(player.participant, common.STAGE_AI_SAFETY_AGREED)
+        common.stamp_stage(player.participant, common.STAGE_TAB_MONITOR_AGREED)
         common.stamp_left_before_app(player.participant)
 
 
@@ -817,6 +817,6 @@ class AISafetyAgree(Page):
 #            (no ID page and no agreement page: the lab captures no platform id
 #             and ships the tab monitor off)
 # PROLIFIC : [device screen-out, no page of its own] -> welcome/consent ->
-#            ConfirmProlificID -> AISafetyAgree (arms the monitor BEFORE the
-#            instructions and the quiz — see AISafetyAgree's docstring)
-page_sequence = [startpage, welcome, ConfirmProlificID, AISafetyAgree]
+#            ConfirmProlificID -> TabMonitorAgree (arms the monitor BEFORE the
+#            instructions and the quiz — see TabMonitorAgree's docstring)
+page_sequence = [startpage, welcome, ConfirmProlificID, TabMonitorAgree]

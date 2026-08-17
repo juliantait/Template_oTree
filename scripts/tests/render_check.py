@@ -425,7 +425,7 @@ def page_specs():
         dict(key='quiz_prolific', config='prolific', stop='quiz'),
         # The tab-monitor agreement page: its one bold sentence is the
         # consequence the participant is agreeing to (change_requests item 18).
-        dict(key='ai_safety', config='prolific', stop='AISafetyAgree'),
+        dict(key='tab_monitor', config='prolific', stop='TabMonitorAgree'),
         dict(key='task_tabmonitor', config='prolific', stop=TASK_PAGES[0]),
         dict(key='task_payoff', config='prolific', stop=TASK_PAGES[1]),
         # The lab's demographics/bank page. It had NO render leg until
@@ -3093,12 +3093,12 @@ def check_overlay(server, browser):
     code, _ = walk_to(server.base, session, TASK_PAGES[0])
     for vp_name, vp in VIEWPORTS.items():
         context = browser.new_context(viewport=vp)
-        # ARM THE MONITOR the way the study does: the AI-safety agreement page
-        # sets sessionStorage.aiSafetyAgreed, and ai_safety_monitor.js builds no
+        # ARM THE MONITOR the way the study does: the tab-monitor agreement page
+        # sets sessionStorage.tabMonitorAgreed, and tab_monitor.js builds no
         # DOM at all until it is set. The walk above passed that page over plain
         # HTTP, so this browser has never run its script.
         context.add_init_script(
-            "try { sessionStorage.setItem('aiSafetyAgreed', '1'); } catch (e) {}")
+            "try { sessionStorage.setItem('tabMonitorAgreed', '1'); } catch (e) {}")
         page = context.new_page()
         page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
         page.wait_for_timeout(200)
@@ -3154,7 +3154,7 @@ def check_overlay(server, browser):
 # ==========================================================================
 # WHY A HEADED BROWSER UNDER Xvfb, when every other leg is headless: this leg
 # must GENUINELY blur the tab — fire the real `blur`/`visibilitychange` events
-# ai_safety_monitor.js listens for, from the browser's own tab machinery, not
+# tab_monitor.js listens for, from the browser's own tab machinery, not
 # a dispatched Event() that skips the threshold timer. Headless Chromium
 # (both the headless shell and --headless=new, measured 2026-08-14) pins
 # every page to `visible`/focused forever: bring_to_front, window.open,
@@ -3281,7 +3281,7 @@ def check_outro_never_ejects(server, pw):
             headless=False, env={**os.environ, 'DISPLAY': display})
         context = browser.new_context(viewport=VIEWPORTS['laptop_1280x720'])
         context.add_init_script(
-            "try { sessionStorage.setItem('aiSafetyAgreed', '1'); } catch (e) {}")
+            "try { sessionStorage.setItem('tabMonitorAgreed', '1'); } catch (e) {}")
         page = context.new_page()
         page.goto(f'{server.base}/InitializeParticipant/{code}',
                   wait_until='load')
@@ -3294,13 +3294,13 @@ def check_outro_never_ejects(server, pw):
         # config, and the config says record-only.
         armed = page.evaluate("""() => ({
             started: !!window._tabmonStarted,
-            cfg: (typeof js_vars !== 'undefined' && js_vars.AI_SAFETY_CONFIG)
+            cfg: (typeof js_vars !== 'undefined' && js_vars.TAB_MONITOR_CONFIG)
                  || null,
             live: typeof liveSend === 'function'})""")
         check(armed['started'], 'the monitor script actually started '
                                 '(window._tabmonStarted)')
         check(bool(armed['cfg']) and armed['cfg'].get('ejects') is False,
-              f'this page\'s js_vars carry AI_SAFETY_CONFIG with ejects:false '
+              f'this page\'s js_vars carry TAB_MONITOR_CONFIG with ejects:false '
               f'(got {armed["cfg"]})')
         check(armed['live'], 'the live socket is up (liveSend exists)')
 
@@ -3639,7 +3639,7 @@ def check_features(server, browser, facts):
     bold = None
     for vp in VIEWPORTS:
         code, _ = walk_to(server.base, create_session('prolific', num_participants=2),
-                          'AISafetyAgree')
+                          'TabMonitorAgree')
         context = browser.new_context(viewport=VIEWPORTS[vp])
         page = context.new_page()
         page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
@@ -3653,7 +3653,7 @@ def check_features(server, browser, facts):
               f'{vp}: the inactivity consequence is BOLD on the page '
               f'({texts})')
         context.close()
-    geometry['ai_safety_bold'] = bold
+    geometry['tab_monitor_bold'] = bold
 
     section('L. The screen-out page: its own wording, and its two unequal paths')
     text = facts['screened_out']['phone_375x667']['text']

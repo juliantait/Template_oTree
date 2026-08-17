@@ -37,7 +37,7 @@ session-configuration view shows exactly what ran:
 |------|---------|-----|--------------|
 | `prolific_capture_participant_id` | on | off | Captures the platform id at entry and shows the confirmation page |
 | `prolific_completion_redirects` | on | off | Explicit consent radio + return-to-Prolific buttons with completion codes |
-| `tab_monitor` | on | off | Tab-switch / AI-safety monitor |
+| `tab_monitor` | on | off | Tab-switch monitor |
 | `comprehension_dq` | on | off | Disqualify after too many quiz failures |
 | `device_capture`, `passive_capture` | on | off | Device/screen and on-page measurement |
 | `collect_bank_details`, `collect_demographics` | off | on | Lab pays by transfer and asks demographics itself |
@@ -266,6 +266,6 @@ this deploy?").
 | Study type, flags, codes, exit codes | `settings.py` |
 | Entry, consent, id confirmation, screen-out gate | `before/` |
 | Screen-out causes, exit codes, tab-monitor handler | `common.py` |
-| Tab-switch monitor (client) | `_static/global/js/ai_safety_monitor.js` |
+| Tab-switch monitor (client) | `_static/global/js/tab_monitor.js` |
 | Endings and completion links | `outro/` |
 | Every exported column and its meaning | `CODEBOOK.md` |

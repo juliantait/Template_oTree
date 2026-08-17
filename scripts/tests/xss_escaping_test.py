@@ -79,7 +79,7 @@ BASE_PAYLOAD = {
                 'participant_id_url': ''},
     'instructing': {},
     'quiz': {},
-    'AISafetyAgree': {},
+    'TabMonitorAgree': {},
     # The task pages' names and payloads come from the ONE contract
     # module (scripts/tests/main_contract.py) — a game swap edits it there.
     **task_page_submits(),

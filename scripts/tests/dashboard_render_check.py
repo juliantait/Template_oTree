@@ -136,7 +136,7 @@ def payload_for(page, quiz_answers):
         'ConfirmProlificID': {'participant_id_external': ''},
         'instructing': {},
         'quiz': dict(quiz_answers),
-        'AISafetyAgree': {},
+        'TabMonitorAgree': {},
         # The task pages' names and payloads come from the ONE contract
         # module (scripts/tests/main_contract.py) — a game swap edits it there.
         **task_page_submits(),
@@ -244,7 +244,7 @@ def stage_intro_time(code, seconds):
     stamps = dict(ot.participant_vars(code).get('stage_timestamps') or {})
     anchor = stamps.get('quiz_done') or int(time.time())
     moved = False
-    for key in ('consent', 'confirm_id', 'ai_safety_agreed', 'left_before_app'):
+    for key in ('consent', 'confirm_id', 'tab_monitor_agreed', 'left_before_app'):
         if key in stamps:
             stamps[key] = anchor - seconds
             moved = True
@@ -346,9 +346,9 @@ def stage_overview(base):
     #    _stall_elapsed), which stage_intro_time below shifts — the row's entry
     #    in that list carries the derived over-threshold age.
     #    Stops after the AGREEMENT page, not after welcome: for Prolific the
-    #    entry block is welcome -> ConfirmProlificID -> AISafetyAgree, so
+    #    entry block is welcome -> ConfirmProlificID -> TabMonitorAgree, so
     #    stopping earlier would leave this row still at Entry.
-    walk(base, codes[1], correct, stop_after='AISafetyAgree')
+    walk(base, codes[1], correct, stop_after='TabMonitorAgree')
     # 3. on the quiz with one wrong attempt (below the DQ threshold of 3)
     walk(base, codes[2], correct, quiz_posts=[wrong], stop_after='quiz')
     # 4-5. mid-task, early and late

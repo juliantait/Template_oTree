@@ -19,7 +19,7 @@ participant leaves early. Defined in `settings.EXIT_CODES`.
 | `0` | abandoned | Created but never reached the end (the default). | `common.init_participant` |
 | `-1` | no_consent | Declined consent on the entry page. | `before.welcome.before_next_page` |
 | `-2` | comprehension | Disqualified: failed the comprehension check too many times. **Prolific only** — see the next section for what the same threshold means in a lab session. | `intro.quiz.error_message` |
-| `-3` | tab_monitor | Disqualified: AI-safety / tab-switch monitor. **Prolific only** — the tab monitor is not supported in the lab. **Only the ejecting phases (intro + main) can set it** — outro violations never do; see "Tab-monitor violation counts" below. | `common.focus_live_method` |
+| `-3` | tab_monitor | Disqualified: tab-switch monitor. **Prolific only** — the tab monitor is not supported in the lab. **Only the ejecting phases (intro + main) can set it** — outro violations never do; see "Tab-monitor violation counts" below. | `common.focus_live_method` |
 | `-4` | screened_out | **General** "removed at entry, before the consent page" bucket. Set by the **device allow-list** (`allowed_devices`) and by any future entry gate. WHICH DEVICE was detected is in `participant_extra['screenout_cause']` — see below. The code is deliberately NOT device-specific: one bucket, split by cause. **NOT write-once** — see the note directly below. | `common.set_screened_out`, called by `before._apply_device_gate` |
 
 > **`-4` IS THE ONE CODE THAT CAN CHANGE BACK.** The device screen-out is a soft
@@ -252,7 +252,7 @@ A dict `{stage_name: epoch_seconds}` filled as the participant clears each stage
 | `screenout_cleared` | A screen-out was LIFTED: they came back on an accepted device before consent. |
 | `consent` | Leaving the welcome/consent page. |
 | `confirm_id` | Prolific only: leaving the Prolific-ID confirmation page (`prolific_capture_participant_id` on). |
-| `ai_safety_agreed` | Leaving the AI-safety agreement page, i.e. when the tab monitor was armed. Only where that page is shown (`tab_monitor` on, so Prolific by default and never the lab). |
+| `tab_monitor_agreed` | Leaving the tab-monitor agreement page, i.e. when the tab monitor was armed. Only where that page is shown (`tab_monitor` on, so Prolific by default and never the lab). *(Value renamed from `ai_safety_agreed` on 2026-08-17 — a deliberate one-off done while the template still had no data, so no live export was keyed on the old spelling; see the frozen-values note in `common.py`.)* |
 | `left_before_app` | Leaving ANY page of the `before` app — deliberately **overwritten** by each one, so its final value is the moment the participant left the entry block, whichever pages that config showed (`common.stamp_left_before_app`). |
 | `instructions_done` | Leaving the instructions page (round 1). |
 | `quiz_done` | Leaving the quiz page (overwritten by the re-read pass, if any). |
@@ -264,7 +264,7 @@ A dict `{stage_name: epoch_seconds}` filled as the participant clears each stage
 
 **Measuring from the end of the entry block.** Use **`left_before_app`**. Which
 page actually ends that block is CONFIG-DEPENDENT — `consent` in the lab,
-`ai_safety_agreed` for Prolific (with `confirm_id` in between), something else
+`tab_monitor_agreed` for Prolific (with `confirm_id` in between), something else
 again for a study that adds an entry page — so anything that names one page is
 wrong for some configuration, silently, and shows up as dwell time billed to the
 wrong phase. That has already happened once here: the agreement page's dwell was
@@ -274,7 +274,7 @@ every configuration including ones not written yet; a new entry page only has to
 call it.
 
 The older recipe — take the **maximum** of `consent` / `confirm_id` /
-`ai_safety_agreed` — survives only as a fallback for participants who were
+`tab_monitor_agreed` — survives only as a fallback for participants who were
 already mid-flow when `left_before_app` was deployed and will never have it.
 `experimenter_dashboard._intro_seconds` does exactly this (and measures to
 `quiz_done`, i.e. the whole intro block including a re-read, not to

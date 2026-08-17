@@ -52,7 +52,7 @@ the lab, the Prolific ID online.
     ENTRY → INSTRUCTIONS → QUIZ → TASK → QUESTIONNAIRE → DONE
 
 - The marker occupies **one step at a time** and advances on completion.
-- **Consent, the ID page and the AI-safety agreement all fold into ENTRY.**
+- **Consent, the ID page and the tab-monitor agreement all fold into ENTRY.**
 - **During TASK the marker carries the round number inside it**, and advances
   *within* the step rather than along the line.
 

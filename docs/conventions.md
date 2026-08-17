@@ -198,8 +198,8 @@ documented. See `settings.EXIT_CODES` and the CODEBOOK.md exit-code table.
 - **prolific_capture_participant_id** — capture an external (Prolific) ID at entry (`before`).
 - **prolific_completion_redirects** — explicit consent + "Back to Prolific" endings keyed
   by exit code (`before`, `outro`).
-- **tab_monitor** — server-authoritative tab-switch / AI-safety monitor: an
-  arming page (`before.AISafetyAgree`), a live handler counting deduped
+- **tab_monitor** — server-authoritative tab-switch monitor: an
+  arming page (`before.TabMonitorAgree`), a live handler counting deduped
   violations, and a disqualified ending. **Every page after the arming page is
   monitored BY DEFAULT** (`participant_tab_monitor.MonitoredPage`; a page opts out only by
   saying `monitored = False`), with one deliberate asymmetry — same monitor,

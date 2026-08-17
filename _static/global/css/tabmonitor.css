@@ -1,7 +1,7 @@
-/* Tab-switch / AI-safety monitor — overlay + warning modal.
+/* Tab-switch monitor — overlay + warning modal.
 
    FAMILY: standalone. INTENTION: the two full-screen chrome pieces the monitor
-   injects (see _static/global/js/ai_safety_monitor.js). Token-driven so it
+   injects (see _static/global/js/tab_monitor.js). Token-driven so it
    matches the rest of the study; both pieces are hidden until the JS adds
    `.is-visible`, so this file is inert on its own.
 

@@ -98,7 +98,7 @@ def payload_for(page, quiz_answers):
         'ConfirmProlificID': {'participant_id_external': ''},
         'instructing': {},
         'quiz': dict(quiz_answers),
-        'AISafetyAgree': {},
+        'TabMonitorAgree': {},
         # The task pages' names and payloads come from the ONE contract
         # module (scripts/tests/main_contract.py) — a game swap edits it there.
         **task_page_submits(),
@@ -730,7 +730,7 @@ def main():
         user_settings.DASHBOARD_STALL_SECONDS_TASK = 180
 
     section('D4. the entry-block boundary (instructions time)')
-    # THE AI-SAFETY AGREEMENT PAGE MUST NOT BE BILLED TO THE INSTRUCTIONS.
+    # THE TAB-MONITOR AGREEMENT PAGE MUST NOT BE BILLED TO THE INSTRUCTIONS.
     # It sits between confirm_id and instructions_done, so before it was
     # stamped its dwell time landed in the instructions column — and only for
     # Prolific, because the lab never shows the page. That made one column mean
@@ -749,17 +749,17 @@ def main():
         page = page_name_of(path_of(resp))
         if page is None or page == 'quiz':
             break
-        if page == 'AISafetyAgree':
+        if page == 'TabMonitorAgree':
             saw_agreement = True
             _time.sleep(DWELL)          # the ONLY dwell in this walk
         resp = c.post(path_of(resp), data=payload_for(page, correct),
                       allow_redirects=True, headers=DESKTOP)
     check(saw_agreement,
-          'the prolific flow really does show the AI-safety agreement page '
+          'the prolific flow really does show the tab-monitor agreement page '
           '(otherwise this section proves nothing)')
-    check('ai_safety_agreed' in (ot.participant_vars(dwell_code)
+    check('tab_monitor_agreed' in (ot.participant_vars(dwell_code)
                                  .get('stage_timestamps') or {}),
-          'leaving the agreement page stamps ai_safety_agreed')
+          'leaving the agreement page stamps tab_monitor_agreed')
     _, drows = rows_by_code(admin, pro2)
     check('left_before_app' in (ot.participant_vars(dwell_code)
                                 .get('stage_timestamps') or {}),

@@ -11,6 +11,45 @@ working.
 
 ---
 
+## The tab monitor is named the tab monitor everywhere in the code and data — the "AI-safety" name survives only in the participant's agreement — 2026-08-17
+
+Decided by Julian. The integrity module that watches whether the study tab
+loses focus was called the "AI-safety" monitor in much of the code and docs —
+the class `AISafetyAgree`, the script `ai_safety_monitor.js`, the js_vars key
+`AI_SAFETY_CONFIG`, the `sessionStorage.aiSafetyAgreed` handshake, the stage
+value `ai_safety_agreed`, and a scatter of comments and prose. **That name
+overclaims: the mechanism detects a tab losing focus, not AI use.** So the
+mechanism is now named the *tab monitor* wherever the code or docs NAME or
+DOCUMENT it: `AISafetyAgree` → `TabMonitorAgree`, `ai_safety_monitor.js` →
+`tab_monitor.js` (snake_case, matching `quiz.js`/`global.js`), the config and
+handshake identifiers → `TAB_MONITOR_CONFIG` / `tabMonitorAgreed`, and the stage
+value → `tab_monitor_agreed`.
+
+**What deliberately did NOT change: the participant-facing copy.** The agreement
+page still asks the participant not to switch to other tabs "(including AI
+assistants)" and still frames the promise as an AI-safety agreement — because
+that is the agreement the participant is actually making about how they take
+part, not a description of the mechanism. The mechanism naming and the study
+framing are two different things, and only the first overclaimed.
+
+**The stage value was changed even though stage values are frozen** (`common.py`
+STAGE_* block). The freeze protects LIVE studies whose exports are keyed on the
+old spelling; this template has no data, a running study carries its own copy of
+the code, and pushing a template change over a live session is forbidden
+elsewhere. The export key is documentation too, and `ai_safety_agreed`
+overclaimed in the data exactly as the prose did. The freeze rule still stands
+for every other value; this is the one documented exception, recorded at the
+definition so it does not read as an accident.
+
+**Rejected:** renaming the participant copy too (that is the study framing, not a
+description of the mechanism — the same line drawn for `tab_monitor_disqualified`
+on 2026-08-12, see below); keeping the stage value frozen (it documents the same
+overclaim in the export). **Enforced:** nothing at boot — held by this entry, the
+frozen-values note in `common.py`, the CODEBOOK stage table, and the test suites
+(`dashboard_test`, `task_page_test`, `tab_monitor_detail_test`, `full_journey_test`,
+`gated_flow_test`) which reference the class and stamp and go red on a half-done
+rename.
+
 ## The quiz-mistakes panel is on-demand, first-attempt-only, and reads only what already exists — 2026-08-17
 
 Decided by Julian; design in `_ai/quiz_mistakes_spec.md` and the approved mock
@@ -204,7 +243,10 @@ an "AI-safety" agreement; the data should name the *mechanism* (a tab-switch
 monitor), so the column is `tab_monitor_*` like its siblings. The framing itself
 did **not** move: the `AISafetyAgree` page, `_static/global/js/ai_safety_monitor.js`,
 and every word a participant reads stay exactly as they were. Only the data name
-changed.
+changed. (Those two code symbols — the page class and the script — WERE later
+renamed to `TabMonitorAgree` and `tab_monitor.js` on 2026-08-17, when the code and
+docs were made to name the mechanism the tab monitor throughout; see that entry.
+The participant copy still did not move then either.)
 
 **This is a CONVENTION, not a rule, and there is deliberately no import-time or
 boot-time check that enforces it** — a considered exception to this template's
@@ -1175,7 +1217,7 @@ pages still behave.
 Whole-app review B1, decided by Julian. **First, the record correction this
 entry exists to hold: from 2026-08-12 to 2026-08-13 four places (this file's
 armed-before-the-quiz entry, README's Prolific flow diagram, the
-`AISafetyAgree` docstring, `intro/__init__.py`'s closing comment) stated that
+`TabMonitorAgree` docstring, `intro/__init__.py`'s closing comment) stated that
 the instructions and the quiz were monitored, and they were not.** The
 agreement page had moved but no monitor wiring existed in `intro` — no
 live_method, no js_vars, no script — so the very check the move was made to
@@ -1186,7 +1228,7 @@ here because a claim that quietly becomes true later is exactly the kind of
 thing a future auditor must be able to date.
 
 **What closed it — an INVERSION, not page-by-page opt-in** (Julian's rule):
-everything after `before.AISafetyAgree` is monitored BY DEFAULT
+everything after `before.TabMonitorAgree` is monitored BY DEFAULT
 (`participant_tab_monitor.MonitoredPage`, generalising TaskPage's J2 reasoning), and a
 page can only be unmonitored by asking (`monitored = False`, one switch that
 disarms all the wiring together — never `js_vars = None`, which 500s at
@@ -1891,7 +1933,7 @@ The agreement page moved from the end of `intro` to `before`: armed after the
 quiz, the very check that gates entry was unmonitored — a participant could
 consult an AI assistant during it, which is exactly what the page warns
 against.
-**Enforced:** the page lives in `before.AISafetyAgree`; a comment in
+**Enforced:** the page lives in `before.TabMonitorAgree`; a comment in
 `intro/__init__.py` forbids moving it back; `scripts/tests/gated_flow_test.py` asserts
 the agreement is not after the quiz.
 

@@ -44,7 +44,7 @@
         if (typeof fill === 'function') { fill(); }
         // ⚠ form.submit() DOES NOT FIRE SUBMIT EVENT LISTENERS. Anything doing
         // real work in a 'submit' handler is skipped, silently, with no error:
-        //   * ai_safety_monitor.js's markNavigatingAway — the flag that stops a
+        //   * tab_monitor.js's markNavigatingAway — the flag that stops a
         //     navigation being counted as a tab-monitor violation (it is also
         //     set by beforeunload/pagehide, so today that one is covered twice);
         //   * main/game.html's client_ms timing listener, which fills its hidden

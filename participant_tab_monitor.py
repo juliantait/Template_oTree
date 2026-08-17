@@ -6,7 +6,7 @@ the wiring and everything else had none — which is how the instructions and
 the quiz spent months documented as monitored while no monitoring existed on
 them, with no error anywhere to say so. The model is now INVERTED:
 
-    **Everything after the agreement screen (`before.AISafetyAgree`) is
+    **Everything after the agreement screen (`before.TabMonitorAgree`) is
     monitored BY DEFAULT. A page that must not be monitored has to say so
     EXPLICITLY (`monitored = False`). You can only get an unmonitored page by
     asking for one.**
@@ -34,7 +34,7 @@ gap is the failure mode this file exists to prevent:
   2. `js_vars`      — the client thresholds (common.monitor_js_vars / _outro;
                       {} when the module is off, and the client REQUIRES them
                       — no defaults fallback in the JS);
-  3. the script     — ai_safety_monitor.js, shipped to EVERY page through
+  3. the script     — tab_monitor.js, shipped to EVERY page through
                       css_bundle.html -> tabmonitor_assets.html (no
                       per-template include to forget), emitted only when the
                       module is on, and inert without (2);
