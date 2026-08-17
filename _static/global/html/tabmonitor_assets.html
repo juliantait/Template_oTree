@@ -12,19 +12,19 @@
         frozen-config suite 500s without the guard). Missing-means-OFF is
         exactly common.flag's rule: a key absent from a frozen config means
         the module post-dates the session;
-     2. the script REQUIRES AI_SAFETY_CONFIG in the page's js_vars
+     2. the script REQUIRES TAB_MONITOR_CONFIG in the page's js_vars
         (common.monitor_js_vars via participant_tab_monitor.MonitoredPage) — absent on the
         `before` pages and on any page opted out with `monitored = False`, so
         there it loads and does nothing;
      3. the participant must have armed it on the agreement page
-        (sessionStorage.aiSafetyAgreed).
+        (sessionStorage.tabMonitorAgreed).
    The config also tells the client its PHASE: ejects=false (outro) counts and
    reports but shows no overlay and no warning modal — see
-   ai_safety_monitor.js and common._apply_focus_loss for the asymmetry.
+   tab_monitor.js and common._apply_focus_loss for the asymmetry.
 
    The stylesheet link is deliberately unconditional, as it always was: the
    overlay/modal chrome is inert without the script. #}
 <link rel="stylesheet" href="{% static 'global/css/tabmonitor.css' %}?v={{ C.STATIC_VERSION }}">
 {% if is_defined('session.config.tab_monitor') and session.config.tab_monitor %}
-<script src="{% static 'global/js/ai_safety_monitor.js' %}?v={{ C.STATIC_VERSION }}"></script>
+<script src="{% static 'global/js/tab_monitor.js' %}?v={{ C.STATIC_VERSION }}"></script>
 {% endif %}

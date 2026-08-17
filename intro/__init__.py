@@ -413,7 +413,7 @@ class quiz(participant_tab_monitor.MonitoredPage):
 
 # THE TAB-MONITOR AGREEMENT PAGE IS NOT HERE ANY MORE — it moved to the
 # `before` app on 2026-08-12, and it must not move back. It used to sit LAST in
-# this sequence (instructing, quiz, AISafetyAgree), which armed the monitor
+# this sequence (instructing, quiz, TabMonitorAgree), which armed the monitor
 # only AFTER the comprehension quiz — leaving the instructions and the quiz
 # itself unmonitored, so a participant could consult an AI assistant during the
 # very check that gates entry to the study, which is exactly what that page's
@@ -423,7 +423,7 @@ class quiz(participant_tab_monitor.MonitoredPage):
 # do alone is covered. Between those two dates the previous sentence was a claim
 # the code did not honour: the agreement page had moved but no monitor wiring
 # existed here, so the quiz stayed unwatched with nothing to say so — see the
-# 2026-08-13 DECISIONS.md entry. `before.AISafetyAgree` has the arming story.
+# 2026-08-13 DECISIONS.md entry. `before.TabMonitorAgree` has the arming story.
 page_sequence = [instructing, quiz]
 
 # MONITORED BY DEFAULT — every page above must be a

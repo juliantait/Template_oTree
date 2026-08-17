@@ -146,7 +146,7 @@ URL_BASE = '/experimenter_dashboard'
 # THE SIX TIMELINE STEPS — DEFINED HERE, ONCE, AND NOWHERE ELSE
 # =============================================================================
 # In order, EQUAL SPACING (the CSS grid gives each the same track). Consent, the
-# ID page and the AI-safety agreement all fold into ENTRY; the outro's
+# ID page and the tab-monitor agreement all fold into ENTRY; the outro's
 # ending/demographics/feedback pages are QUESTIONNAIRE.
 #
 # One concept, one definition (single-sourced 2026-08-12). It used to be stated
@@ -192,7 +192,7 @@ STEPS = tuple(STEP_LABELS)
 # Adding a whole new STEP is one line too, in STEP_LABELS above: the header, the
 # grid and the client-side step order all derive from it.
 APP_STEPS = {
-    'before': 'entry',           # startpage, consent, ID capture, AI-safety
+    'before': 'entry',           # startpage, consent, ID capture, tab-monitor
     'intro': 'instructions',     # split by page below (instructions vs quiz)
     'main': 'task',
     'outro': 'questionnaire',
@@ -1425,7 +1425,7 @@ def _intro_seconds(stamps, step, terminal, finished, now) -> dict:
     if not isinstance(start, (int, float)):
         start = max(
             (t for k in (common.STAGE_CONSENT, common.STAGE_CONFIRM_ID,
-                         common.STAGE_AI_SAFETY_AGREED)
+                         common.STAGE_TAB_MONITOR_AGREED)
              for t in [stamps.get(k)] if isinstance(t, (int, float))),
             default=None,
         )

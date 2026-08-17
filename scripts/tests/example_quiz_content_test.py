@@ -84,7 +84,7 @@ PAYLOAD = {
                 'participant_id_url': ''},
     'ConfirmProlificID': {'participant_id_external': 'quiz-example'},
     'instructing': {},
-    'AISafetyAgree': {},
+    'TabMonitorAgree': {},
     # The task pages' names and payloads come from the ONE contract
     # module (scripts/tests/main_contract.py) — a game swap edits it there.
     **task_page_submits(),

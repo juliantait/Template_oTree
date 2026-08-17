@@ -389,9 +389,20 @@ def stamp_stage(participant, stage):
 # THE VALUES ARE FROZEN — they are keys inside live exports' stage_timestamps
 # JSON, so the CODEBOOK never-rename rule applies to the strings, not just the
 # columns. Rename the Python names freely; never the values.
+#
+# ONE VALUE WAS DELIBERATELY CHANGED (2026-08-17, Julian): the tab-monitor
+# agreement stamp went from 'ai_safety_agreed' to 'tab_monitor_agreed' as part
+# of renaming the mechanism away from "AI safety" (the old name overclaimed in
+# the export the same way it did in the prose — the mechanism only watches tab
+# focus). This did NOT break the frozen rule: the rule protects LIVE studies
+# whose exports are keyed on the old spelling, and this template has no data —
+# a study already running carries its own copy of this code, and pushing a
+# template change over a live session is forbidden elsewhere in the repo. The
+# rule still stands for every value here; this is the documented exception, not
+# a licence to rename the others.
 STAGE_CONSENT = 'consent'
 STAGE_CONFIRM_ID = 'confirm_id'
-STAGE_AI_SAFETY_AGREED = 'ai_safety_agreed'
+STAGE_TAB_MONITOR_AGREED = 'tab_monitor_agreed'
 STAGE_SCREENED_OUT = 'screened_out'
 STAGE_SCREENOUT_CLEARED = 'screenout_cleared'
 STAGE_INSTRUCTIONS_DONE = 'instructions_done'
@@ -417,11 +428,11 @@ def stamp_left_before_app(participant):
 
     Why it is written this way rather than stamped once on "the last page":
     WHICH page is last is CONFIG-DEPENDENT. The lab ends the block at consent;
-    Prolific adds the ID confirmation and the AI-safety agreement; a study that
+    Prolific adds the ID confirmation and the tab-monitor agreement; a study that
     adds an entry page moves it again. Anything that names one page as the end
     is wrong for some configuration, silently, and the error shows up as a
     dwell time billed to the wrong phase — which has already happened once here
-    (see the note on AISafetyAgree.before_next_page). Overwriting on every page
+    (see the note on TabMonitorAgree.before_next_page). Overwriting on every page
     is correct for every configuration including ones not written yet, and a new
     entry page only has to call this to stay measured.
 
@@ -1041,7 +1052,7 @@ def extra_set(participant, key, value):
 #
 # The page wiring that binds these — monitored BY DEFAULT for every page after
 # the agreement screen — lives in participant_tab_monitor.py (MonitoredPage /
-# OutroMonitoredPage); the client half is _static/global/js/ai_safety_monitor.js.
+# OutroMonitoredPage); the client half is _static/global/js/tab_monitor.js.
 
 # --------------------------------------------------------------------------
 # THE READER-FACING TAB-MONITOR FLAG
@@ -1163,7 +1174,7 @@ def refresh_tab_monitor_flag(participant, monitored=True) -> None:
 def _record_focus_event(player, region):
     """Append the per-event detail behind the counters. Never raises.
 
-    THE PAGE COMES FROM THE SERVER, NOT THE CLIENT. `ai_safety_monitor.js` sends
+    THE PAGE COMES FROM THE SERVER, NOT THE CLIENT. `tab_monitor.js` sends
     `page: window.location.pathname` with every event and this deliberately
     ignores it: the client half of the monitor is the half a participant can
     edit, and a field an analyst trusts must not be attacker-controlled.
@@ -1274,7 +1285,7 @@ def focus_live_method(player, data):
     Counts each real focus-loss once (deduped by client-supplied event_id) and
     disqualifies at the configured threshold, broadcasting {action:'disqualified'}
     to that player so the client reloads onto the ending. No-op unless the
-    tab_monitor flag is on. See settings + _static/global/js/ai_safety_monitor.js.
+    tab_monitor flag is on. See settings + _static/global/js/tab_monitor.js.
     """
     return _apply_focus_loss(player, data, ejects=True)
 
@@ -1291,7 +1302,7 @@ def focus_live_method_outro(player, data):
 
 
 def _monitor_js_vars(player, ejects):
-    """Client thresholds for ai_safety_monitor.js, or {} when the module is off.
+    """Client thresholds for tab_monitor.js, or {} when the module is off.
 
     Empty-when-off matches the device-capture pattern (`welcome.js_vars`):
     config is sent only when the script that reads it is meant to run. The
@@ -1306,7 +1317,7 @@ def _monitor_js_vars(player, ejects):
     config = player.session.config
     if not config.get('tab_monitor'):
         return {}
-    return dict(AI_SAFETY_CONFIG=dict(
+    return dict(TAB_MONITOR_CONFIG=dict(
         max_violations=int(cfg(config, 'tab_monitor_max_violations')),
         threshold_ms=int(cfg(config, 'tab_monitor_threshold_ms')),
         overlay_delay_ms=int(cfg(config, 'tab_monitor_overlay_delay_ms')),

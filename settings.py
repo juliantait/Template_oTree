@@ -92,7 +92,7 @@ EXIT_CODES = dict(
     abandoned=0,         # default: created but never reached the end
     no_consent=-1,       # declined consent
     comprehension=-2,    # disqualified: failed the comprehension check
-    tab_monitor=-3,      # disqualified: AI-safety / tab-switch monitor
+    tab_monitor=-3,      # disqualified: tab-switch monitor
     screened_out=-4,     # device screened out at entry (allowed_devices gate)
 )
 
@@ -264,7 +264,7 @@ def is_placeholder(value) -> bool:
 # Each phase below is its own line, tuned independently. The amber row treatment
 # is unchanged — only which number decides it. A phase with no threshold here
 # falls back to DASHBOARD_STALL_SECONDS_DEFAULT.
-DASHBOARD_STALL_SECONDS_BEFORE = 60    # entry block (startpage, consent, ID, AI-safety)
+DASHBOARD_STALL_SECONDS_BEFORE = 60    # entry block (startpage, consent, ID, tab-monitor)
 DASHBOARD_STALL_SECONDS_INTRO = 480    # instructions + quiz, whole intro app
 # TASK: 180s per ROUND, and this one is a judgement call rather than Julian's
 # number — recorded here because he asked to be told what I picked. Reasoning:
@@ -506,7 +506,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     # bank-details page would cost a real participant for no benefit). Outro
     # violations land in their own column, tab_monitor_focus_loss_count_outro. Full why:
     # common._apply_focus_loss.
-    tab_monitor=False,              # tab-switch / AI-safety monitor
+    tab_monitor=False,              # tab-switch monitor
     tab_monitor_max_violations=2,   # disqualify on the Nth recorded tab-away (intro/main only)
     tab_monitor_threshold_ms=4000,  # continuous away-time that counts as a violation
     tab_monitor_overlay_delay_ms=400,  # grace before the warning overlay appears

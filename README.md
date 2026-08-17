@@ -89,7 +89,7 @@ libraries — the whole recipe is `docs/headless_chromium_recipe.md`.
 
 ## App Timeline
 - before (welcome + consent; online: external-ID + device capture)
-- intro (instructions + quiz; optional AI-safety arming page)
+- intro (instructions + quiz; optional tab-monitor arming page)
 - main (experimental game; optional tab monitor + passive capture)
 - outro (endings: normal / disqualified / no-consent; demographics + payment; optional pilot feedback)
 
@@ -561,7 +561,7 @@ flowchart TD
         Welcome["welcome + consent<br>explicit consent question,<br>Prolific ID + device capture"]
         ScreenOut["screened_out — shown INSTEAD of consent,<br>at the same page index (exit code -4).<br>Codeless link back to Prolific."]
         ConfirmID["ConfirmProlificID — confirm the platform id"]
-        Arm["AISafetyAgree — ARMS THE TAB MONITOR.<br>EVERY page after this one is monitored by default<br>(participant_tab_monitor.py): intro + main EJECT at the cap,<br>outro RECORDS ONLY — see the outro subgraph"]
+        Arm["TabMonitorAgree — ARMS THE TAB MONITOR.<br>EVERY page after this one is monitored by default<br>(participant_tab_monitor.py): intro + main EJECT at the cap,<br>outro RECORDS ONLY — see the outro subgraph"]
     end
     Gate -. "a type the study excludes:<br>consent is never shown" .-> ScreenOut
     ScreenOut -. "returns on an accepted device<br>BEFORE consent: verdict CLEARED" .-> Welcome
@@ -629,7 +629,7 @@ flowchart TD
     Start(["Seated at a lab computer"]) --> Hold
     subgraph BEFORE ["before — entry"]
         Hold["startpage — hold screen,<br>experimenter starts the session"] --> Welcome
-        Welcome["welcome + consent<br>implicit consent: continuing = consenting<br>(no ID or device capture; device allow-list wide open;<br>no AISafetyAgree — the lab ships the tab monitor OFF,<br>and that page exists only to arm it)"]
+        Welcome["welcome + consent<br>implicit consent: continuing = consenting<br>(no ID or device capture; device allow-list wide open;<br>no TabMonitorAgree — the lab ships the tab monitor OFF,<br>and that page exists only to arm it)"]
     end
     Welcome --> Instr1
 
@@ -866,7 +866,7 @@ ignore the colour.
 
 | setting | default | governs |
 |---|---|---|
-| `DASHBOARD_STALL_SECONDS_BEFORE` | 60 | the entry block (startpage, consent, ID, AI-safety) |
+| `DASHBOARD_STALL_SECONDS_BEFORE` | 60 | the entry block (startpage, consent, ID, tab-monitor) |
 | `DASHBOARD_STALL_SECONDS_INTRO` | 480 | the whole `intro` app — instructions and quiz share one |
 | `DASHBOARD_STALL_SECONDS_TASK` | 180 | ONE task round (raise it for a longer task page) |
 | `DASHBOARD_STALL_SECONDS_OUTRO` | 300 | the outro, before being marked complete |
@@ -1033,7 +1033,7 @@ pre-deploy cannot tell you the completion codes are still placeholders.
 >   `pay2` — see CODEBOOK.md). Leftover columns in an old database are harmless
 >   to reads, but they mean the file no longer matches the models either.
 > - The **page sequence changed, in both `before` and `intro`**: the
->   tab-monitor agreement page (`AISafetyAgree`) moved OUT of the end of `intro`
+>   tab-monitor agreement page (`TabMonitorAgree`) moved OUT of the end of `intro`
 >   and INTO `before`, after the id confirmation, so that the monitor is armed
 >   before the instructions and the quiz rather than after them. oTree stores a
 >   participant's position as an INDEX into the whole sequence, so every index

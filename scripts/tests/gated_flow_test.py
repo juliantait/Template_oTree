@@ -404,13 +404,13 @@ def scenario_prolific_pass(base):
                       overrides={'consent': 'True', 'is_mobile': 'False',
                                  'participant_id_external': 'PROLIFIC_TEST_2'})
     r = submit(s, r, answers=RIGHT, overrides={'redoinstructions': '0'})
-    # Passing the quiz goes straight to the task. NOT to AISafetyAgree: that
+    # Passing the quiz goes straight to the task. NOT to TabMonitorAgree: that
     # page moved into `before` on 2026-08-12 and is now passed long before the
-    # quiz (see before.AISafetyAgree), so seeing it HERE would mean the move
+    # quiz (see before.TabMonitorAgree), so seeing it HERE would mean the move
     # had been reverted and the quiz was unmonitored again.
     check('/main/' in r.url,
           f'passing the quiz skips intro round 2 entirely [{page_name(r.url)}]')
-    check('/AISafetyAgree/' not in r.url,
+    check('/TabMonitorAgree/' not in r.url,
           'the tab-monitor agreement is NOT after the quiz — it is armed in '
           '`before`, so the instructions and the quiz are monitored too')
     seen = []

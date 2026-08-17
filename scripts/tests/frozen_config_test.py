@@ -96,7 +96,7 @@ def payload_for(page, quiz_answers):
         'ConfirmProlificID': {'participant_id_external': 'frozen-cfg-test'},
         'instructing': {},
         'quiz': dict(quiz_answers),
-        'AISafetyAgree': {},
+        'TabMonitorAgree': {},
         # The task pages' names and payloads come from the ONE contract
         # module (scripts/tests/main_contract.py) — a game swap edits it there.
         **task_page_submits(),

@@ -298,11 +298,11 @@ def journey(base, config, label):
     if config == 'prolific':
         # THE AGREEMENT PAGE COMES BEFORE THE INSTRUCTIONS AND THE QUIZ, not
         # after them (moved out of `intro` on 2026-08-12 — see
-        # `before.AISafetyAgree`). If this list ever goes back to having
-        # 'AISafetyAgree' after 'quiz', the tab monitor is once again arming
+        # `before.TabMonitorAgree`). If this list ever goes back to having
+        # 'TabMonitorAgree' after 'quiz', the tab monitor is once again arming
         # only once the comprehension check is over, and the instructions and
         # the quiz are unmonitored.
-        expected = (['welcome', 'ConfirmProlificID', 'AISafetyAgree',
+        expected = (['welcome', 'ConfirmProlificID', 'TabMonitorAgree',
                      'instructing', 'quiz', 'quiz']
                     + TASK_PAGES * rounds + ['Results'])
     else:

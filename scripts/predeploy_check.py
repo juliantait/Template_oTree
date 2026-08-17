@@ -344,7 +344,7 @@ TERMINAL_PAGES |= {p.strip() for p in
 # them there on a game swap; this list only degrades (unknown names sort
 # last), it does not break.
 RESUME_PREFERENCE = ['quiz', 'GameStart', 'payoff', 'instructing',
-                     'AISafetyAgree', 'ConfirmProlificID', 'Demographics',
+                     'TabMonitorAgree', 'ConfirmProlificID', 'Demographics',
                      'Feedback', 'welcome', 'startpage']
 if os.environ.get('PREDEPLOY_RESUME_PAGES'):
     RESUME_PREFERENCE = [p.strip() for p in

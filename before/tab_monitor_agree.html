@@ -39,9 +39,9 @@
 
 <script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
 <script>
-    // Arm the monitor on agreement (see ai_safety_monitor.js).
+    // Arm the tab monitor on agreement (see tab_monitor.js).
     document.querySelector('input[type="submit"]').addEventListener('click', function () {
-        try { sessionStorage.setItem('aiSafetyAgreed', '1'); } catch (e) {}
+        try { sessionStorage.setItem('tabMonitorAgreed', '1'); } catch (e) {}
     });
 </script>
 

@@ -1,15 +1,21 @@
-// ── AI-safety / tab-switch monitor ───────────────────────────────────────────
+// ── Tab-switch monitor ───────────────────────────────────────────────────────
 // Client half of the integrity module. Server authority is
 // participant.tab_monitor_disqualified, set by common.focus_live_method (bound
 // on every monitored page by participant_tab_monitor.MonitoredPage — pages are monitored
 // BY DEFAULT after the agreement screen; see participant_tab_monitor.py).
 //
+// NOTE ON NAMING: this watches whether the study tab loses focus; it does not
+// detect AI use. The mechanism is named the tab monitor everywhere in the code
+// and docs. The participant-facing agreement page still frames this as an
+// AI-safety agreement — that is the study framing the participant reads, and it
+// is deliberately left as written; see DECISIONS.md.
+//
 // CREDITED TO NICOLAS ORLINK (original client logic).
 //
 // Activates ONLY when BOTH of these hold:
-//   * the participant agreed on the AI-safety arming page, which sets
-//     sessionStorage.aiSafetyAgreed = '1';
-//   * THIS page's js_vars carry AI_SAFETY_CONFIG (common.monitor_js_vars —
+//   * the participant agreed on the tab-monitor arming page, which sets
+//     sessionStorage.tabMonitorAgreed = '1';
+//   * THIS page's js_vars carry TAB_MONITOR_CONFIG (common.monitor_js_vars —
 //     absent when the tab_monitor module is off, and absent on a page that
 //     opted out with `monitored = False`). The config is REQUIRED: there is
 //     deliberately NO defaults fallback any more — the old fallback was a
@@ -18,7 +24,7 @@
 //     template hunts. No config, no monitor, silently — that is the server
 //     saying this page is not monitored.
 //
-// THE PHASE ASYMMETRY (Julian, 2026-08-13): AI_SAFETY_CONFIG.ejects says
+// THE PHASE ASYMMETRY (Julian, 2026-08-13): TAB_MONITOR_CONFIG.ejects says
 // whether violations on this page can END the participation (intro + main:
 // true) or are RECORDED ONLY (outro: false — the task is over and the data
 // collected, so a completer is never ejected). In record-only mode this
@@ -33,22 +39,22 @@
     function readConfig() {
         try {
             if (typeof js_vars !== 'undefined' && js_vars
-                    && js_vars.AI_SAFETY_CONFIG) {
-                return js_vars.AI_SAFETY_CONFIG;
+                    && js_vars.TAB_MONITOR_CONFIG) {
+                return js_vars.TAB_MONITOR_CONFIG;
             }
         } catch (e) { /* fall through: no config, no monitor */ }
         return null;
     }
 
-    function aiSafetyArmed() {
-        try { return sessionStorage.getItem('aiSafetyAgreed') === '1'; }
+    function tabMonitorArmed() {
+        try { return sessionStorage.getItem('tabMonitorAgreed') === '1'; }
         catch (e) { return false; }
     }
 
     // NB: there is no path-based "unmonitored section" check any more. The
     // outro used to be disarmed here by matching '/outro/' in the URL — a
     // second spelling of "which pages are monitored" that the server now owns
-    // outright: a page without AI_SAFETY_CONFIG in its js_vars is not
+    // outright: a page without TAB_MONITOR_CONFIG in its js_vars is not
     // monitored, wherever it lives.
 
     // Build the two full-screen pieces. APPENDED TO <body> ON PURPOSE: they are
@@ -61,9 +67,9 @@
     // hardcoded colours that were in neither palette, and they made the monitor's
     // chrome unreachable from CSS. Visibility is a CLASS (.is-visible), so the
     // stylesheet owns the display value too.
-    function buildTabMonitorDom(AI_SAFETY) {
+    function buildTabMonitorDom(TAB_MONITOR) {
         if (document.getElementById('tabmon-overlay')) return;
-        var thresholdSec = Math.ceil(AI_SAFETY.THRESHOLD_MS / 1000);
+        var thresholdSec = Math.ceil(TAB_MONITOR.THRESHOLD_MS / 1000);
 
         var overlay = document.createElement('div');
         overlay.id = 'tabmon-overlay';
@@ -97,19 +103,19 @@
     function startTabMonitor() {
         var cfg = readConfig();
         if (!cfg) return;   // no server config: this page is not monitored
-        var AI_SAFETY = {
+        var TAB_MONITOR = {
             MAX_VIOLATIONS: cfg.max_violations,
             THRESHOLD_MS: cfg.threshold_ms,
             OVERLAY_DELAY_MS: cfg.overlay_delay_ms,
             // false = record-only phase (outro): count and report, no UI.
             EJECTS: !!cfg.ejects,
         };
-        if (!aiSafetyArmed() || window._tabmonStarted) return;
+        if (!tabMonitorArmed() || window._tabmonStarted) return;
         window._tabmonStarted = true;
         // RECORD-ONLY MODE BUILDS NO UI AT ALL: no overlay, no modal — the
         // nulls below make every show/hide a no-op, and counting + liveSend
         // carry on untouched.
-        if (AI_SAFETY.EJECTS) buildTabMonitorDom(AI_SAFETY);
+        if (TAB_MONITOR.EJECTS) buildTabMonitorDom(TAB_MONITOR);
 
         var overlay = document.getElementById('tabmon-overlay');
         var modal = document.getElementById('tabmon-modal');
@@ -130,7 +136,7 @@
             overlayVisible = true;
             overlay.classList.add('is-visible');
             var remaining = Math.ceil(
-                (AI_SAFETY.THRESHOLD_MS - AI_SAFETY.OVERLAY_DELAY_MS) / 1000
+                (TAB_MONITOR.THRESHOLD_MS - TAB_MONITOR.OVERLAY_DELAY_MS) / 1000
             );
             countdownEl.textContent = remaining;
             countdownInterval = setInterval(function () {
@@ -170,9 +176,9 @@
             // threat ("will end your participation") would be a lie, so
             // nothing is shown at all — the violation is still counted and
             // reported above.
-            if (AI_SAFETY.EJECTS && count < AI_SAFETY.MAX_VIOLATIONS) {
+            if (TAB_MONITOR.EJECTS && count < TAB_MONITOR.MAX_VIOLATIONS) {
                 showModal(
-                    'Warning ' + count + ' of ' + AI_SAFETY.MAX_VIOLATIONS +
+                    'Warning ' + count + ' of ' + TAB_MONITOR.MAX_VIOLATIONS +
                     ': we recorded that the study tab was inactive. One more such ' +
                     'event will end your participation and you may no longer be ' +
                     'eligible for payment or bonus compensation.'
@@ -181,10 +187,10 @@
         }
 
         function startLeaveTimer() {
-            if (!aiSafetyArmed() || isNavigatingAway) return;
+            if (!tabMonitorArmed() || isNavigatingAway) return;
             if (leaveTimer || window._tabmonModalOpen) return;
-            overlayTimer = setTimeout(function () { overlayTimer = null; showOverlay(); }, AI_SAFETY.OVERLAY_DELAY_MS);
-            leaveTimer = setTimeout(function () { leaveTimer = null; recordViolation(); }, AI_SAFETY.THRESHOLD_MS);
+            overlayTimer = setTimeout(function () { overlayTimer = null; showOverlay(); }, TAB_MONITOR.OVERLAY_DELAY_MS);
+            leaveTimer = setTimeout(function () { leaveTimer = null; recordViolation(); }, TAB_MONITOR.THRESHOLD_MS);
         }
 
         function cancelLeaveTimer() {
@@ -207,7 +213,7 @@
         // Server-driven redirect on disqualification.
         window.liveRecv = function (data) {
             if (data && data.action === 'disqualified') {
-                try { sessionStorage.removeItem('aiSafetyAgreed'); } catch (e) {}
+                try { sessionStorage.removeItem('tabMonitorAgreed'); } catch (e) {}
                 isNavigatingAway = true;
                 cancelLeaveTimer();
                 window.location.reload();  // is_displayed chain now lands on the ending

@@ -70,7 +70,7 @@ def payload_for(page, quiz_answers):
         'ConfirmProlificID': {'participant_id_external': ''},
         'instructing': {},
         'quiz': dict(quiz_answers),
-        'AISafetyAgree': {},
+        'TabMonitorAgree': {},
     }.get(page, {})
 
 
@@ -144,9 +144,9 @@ def main_test():
     # The consent page: BEFORE the agreement. The script ships (the bundle is
     # universal) but there is no monitor config, so it is inert by design.
     check(page_name_of(path_of(resp)) == 'welcome', 'entered on the consent page')
-    check('ai_safety_monitor.js' in resp.text,
+    check('tab_monitor.js' in resp.text,
           'the monitor script ships to a pre-agreement page (universal bundle)…')
-    check('AI_SAFETY_CONFIG' not in resp.text,
+    check('TAB_MONITOR_CONFIG' not in resp.text,
           '…but WITHOUT monitor config in its js_vars: inert, by design')
     quiz_html = None
     for _ in range(30):
@@ -160,13 +160,13 @@ def main_test():
     check(page_name_of(path_of(resp)) == 'GameStart',
           'walked a prolific participant onto the task page')
     check(quiz_html is not None
-          and 'AI_SAFETY_CONFIG' in quiz_html
-          and 'ai_safety_monitor.js' in quiz_html
+          and 'TAB_MONITOR_CONFIG' in quiz_html
+          and 'tab_monitor.js' in quiz_html
           and '"ejects": true' in quiz_html.replace("'", '"'),
           'THE QUIZ PAGE carries the monitor config, script and ejecting '
           'phase — the page the inversion existed to protect')
     html = resp.text
-    check('AI_SAFETY_CONFIG' in html and 'ai_safety_monitor.js' in html,
+    check('TAB_MONITOR_CONFIG' in html and 'tab_monitor.js' in html,
           'the served task page carries the monitor config and script')
     check('max_violations' in html,
           'the config in the page carries the configured thresholds '
@@ -232,12 +232,12 @@ def main_test():
               'an event id already counted in the ejecting phase cannot be '
               'counted again in the outro (shared dedup)')
         # The client is TOLD its phase: the outro's js_vars say ejects: false
-        # (no overlay, no threatening modal — see ai_safety_monitor.js), the
+        # (no overlay, no threatening modal — see tab_monitor.js), the
         # task's say true.
-        check(outro.Ended.js_vars(opl)['AI_SAFETY_CONFIG']['ejects'] is False,
+        check(outro.Ended.js_vars(opl)['TAB_MONITOR_CONFIG']['ejects'] is False,
               "an outro page's js_vars carry ejects: false — the client shows "
               'no overlay and no warning modal in the record-only phase')
-        check(main.GameStart.js_vars(pl)['AI_SAFETY_CONFIG']['ejects'] is True,
+        check(main.GameStart.js_vars(pl)['TAB_MONITOR_CONFIG']['ejects'] is True,
               "…and a task page's carry ejects: true")
     finally:
         s.close()
