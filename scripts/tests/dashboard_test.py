@@ -262,11 +262,10 @@ def set_intro_log(code, round_number, value):
 
 def main():
     from intro.quiz_items import QUIZ_ITEMS
-    correct = {i['field']: i['answer'] for i in QUIZ_ITEMS}
+    from quiz_answers import CORRECT, WRONG   # one derivation, from the shipped items
+    correct = dict(CORRECT)
     first = QUIZ_ITEMS[0]
-    wrong = dict(correct)
-    wrong[first['field']] = next(c for c in first['choices']
-                                 if c != first['answer'])
+    wrong = dict(correct, **{first['field']: WRONG[first['field']]})
 
     # ------------------------------------------------------------------ A
     section('A. install discipline (identity.py rules)')
@@ -1304,9 +1303,13 @@ def main():
     # server-side aggregate, which is where the correctness lives.
     QM = lambda code: admin.get(f'{URL}/{code}/quiz_mistakes').json()  # noqa
 
-    correct2 = {'quiz1': 'YES', 'quiz2': 'Water'}   # the shipped example items
-    w1 = dict(correct2, quiz1='NO')                 # quiz1 wrong
-    w2 = dict(correct2, quiz2='Metal')              # quiz2 wrong
+    # The passing map and two single-field misses, all from the shipped items
+    # via quiz_answers.py — no second, hardcoded answer source to drift when the
+    # quiz is swapped. The by_text assertions below still name the concrete
+    # option strings, because THOSE are the example content under test here.
+    correct2 = dict(CORRECT)
+    w1 = dict(correct2, quiz1=WRONG['quiz1'])       # quiz1 wrong
+    w2 = dict(correct2, quiz2=WRONG['quiz2'])       # quiz2 wrong
 
     qm = ot.create_session('lab', num_participants=5)
     qcodes = ot.participant_codes(qm)

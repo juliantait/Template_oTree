@@ -65,6 +65,10 @@ from otree.asgi import app  # noqa: E402
 
 import experimenter_dashboard as ed  # noqa: E402
 from intro.quiz_items import QUIZ_ITEMS  # noqa: E402
+# The passing/failing quiz maps come from quiz_answers.py — the ONE derivation
+# from the shipped items, so a study that swaps its quiz cannot leave a second
+# copy of the answers here quietly answering the wrong quiz.
+from quiz_answers import CORRECT, WRONG  # noqa: E402
 
 OUT_DIR = os.path.join(_APP_ROOT, '_ai', 'dashboard_render')
 os.makedirs(OUT_DIR, exist_ok=True)
@@ -308,11 +312,9 @@ def stage_overview(base):
     exactly a Prolific PILOT, and the third orthogonal control existing
     independently of the other two is the point of the parameter scheme.
     """
-    correct = {i['field']: i['answer'] for i in QUIZ_ITEMS}
+    correct = dict(CORRECT)
     first = QUIZ_ITEMS[0]
-    wrong = dict(correct)
-    wrong[first['field']] = next(c for c in first['choices']
-                                 if c != first['answer'])
+    wrong = dict(correct, **{first['field']: WRONG[first['field']]})
 
     # 10 real rounds (so the task marker reads "2 of 10"), the quiz really
     # verified, and `allowed_devices` narrowed to make the screen-out reachable.
@@ -585,11 +587,9 @@ def check_overview(base, sess):
 def stage_sessions(base):
     """One lab session with live stages + one prolific session with the
     terminal states. Returns (lab_session, prolific_session)."""
-    correct = {i['field']: i['answer'] for i in QUIZ_ITEMS}
+    correct = dict(CORRECT)
     first = QUIZ_ITEMS[0]
-    wrong = dict(correct)
-    wrong[first['field']] = next(c for c in first['choices']
-                                 if c != first['answer'])
+    wrong = dict(correct, **{first['field']: WRONG[first['field']]})
 
     lab = ot.create_session('test', num_participants=6, label='')
     codes = ot.participant_codes(lab)
@@ -878,7 +878,7 @@ def check_pills(base):
     """
     from playwright.sync_api import sync_playwright
     section('headless Chromium: the state-column pills')
-    correct = {i['field']: i['answer'] for i in QUIZ_ITEMS}
+    correct = dict(CORRECT)
 
     lab = ot.create_session('lab', num_participants=3, label='')
     lcodes = ot.participant_codes(lab)

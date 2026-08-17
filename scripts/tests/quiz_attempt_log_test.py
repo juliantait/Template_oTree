@@ -87,9 +87,10 @@ def main():
     session = ot.create_session('lab', num_participants=4)
     codes = ot.participant_codes(session)
 
-    correct = {i['field']: i['answer'] for i in QUIZ_ITEMS}
+    from quiz_answers import CORRECT, WRONG   # one derivation, from the shipped items
+    correct = dict(CORRECT)
     first = QUIZ_ITEMS[0]
-    wrong_answer = next(c for c in first['choices'] if c != first['answer'])
+    wrong_answer = WRONG[first['field']]
     wrong = dict(correct, **{first['field']: wrong_answer})
 
     # ---- 1. fail once, then pass: two entries, in order --------------------

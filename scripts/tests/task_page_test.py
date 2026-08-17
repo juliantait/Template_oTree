@@ -75,8 +75,8 @@ def payload_for(page, quiz_answers):
 
 
 def main_test():
-    from intro.quiz_items import QUIZ_ITEMS
-    correct = {i['field']: i['answer'] for i in QUIZ_ITEMS}
+    from quiz_answers import CORRECT   # one derivation, from the shipped items
+    correct = dict(CORRECT)
 
     section('1. every post-agreement page inherits the wiring — identity, not copies')
     # The ejecting phase: intro's pages and the task pages.
