@@ -191,7 +191,10 @@ defaults. **If you are not us, changing them is two image files and one line.**
 
 Then bump `settings.STATIC_VERSION` and re-record the asset manifest
 (`python scripts/prelaunch_check.py --stamp-assets`), as with any change under
-`_static/`.
+`_static/` — both steps, every time. Forgetting the re-stamp turns the
+cache-buster stale silently; `scripts/tests/asset_manifest_test.py` goes red
+when the manifest no longer matches the files, and `prelaunch_check.py` blocks
+the launch.
 
 Three things worth knowing before you swap:
 
