@@ -137,13 +137,12 @@ def drive(client, code, quiz_answers, wrong_quiz=None, max_steps=120):
 
 def main():
     from intro.quiz_items import QUIZ_ITEMS
+    from quiz_answers import CORRECT, WRONG   # one derivation, from the shipped items
     import common
 
-    correct = {i['field']: i['answer'] for i in QUIZ_ITEMS}
+    correct = dict(CORRECT)
     first = QUIZ_ITEMS[0]
-    wrong = dict(correct)
-    wrong[first['field']] = next(c for c in first['choices']
-                                 if c != first['answer'])
+    wrong = dict(correct, **{first['field']: WRONG[first['field']]})
     client = ot.client()
 
     for config in ('lab', 'prolific'):

@@ -114,12 +114,12 @@ def walk(client, code, id_value, quiz_answers, max_steps=80):
 
 
 def main():
-    from intro.quiz_items import QUIZ_ITEMS
+    from quiz_answers import CORRECT   # one derivation, from the shipped items
     import before as before_app
     from otree.database import DBSession
     from otree.models import Participant
 
-    correct_quiz = {i['field']: i['answer'] for i in QUIZ_ITEMS}
+    correct_quiz = dict(CORRECT)
     client = ot.client()
 
     section('Setup (PRODUCTION mode: no DEBUG var dump to hide behind)')

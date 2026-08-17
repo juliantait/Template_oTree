@@ -165,11 +165,10 @@ def main():
 
     # ---- 4. grading mechanics --------------------------------------------
     section('4. A correct submission advances; a wrong one comes back')
-    correct = {i['field']: i['answer'] for i in QUIZ_ITEMS}
+    from quiz_answers import CORRECT, WRONG   # one derivation, from the shipped items
+    correct = dict(CORRECT)
     first = QUIZ_ITEMS[0]
-    wrong = dict(correct)
-    wrong[first['field']] = next(c for c in first['choices']
-                                 if c != first['answer'])
+    wrong = dict(correct, **{first['field']: WRONG[first['field']]})
 
     resp = walk_to_quiz(client, codes[1])
     after_wrong = client.post(path_of(resp), data=wrong, allow_redirects=True)

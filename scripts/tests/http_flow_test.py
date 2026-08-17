@@ -16,14 +16,37 @@ THROWAWAY database:
 
 It walks every shipped config's form pages to an end screen and, for the
 Prolific config, also submits the entry page with the JS-produced hidden fields
-deliberately EMPTY. Exits non-zero on any 500 or dead-end.
+deliberately EMPTY. Exits non-zero on any 500, dead-end, OR a walk that reaches
+the WRONG ending (see below).
+
+WHY THE ENDING IS CHECKED, NOT JUST "an end marker". Every happy-path walk here
+means to prove the participant COMPLETED. Reaching *some* end screen does not
+prove that: a walker that cannot pass the comprehension quiz is routed — on the
+Prolific config, where `comprehension_dq` is on — to the comprehension-DQ ending
+(exit -2), which is also an end screen, so an END_MARKER-only check reports PASS
+against the wrong page (the collapsed-distinction fault in CLAUDE.md). And in the
+`comprehension_dq`-off profiles a quiz-failing walker simply LOOPS on the quiz
+until the step budget runs out. Both are why the quiz must be answered CORRECTLY,
+from the shipped items rather than by guessing the first radio option — and why
+each walk now asserts the exact exit code it claims to test.
 """
+import os
 import sys
 import json
 import re
 from html.parser import HTMLParser
 
 import requests
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _repo import REPO_ROOT  # noqa: E402,F401  (also puts REPO_ROOT on sys.path)
+# The quiz answers come from quiz_answers.py — the ONE derivation from the
+# shipped intro/quiz_items.py, so a study that swaps its quiz items cannot leave
+# a hardcoded map (or a first-option guess) here quietly answering the wrong
+# quiz. In PRODUCTION the page carries no solutions to read, so this seed is the
+# only thing that passes the quiz; under DEBUG the page's solutions re-affirm it.
+from quiz_answers import CORRECT as QUIZ_CORRECT  # noqa: E402
+from settings import EXIT_CODES  # noqa: E402  (a module import; does not start oTree)
 
 
 class FormParser(HTMLParser):
@@ -131,28 +154,64 @@ def build_payload(inputs, overrides, answers, warn=True):
     return payload
 
 
-def walk(base, config, overrides=None, answers=None, label=''):
+def participant_code(url):
+    """/p/<code>/... -> the participant code (used to read the exit code back)."""
+    m = re.search(r'/p/([^/]+)/', str(url))
+    return m.group(1) if m else None
+
+
+def read_exit_code(base, session_code, p_code):
+    """The participant's numeric outcome, read back over the REST API.
+
+    This is the POSITIVE half of the assertion: the walk did not merely reach
+    *an* end screen, it reached the ending whose exit code it claims to test.
+    Read from the server's own record rather than inferred from the page copy,
+    which several endings share.
+    """
+    r = requests.post(base + f'/api/get_session/{session_code}',
+                      json={'participant_vars': ['exit_code']})
+    r.raise_for_status()
+    for p in r.json().get('participants', []):
+        if p.get('code') == p_code:
+            return p.get('exit_code')
+    return None
+
+
+def walk(base, config, overrides=None, answers=None, label='', expect_exit='finished'):
     overrides = overrides or {}
-    answers = dict(answers or {})
+    # Seed the passing quiz answers from the shipped items (see the module
+    # header). A caller may still override a specific field via `answers`.
+    answers = dict(QUIZ_CORRECT, **(answers or {}))
+    expected_code = EXIT_CODES[expect_exit]
     s = requests.Session()
     resp = requests.post(base + '/api/sessions',
                          json={'session_config_name': config, 'num_participants': 2}).json()
-    if 'session_wide_url' not in resp:
+    if 'session_wide_url' not in resp or 'code' not in resp:
         print(f"[{label}] could not create session: {resp}")
         return False
+    session_code = resp['code']
     r = s.get(resp['session_wide_url'], allow_redirects=True)
     for step in range(80):
         if r.status_code >= 500:
             print(f"[{label}] HTTP {r.status_code} at {r.url}\n{r.text[:600]}")
             return False
         if any(m in r.text for m in END_MARKERS):
-            print(f"[{label}] reached end after {step} steps: {r.url.split('/p/')[-1]}")
+            page = r.url.split('/p/')[-1]
+            code = read_exit_code(base, session_code, participant_code(r.url))
+            if code != expected_code:
+                print(f"[{label}] reached AN ending after {step} steps but "
+                      f"exit_code={code}, expected {expected_code} "
+                      f"({expect_exit}); page={page}")
+                return False
+            print(f"[{label}] reached the {expect_exit} ending "
+                  f"(exit_code={code}) after {step} steps: {page}")
             return True
         fp = FormParser(); fp.feed(r.text)
         if not fp.found_form:
             print(f"[{label}] dead-end (no form, no end marker): {r.url}")
             return False
-        # If this page (DEBUG) exposes the quiz solutions, answer correctly.
+        # If this page (DEBUG) exposes the quiz solutions, they RE-AFFIRM the
+        # seed above; in production the blob is absent and the seed stands alone.
         if fp.solutions_json.strip():
             try:
                 for item in json.loads(fp.solutions_json):

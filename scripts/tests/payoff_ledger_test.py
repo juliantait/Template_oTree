@@ -131,9 +131,9 @@ def ledger_row(code):
 
 
 def main():
-    from intro.quiz_items import QUIZ_ITEMS
+    from quiz_answers import CORRECT   # one derivation, from the shipped items
     from otree import settings as otree_settings
-    correct = {i['field']: i['answer'] for i in QUIZ_ITEMS}
+    correct = dict(CORRECT)
 
     section('0. the setting that removes the second ledger')
     check(otree_settings.AUTO_TABULATE_PAYOFFS is False,

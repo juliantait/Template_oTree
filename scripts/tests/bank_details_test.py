@@ -70,8 +70,8 @@ def bank_payload(iban, bic='', confirmation=None):
 def to_demographics(code):
     """Walk a lab participant over real HTTP to the Demographics page and
     return (client, response) with the page open."""
-    from intro.quiz_items import QUIZ_ITEMS
-    correct = {i['field']: i['answer'] for i in QUIZ_ITEMS}
+    from quiz_answers import CORRECT   # one derivation, from the shipped items
+    correct = dict(CORRECT)
     payloads = {
         'welcome': {'consent': 'True', 'is_mobile': '', 'device_info_json': '',
                     'participant_id_url': ''},
