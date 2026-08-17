@@ -53,8 +53,8 @@ participant fields by WHERE they happened:
 
 | Column | Counts violations on | Consequence |
 |--------|----------------------|-------------|
-| `focus_loss_count` | the instructions, the quiz and the task pages (the ejecting phases) | reaching `tab_monitor_max_violations` disqualifies: exit code `-3`, `ai_safety_disqualified=True` |
-| `focus_loss_count_outro` | the outro pages (Ended, Demographics, Feedback, Results) | **none, ever** — recorded only, at any count |
+| `tab_monitor_focus_loss_count` | the instructions, the quiz and the task pages (the ejecting phases) | reaching `tab_monitor_max_violations` disqualifies: exit code `-3`, `tab_monitor_disqualified=True` |
+| `tab_monitor_focus_loss_count_outro` | the outro pages (Ended, Demographics, Feedback, Results) | **none, ever** — recorded only, at any count |
 
 Why the split exists rather than one number: by the outro the task is over and
 the data already collected, so ejecting somebody who has completed the whole
@@ -63,12 +63,12 @@ tab) would cost a real participant for no benefit — while a violation during
 the pages the agreement warns about is exactly what the module exists to stop.
 The two-column split is what keeps that legible in the data:
 
-* **a nonzero `focus_loss_count_outro` on a finished participant does NOT mean
+* **a nonzero `tab_monitor_focus_loss_count_outro` on a finished participant does NOT mean
   they were ejected or nearly ejected** — no threshold applies to it, the
   client showed them no warning, and it never touches the exit code;
-* `focus_loss_count` alone answers "how close to disqualification did they
+* `tab_monitor_focus_loss_count` alone answers "how close to disqualification did they
   come", because only its phases eject;
-* the event-id dedup (`focus_event_ids`) is shared across both, so one real
+* the event-id dedup (`tab_monitor_focus_event_ids`) is shared across both, so one real
   focus loss is never counted in both columns.
 
 The full reasoning lives at `common._apply_focus_loss`; the per-phase wiring
@@ -87,9 +87,9 @@ outro observations and enforcing violations reads as the worse of the two.
 | `tab_monitor_flag` | What it means | What to do | Derived from | Where to look next |
 |---|---|---|---|---|
 | *(empty)* | Nothing observed. **Check `tab_monitor_where`:** `not-monitored` means the module was OFF for this session (every lab session), which is not the same as watched-and-clean. | Nothing. | all three counters zero | `tab_monitor_where` |
-| `observed` | A record-only focus loss **after the task**, on the outro pages. They were never warned and never at risk of ejection. | **Keep and pay them.** The task data is valid. Treat their *questionnaire* answers with suspicion. | `focus_loss_count_outro > 0` | `focus_loss_count_outro` for how many; `tab_monitor_where` = `questionnaire` |
-| `warned` | Violations on an **enforcing** page (instructions, quiz, task), but under the threshold. They saw the warning and stayed. | **Keep them.** The task data is valid; treat attention as a covariate, not a reason to exclude. | `focus_loss_count > 0` and not disqualified | `focus_loss_count` for how close they came; `tab_monitor_max_violations` in the session config for the limit that applied |
-| `disqualified` | The threshold was crossed on an enforcing page. | **Exclude from analysis.** The row is flagged, not deleted — the data is still there. | `ai_safety_disqualified` | `focus_loss_count`, `exit_code` = `-3` |
+| `observed` | A record-only focus loss **after the task**, on the outro pages. They were never warned and never at risk of ejection. | **Keep and pay them.** The task data is valid. Treat their *questionnaire* answers with suspicion. | `tab_monitor_focus_loss_count_outro > 0` | `tab_monitor_focus_loss_count_outro` for how many; `tab_monitor_where` = `questionnaire` |
+| `warned` | Violations on an **enforcing** page (instructions, quiz, task), but under the threshold. They saw the warning and stayed. | **Keep them.** The task data is valid; treat attention as a covariate, not a reason to exclude. | `tab_monitor_focus_loss_count > 0` and not disqualified | `tab_monitor_focus_loss_count` for how close they came; `tab_monitor_max_violations` in the session config for the limit that applied |
+| `disqualified` | The threshold was crossed on an enforcing page. | **Exclude from analysis.** The row is flagged, not deleted — the data is still there. | `tab_monitor_disqualified` | `tab_monitor_focus_loss_count`, `exit_code` = `-3` |
 
 `tab_monitor_where` says **which region** the observations came from — `task`,
 `questionnaire`, `task+questionnaire`, `not-monitored`, or empty. It exists
@@ -104,7 +104,7 @@ word is always the prefix, so filtering on `questionnaire` keeps working, and a
 participant recorded before per-event detail existed simply shows the region
 alone.
 
-### `focus_events` — the per-event detail
+### `tab_monitor_focus_events` — the per-event detail
 
 One record per **counted** focus loss: `{page, region, ts}`. Pages are listed in
 the order first seen, which is reading order.
@@ -114,12 +114,12 @@ the order first seen, which is reading order.
   deliberately ignored: the client half of the monitor is the half a participant
   can edit, and a field an analyst trusts must not be attacker-controlled.
 * **`ts`** is a server-clock epoch second — a real timestamp, unlike the base-36
-  client stamp embedded in `focus_event_ids` (which is dedup bookkeeping on the
+  client stamp embedded in `tab_monitor_focus_event_ids` (which is dedup bookkeeping on the
   participant's own clock). `stage_timestamps` still gives stage boundaries.
 * Blanked by `scripts/format_session_data.py` like the other per-event logs;
   `tab_monitor_where` is the readable form.
 
-### `focus_losses_missed_at_least` — evidence of events that never arrived
+### `tab_monitor_focus_losses_missed_at_least` — evidence of events that never arrived
 
 The client keeps its own running total and sends it with every event. When it
 exceeds ours, events were lost in transit. **This column is that evidence.**
@@ -140,15 +140,15 @@ and both the flag and this column read clean. The same is true if the browser is
 closed on the last page. Treat a clean tab-monitor row as "no evidence of a
 problem", never as "nothing happened".
 
-Nothing above replaces the raw columns. `focus_loss_count`,
-`focus_loss_count_outro` and `ai_safety_disqualified` remain the datum;
+Nothing above replaces the raw columns. `tab_monitor_focus_loss_count`,
+`tab_monitor_focus_loss_count_outro` and `tab_monitor_disqualified` remain the datum;
 `tab_monitor_flag` is derived from them in ONE place
 (`common.derive_tab_monitor_flag`).
 
 ### Comprehension failure means different things by study type
 
 `comprehension_max_failures` is **one counter and one threshold**
-(`participant.failed_attempts`, incremented in `intro.quiz.error_message`), the
+(`participant.comprehension_failed_attempts`, incremented in `intro.quiz.error_message`), the
 same value in both study types. What differs is the consequence of crossing it:
 
 | | Prolific | Lab |
@@ -159,10 +159,10 @@ same value in both study types. What differs is the consequence of crossing it:
 
 **So `-2` never appears in a lab export, and its absence is not evidence that
 nobody struggled.** The analysis-time flag is
-`failed_attempts >= comprehension_max_failures` — deliberately the *same
+`comprehension_failed_attempts >= comprehension_max_failures` — deliberately the *same
 predicate* the online rule ejects on, so "failed comprehension" means one thing
 across both study types. Supporting columns, all existing:
-`instructions_reread_used` and the `reread_taken` stamp (took the supervised
+`comprehension_reread_used` and the `reread_taken` stamp (took the supervised
 re-read); `intro.Player.num_failed_attempts` is **per round**, so round 2's
 count is "still failing after being walked through the instructions again";
 `outro.Player.quiz_bonus_awarded == 0` is the monetary trace of any failure.
@@ -542,7 +542,7 @@ Fill in per-study fields as you build the task. The template ships with:
     reaches is appended to `participant_extra['screenout_history']`
     (`{ts, ua, device, screened_out, action}`, oldest first, deduped, first
     entry never dropped); the flat facts to filter on are the participant fields
-    `screened_out` and `screenout_cleared`.
+    `screenout_active` and `screenout_cleared`.
 - `intro.Player`: the quiz fields from `intro/quiz_items.py`,
   `num_failed_attempts`, `quiz_attempt_log` (every graded submission — see
   the section above), and `redoinstructions` (`1` on the quiz submission that
@@ -551,10 +551,10 @@ Fill in per-study fields as you build the task. The template ships with:
   Two rounds: round 2 is the lab re-read pass, so for
   every participant who never takes the re-read offer (all Prolific and most
   lab participants) the round-2 row is empty — expected, not data loss.
-  `participant.instructions_reread_used` records whether the pass was taken;
-  `failed_attempts` is the experimenter's record of quiz trouble (no flag is
+  `participant.comprehension_reread_used` records whether the pass was taken;
+  `comprehension_failed_attempts` is the experimenter's record of quiz trouble (no flag is
   recorded for the "raise your hand" notice, nor for its escalated form — both
-  are implied by `failed_attempts` against `comprehension_max_failures`; see the
+  are implied by `comprehension_failed_attempts` against `comprehension_max_failures`; see the
   exit-code section above).
 - `main.Player`: `round_payoff` (the game's per-round result — the value the
   payoff page shows and `payoff_vector` collects; NOT the payment record, see

@@ -35,7 +35,7 @@ CHECKS (each printed as PASS/FAIL with the numbers)
    D3. the OUTRO monitor, end to end: a REAL tab blur (headed Chromium under
       Xvfb — headless pins visibility) held past tab_monitor_threshold_ms
       shows NO overlay, ejects NOBODY, and IS recorded in
-      focus_loss_count_outro — the recorded count is what distinguishes
+      tab_monitor_focus_loss_count_outro — the recorded count is what distinguishes
       record-only monitoring from no monitoring at all;
    plus the feature checks: option cards (bordered, selected state, whole card
    clickable), eyebrow, privacy panel, per-family text alignment, the justified
@@ -3240,9 +3240,9 @@ def check_outro_never_ejects(server, pw):
       1. NO overlay is rendered (record-only mode builds no monitor UI at all,
          and no warning modal either — its threat would be a lie here);
       2. the participant is NOT ejected: still on Results after a reload,
-         exit code untouched, ai_safety_disqualified unset;
+         exit code untouched, tab_monitor_disqualified unset;
       3. the violation IS recorded, in the outro's OWN column
-         (focus_loss_count_outro), with the ejecting column untouched.
+         (tab_monitor_focus_loss_count_outro), with the ejecting column untouched.
 
     WITHOUT (3) THIS TEST WOULD BE WORTHLESS: a study with the monitor
     switched off entirely shows the same "nothing happened" as (1) and (2) —
@@ -3362,21 +3362,21 @@ def check_outro_never_ejects(server, pw):
             s = DBSession()
             try:
                 p = s.query(Participant).filter_by(code=code).one()
-                outro_count = p.vars.get('focus_loss_count_outro') or 0
-                eject_count = p.vars.get('focus_loss_count') or 0
-                dq = bool(p.vars.get('ai_safety_disqualified'))
+                outro_count = p.vars.get('tab_monitor_focus_loss_count_outro') or 0
+                eject_count = p.vars.get('tab_monitor_focus_loss_count') or 0
+                dq = bool(p.vars.get('tab_monitor_disqualified'))
                 exit_code = p.vars.get('exit_code')
             finally:
                 s.close()
             check(outro_count == cycle,
                   f'cycle {cycle}: the violation IS recorded server-side, in '
-                  f'the outro\'s own column (focus_loss_count_outro = '
+                  f'the outro\'s own column (tab_monitor_focus_loss_count_outro = '
                   f'{outro_count})')
             check(eject_count == 0,
                   f'cycle {cycle}: the EJECTING column is untouched '
-                  f'(focus_loss_count = {eject_count})')
+                  f'(tab_monitor_focus_loss_count = {eject_count})')
             check(not dq and exit_code != common.EXIT_CODES['tab_monitor'],
-                  f'cycle {cycle}: not disqualified (ai_safety_disqualified='
+                  f'cycle {cycle}: not disqualified (tab_monitor_disqualified='
                   f'{dq}, exit_code={exit_code})')
 
         # …and after as many violations as would disqualify in intro/main,

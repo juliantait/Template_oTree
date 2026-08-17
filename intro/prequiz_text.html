@@ -4,8 +4,8 @@
 
    Round 2 of `intro` is the lab re-read pass, and it is reachable ONLY by a
    participant who already failed the quiz and took the one-time re-read offer
-   (intro.in_reread_pass). So by construction their `failed_attempts` is
-   non-zero — and the quiz bonus is paid only when `failed_attempts == 0`
+   (intro.in_reread_pass). So by construction their `comprehension_failed_attempts` is
+   non-zero — and the quiz bonus is paid only when `comprehension_failed_attempts == 0`
    (outro/__init__.py, compute_final_payoff). The round-1 sentence therefore
    states a condition that CANNOT be met any more, and worse, "on the first
    attempt" implies the second pass restores a first attempt. It does not.

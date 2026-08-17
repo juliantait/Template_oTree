@@ -352,7 +352,7 @@ def stage_overview(base):
     # 12. tab-monitor DQ mid-task (the authoritative flags; the live monitor
     #     flow is full_journey_test.py's job)
     walk(base, codes[11], correct, stop_after='quiz')
-    set_participant(codes[11], **{'vars.ai_safety_disqualified': True,
+    set_participant(codes[11], **{'vars.tab_monitor_disqualified': True,
                                   'vars.exit_code': -3})
     # 13. codes[12] never arrives.
 
@@ -610,7 +610,7 @@ def stage_sessions(base):
     requests.get(f'{base}/InitializeParticipant/{pcodes[2]}',
                  headers={'User-Agent': PHONE_UA})
     walk(base, pcodes[3], correct, stop_after='quiz')
-    set_participant(pcodes[3], **{'vars.ai_safety_disqualified': True,
+    set_participant(pcodes[3], **{'vars.tab_monitor_disqualified': True,
                                   'vars.exit_code': -3})
     return lab, pro
 
@@ -877,7 +877,7 @@ def check_pills(base):
     pro = ot.create_session('prolific', num_participants=2)
     pcodes = ot.participant_codes(pro)
     walk(base, pcodes[0], correct, stop_after='quiz')     # into the task
-    set_participant(pcodes[0], **{'vars.focus_loss_count': 2})
+    set_participant(pcodes[0], **{'vars.tab_monitor_focus_loss_count': 2})
     walk(base, pcodes[1], correct)                        # finished
     backdate_stamp(pcodes[1], 'finished', 200)            # past the 90s grace
 

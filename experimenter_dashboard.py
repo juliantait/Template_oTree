@@ -603,9 +603,9 @@ def _quiz_outcome_map(session) -> dict:
     flagged as a timeout with the admin secret, oTree calls `error_message`
     anyway (otree/views/abstract.py, the `_process_auto_submitted_form`
     branch), our grading marks every item wrong and increments
-    `failed_attempts` — and then the page ADVANCES regardless, because a
+    `comprehension_failed_attempts` — and then the page ADVANCES regardless, because a
     timeout submission discards the error. Result: `quiz_done` stamped,
-    `failed_attempts` 1, answers stored as empty strings. The dashboard used to
+    `comprehension_failed_attempts` 1, answers stored as empty strings. The dashboard used to
     paint that a green "passed on attempt 2", for every participant in the
     session at once, which is exactly what Julian saw.
 
@@ -718,9 +718,9 @@ def _participant_row(pp, ctx, now) -> dict:
     # position alone would read as "questionnaire" — one situation, two
     # meanings. The flags are the authoritative record; position is not.)
     terminal = None
-    if v.get('screened_out'):
+    if v.get('screenout_active'):
         terminal = 'screened_out'
-    elif v.get('ai_safety_disqualified'):
+    elif v.get('tab_monitor_disqualified'):
         terminal = 'tab_monitor'
     elif v.get('comprehension_disqualified'):
         terminal = 'comprehension'
@@ -811,7 +811,7 @@ def _participant_row(pp, ctx, now) -> dict:
     # --- tab-monitor violations while they CLIMB -----------------------------
     # Until now the operator saw only the disqualification, after it happened.
     # Ship the server-authoritative count (common.focus_live_method's
-    # focus_loss_count) with the configured limit next to it, so somebody at 2
+    # tab_monitor_focus_loss_count) with the configured limit next to it, so somebody at 2
     # of 3 can be spoken to BEFORE ejection. Active rows only: once terminal
     # the DQ pill says it, and a finisher is past intervening — the count
     # itself stays in the export either way. None (not 0) when there is
@@ -819,7 +819,7 @@ def _participant_row(pp, ctx, now) -> dict:
     monitor_count = None
     if ctx['tab_monitor_on'] and terminal is None and not finished:
         try:
-            c = int(v.get('focus_loss_count') or 0)
+            c = int(v.get('tab_monitor_focus_loss_count') or 0)
         except Exception:
             c = 0
         if c >= 1:
@@ -953,8 +953,8 @@ def _quiz_cell(v, stamps, step, terminal, max_failures, last_attempt_passed) -> 
     count once passed (so 1 = passed first try), and VIOLET-BORDERED "forced"
     when the participant left the quiz without ever answering it correctly.
 
-    `failed_attempts` counts WRONG submissions (intro.quiz.error_message), so
-    the green count is failed_attempts + 1: the wrong ones plus the one that
+    `comprehension_failed_attempts` counts WRONG submissions (intro.quiz.error_message), so
+    the green count is comprehension_failed_attempts + 1: the wrong ones plus the one that
     passed. `quiz_done` alone is not "passed": it is stamped on ANY exit from
     the quiz page, including the lab's re-read detour and the disqualifying
     submit — so passed additionally requires having moved past the
@@ -981,7 +981,7 @@ def _quiz_cell(v, stamps, step, terminal, max_failures, last_attempt_passed) -> 
     # module — the dashboard must stay importable with oTree absent
     # (the _FALLBACK_EXIT_CODES reasoning); the stage-name constants
     # (common.STAGE_*) are only needed at request time.
-    attempts_wrong = int(v.get('failed_attempts', 0) or 0)
+    attempts_wrong = int(v.get('comprehension_failed_attempts', 0) or 0)
     past_quiz = (
         common.STAGE_QUIZ_DONE in stamps
         and terminal != 'comprehension'

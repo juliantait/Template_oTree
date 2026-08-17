@@ -79,7 +79,7 @@ def main():
         player, dict(type='focus_loss', event_id='e2', count=2,
                      page='/spoofed/by/the/client'))
 
-    events = participant.vars.get('focus_events') or []
+    events = participant.vars.get('tab_monitor_focus_events') or []
     check('two events recorded', len(events), 2)
     check('pages come from the SERVER, not the client payload',
           [e['page'] for e in events], ['Demographics', 'Feedback'])
@@ -88,9 +88,9 @@ def main():
     check('each event carries a server timestamp',
           all(isinstance(e.get('ts'), int) and e['ts'] > 0 for e in events), True)
     check('the counters still work exactly as before',
-          participant.vars.get('focus_loss_count_outro'), 2)
+          participant.vars.get('tab_monitor_focus_loss_count_outro'), 2)
     check('and the ejecting counter was untouched',
-          participant.vars.get('focus_loss_count') or 0, 0)
+          participant.vars.get('tab_monitor_focus_loss_count') or 0, 0)
 
     section('tab_monitor_where names the pages, not just the region')
     check('flag is the record-only verdict',
@@ -103,44 +103,44 @@ def main():
           .startswith('questionnaire'), True)
 
     section('a participant with no per-event detail degrades to the region')
-    check('region alone when focus_events is absent',
-          common.derive_tab_monitor_where(dict(focus_loss_count_outro=2)),
+    check('region alone when tab_monitor_focus_events is absent',
+          common.derive_tab_monitor_where(dict(tab_monitor_focus_loss_count_outro=2)),
           'questionnaire')
 
     section('retrospective drop detection')
     check('no evidence of loss so far',
-          participant.vars.get('focus_losses_missed_at_least') or 0, 0)
+          participant.vars.get('tab_monitor_focus_losses_missed_at_least') or 0, 0)
     # Client says this is its 5th loss; we have counted 2. Two never arrived.
     participant._current_page_name = 'Results'
     common.focus_live_method_outro(
         player, dict(type='focus_loss', event_id='e3', count=5))
     check('at-least evidence recorded (client 5 vs our 3)',
-          participant.vars.get('focus_losses_missed_at_least'), 2)
+          participant.vars.get('tab_monitor_focus_losses_missed_at_least'), 2)
 
     # A LOWER client count is not a drop: cleared sessionStorage, reused
     # browser, second tab, replay. Recording it would invent missing data.
     common.focus_live_method_outro(
         player, dict(type='focus_loss', event_id='e4', count=1))
     check('a client total BEHIND ours is not recorded as a loss',
-          participant.vars.get('focus_losses_missed_at_least'), 2)
+          participant.vars.get('tab_monitor_focus_losses_missed_at_least'), 2)
 
     # It is a maximum, never a sum — otherwise one drop observed repeatedly
     # would multiply into many.
     common.focus_live_method_outro(
         player, dict(type='focus_loss', event_id='e5', count=6))
     check('still a maximum, not a running sum',
-          participant.vars.get('focus_losses_missed_at_least'), 2)
+          participant.vars.get('tab_monitor_focus_losses_missed_at_least'), 2)
 
     section('a missing or unusable client count says nothing')
-    before = participant.vars.get('focus_losses_missed_at_least')
+    before = participant.vars.get('tab_monitor_focus_losses_missed_at_least')
     common.focus_live_method_outro(
         player, dict(type='focus_loss', event_id='e6'))
     common.focus_live_method_outro(
         player, dict(type='focus_loss', event_id='e7', count='lots'))
     check('unusable counts leave the evidence untouched',
-          participant.vars.get('focus_losses_missed_at_least'), before)
+          participant.vars.get('tab_monitor_focus_losses_missed_at_least'), before)
     check('but the losses were still COUNTED',
-          participant.vars.get('focus_loss_count_outro'), 7)
+          participant.vars.get('tab_monitor_focus_loss_count_outro'), 7)
 
     section('SUMMARY')
     if FAILURES:

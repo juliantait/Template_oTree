@@ -167,7 +167,7 @@ def set_visited(code, visited=True):
         s.close()
 
 
-def set_exit_code(code, exit_code, screened_out=False):
+def set_exit_code(code, exit_code, screenout_active=False):
     """Put a row into a terminal state directly, to test which duplicate row a
     returning participant joins."""
     from otree.database import DBSession
@@ -178,14 +178,14 @@ def set_exit_code(code, exit_code, screened_out=False):
         # `vars` is a read-only view; the participant FIELDS are attributes on
         # the row (settings.PARTICIPANT_FIELDS), which is what writes them.
         p.exit_code = exit_code
-        p.screened_out = screened_out
+        p.screenout_active = screenout_active
         s.commit()
     finally:
         s.close()
 
 
 def row_state(code):
-    """(label, visited, exit_code, screened_out) as actually stored."""
+    """(label, visited, exit_code, screenout_active) as actually stored."""
     from otree.database import DBSession
     from otree.models import Participant
     s = DBSession()
@@ -193,12 +193,12 @@ def row_state(code):
         p = s.query(Participant).filter_by(code=code).one()
         return dict(label=p.label, visited=bool(p.visited),
                     exit_code=p.vars.get('exit_code'),
-                    screened_out=bool(p.vars.get('screened_out')))
+                    screenout_active=bool(p.vars.get('screenout_active')))
     finally:
         s.close()
 
 
-def assert_planted(code, label=None, exit_code=None, screened_out=None,
+def assert_planted(code, label=None, exit_code=None, screenout_active=None,
                    visited=True, what=''):
     """Confirm a planted row REALLY holds the state the next assertion assumes.
 
@@ -220,10 +220,10 @@ def assert_planted(code, label=None, exit_code=None, screened_out=None,
         check(st['exit_code'] == exit_code,
               f'SETUP {what}: row {code} really holds exit_code={exit_code} '
               f'(got {st["exit_code"]})')
-    if screened_out is not None:
-        check(st['screened_out'] == screened_out,
+    if screenout_active is not None:
+        check(st['screenout_active'] == screenout_active,
               f'SETUP {what}: row {code} really holds '
-              f'screened_out={screened_out} (got {st["screened_out"]})')
+              f'screenout_active={screenout_active} (got {st["screenout_active"]})')
 
 
 def identity_same(a, b):
@@ -443,7 +443,7 @@ def main():
     scodes = ot.participant_codes(so_session)
     plant_label(scodes[0], 'dupeso001')
     plant_label(scodes[1], 'dupeso001')
-    set_exit_code(scodes[0], -4, screened_out=True)   # earliest is SCREENED OUT
+    set_exit_code(scodes[0], -4, screenout_active=True)   # earliest is SCREENED OUT
     # THIS IS THE CHECK THAT WENT GREEN ON AN EMPTY SETUP (see plant_label).
     # Both plants are asserted, and both rows are VISITED, so the assertion
     # below can no longer be satisfied by oTree's unvisited-row fallback
@@ -451,7 +451,7 @@ def main():
     # matched the label in Python and `_choose_row` kept a screened-out (i.e.
     # terminal but NOT finished) row joinable.
     assert_planted(scodes[0], label='dupeso001', exit_code=-4,
-                   screened_out=True, what='screenedout/earliest')
+                   screenout_active=True, what='screenedout/earliest')
     assert_planted(scodes[1], label='dupeso001', what='screenedout/later')
     r = browser().get(f'/join/{ot.anon_code(so_session)}'
                       f'?participant_label=dupeso001', allow_redirects=True)

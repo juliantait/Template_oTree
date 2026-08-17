@@ -69,7 +69,7 @@ import common
 # participant we must not turn away is precisely the one whose header is.
 requests.models.check_header_validity = lambda header: None
 
-STATE_VARS = ['exit_code', 'screened_out', 'screenout_cleared',
+STATE_VARS = ['exit_code', 'screenout_active', 'screenout_cleared',
               'consent_submitted', 'participant_extra']
 ENTRY_OVERRIDES = {'consent': 'True', 'is_mobile': 'False',
                    'participant_id_external': 'SOFTWALL_TEST'}
@@ -89,7 +89,7 @@ def state(base, session_code, p_code):
     extra = p.get('participant_extra') or {}
     return dict(
         exit_code=p.get('exit_code'),
-        screened_out=p.get('screened_out'),
+        screenout_active=p.get('screenout_active'),
         screenout_cleared=p.get('screenout_cleared'),
         consent_submitted=p.get('consent_submitted'),
         cause=extra.get('screenout_cause'),
@@ -154,7 +154,7 @@ def scenario_soft_wall(base):
     check(SCREENOUT_MARKER in r.text, 'phone entry: the screen-out page renders')
     check(CONSENT_MARKER not in r.text, 'phone entry: consent is NOT rendered')
     st = state(base, sc, p_code)
-    check(st['screened_out'] is True, 'closed tab: screened_out True already')
+    check(st['screenout_active'] is True, 'closed tab: screenout_active True already')
     check(st['exit_code'] == -4, 'closed tab: exit code -4 already (not 0/abandoned)')
     check(st['cause'] == 'phone', "closed tab: cause is the detected type 'phone'")
     check(actions(st) == ['screened'], f"history: {actions(st)}")
@@ -167,7 +167,7 @@ def scenario_soft_wall(base):
     check(SCREENOUT_MARKER not in r2.text,
           'desktop return: the screen-out page is gone')
     st = state(base, sc, p_code)
-    check(st['screened_out'] is False, 'cleared: screened_out back to False')
+    check(st['screenout_active'] is False, 'cleared: screenout_active back to False')
     check(st['exit_code'] == 0,
           f"cleared: exit code reverted to 0/abandoned (got {st['exit_code']})")
     check(not st['cause'], 'cleared: the screen-out cause is dropped')
@@ -182,7 +182,7 @@ def scenario_soft_wall(base):
     _, r3 = enter(base, url, PHONE_UA, 'phone again')
     check(SCREENOUT_MARKER in r3.text, 'phone again: screened out a second time')
     st = state(base, sc, p_code)
-    check(st['exit_code'] == -4 and st['screened_out'] is True,
+    check(st['exit_code'] == -4 and st['screenout_active'] is True,
           're-screened: terminal marking back')
     check(st['screenout_cleared'] is True,
           're-screened: screenout_cleared STAYS True — the switch still happened')
@@ -196,7 +196,7 @@ def scenario_soft_wall(base):
     st = state(base, sc, p_code)
     check(st['exit_code'] == 1,
           f"completed: exit code 1, an ORDINARY participant (got {st['exit_code']})")
-    check(st['screened_out'] is False, 'completed: not screened out')
+    check(st['screenout_active'] is False, 'completed: not screened out')
     check(st['screenout_cleared'] is True,
           'completed: the audit column still shows a device switch happened')
     check(actions(st) == ['screened', 'cleared', 'rescreened', 'cleared'],
@@ -229,7 +229,7 @@ def scenario_after_consent(base):
           'phone AFTER consent: not screened out on the next page')
     r = walk_on(base, phone, r, 'phone after consent')
     st = state(base, sc, p_code)
-    check(st['screened_out'] is False, 'phone after consent: never screened out')
+    check(st['screenout_active'] is False, 'phone after consent: never screened out')
     check(st['exit_code'] == 1,
           f"phone after consent: completes normally (exit {st['exit_code']})")
     check(actions(st) == history_before,
@@ -309,7 +309,7 @@ def scenario_way_out(base):
     _, r2 = enter(base, url, PHONE_UA, 'return on the phone after pressing')
     check(SCREENOUT_MARKER in r2.text, 'return on phone: still screened out')
     st = state(base, sc, p_code)
-    check(st['exit_code'] == -4 and st['screened_out'] is True,
+    check(st['exit_code'] == -4 and st['screenout_active'] is True,
           'return on phone: still terminal, nothing revived')
     check(st['history'][0]['action'] == 'screened',
           'return on phone: the original decision is still the first history entry')
@@ -320,7 +320,7 @@ def scenario_way_out(base):
     # so. Documented in README ("The device check") as an accepted consequence.
     _, r3 = enter(base, url, DESKTOP_UA, 'return on a computer after pressing')
     st = state(base, sc, p_code)
-    check(st['screened_out'] is False and st['screenout_cleared'] is True,
+    check(st['screenout_active'] is False and st['screenout_cleared'] is True,
           'return on a computer: cleared, and VISIBLY so (screenout_cleared)')
     check(actions(st) == ['screened', 'cleared'],
           f'return on a computer: the screen-out is still in the record '
@@ -347,7 +347,7 @@ def scenario_asymmetry(base):
         st = state(base, sc, p_code)
         check(CONSENT_MARKER in r.text,
               f'{label} on a FRESH participant: proceeds to consent')
-        check(st['screened_out'] is False and st['exit_code'] == 0,
+        check(st['screenout_active'] is False and st['exit_code'] == 0,
               f'{label} on a FRESH participant: no verdict recorded')
         check(st['device'] is None and st['history'] == [],
               f'{label} on a FRESH participant: nothing written at all')
@@ -362,7 +362,7 @@ def scenario_asymmetry(base):
         st2 = state(base, sc, p2)
         check(SCREENOUT_MARKER in r2.text,
               f'{label} on an ALREADY-SCREENED participant: STILL screened out')
-        check(st2['screened_out'] is True and st2['exit_code'] == -4,
+        check(st2['screenout_active'] is True and st2['exit_code'] == -4,
               f'{label} on an ALREADY-SCREENED participant: verdict unchanged')
         check(st2['screenout_cleared'] is False,
               f'{label}: it did not count as a device switch either')
@@ -452,9 +452,9 @@ def scenario_never_reaches_outro(base):
 
     # And the durable record is still the ENTRY screen-out, not an ending.
     st = state(base, sc, p_code)
-    check(st['exit_code'] == -4 and st['screened_out'] is True,
-          f"the record is still exit -4 / screened_out "
-          f"(got {st['exit_code']}, {st['screened_out']})")
+    check(st['exit_code'] == -4 and st['screenout_active'] is True,
+          f"the record is still exit -4 / screenout_active "
+          f"(got {st['exit_code']}, {st['screenout_active']})")
     check(st['consent_submitted'] is not True,
           'consent was never submitted along the way')
 

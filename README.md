@@ -395,7 +395,7 @@ They are **held on the consent page's own index** and served
 question, and they never advance into the study.
 
 - **The verdict is written immediately**, at decision time: exit code `-4`,
-  `screened_out=True`, and the detected type as the cause. Somebody who reads
+  `screenout_active=True`, and the detected type as the cause. Somebody who reads
   the page and closes the tab still exports as a screen-out, not an abandoner.
 - **It clears if they come back on an accepted device before consent.** The exit
   code goes back to `0`, `screenout_cleared` is set to `True` for good, and every
@@ -585,7 +585,7 @@ flowchart TD
     Game -. "tab-away violations reach<br>tab_monitor_max_violations<br>(one count across intro + main)" .-> EndedTM
     Payoff -- "after the last round" --> FbGate
 
-    subgraph OUTRO ["outro — ending. Each ending carries ITS OWN completion code: completed -> prolific_cc_code (auto-approve), declined consent -> prolific_noconsent_code, comprehension DQ -> prolific_dq_quiz_code, tab-monitor DQ -> prolific_dq_tab_code (all request-return); the device screen-out never reaches here and carries prolific_device_code. Demographics skipped: Prolific exports demographics itself. Tab monitor still watching, but RECORD-ONLY: violations here land in focus_loss_count_outro and NEVER eject. To READ any of this, sort on tab_monitor_flag — see CODEBOOK"]
+    subgraph OUTRO ["outro — ending. Each ending carries ITS OWN completion code: completed -> prolific_cc_code (auto-approve), declined consent -> prolific_noconsent_code, comprehension DQ -> prolific_dq_quiz_code, tab-monitor DQ -> prolific_dq_tab_code (all request-return); the device screen-out never reaches here and carries prolific_device_code. Demographics skipped: Prolific exports demographics itself. Tab monitor still watching, but RECORD-ONLY: violations here land in tab_monitor_focus_loss_count_outro and NEVER eject. To READ any of this, sort on tab_monitor_flag — see CODEBOOK"]
         FbGate{"pilot_feedback<br>flag on?"}
         FbGate -. "yes (pilots only)" .-> Fb["Feedback — free-text pilot feedback"]
         Fb -.-> Results
@@ -640,7 +640,7 @@ flowchart TD
         Offer -- "dismiss — keep trying,<br>offer stays open" --> Quiz1
         Offer -- "take it — consumed on entering<br>the second pass, not when offered" --> Instr2["instructing (round 2) —<br>instructions again from the start"]
         Instr2 --> Quiz2["quiz (round 2)"]
-        Quiz2 -- "wrong answers: dismissible modal<br>'raise your hand and speak to the experimenter'<br>(from 2× the threshold it also names the<br>attempt count) — attempts are never capped,<br>no disqualification, nothing recorded<br>beyond failed_attempts" --> Quiz2
+        Quiz2 -- "wrong answers: dismissible modal<br>'raise your hand and speak to the experimenter'<br>(from 2× the threshold it also names the<br>attempt count) — attempts are never capped,<br>no disqualification, nothing recorded<br>beyond comprehension_failed_attempts" --> Quiz2
     end
     Quiz1 -- "all correct" --> Game
     Quiz2 -- "all correct" --> Game
@@ -670,7 +670,7 @@ flowchart TD
 | Exit code | Terminal state | Ending the participant sees | Completion code |
 |----------:|----------------|-----------------------------|-----------------|
 | `1` finished | Completed the study | `outro` Results (payment summary; paid by bank transfer) | n/a (no redirects in lab) |
-| `0` abandoned | Left the session | none — `failed_attempts` and the stage timestamps are the experimenter's record | n/a |
+| `0` abandoned | Left the session | none — `comprehension_failed_attempts` and the stage timestamps are the experimenter's record | n/a |
 
 `-1`/`-2`/`-3` cannot occur in lab: consent is implicit, and **the integrity
 modules (`comprehension_dq`, `tab_monitor`) are not supported in a lab session**
@@ -683,7 +683,7 @@ disqualified participant is not a completer, so they skip the bank-details page
 and the payment summary and are stranded at the machine. The lab's comprehension
 rule is the re-read pass plus the "raise your hand" notice; a failed lab
 participant is identified at analysis time by
-`failed_attempts >= comprehension_max_failures` (see `CODEBOOK.md`).
+`comprehension_failed_attempts >= comprehension_max_failures` (see `CODEBOOK.md`).
 `-4` cannot occur either unless you narrow `allowed_devices` on the config — it
 permits every device type by default in every profile, and a lab session's
 computers would pass anyway.
@@ -1141,9 +1141,9 @@ a short number. Full operational detail: `docs/running_on_prolific.md`.
   page can only be unmonitored by opting out explicitly), with one deliberate
   asymmetry: same monitor, same counting, **different consequence by phase**.
   During the instructions, quiz and task, violations count toward
-  disqualification (`focus_loss_count`, ejecting at
+  disqualification (`tab_monitor_focus_loss_count`, ejecting at
   `tab_monitor_max_violations`); during the **outro they are recorded only**
-  (`focus_loss_count_outro`) and never eject — by then the task is over and
+  (`tab_monitor_focus_loss_count_outro`) and never eject — by then the task is over and
   the data collected, so disqualifying somebody who completed the whole study
   (say, for tabbing to Prolific while reading their receipt) would cost a
   real participant for no benefit. A nonzero outro count on a finished

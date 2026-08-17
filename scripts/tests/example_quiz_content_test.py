@@ -176,10 +176,10 @@ def main():
     check(page_name_of(path_of(after_wrong)) == 'quiz',
           f'a wrong answer re-renders the quiz '
           f'(now {page_name_of(path_of(after_wrong))})')
-    check(ot.participant_vars(codes[1]).get('failed_attempts') == 1,
+    check(ot.participant_vars(codes[1]).get('comprehension_failed_attempts') == 1,
           f'the failed attempt is counted '
-          f'(failed_attempts='
-          f'{ot.participant_vars(codes[1]).get("failed_attempts")!r})')
+          f'(comprehension_failed_attempts='
+          f'{ot.participant_vars(codes[1]).get("comprehension_failed_attempts")!r})')
     after_right = client.post(path_of(after_wrong), data=correct,
                               allow_redirects=True)
     check(page_name_of(path_of(after_right)) != 'quiz',
@@ -190,7 +190,7 @@ def main():
     straight = client.post(path_of(resp), data=correct, allow_redirects=True)
     check(page_name_of(path_of(straight)) != 'quiz',
           'a first-time correct submission advances immediately')
-    check((ot.participant_vars(codes[2]).get('failed_attempts') or 0) == 0,
+    check((ot.participant_vars(codes[2]).get('comprehension_failed_attempts') or 0) == 0,
           'and records no failed attempts')
 
     # ---- 5. nothing that gives the game away ships to production ----------

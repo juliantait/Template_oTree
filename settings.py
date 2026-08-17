@@ -421,7 +421,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     # is a debug loosening, honoured only under DEBUG.
     #
     # THE SAME NUMBER MEANS TWO DIFFERENT THINGS, BY STUDY TYPE. It is one
-    # counter (participant.failed_attempts, incremented in intro.quiz.
+    # counter (participant.comprehension_failed_attempts, incremented in intro.quiz.
     # error_message) and one threshold, deliberately the same value in both
     # study types — what differs is the CONSEQUENCE of crossing it:
     #   * ONLINE (prolific): the point of EJECTION. comprehension_dq is on, so
@@ -435,10 +435,10 @@ SESSION_CONFIG_DEFAULTS = dict(
     #     dismissible "raise your hand" notice; at TWICE the threshold that
     #     notice also names how many attempts they have made. Nothing is
     #     recorded beyond the counter, which is the point: at analysis time
-    #     `failed_attempts >= comprehension_max_failures` is the SAME predicate
+    #     `comprehension_failed_attempts >= comprehension_max_failures` is the SAME predicate
     #     the online rule ejects on, so "failed comprehension" means one thing
     #     across both study types. (Failing already costs quiz_bonus, which is
-    #     paid only when failed_attempts == 0.)
+    #     paid only when comprehension_failed_attempts == 0.)
     # See CODEBOOK.md (and _ai/lab_comprehension_proposal.md, local only:
     # _ai/ is gitignored, so it is not in a copied study).
     comprehension_max_failures=3,   # wrong attempts that count as failing the quiz
@@ -504,7 +504,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     # pages the agreement protects), and are RECORDED ONLY during the outro (the
     # task is over and the data collected; ejecting a completer over their
     # bank-details page would cost a real participant for no benefit). Outro
-    # violations land in their own column, focus_loss_count_outro. Full why:
+    # violations land in their own column, tab_monitor_focus_loss_count_outro. Full why:
     # common._apply_focus_loss.
     tab_monitor=False,              # tab-switch / AI-safety monitor
     tab_monitor_max_violations=2,   # disqualify on the Nth recorded tab-away (intro/main only)
@@ -724,31 +724,31 @@ for _config in SESSION_CONFIGS:
 PARTICIPANT_FIELDS = [
     'temp_data',            # scratch storage for any participant-specific data
     'payoff_vector',        # all payoff-relevant values across rounds/apps
-    'failed_attempts',      # number of wrong quiz submissions (comprehension)
+    'comprehension_failed_attempts',      # number of wrong quiz submissions (comprehension)
     'treatment_group',      # treatment cell, assigned at session creation
     'exit_code',            # numeric outcome (see EXIT_CODES); init 0 = abandoned
     'participant_id_external',  # external recruitment ID (e.g. Prolific), if captured
     'stage_timestamps',     # dict {stage_name: epoch_seconds} filled as the flow advances
     'participant_extra',    # free JSON bucket for future/ad-hoc fields (see codebook)
-    'ai_safety_disqualified',   # tab-monitor authoritative disqualification flag
-    'focus_loss_count',     # tab-monitor violations while ejection applied (intro+main)
-    'focus_loss_count_outro',  # tab-monitor violations in the outro: recorded, NEVER eject
-    'focus_event_ids',      # tab-monitor seen event ids (server-side dedup)
-    'focus_events',         # per-event detail: {page, region, ts} for each counted loss
-    'focus_losses_missed_at_least',  # AT-LEAST evidence of events that never reached us
+    'tab_monitor_disqualified',   # tab-monitor authoritative disqualification flag
+    'tab_monitor_focus_loss_count',     # tab-monitor violations while ejection applied (intro+main)
+    'tab_monitor_focus_loss_count_outro',  # tab-monitor violations in the outro: recorded, NEVER eject
+    'tab_monitor_focus_event_ids',      # tab-monitor seen event ids (server-side dedup)
+    'tab_monitor_focus_events',         # per-event detail: {page, region, ts} for each counted loss
+    'tab_monitor_focus_losses_missed_at_least',  # AT-LEAST evidence of events that never reached us
     'tab_monitor_flag',     # READER-FACING verdict: ''|observed|warned|disqualified
     'tab_monitor_where',    # where those observations were: task|questionnaire|both|not-monitored
     'comprehension_disqualified',  # comprehension-DQ authoritative flag
-    'instructions_reread_used',    # lab: the one-time re-read pass was taken
+    'comprehension_reread_used',    # lab: the one-time re-read pass was taken
     'device_info',          # dict of captured device/screen info, if enabled
-    'screened_out',         # entry device gate removed them before consent
+    'screenout_active',     # entry device gate removed them before consent
     'screenout_cleared',    # a screen-out was LIFTED (they switched device)
     'consent_submitted',    # the consent page was submitted (the gate's boundary)
 ]
 # Description of PARTICIPANT_FIELDS:
 # - temp_data: Temporary storage for any participant-specific data during the session.
 # - payoff_vector: A list storing all payoff-relevant values across all rounds and apps.
-# - failed_attempts: Counts the number of times a participant answers the quiz incorrectly.
+# - comprehension_failed_attempts: Counts the number of times a participant answers the quiz incorrectly.
 # - treatment_group: The treatment cell assigned in before/creating_session.
 # - exit_code: Numeric outcome; see EXIT_CODES. Initialised to 0 (abandoned) so
 #   no export row is ever blank; set to 1 on a clean finish or a negative reason.
@@ -756,19 +756,19 @@ PARTICIPANT_FIELDS = [
 # - stage_timestamps: {stage: epoch_seconds}; when the participant cleared a stage.
 # - participant_extra: A JSON-able dict reserved for future use (repurpose
 #   convention in CODEBOOK.md — never rename in place).
-# - ai_safety_disqualified / focus_loss_count / focus_event_ids: tab monitor
-#   state. focus_loss_count counts ONLY the ejecting phases (intro + main) —
+# - tab_monitor_disqualified / tab_monitor_focus_loss_count / tab_monitor_focus_event_ids: tab monitor
+#   state. tab_monitor_focus_loss_count counts ONLY the ejecting phases (intro + main) —
 #   crossing tab_monitor_max_violations there disqualifies.
-# - focus_loss_count_outro: violations AFTER the task (outro pages), recorded
+# - tab_monitor_focus_loss_count_outro: violations AFTER the task (outro pages), recorded
 #   only — never a disqualification, whatever the count. Its own column so an
 #   analyst can tell a completed-with-violations participant from a
 #   nearly-ejected one (see common._apply_focus_loss and CODEBOOK.md).
-# - focus_events: one {page, region, ts} record per COUNTED focus loss. `page`
+# - tab_monitor_focus_events: one {page, region, ts} record per COUNTED focus loss. `page`
 #   is the SERVER's own participant._current_page_name, never the client's
 #   reported pathname — the client half of the monitor is the half a participant
 #   can edit, and a field an analyst trusts must not be attacker-controlled.
 #   This is what lets tab_monitor_where name the pages instead of the region.
-# - focus_losses_missed_at_least: evidence that events were LOST before reaching
+# - tab_monitor_focus_losses_missed_at_least: evidence that events were LOST before reaching
 #   the server, from comparing the client's own running total against ours. It is
 #   an AT-LEAST, not a count — 4 against 2 means at least two were lost, possibly
 #   more — so it is a maximum, never a sum, and must never be totalled across
@@ -783,10 +783,10 @@ PARTICIPANT_FIELDS = [
 #   because the flag's empty value would otherwise mean both "watched and
 #   clean" and "never watched" — every lab session being the latter.
 # - comprehension_disqualified: set when a participant fails the quiz too often.
-# - instructions_reread_used: True once a lab participant enters the second
+# - comprehension_reread_used: True once a lab participant enters the second
 #   instructions pass (quiz_reread module). Consumed on entry, not on offer.
 # - device_info: captured device/screen dict when device_capture is on.
-# - screened_out: True while the entry device gate (allowed_devices) is holding
+# - screenout_active: True while the entry device gate (allowed_devices) is holding
 #   the participant on the consent page's index with exit_code -4, shown
 #   before/screened_out.html instead of consent. Authoritative flag, and NOT
 #   write-once: the wall is soft, so a pre-consent request from an accepted

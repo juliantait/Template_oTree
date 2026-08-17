@@ -155,7 +155,7 @@ def main():
             for key, flag, label, exit_name in (
                     ('prolific_dq_quiz_code', 'comprehension_disqualified',
                      'comprehension DQ', 'comprehension'),
-                    ('prolific_dq_tab_code', 'ai_safety_disqualified',
+                    ('prolific_dq_tab_code', 'tab_monitor_disqualified',
                      'tab-monitor DQ', 'tab_monitor')):
                 # WALK THEM PAST CONSENT FIRST. Setting the flag on a
                 # participant still sitting at the consent page does not put

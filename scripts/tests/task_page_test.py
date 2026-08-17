@@ -19,7 +19,7 @@ generalised structure:
      script (shipped via the bundle) but NO config, so it is inert; the
      inherited live_method counts a violation server-side;
   4. THE PHASE ASYMMETRY: the outro handler records into its OWN column
-     (focus_loss_count_outro) and never disqualifies, however many arrive;
+     (tab_monitor_focus_loss_count_outro) and never disqualifies, however many arrive;
      the Results dispatcher serves both message types on one channel;
   5. the documented opt-out (`monitored = False`) disarms all the Python-side
      wiring in one stroke — and an explicit live_method override still works,
@@ -186,10 +186,10 @@ def main_test():
                       MainPlayer.round_number == 1).one())
         main.GameStart.live_method(pl, {'type': 'focus_loss', 'event_id': 'e1'})
         s.commit()
-        count = p.vars.get('focus_loss_count')
+        count = p.vars.get('tab_monitor_focus_loss_count')
         check(count == 1,
               f'the inherited live_method counts a violation server-side '
-              f'(focus_loss_count={count})')
+              f'(tab_monitor_focus_loss_count={count})')
 
         section('4. the phase asymmetry: outro records, never ejects')
         OutroPlayer = get_models_module('outro').Player
@@ -201,13 +201,13 @@ def main_test():
             rets.append(outro.Ended.live_method(
                 opl, {'type': 'focus_loss', 'event_id': f'o{i}'}))
         s.commit()
-        check(p.vars.get('focus_loss_count_outro') == max_v + 2,
+        check(p.vars.get('tab_monitor_focus_loss_count_outro') == max_v + 2,
               f'outro violations land in their OWN column '
-              f'(focus_loss_count_outro={p.vars.get("focus_loss_count_outro")})')
-        check(p.vars.get('focus_loss_count') == 1,
+              f'(tab_monitor_focus_loss_count_outro={p.vars.get("tab_monitor_focus_loss_count_outro")})')
+        check(p.vars.get('tab_monitor_focus_loss_count') == 1,
               'the ejecting-phase count is untouched by outro violations — '
               'an analyst can tell the phases apart')
-        check(not p.vars.get('ai_safety_disqualified')
+        check(not p.vars.get('tab_monitor_disqualified')
               and p.vars.get('exit_code') != common.EXIT_CODES['tab_monitor'],
               f'{max_v + 2} outro violations (threshold {max_v}) disqualify '
               f'NOBODY and never touch the exit code')
@@ -217,7 +217,7 @@ def main_test():
         outro.Results.live_method(
             opl, {'type': 'focus_loss', 'event_id': 'r1'})
         s.commit()
-        check(p.vars.get('focus_loss_count_outro') == max_v + 3,
+        check(p.vars.get('tab_monitor_focus_loss_count_outro') == max_v + 3,
               'Results DELEGATES focus messages to the record-only handler '
               '(the one-live_method-per-page dispatcher)')
         outro.Results.live_method(opl, {'type': 'prolific_return_click'})
@@ -228,7 +228,7 @@ def main_test():
         # The event-id dedup is SHARED across phases: a replayed id counts once.
         outro.Ended.live_method(opl, {'type': 'focus_loss', 'event_id': 'e1'})
         s.commit()
-        check(p.vars.get('focus_loss_count_outro') == max_v + 3,
+        check(p.vars.get('tab_monitor_focus_loss_count_outro') == max_v + 3,
               'an event id already counted in the ejecting phase cannot be '
               'counted again in the outro (shared dedup)')
         # The client is TOLD its phase: the outro's js_vars say ejects: false
