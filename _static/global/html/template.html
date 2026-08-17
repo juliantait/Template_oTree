@@ -236,4 +236,121 @@
     </div>
 </div>
 
+<!-- ---------------------------------------------------------------------------
+     CARD 3 — THE NOTIFICATION TIER LADDER (base.css "THE NOTIFICATION TIER
+     LADDER"; behaviour in global.js "POPUP LADDER"). Four documented ways to put
+     a message in front of a participant, numbered 0–3 by how far outside the
+     experiment frame the message sits. The tier class supplies the behaviour
+     (backdrop? dismissal? can it move layout?); the call site supplies the words.
+     All four here are FUNCTIONAL — click the triggers.
+     --------------------------------------------------------------------------- -->
+<div class="experimental-screen">
+    <div class="screen-card">
+        <div class="experimental-header">
+            <div class="eyebrow">Design reference</div>
+            <h2 class="header-title">Notification tiers (popups)</h2>
+            <p class="header-text">Pick a tier by how far outside the experiment
+               frame the message sits — beside a control, a fading acknowledgement,
+               a blocking decision, or the study has stopped.</p>
+        </div>
+
+        <div class="experimental-content">
+
+            <!-- TIER 0 — ANCHORED: something the participant asked for by
+                 clicking. No backdrop; closes on outside-click or Escape; the
+                 page stays usable. (For a PASSIVE hover hint use .popover-anchor
+                 instead — see base.css.) -->
+            <h3 class="section-title">Tier 0 — anchored</h3>
+            <p class="section-text">A small panel beside its trigger, for an
+               explainer or a reminder the participant opened on purpose.
+               <span class="popup-anchor">
+                   <button type="button" class="popup-trigger" id="demo-anchored-btn"
+                           aria-controls="demo-anchored" aria-expanded="false"
+                           data-popup-open="demo-anchored"
+                           title="How the bonus works">?</button>
+                   <div id="demo-anchored" class="popup popup--anchored" role="dialog"
+                        aria-label="How the bonus works" hidden>
+                       <p>Your bonus is worked out from your decisions — this is
+                          the kind of on-demand explainer tier 0 is for. Click
+                          away or press Escape to close it.</p>
+                   </div>
+               </span>
+            </p>
+
+            <!-- TIER 1 — TOAST (the sidetone): a transient callout, no backdrop,
+                 auto-clearing. The host is position: relative so the toast is
+                 centred over it and never moves layout. -->
+            <h3 class="section-title">Tier 1 — toast (sidetone)</h3>
+            <p class="section-text">A fading acknowledgement of what the
+               participant just did; it clears itself.</p>
+            <div class="popup-toast-host panel panel--hug">
+                <button type="button" class="next-button ghost"
+                        data-popup-toast="demo-toast">Show the sidetone</button>
+                <div id="demo-toast" class="popup popup--toast" role="status"
+                     aria-live="polite" hidden>
+                    Saved — <strong>you can carry on</strong>.
+                </div>
+            </div>
+
+            <!-- TIER 2 — MODAL: a centred card on a dimmed backdrop; blocks the
+                 page until acted on. Escape-dismissible BY DEFAULT. It keeps the
+                 study's own card language (this is the shared .modal-card). Add
+                 popup--acknowledge to the panel for a button-only modal that must
+                 be acknowledged (the tab-switch warning is that case). -->
+            <h3 class="section-title">Tier 2 — modal</h3>
+            <p class="section-text">A decision the participant must make before
+               continuing.
+               <button type="button" class="next-button ghost" data-popup-open="demo-modal">
+                   Open a modal
+               </button>
+            </p>
+            <div id="demo-modal" class="popup popup--modal" role="alertdialog"
+                 aria-modal="true" aria-labelledby="demo-modal-title"
+                 aria-describedby="demo-modal-text" hidden>
+                <div class="modal-card">
+                    <h3 class="modal-title" id="demo-modal-title">Before you continue</h3>
+                    <p class="modal-text" id="demo-modal-text">
+                        This is the shared modal card on a dimmed backdrop. Press
+                        Escape, click the dimmed area, or use a button to dismiss it.
+                    </p>
+                    <div class="modal-actions">
+                        <button type="button" class="modal-ok-button" data-popup-close>OK</button>
+                        <button type="button" class="modal-dismiss-button" data-popup-close>Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TIER 3 — TAKEOVER: full-bleed, blurred, opaque, NO DISMISSAL by
+                 contract — it clears only when the blocking condition clears. The
+                 live instance is the tab monitor's red away-overlay
+                 (tabmonitor.css). The "Close" below is DEMONSTRATION ONLY so this
+                 reference page stays usable; a real takeover carries no close
+                 control (if it needs a button it is a modal, not a takeover). -->
+            <h3 class="section-title">Tier 3 — takeover</h3>
+            <p class="section-text">The study has stopped and the participant
+               cannot carry on from here.
+               <button type="button" class="next-button ghost" data-popup-open="demo-takeover">
+                   Preview the takeover
+               </button>
+            </p>
+            <div id="demo-takeover" class="popup popup--takeover" role="alertdialog"
+                 aria-modal="true" aria-labelledby="demo-takeover-title" hidden>
+                <div class="tabmon-overlay__box">
+                    <p class="tabmon-overlay__title" id="demo-takeover-title">The study has paused</p>
+                    <p class="tabmon-overlay__msg">A real takeover has no way out — it
+                       clears only when its condition clears.</p>
+                    <!-- .tabmon-modal__btn reused only because it reads on the red
+                         overlay; a real takeover carries NO close control. -->
+                    <button type="button" class="tabmon-modal__btn" data-popup-close>
+                        Close (demonstration only)
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        {% include '_static/global/html/logo_section.html' %}
+    </div>
+</div>
+
 {{ endblock }}

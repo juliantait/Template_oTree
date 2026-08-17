@@ -55,7 +55,7 @@
      It sits inside the page's own form (oTree wraps the whole page), which is
      harmless: it contains no inputs and its buttons are type="button". -->
 {{ if show_reread_dialog }}
-<div id="reread-backdrop" class="modal-backdrop reread-backdrop" hidden>
+<div id="reread-backdrop" class="modal-backdrop reread-backdrop popup popup--modal" hidden>
     <div class="modal-card reread-card" role="dialog" aria-modal="true"
          aria-labelledby="reread-title">
         <button type="button" id="rereadClose" class="reread-close"
@@ -80,7 +80,7 @@
      server put here. Both stay inside the page's own form so the re-read
      button submits through normal validation (redoinstructions=1). -->
 {{ if offer_reread }}
-<div id="quiz-modal-backdrop" class="modal-backdrop" data-warning-modal hidden>
+<div id="quiz-modal-backdrop" class="modal-backdrop popup popup--modal popup--acknowledge" data-warning-modal hidden>
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="quiz-modal-title">
         <h3 id="quiz-modal-title" class="modal-title">Having trouble with the quiz?</h3>
         <p class="modal-text">
@@ -105,7 +105,7 @@
      The second line appears from twice comprehension_max_failures onward
      (experimenter_attempts, derived from the same threshold in
      quiz.vars_for_template — there is no separate setting for it). -->
-<div id="quiz-modal-backdrop" class="modal-backdrop" data-warning-modal hidden>
+<div id="quiz-modal-backdrop" class="modal-backdrop popup popup--modal popup--acknowledge" data-warning-modal hidden>
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="quiz-modal-title">
         <h3 id="quiz-modal-title" class="modal-title">Still having trouble?</h3>
         <p class="modal-text">

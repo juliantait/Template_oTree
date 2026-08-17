@@ -29,8 +29,15 @@
    inside that scroll box instead of covering the screen.
    ─────────────────────────────────────────────────────────────────────────── */
 
-/* --- red away-overlay: shown while the tab is inactive, with a countdown ---- */
-.tabmon-overlay {
+/* --- red away-overlay: shown while the tab is inactive, with a countdown ----
+   THIS IS TIER 3 (popup--takeover) OF THE NOTIFICATION LADDER — the full-bleed,
+   blurred, no-dismissal takeover catalogued in base.css. It predates the ladder,
+   so `.popup--takeover` is aliased onto it here (one rule block, not a second
+   implementation): the tab monitor keeps its own class and behaviour untouched,
+   and a study reaches tier 3 by the ladder name. Do NOT change the values below —
+   this overlay owns the disqualification route (DECISIONS.md). */
+.tabmon-overlay,
+.popup--takeover {
     display: none;
     position: fixed;
     inset: 0;
@@ -43,9 +50,12 @@
     text-align: center;
     padding: 24px;
     backdrop-filter: blur(2px);
-    cursor: pointer;
 }
-.tabmon-overlay.is-visible { display: flex; }
+/* The tab monitor's overlay is click-to-cancel (returning to the tab clears it),
+   so it alone shows a pointer; a generic takeover has nothing to click. */
+.tabmon-overlay { cursor: pointer; }
+.tabmon-overlay.is-visible,
+.popup--takeover.is-visible { display: flex; }
 
 .tabmon-overlay__box {
     background: rgba(255, 255, 255, 0.10);
@@ -125,5 +135,6 @@
 .tabmon-modal__btn:hover { background: var(--accent-hover, #1f57c9); }
 
 @media (prefers-reduced-motion: reduce) {
-    .tabmon-overlay { backdrop-filter: none; }
+    .tabmon-overlay,
+    .popup--takeover { backdrop-filter: none; }
 }

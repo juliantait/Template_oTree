@@ -120,7 +120,7 @@
             if (document.querySelector('[data-warning-modal]')) { return; }
 
             var backdrop = document.createElement('div');
-            backdrop.className = 'modal-backdrop';
+            backdrop.className = 'modal-backdrop popup popup--modal';  // tier 2
             backdrop.id = 'warning-modal-backdrop';
 
             var card = document.createElement('div');
@@ -148,8 +148,10 @@
             ok.className = 'modal-ok-button';
             ok.textContent = 'OK';
 
+            var releaseTrap = null;
             function close() {
                 backdrop.hidden = true;
+                if (releaseTrap) { try { releaseTrap(); } catch (e) {} releaseTrap = null; }
                 setForwardControlsDisabled(false);
                 var first = document.querySelector(
                     '.screen-card input:not([type="hidden"]), .screen-card select, '
@@ -176,6 +178,7 @@
             backdrop.appendChild(card);
             document.body.appendChild(backdrop);
             setForwardControlsDisabled(true);
+            releaseTrap = popupTrapFocus(card);   // tier-2 focus trap (shared)
             ok.focus();
         } catch (e) { /* never block a page */ }
     });
@@ -251,3 +254,224 @@
             window.addEventListener('load', syncAll);
         } catch (e) { /* never block a page */ }
     });
+
+    // --- POPUP LADDER (shared) ----------------------------------------------
+    // The behaviour half of the four notification tiers catalogued in base.css
+    // ("THE NOTIFICATION TIER LADDER"). ONE implementation, keyed off the
+    // `popup--*` classes and `data-popup-*` attributes, so a study author writes
+    // MARKUP ONLY and gets the tier's ARIA + keyboard + dismissal for free:
+    //
+    //   tier 0 anchored : <button data-popup-open="ID" aria-controls="ID">…</button>
+    //                     <div id="ID" class="popup popup--anchored" role="dialog" hidden>…
+    //   tier 1 toast    : <button data-popup-toast="ID">…</button>
+    //                     <div id="ID" class="popup popup--toast" role="status"
+    //                          aria-live="polite" hidden>…
+    //   tier 2 modal    : <button data-popup-open="ID">…</button>
+    //                     <div id="ID" class="popup popup--modal" role="alertdialog"
+    //                          aria-modal="true" hidden>… <button data-popup-close>…
+    //                     Add `popup--acknowledge` to the panel for button-only
+    //                     dismissal (no Escape, no backdrop click).
+    //   tier 3 takeover : opened programmatically or via data-popup-open; NEVER
+    //                     give it a close control (that would make it a modal).
+    //
+    // PROGRESSIVE ENHANCEMENT, like every other block in this file: with scripts
+    // blocked nothing opens and the page still works. Everything is wrapped so a
+    // popup can never break a page (docs/conventions.md).
+    //
+    // The tiers 2/3 that already shipped (the warning modal above, the quiz
+    // dialogs in quiz.js, the tab monitor) keep their own JS; this block does not
+    // rewire them. It powers NEW popups and the specimens in template.html, and
+    // shares its focus trap (popupTrapFocus) with them.
+
+    function popupById(id) {
+        try { return id ? document.getElementById(id) : null; } catch (e) { return null; }
+    }
+    function popupTierOf(el) {
+        if (!el || !el.classList) { return null; }
+        if (el.classList.contains('popup--anchored')) { return 'anchored'; }
+        if (el.classList.contains('popup--toast')) { return 'toast'; }
+        if (el.classList.contains('popup--modal')) { return 'modal'; }
+        if (el.classList.contains('popup--takeover')) { return 'takeover'; }
+        return null;
+    }
+    function popupFocusables(container) {
+        var sel = 'a[href], button:not([disabled]), '
+            + 'input:not([disabled]):not([type="hidden"]), select:not([disabled]), '
+            + 'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+        var out = [];
+        try {
+            var all = container.querySelectorAll(sel);
+            for (var i = 0; i < all.length; i++) {
+                var el = all[i];
+                if (el.offsetWidth || el.offsetHeight || el.getClientRects().length) {
+                    out.push(el);
+                }
+            }
+        } catch (e) { /* return what we have */ }
+        return out;
+    }
+
+    // Shared tier-2/3 focus trap. Keeps Tab inside `container` while it is open,
+    // and returns a release() the caller MUST call on close. Exposed at file
+    // scope so quiz.js reuses this one implementation (like setForwardControlsDisabled).
+    function popupTrapFocus(container) {
+        function onKey(e) {
+            if (e.key !== 'Tab' || !container) { return; }
+            var f = popupFocusables(container);
+            if (!f.length) { e.preventDefault(); return; }
+            var first = f[0], last = f[f.length - 1];
+            var active = document.activeElement;
+            if (e.shiftKey && (active === first || !container.contains(active))) {
+                e.preventDefault(); last.focus();
+            } else if (!e.shiftKey && (active === last || !container.contains(active))) {
+                e.preventDefault(); first.focus();
+            }
+        }
+        document.addEventListener('keydown', onKey, true);
+        return function release() {
+            document.removeEventListener('keydown', onKey, true);
+        };
+    }
+    window.popupTrapFocus = popupTrapFocus;
+
+    // TIER 1 — show a toast and let it clear itself. Never dismissed by hand.
+    function popupToast(idOrEl, ms) {
+        try {
+            var el = (typeof idOrEl === 'string') ? popupById(idOrEl) : idOrEl;
+            if (!el) { return; }
+            var timeout = ms;
+            if (typeof timeout !== 'number') {
+                timeout = parseInt(el.getAttribute('data-popup-timeout'), 10);
+                if (!(timeout > 0)) { timeout = 4000; }  // the one allowed literal
+            }
+            el.hidden = false;
+            // force a frame so the opacity transition runs from 0
+            void el.offsetWidth;
+            el.classList.add('is-visible');
+            if (el._popupToastTimer) { clearTimeout(el._popupToastTimer); }
+            el._popupToastTimer = setTimeout(function () {
+                el.classList.remove('is-visible');
+                el._popupToastTimer = setTimeout(function () { el.hidden = true; }, 200);
+            }, timeout);
+        } catch (e) { /* never block a page */ }
+    }
+    window.popupToast = popupToast;
+
+    onReady(function initPopupLadder() {
+        try {
+            // TIER 0 — anchored panels. A trigger toggles its panel; an outside
+            // click or Escape closes it; focus moves into the panel on open and
+            // back to the trigger on close. Non-modal: no focus trap, no page lock.
+            var anchoredTriggers = document.querySelectorAll(
+                '[data-popup-open]');
+            Array.prototype.forEach.call(anchoredTriggers, function (trigger) {
+                var panel = popupById(trigger.getAttribute('data-popup-open'));
+                if (!panel) { return; }
+                var tier = popupTierOf(panel);
+                if (tier === 'anchored') { wireAnchored(trigger, panel); }
+                else { wireModalTrigger(trigger, panel); }  // modal / takeover
+            });
+
+            // TIER 1 — toast triggers.
+            var toastTriggers = document.querySelectorAll('[data-popup-toast]');
+            Array.prototype.forEach.call(toastTriggers, function (trigger) {
+                trigger.addEventListener('click', function () {
+                    popupToast(trigger.getAttribute('data-popup-toast'));
+                });
+            });
+        } catch (e) { /* never block a page */ }
+    });
+
+    function wireAnchored(trigger, panel) {
+        function isOpen() { return !panel.hidden; }
+        function open() {
+            panel.hidden = false;
+            trigger.setAttribute('aria-expanded', 'true');
+            var f = popupFocusables(panel);
+            try { (f[0] || panel).focus(); } catch (e) {}
+        }
+        function close(returnFocus) {
+            panel.hidden = true;
+            trigger.setAttribute('aria-expanded', 'false');
+            if (returnFocus) { try { trigger.focus(); } catch (e) {} }
+        }
+        if (!panel.hasAttribute('tabindex')) { panel.setAttribute('tabindex', '-1'); }
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.addEventListener('click', function (e) {
+            e.stopPropagation();   // don't let this click reach the outside-click handler
+            if (isOpen()) { close(true); } else { open(); }
+        });
+        document.addEventListener('click', function (e) {
+            if (!isOpen()) { return; }
+            if (e.target === trigger || trigger.contains(e.target)
+                || panel.contains(e.target)) { return; }
+            close(false);
+        });
+        document.addEventListener('keydown', function (e) {
+            if (!isOpen()) { return; }
+            if (e.key === 'Escape' || e.key === 'Esc') { close(true); }
+        });
+    }
+
+    // TIER 2 / 3 — generic modal/takeover open+close for NEW popups (and the
+    // specimens). Escape and backdrop-click dismiss a modal BY DEFAULT; a modal
+    // marked `popup--acknowledge`, and every takeover, are button-only (a takeover
+    // should carry no close control at all — if it needs one it is a modal). A
+    // `data-popup-close` control inside the panel always closes it.
+    function wireModalTrigger(trigger, panel) {
+        trigger.addEventListener('click', function () { openPopupModal(panel, trigger); });
+    }
+    function openPopupModal(panel, opener) {
+        try {
+            if (!panel.hidden) { return; }
+            var tier = popupTierOf(panel);
+            var acknowledge = panel.classList.contains('popup--acknowledge')
+                || tier === 'takeover';
+            panel._popupOpener = opener || document.activeElement;
+            panel.hidden = false;
+            setForwardControlsDisabled(true);
+            panel._popupRelease = popupTrapFocus(panel);
+            var f = popupFocusables(panel);
+            try { (f[0] || panel).focus(); } catch (e) {}
+
+            panel._popupOnKey = function (e) {
+                if (panel.hidden) { return; }
+                if ((e.key === 'Escape' || e.key === 'Esc') && !acknowledge) {
+                    e.preventDefault();
+                    closePopupModal(panel);
+                }
+            };
+            document.addEventListener('keydown', panel._popupOnKey);
+
+            panel._popupOnClick = function (e) {
+                if (e.target === panel && !acknowledge) { closePopupModal(panel); }
+            };
+            panel.addEventListener('click', panel._popupOnClick);
+
+            var closers = panel.querySelectorAll('[data-popup-close]');
+            Array.prototype.forEach.call(closers, function (c) {
+                if (c._popupCloseWired) { return; }
+                c._popupCloseWired = true;
+                c.addEventListener('click', function () { closePopupModal(panel); });
+            });
+        } catch (e) { /* never block a page */ }
+    }
+    function closePopupModal(panel) {
+        try {
+            panel.hidden = true;
+            if (panel._popupRelease) { panel._popupRelease(); panel._popupRelease = null; }
+            if (panel._popupOnKey) {
+                document.removeEventListener('keydown', panel._popupOnKey);
+                panel._popupOnKey = null;
+            }
+            if (panel._popupOnClick) {
+                panel.removeEventListener('click', panel._popupOnClick);
+                panel._popupOnClick = null;
+            }
+            setForwardControlsDisabled(false);
+            var opener = panel._popupOpener;
+            if (opener) { try { opener.focus(); } catch (e) {} }
+        } catch (e) { /* never block a page */ }
+    }
+    window.openPopupModal = openPopupModal;
+    window.closePopupModal = closePopupModal;

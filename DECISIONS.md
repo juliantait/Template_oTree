@@ -11,6 +11,93 @@ working.
 
 ---
 
+## Popups are a four-tier ladder, chosen by distance from the experiment frame — 2026-08-17
+
+Decided by Julian; brief in `_ai/template_adoption_brief.md` Topic A (local only —
+`_ai/` is gitignored; not in a clone) with his answers in its ANSWERED section, and
+the commissioning entry in `TODO.md`. Every message put in front of a participant
+is now a choice between **four documented behaviours**, numbered **0–3 by how far
+OUTSIDE the experiment frame** the message sits. The tier fixes the *behaviour*
+(backdrop? how dismissed? can it move layout?); the call site keeps its own *skin*
+and its own words. One catalogue names all four in one place
+(`_static/global/css/base.css`, "THE NOTIFICATION TIER LADDER"); the shared
+behaviour is in `_static/global/js/global.js` ("POPUP LADDER"), keyed off the
+`popup--*` classes and `data-popup-*` attributes, so a study author writes markup
+only.
+
+- **Tier 0 anchored** (`popup--anchored`) — no backdrop; a panel beside its
+  trigger, dismissed by outside-click or Escape. For something the participant
+  ASKED FOR BY CLICKING. NEW in this template (distinct from the CSS-only
+  hover/focus `.popover-anchor` tooltip, which stays).
+- **Tier 1 toast / "sidetone"** (`popup--toast`) — no backdrop, absolutely
+  positioned so it cannot move layout, auto-clearing, `role="status"`. The tier
+  that did not exist here before; NEW.
+- **Tier 2 modal** (`popup--modal`) — dimmed backdrop, blocks the page.
+  **Escape-dismissible BY DEFAULT**; a modal that must be acknowledged opts in to
+  button-only with `popup--acknowledge`. Keeps the study card language. IMPLEMENTED
+  BY the existing shared warning-modal component (`.modal-backdrop` / `.modal-card`).
+- **Tier 3 takeover** (`popup--takeover`) — full-bleed, blurred, opaque, **no
+  dismissal by contract**. IMPLEMENTED BY the tab monitor's existing red
+  away-overlay (`.tabmon-overlay`), which predated the ladder.
+
+**The load-bearing choice: bring the two existing tiers in BY NAME, not as a
+second implementation.** This template already shipped a mature, tested tier-2
+modal and a tier-3 takeover. Building fresh `popup--modal` / `popup--takeover`
+skins beside them would be the "one concept, two implementations" defect this
+repo hunts (CLAUDE.md). So `popup--modal` shares ONE rule block with
+`.modal-backdrop`, and `popup--takeover` shares ONE rule block with
+`.tabmon-overlay` (grouped selectors, identical declarations) — the ladder is the
+vocabulary, the existing components are the implementation. Only tiers 0 and 1,
+which genuinely did not exist, are built new.
+
+**The tab-switch warning modal was deliberately NOT migrated onto the shared
+chrome, and this is a STOP-and-report, not an oversight.** It is one of the three
+tier-2 cases (with the quiz failed-attempt and re-read prompts). The other two
+already use `.modal-backdrop`, so migrating them was free — they gained the
+`popup popup--modal` name and the shared focus trap, nothing visible changed. The
+tab-switch warning keeps its OWN `.tabmon-modal` chrome and its own string-injected
+JS in `tab_monitor.js` because re-skinning it would (a) change what the participant
+sees (backdrop opacity 0.72 → 0.55, a different box and button) and (b) edit the
+file that owns the disqualification route — two unrelated risks in one change, and
+the one that can cost a participant their payment is not the popup. It is
+catalogued as the tier-2 button-only case instead; the reusable `popup--acknowledge`
+modifier plus its specimen give future modals that behaviour without touching the
+live monitor. `tab_monitor.js` and `.tabmon-overlay`'s BEHAVIOUR are untouched.
+
+**Accessibility is part of the component.** New tiers 0/1 ship correct roles,
+focus move + restore (tier 0), polite announcement (tier 1),
+`prefers-reduced-motion` (tier 1 transition, tier 3 blur). A shared focus trap
+(`global.js` `popupTrapFocus`, ONE implementation) is wired into the tier-2/3
+modals that were missing it — the every-page warning modal and the quiz reread /
+failed-attempt dialogs — a keyboard-containment improvement that changes nothing a
+participant sees. The generic modal helper traps every takeover and every
+non-acknowledge modal while open.
+
+**Rejected:** a separate `popup.js` file (this template centralises shared page
+behaviour in `global.js`, the way the warning modal already works, so a new asset
+in every template's bundle was avoided); a second `popup--modal` / `popup--takeover`
+skin (two implementations of one concept); rewiring the tab-switch warning's chrome
+now (participant-visible change coupled to the disqualification route); renumbering
+any existing `1–4` tier comments (there were none in this template — that clause of
+the brief applied to the pilot). Terminal pages such as the disqualification screen
+are a ROUTING concern and out of scope: `popup--takeover` is the in-page overlay
+only.
+
+**Enforced:** nothing at boot — the ladder is convention + shared CSS/JS, held by
+the base.css catalogue, this entry, and the specimens in `template.html` (CARD 3,
+per CLAUDE.md's styling rule that a shared component must be demonstrated). The
+behaviour-preserving claim is what the suites hold: `scripts/tests/render_check.py`
+(`--diff` 1513 measurements within ±3px, unmoved; the reread dialog, the quiz
+failed-attempt modal, the shared warning modal and the tab-monitor overlay all
+still measure correct, the overlay still covers the whole viewport); the
+browser/HTTP quiz suites (`gated_flow_test`, `full_journey_test`,
+`completion_codes_test`), the tab-monitor suites (`tab_monitor_detail_test`, and
+render_check's record-only-outro leg), `dashboard_test`, and the site previews
+(regenerated and re-checked, since the screens inline these stylesheets). The
+just-fixed regression suites (`completion_codes_test`, `screenout_softwall_test`,
+`device_gate_test`) stay green. `STATIC_VERSION` 15 → 16 and the manifest were
+re-stamped (base.css, tabmonitor.css, global.js, quiz.js, template.html changed).
+
 ## The asset manifest is re-stamped by hand, so a test asserts it actually was — 2026-08-17
 
 `settings.STATIC_VERSION` is the cache-buster on every CSS/JS URL;
