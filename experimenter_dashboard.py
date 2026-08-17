@@ -479,6 +479,12 @@ def session_snapshot(session) -> dict:
         # (finished participants — those with a computed `earned`) and count
         # ride along in the dict; see _earnings_total.
         earnings_total=_earnings_total(ctx['earnings']),
+        # TIME for the summary strip: mean intro and mean COMPLETION time, both
+        # over FINISHED participants only (Julian, 2026-08-17), computed
+        # server-side from stage_timestamps like the earnings total — see
+        # _time_summary. Absent (n=0) means nobody has finished, and the pill is
+        # not shown at all.
+        time_summary=_time_summary(session),
         now=int(now),
     )
 
@@ -581,6 +587,64 @@ def _earnings_total(earnings_map) -> dict:
         return dict(total=None, n=0)
 
 
+def _time_summary(session) -> dict:
+    """TIME for the summary strip: the mean intro time AND the mean COMPLETION
+    time, both over FINISHED participants only — ONE population, stated once,
+    exactly like the earnings pill (Julian, 2026-08-17).
+
+    Computed HERE, server-side, from each finished participant's frozen
+    ``stage_timestamps`` (the ``common.STAGE_*`` keys), the same way
+    ``_earnings_total`` sums server-side — never re-derived in the client, so the
+    pill and the rows cannot disagree. INTRO TIME reuses ``_intro_seconds`` (one
+    implementation, not a second stopwatch): the entry-exit stamp to
+    ``quiz_done``. COMPLETION TIME is the whole run, the FIRST stamp to the
+    ``STAGE_FINISHED`` stamp.
+
+    THE POPULATION is finished participants, and it is Julian's decision (do not
+    reopen it) that BOTH subsections share it — an at-a-glance operator
+    impression, not an analysis statistic, so there is ONE denominator, carried
+    once, and no per-subsection population wording. A participant is counted only
+    once they carry a ``STAGE_FINISHED`` stamp AND both durations are computable,
+    which is exactly the genuinely-finished set; anyone missing a stamp is
+    excluded from BOTH means together, so the single denominator stays honest.
+
+    Early in a session nobody has finished, so this returns ``n=0`` and the pill
+    is shown as NO PILL AT ALL — never zeros, never an empty shell — matching how
+    the earnings pill degrades. Defensive like ``_earnings_total`` on which it is
+    modelled: any failure degrades to ``n=0`` (no pill), never a raise.
+    """
+    import common   # local, like every common import in this module — the
+    # dashboard must stay importable with oTree absent (the _FALLBACK_EXIT_CODES
+    # reasoning); the stage-name constants are only needed at request time.
+    intro_total = 0
+    comp_total = 0
+    n = 0
+    try:
+        for pp in session.pp_set:
+            v = pp._vars or {}     # _vars, not .vars — the dirty-flag rule
+            stamps = dict(v.get('stage_timestamps') or {})
+            fin = stamps.get(common.STAGE_FINISHED)
+            if not isinstance(fin, (int, float)):
+                continue                          # not finished yet
+            values = [t for t in stamps.values() if isinstance(t, (int, float))]
+            start_all = min(values) if values else None
+            if start_all is None or fin < start_all:
+                continue                          # no first stamp / incoherent
+            intro = _intro_seconds(stamps, 'done', None, True, fin)
+            if intro['seconds'] is None:
+                continue                          # intro not computable — skip,
+                # so both means keep the SAME denominator
+            intro_total += intro['seconds']
+            comp_total += int(fin - start_all)
+            n += 1
+    except Exception:
+        logger.exception('[dashboard] time summary failed')
+        return dict(n=0)
+    if n == 0:
+        return dict(n=0)
+    return dict(n=n, intro_avg=intro_total / n, completion_avg=comp_total / n)
+
+
 def _quiz_outcome_map(session) -> dict:
     """participant_id -> how their LAST graded quiz submission went.
 
@@ -646,6 +710,316 @@ def _quiz_outcome_map(session) -> dict:
     except Exception:
         logger.exception('[dashboard] quiz outcome read failed')
     return out
+
+
+# =============================================================================
+# QUIZ-MISTAKES PANEL — on-demand aggregate of what people got wrong (§ the
+# spec, _ai/quiz_mistakes_spec.md, local only). READ-ONLY like everything here,
+# and DEGRADES rather than breaking: any failure costs THIS panel, never the
+# main table, which is a SEPARATE route and a SEPARATE fetch (see the endpoint).
+#
+# NOT on the 2-second poll. The main /data poll is deliberately a cheap walk of
+# one session's few-hundred rows under oTree's global commit lock; this parses a
+# JSON log per participant and aggregates across attempts — a cost that grows
+# with ATTEMPTS, not rows — so it rides its own endpoint, fetched once when the
+# operator opens the panel (spec §3b). Everything below is one session's data:
+# nothing here scales past the session (the module docstring's standing rule).
+#
+# THE HEADLINE IS THE FIRST ATTEMPT ONLY (n == 1), decided by Julian: later
+# attempts are contaminated by guessing, kept underneath but never fed into the
+# headline rates. Correctness comes from the stored `wrong` list, NEVER
+# recomputed against today's quiz_items — `intro/quiz_items.py` changes between
+# studies and even sessions, so re-grading an old `answers` blob would be
+# silently wrong (CODEBOOK.md's "wrong is stored, never recomputed"). `answers`
+# is used only to recover the chosen option TEXT.
+# =============================================================================
+
+# Round -> pass name. The attempt log is a PER-ROUND intro.Player column, so the
+# round IS the pass: round 1 is the first pass, round 2 the lab re-read pass
+# (Prolific never reaches it). The two are separated for free, and this feature
+# must not re-pool them (spec §1a / §2).
+_QM_PASS_ROUNDS = {1: 'first', 2: 'reread'}
+
+
+def _load_quiz_items():
+    """`QUIZ_ITEMS` as a list, or None if the item module cannot be read.
+
+    Returning None (never raising) is the FEATURE-MISSING degradation (spec §4):
+    a renamed/dropped intro app or an unreadable quiz_items.py collapses the
+    whole panel to a single "no data" message, exactly as _quiz_outcome_map
+    degrades to "no opinion" — the main table never notices."""
+    try:
+        import importlib
+        mod = importlib.import_module('intro.quiz_items')
+        return list(getattr(mod, 'QUIZ_ITEMS', None) or []) or None
+    except Exception:
+        logger.exception('[dashboard] quiz item load failed')
+        return None
+
+
+def _qm_blank_submission(answers) -> bool:
+    """Admin-advance junk: a submission whose EVERY answer is blank after strip.
+
+    This is what oTree posts for "advance slowest participants" — an empty form
+    graded all-wrong (the mechanism _quiz_outcome_map documents at length). It
+    is a property of the SUBMISSION, not the participant: a participant with real
+    attempts who is later force-advanced loses only the blank submission, their
+    real attempts stay (spec §2a)."""
+    try:
+        values = list((answers or {}).values())
+    except Exception:
+        return False
+    return bool(values) and all(str(v).strip() == '' for v in values)
+
+
+def _qm_normalise_entries(entries, drifted, item_meta):
+    """One round's raw log -> a clean list of dicts, recording any field seen
+    that is no longer in the quiz (`drifted`). Raises nothing here — the caller
+    has already confirmed `entries` is a list."""
+    norm = []
+    for e in entries:
+        if not isinstance(e, dict):
+            continue
+        answers = e.get('answers')
+        answers = ({str(k): str(v) for k, v in answers.items()}
+                   if isinstance(answers, dict) else {})
+        wrong_raw = e.get('wrong')
+        wrong = (set(str(w) for w in wrong_raw)
+                 if isinstance(wrong_raw, (list, tuple, set)) else set())
+        try:
+            n = int(e.get('n'))
+        except Exception:
+            n = len(norm) + 1
+        for f in list(answers) + list(wrong):
+            if f not in item_meta:
+                drifted.add(f)
+        norm.append(dict(n=n, answers=answers, wrong=wrong))
+    return norm
+
+
+def quiz_mistakes_snapshot(session) -> dict:
+    """The on-demand quiz-mistakes aggregate for ONE session, computed ENTIRELY
+    server-side so the panel and the table cannot disagree (spec §2/§3).
+
+    Returns a JSON-able dict. On the feature-missing conditions it returns
+    ``dict(available=False, reason=...)`` — never a raise — so the panel shows a
+    single "no data" message; every other failure is caught by the endpoint
+    wrapper and turned into ``ok:false`` (the main table, on its own poll, is
+    untouched either way). Text is carried raw and escaped at RENDER by the
+    page's ``esc()`` — the same discipline the main table uses for every
+    participant-supplied value (CLAUDE.md: the templates do not auto-escape)."""
+    items = _load_quiz_items()
+    if not items:
+        return dict(available=False,
+                    reason='no quiz items available for this session')
+
+    # Item metadata, keyed by field. `order`/`qno` come from QUIZ_ITEMS order;
+    # `answer_text` is the correct option's text (to mark it green). answer may
+    # be None — read via .get, never a bare index, so a malformed item degrades.
+    item_meta = {}
+    item_order = []
+    for i, it in enumerate(items):
+        try:
+            field = str(it['field'])
+        except Exception:
+            continue
+        ans = it.get('answer')
+        item_meta[field] = dict(
+            prompt=str(it.get('prompt', field)),
+            answer_text=(None if ans is None else str(ans)),
+            qno=i + 1, order=i)
+        item_order.append(field)
+    if not item_order:
+        return dict(available=False, reason='quiz items have no fields')
+
+    try:
+        from otree.common import get_models_module
+        from otree.database import db
+        Player = get_models_module('intro').Player
+    except Exception:
+        logger.exception('[dashboard] quiz-mistakes: intro app not found')
+        return dict(available=False, reason='intro app not found')
+
+    pinfo = {pp.id: dict(label=str(pp.label or ''), code=str(pp.code))
+             for pp in session.pp_set}
+
+    # per participant: parsed entries per pass, plus an unreadable flag. ONE
+    # corrupt or non-list log renders that participant "unreadable" and drops
+    # them from the aggregate, while every other participant still aggregates
+    # (the row-granularity discipline of session_snapshot; spec §4).
+    by_pp = {}
+    drifted = set()
+    for row in db.query(Player).filter(Player.session_id == session.id):
+        pid = row.participant_id
+        rec = by_pp.setdefault(pid, dict(first=None, reread=None,
+                                         unreadable=False))
+        pass_key = _QM_PASS_ROUNDS.get(int(row.round_number or 0))
+        if pass_key is None:
+            continue
+        raw = row.field_maybe_none('quiz_attempt_log') or ''
+        if not raw:
+            continue
+        try:
+            entries = json.loads(raw)
+            if not isinstance(entries, list):
+                raise ValueError('quiz_attempt_log is not a JSON list')
+        except Exception:
+            rec['unreadable'] = True
+            continue
+        rec[pass_key] = _qm_normalise_entries(entries, drifted, item_meta)
+
+    all_fields = list(item_order) + sorted(drifted)
+
+    def aggregate(pass_key):
+        """One pass, aggregated over VALID (non-junk) FIRST attempts only."""
+        valid = []
+        n_excluded = 0
+        excluded_labels = []
+        for pid, rec in by_pp.items():
+            if rec['unreadable']:
+                continue
+            entries = rec.get(pass_key)
+            if not entries:
+                continue
+            first = entries[0]           # the n == 1 submission (spec §2b)
+            if _qm_blank_submission(first['answers']):
+                # First attempt is junk: no headline datum, counted as excluded.
+                n_excluded += 1
+                info = pinfo.get(pid) or {}
+                excluded_labels.append(info.get('label') or info.get('code')
+                                       or '?')
+                continue
+            valid.append(first)
+        per_item = {}
+        for field in all_fields:
+            subset = [a for a in valid if field in a['answers']]
+            if not subset:
+                per_item[field] = None
+                continue
+            n_correct = sum(1 for a in subset if field not in a['wrong'])
+            groups = {}
+            for a in subset:
+                text = a['answers'][field]
+                g = groups.setdefault(text, dict(count=0, any_wrong=False))
+                g['count'] += 1
+                if field in a['wrong']:
+                    g['any_wrong'] = True
+            # Correctness is authoritative from `wrong`, NOT recomputed against
+            # answer_text: an option is "correct" only if the attempts that
+            # chose it were not marked wrong at the time.
+            options = [dict(text=text, count=g['count'],
+                            correct=not g['any_wrong'])
+                       for text, g in groups.items()]
+            # Wrong options first, each by descending count (the crowd's
+            # converged misreading at the top); the correct option alongside.
+            options.sort(key=lambda o: (o['correct'], -o['count'], o['text']))
+            per_item[field] = dict(n=len(subset), n_correct=n_correct,
+                                   options=options)
+        return dict(n_valid=len(valid), n_excluded=n_excluded,
+                    excluded_labels=excluded_labels, per_item=per_item)
+
+    first_agg = aggregate('first')
+    reread_agg = aggregate('reread')
+
+    def rate_of(agg, field):
+        d = agg['per_item'].get(field)
+        return (d['n_correct'] / d['n']) if d and d['n'] else None
+
+    # WORST FIRST by first-pass correct rate; items with no first-pass data sort
+    # last; ties fall back to QUIZ_ITEMS order (spec §2b).
+    ordered = sorted(all_fields, key=lambda f: (
+        rate_of(first_agg, f) if rate_of(first_agg, f) is not None else 2.0,
+        item_meta.get(f, dict(order=10 ** 6))['order'],
+        f))
+    # "Most missed" badge: the worst up to two items that actually have a
+    # first-pass mistake.
+    missed = set()
+    for f in ordered:
+        r = rate_of(first_agg, f)
+        if r is not None and r < 1.0:
+            missed.add(f)
+        if len(missed) >= 2:
+            break
+
+    items_out = []
+    for f in ordered:
+        meta = item_meta.get(f)
+        drift = meta is None
+        items_out.append(dict(
+            field=f,
+            qno=(None if drift else meta['qno']),
+            prompt=(f if drift else meta['prompt']),
+            answer_text=(None if drift else meta['answer_text']),
+            drifted=drift,
+            missed=(f in missed),
+            first=first_agg['per_item'].get(f),
+            reread=reread_agg['per_item'].get(f),
+        ))
+
+    def marks_for(entry):
+        """field -> {chosen_text, correct} for one attempt's answers."""
+        return {f: dict(chosen_text=text, correct=(f not in entry['wrong']))
+                for f, text in entry['answers'].items()}
+
+    participants = []
+    for pid, rec in by_pp.items():
+        info = pinfo.get(pid) or dict(label='', code=str(pid))
+        has_any = bool(rec.get('first') or rec.get('reread'))
+        if not has_any and not rec['unreadable']:
+            continue                     # never reached the quiz — not shown
+        p = dict(label=info['label'], code=info['code'],
+                 unreadable=bool(rec['unreadable']),
+                 first=None, first_excluded=False, reread=None, later=[])
+        if rec['unreadable']:
+            participants.append(p)
+            continue
+        fe = rec.get('first') or []
+        if fe:
+            if _qm_blank_submission(fe[0]['answers']):
+                p['first_excluded'] = True     # force-advanced, no answer
+            else:
+                p['first'] = marks_for(fe[0])
+            for e in fe[1:]:
+                if not _qm_blank_submission(e['answers']):
+                    p['later'].append(dict(**{'pass': 'first', 'n': e['n'],
+                                              'items': marks_for(e)}))
+        re = rec.get('reread') or []
+        if re:
+            if not _qm_blank_submission(re[0]['answers']):
+                p['reread'] = marks_for(re[0])
+            for e in re[1:]:
+                if not _qm_blank_submission(e['answers']):
+                    p['later'].append(dict(**{'pass': 'reread', 'n': e['n'],
+                                              'items': marks_for(e)}))
+        participants.append(p)
+
+    # Ordered by the DISPLAYED name, naturally, unlabelled last — the same rule
+    # the main table reads down (sort_rows_by_displayed_name).
+    participants.sort(key=lambda p: (
+        1 if not p['label'] else 0,
+        natural_label_key(p['label'] or p['code'])))
+
+    title = str(session.config.get('display_name', '')
+                or session.config.get('name', ''))
+    return dict(
+        available=True,
+        session=dict(code=str(session.code), title=title),
+        passes=dict(
+            first=dict(n_valid=first_agg['n_valid'],
+                       n_excluded=first_agg['n_excluded'],
+                       excluded_labels=first_agg['excluded_labels']),
+            reread=dict(n_valid=reread_agg['n_valid'],
+                        n_excluded=reread_agg['n_excluded'],
+                        excluded_labels=reread_agg['excluded_labels'],
+                        # "no re-read attempts yet" is shown as its own state,
+                        # never as 0/0 (spec §2d).
+                        empty=(reread_agg['n_valid'] == 0
+                               and reread_agg['n_excluded'] == 0)),
+        ),
+        items=items_out,
+        participants=participants,
+        generated=int(time.time()),
+    )
 
 
 def _non_sepa_ids(session) -> set:
@@ -1124,7 +1498,7 @@ NOT_IMPORTABLE = 'not_importable'  # otree.urls not importable / mid-import
 # Route names, used for idempotency and by tests. Starlette exposes them for
 # url_for, so they must not collide with oTree's own view names.
 ROUTE_NAMES = ('ExperimenterDashboardIndex', 'ExperimenterDashboard',
-               'ExperimenterDashboardData')
+               'ExperimenterDashboardData', 'ExperimenterDashboardQuizMistakes')
 
 _install_log = []
 
@@ -1448,6 +1822,31 @@ def _build_routes(AdminView):
                 return JSONResponse(
                     dict(ok=False, error=f'{type(exc).__name__}: {exc}'))
 
+    class ExperimenterDashboardQuizMistakes(_DashboardBase):
+        # THE FOURTH ROUTE — the on-demand quiz-mistakes panel (spec §3a). Same
+        # wrapper as the others (auth-first/fail-closed, GET-only), and it fails
+        # SOFT AS JSON exactly like ExperimenterDashboardData: any bug returns
+        # ok:false (HTTP 200), so the panel shows an error strip and the main
+        # table — a separate route on its own poll — never notices. Feature-
+        # missing (a renamed intro app, a dropped column) is NOT an error: the
+        # snapshot returns ok:true available:false and the panel says "no data".
+        url_pattern = URL_BASE + '/{code}/quiz_mistakes'
+
+        def dashboard_get(self, request, code):
+            from otree.database import db
+            from otree.models import Session
+            try:
+                session = db.query(Session).filter_by(code=code).one_or_none()
+                if session is None:
+                    return JSONResponse(
+                        dict(ok=False, error=f'no session {code!r}'))
+                return JSONResponse(
+                    dict(ok=True, **quiz_mistakes_snapshot(session)))
+            except Exception as exc:
+                logger.exception('[dashboard] quiz-mistakes build failed')
+                return JSONResponse(
+                    dict(ok=False, error=f'{type(exc).__name__}: {exc}'))
+
     return [
         Route(ExperimenterDashboardIndex.url_pattern,
               ExperimenterDashboardIndex, name='ExperimenterDashboardIndex'),
@@ -1455,6 +1854,9 @@ def _build_routes(AdminView):
               ExperimenterDashboard, name='ExperimenterDashboard'),
         Route(ExperimenterDashboardData.url_pattern,
               ExperimenterDashboardData, name='ExperimenterDashboardData'),
+        Route(ExperimenterDashboardQuizMistakes.url_pattern,
+              ExperimenterDashboardQuizMistakes,
+              name='ExperimenterDashboardQuizMistakes'),
     ]
 
 
@@ -1540,7 +1942,16 @@ _COLGROUP_HTML = f"""
   <th class="c-timeline">
     <div class="tl-header">{_step_header_html()}</div>
   </th>
-  <th class="c-quiz" title="Quiz attempts">Quiz</th>
+  <th class="c-quiz" title="Quiz attempts">Quiz
+    <!-- THE QUIZ-MISTAKES AFFORDANCE. Reuses the SAME `.th-info` styling the
+         State header uses for its threshold legend (quiet, hoverable,
+         focusable) — no new affordance. Inert until clicked: it issues ONE
+         fetch to /quiz_mistakes into an overlay (see the panel JS) and never
+         rides the 2-second poll. This is the only footprint on the live
+         table. -->
+    <span class="th-info" id="quiz-mistakes-info" tabindex="0" role="button"
+          title="What people got wrong on the quiz — click to open">&#9432;</span>
+  </th>
   <th class="c-instr" title="Whole time in the intro app, both rounds: from
 leaving the entry pages until the quiz is finished with">Intro time</th>
   <th class="c-earn">Earnings</th>
@@ -1762,6 +2173,157 @@ tr.unmapped-row td.c-label { box-shadow: inset 4px 0 0 var(--dash-unmapped); }
    unrecognised-app violet. Declared as tokens rather than inlined so the row
    background and the text stay one decision. */
 :root { --dash-amber: #b45309; --dash-unmapped: #6b21a8; }
+
+/* =========================================================================
+   THE QUIZ-MISTAKES PANEL (on-demand, opened from the Quiz header's ⓘ).
+   INTENTION: show what people got wrong in the comprehension quiz and what
+   they answered instead — first attempt only, first pass vs re-read pass kept
+   apart, worst item first. This is the approved mock (_ai/quiz_mistakes_mock
+   .html) reproduced in the dashboard's OWN tokens: the sunken/line/card
+   surfaces, --shadow-lift, the danger red for wrong and --ok green for
+   correct, and the unplaced-app violet (--dash-unmapped) for the re-read pass
+   and the excluded-junk note — the same violet this screen already means
+   "not a participant behaviour" by. The handful of tints below (the wrong/
+   correct chip fills, the rate-bar track) are the mock's, carried over so the
+   panel reads as one control room with the table. Escape-dismissible, the
+   convention for generic modals here. Only the panel styles live here; the
+   trigger reuses .th-info above.
+   ========================================================================= */
+.qm-overlay { position: fixed; inset: 0; z-index: 50; display: none;
+  background: rgba(16, 32, 52, .28); padding: 24px; overflow: auto; }
+.qm-overlay.open { display: block; }
+.qm-panel { max-width: 1080px; margin: 0 auto; background: var(--card-bg);
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  box-shadow: var(--shadow-lift); overflow: hidden; }
+.qm-head { display: flex; align-items: flex-start; gap: 14px;
+  padding: 16px 20px; border-bottom: 1px solid var(--line-strong);
+  background: var(--sunken); }
+.qm-head h2 { margin: 0 0 3px; font-size: 1.05rem; }
+.qm-head .pop { font-size: .82rem; color: var(--ink-mute); }
+.qm-head .pop b { color: var(--ink-soft); }
+.qm-head .spacer { margin-left: auto; }
+.qm-asof { font-size: .74rem; color: var(--ink-mute); white-space: nowrap; }
+.qm-btn { font: inherit; font-size: .8rem; font-weight: 650; cursor: pointer;
+  border: 1px solid var(--line-strong); background: var(--card-bg);
+  color: var(--ink-soft); border-radius: 999px; padding: 3px 12px; }
+.qm-btn:hover { border-color: var(--accent); color: var(--accent); }
+.qm-close { border: none; background: transparent; font-size: 1.3rem;
+  line-height: 1; color: var(--ink-mute); cursor: pointer; padding: 0 2px; }
+.qm-close:hover { color: var(--accent); }
+.qm-body { padding: 16px 20px 20px; }
+.qm-msg { padding: 24px; text-align: center; color: var(--ink-mute); }
+.qm-err { border: 1px solid var(--danger); background: #fdeaec;
+  color: var(--danger); border-radius: var(--r-sm); padding: 10px 14px;
+  font-size: .86rem; margin-bottom: 12px; }
+.qm-excluded { display: flex; gap: 10px; align-items: flex-start;
+  background: #f5f1fd; border: 1px solid #e2d6f7;
+  border-left: 4px solid var(--dash-unmapped); border-radius: var(--r-sm);
+  padding: 9px 12px; margin-bottom: 18px; font-size: .84rem;
+  color: var(--ink-soft); }
+.qm-excluded b { color: var(--dash-unmapped); }
+.qm-section-label { font-size: .76rem; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--ink-mute); font-weight: 650;
+  margin: 4px 2px 10px; }
+.item-card { border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--card-bg); box-shadow: var(--shadow); margin-bottom: 12px;
+  overflow: hidden; }
+.item-card.missed { border-color: #eab5bd; }
+.item-card > .prompt { padding: 10px 14px; border-bottom: 1px solid var(--line);
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.item-card > .prompt .qno { font-size: .72rem; font-weight: 650;
+  color: var(--ink-mute); font-variant-numeric: tabular-nums; }
+.item-card > .prompt .qtext { color: var(--ink); font-weight: 650;
+  font-size: .95rem; }
+.badge-missed { font-size: .68rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--danger); background: #fdeaec;
+  border: 1px solid #eab5bd; border-radius: 999px; padding: 1px 8px; }
+.passes { display: grid; grid-template-columns: 1fr 1fr; }
+.pass { padding: 12px 14px; }
+.pass + .pass { border-left: 1px solid var(--line); }
+.pass > .phdr { display: flex; align-items: baseline; gap: 8px;
+  margin-bottom: 9px; }
+.pass > .phdr .name { font-size: .74rem; text-transform: uppercase;
+  letter-spacing: .04em; font-weight: 650; color: var(--ink-soft); }
+.pass > .phdr .n { font-size: .72rem; color: var(--ink-mute); }
+.pass.reread > .phdr .name { color: var(--dash-unmapped); }
+.rate { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.rate .bar { flex: 1; height: 7px; border-radius: 999px; background: #f0dfe2;
+  overflow: hidden; }
+.rate .bar > i { display: block; height: 100%; background: var(--ok); }
+.rate.bad .bar > i { background: var(--danger); }
+.rate .txt { font-size: .78rem; font-weight: 650; color: var(--ink-soft);
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
+.opt-none { font-size: .8rem; color: var(--ink-mute); font-style: italic; }
+.opts { display: flex; flex-direction: column; gap: 5px; }
+.opt { display: grid; grid-template-columns: 1fr auto; gap: 8px 10px;
+  align-items: center; }
+.opt .lbl { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.opt .mark { flex: none; width: 15px; text-align: center; font-weight: 700;
+  font-size: .82rem; }
+.opt .txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: .82rem; color: var(--ink); }
+.opt .cnt { font-size: .78rem; font-weight: 650; color: var(--ink-soft);
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
+.opt .track { grid-column: 1 / -1; height: 5px; border-radius: 999px;
+  background: var(--sunken); overflow: hidden; }
+.opt .track > i { display: block; height: 100%; }
+.opt.correct .mark { color: var(--ok); }
+.opt.correct .track > i { background: var(--ok); }
+.opt.wrong .mark { color: var(--danger); }
+.opt.wrong .txt { color: var(--danger); }
+.opt.wrong .track > i { background: var(--danger); }
+.pp-scroll { overflow-x: auto; border: 1px solid var(--line);
+  border-radius: var(--r-md); box-shadow: var(--shadow);
+  background: var(--card-bg); }
+table.pp { border-collapse: collapse; width: 100%; min-width: 720px; }
+table.pp th { text-align: left; font-size: .7rem; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--ink-mute); background: var(--sunken);
+  padding: 7px 9px; border-bottom: 1px solid var(--line-strong);
+  white-space: nowrap; }
+table.pp th.qh { text-align: center; cursor: help; }
+table.pp td { padding: 6px 9px; border-bottom: 1px solid var(--line);
+  vertical-align: middle; font-size: .84rem; }
+table.pp td.name { font-weight: 650; color: var(--ink);
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.pp td.pass-tag { font-size: .7rem; text-transform: uppercase;
+  letter-spacing: .03em; color: var(--ink-mute); white-space: nowrap; }
+table.pp td.pass-tag.reread { color: var(--dash-unmapped); font-weight: 650; }
+table.pp td.cell { text-align: center; }
+.mk { display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 20px; border-radius: 6px; font-size: .78rem;
+  font-weight: 700; padding: 0 5px; }
+.mk.ok { background: #eaf6ef; color: var(--ok); border: 1px solid #bfe3cd; }
+.mk.no { background: #fdeaec; color: var(--danger); border: 1px solid #eab5bd;
+  cursor: help; }
+.mk.blank { color: var(--ink-mute); }
+tr.forced-row td { background: #faf7fe; }
+tr.forced-row td.name { color: var(--dash-unmapped); }
+.forced-tag { font-size: .72rem; font-weight: 650; color: var(--dash-unmapped);
+  background: #f5f1fd; border: 1px solid #e2d6f7; border-radius: 999px;
+  padding: 1px 8px; white-space: nowrap; }
+tr.qm-unreadable td { color: var(--dash-amber); background: #fffceb; }
+.later-row td { background: var(--sunken); font-size: .8rem;
+  color: var(--ink-soft); }
+.later-row.hidden { display: none; }
+.later-wrap { display: flex; flex-direction: column; gap: 4px; padding: 2px 0; }
+.later-line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.later-line .an { font-size: .72rem; font-weight: 650; color: var(--ink-mute);
+  white-space: nowrap; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px;
+  border-radius: 999px; font-size: .74rem; white-space: nowrap;
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.chip.ok { background: #eaf6ef; color: #1f7a46; border: 1px solid #bfe3cd; }
+.chip.no { background: #fdeaec; color: var(--danger); border: 1px solid #eab5bd; }
+.expander { font: inherit; font-size: .74rem; font-weight: 650; cursor: pointer;
+  border: 1px solid var(--line-strong); background: var(--card-bg);
+  color: var(--ink-mute); border-radius: 999px; padding: 0 8px;
+  line-height: 1.6; }
+.expander:hover { border-color: var(--accent); color: var(--accent); }
+.qm-legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 8px 2px 14px;
+  font-size: .76rem; color: var(--ink-mute); }
+.qm-legend span { display: inline-flex; align-items: center; gap: 5px; }
+@media (max-width: 720px) { .passes { grid-template-columns: 1fr; }
+  .pass + .pass { border-left: none; border-top: 1px solid var(--line); } }
 </style></head>
 <body>
 <div class="dash-top">
@@ -1780,6 +2342,10 @@ tr.unmapped-row td.c-label { box-shadow: inset 4px 0 0 var(--dash-unmapped); }
      .dash-summary. Filled by the poll; empty until there is something to
      average, so it never shows "average: 0:00" over an empty session. -->
 <div class="dash-summary" id="summary"></div>
+<!-- THE QUIZ-MISTAKES OVERLAY. Empty until the Quiz header's ⓘ is clicked; the
+     panel JS fills it from one /quiz_mistakes fetch. Outside the table, so a
+     broken panel cannot touch a single row. -->
+<div class="qm-overlay" id="qm-overlay" aria-hidden="true"></div>
 <script>
 'use strict';
 var DATA_URL = '__DATA_URL__';
@@ -1971,44 +2537,45 @@ function renderRow(row, meta) {
     '</tr>';
 }
 
-/* THE AVERAGES (round-2 item 7, denominators corrected under item 18).
+/* THE SUMMARY STRIP — TWO merged pills, each ONE population stated ONCE.
 
-   THE TWO PILLS AVERAGE OVER DIFFERENT POPULATIONS, DELIBERATELY. It looks like
-   an inconsistency, so it is stated here, in the tooltips and in the labels:
+   BOTH PILLS NOW RUN OVER THE SAME POPULATION: FINISHED participants (Julian,
+   2026-08-17). This is a deliberate simplification of the earlier design, in
+   which the intro-time average ran over everyone PAST INTRO and sat beside an
+   earnings pill over the FINISHED — two denominators side by side, which read
+   as one unless each was labelled. Julian's call: the strip is an at-a-glance
+   operator impression, not an analysis statistic, so both pills state a single
+   finished population and there is nothing to disambiguate.
 
-     * INTRO TIME — everyone who has COMPLETED INTRO, whatever they are doing
-       now. Somebody in round 4 of the task finished the intro long ago, so
-       their intro time is a COMPLETED MEASUREMENT and belongs in the mean; it
-       would be wrong to withhold it until they finish the whole study, which
-       would leave the pill empty for most of a session and then jump.
-     * EARNINGS — finished participants only, and not by choice: `earned` does
-       not exist until the Results page computes it, so there is no number to
-       average for anyone else.
+     * TIME — mean intro time AND mean COMPLETION time, both over FINISHED
+       participants. Intro time reuses _intro_seconds (the entry-exit stamp to
+       quiz_done); completion time is the whole run, the first stamp to the
+       finished stamp. Because the population is the finished set, every value
+       is a COMPLETED measurement — nothing live is averaged in, so the mean
+       never drifts on its own between polls.
+     * EARNINGS — avg and total, over FINISHED participants: `earned` does not
+       exist until the Results page computes it, so this population is forced by
+       the data and the time pill is matched to it.
 
-   WHAT IS STILL EXCLUDED, and why that reason survives the correction: a LIVE
-   intro timer, i.e. somebody still inside the intro. That number is still going
-   up, so averaging it in would drag the mean around every two seconds and make
-   it fall as people finish — an average that moves on its own is not readable.
-   Anyone PAST intro is not live, so this excludes exactly the right rows.
+   THE CONSEQUENCE IS HANDLED HONESTLY, NOT HIDDEN: early in a session nobody
+   has finished, so BOTH pills are absent — no pill at all, never a "0:00" or an
+   empty shell — exactly as the earnings pill already degraded. Each pill
+   appears only once its finished population is non-empty.
 
-   ALWAYS OVER THE WHOLE SESSION, never over the filtered view: the "hide
-   not-arrived" toggle changes what is on screen and must not silently change
-   what the average means.
+   ALWAYS OVER THE WHOLE SESSION, never the filtered view: the "hide
+   not-arrived" toggle changes what is on screen and must not change what an
+   average means. Both pills are computed server-side over every participant,
+   independent of the client filter.
 
-   The count and its POPULATION are shown next to each item, because "average
-   intro time 4:12" over two of twenty participants is a different fact from the
-   same number over twenty — and because two items side by side with different
-   denominators would otherwise be read as having the same one.
+   The count and its POPULATION are shown once per pill, because "avg intro
+   4:12" over two of twenty is a different fact from the same number over
+   twenty. Both pills say "of N finished"; there is one population and one
+   denominator per pill, and the two pills share the same finished set.
 
-   EARNINGS IS ONE ITEM, avg and total together (Julian, 2026-08-17). Both the
-   average and the total run over the SAME population — FINISHED participants,
-   because an `earned` figure exists only once the Results page computes it — so
-   a merged pill is honest and two separate items were not: side by side they
-   read as two populations. The population is therefore stated ONCE, on the
-   merged pill, and its count carried once. The intro-time item stays SEPARATE
-   because it averages a DIFFERENT population (everyone past intro), and its
-   wording ("past intro") is kept deliberately distinct from the earnings item's
-   ("finished") now that they sit next to each other.
+   EACH PILL IS ONE ITEM, its subsections together. TIME carries avg intro and
+   avg completion; EARNINGS carries avg and total. Merging is honest precisely
+   because each pill's subsections share one population — two separate items
+   would have read as two populations.
 
    THE TOTAL is still data.earnings_total.total, summed SERVER-SIDE from the
    same earnings map the rows are filled from (see _earnings_total), never
@@ -2021,22 +2588,32 @@ function renderRow(row, meta) {
    avg and total are labelled in words inside the pill so a reader tells them
    apart at a glance, without a tooltip. */
 function summaryHTML(data) {
-  var times = [];
-  data.rows.forEach(function (r) {
-    if (r.intro_seconds != null && !r.intro_live) times.push(r.intro_seconds);
-  });
   var out = '';
-  function mean(a) {
-    return a.reduce(function (x, y) { return x + y; }, 0) / a.length;
+  /* TIME — ONE pill, avg intro and avg completion as two subsections, BOTH
+     over the SAME finished population (Julian, 2026-08-17). The two figures are
+     summed on the SERVER from each finished participant's stage_timestamps
+     (data.time_summary), never re-derived here — the one-number-in-one-place
+     discipline the timing pill and the earnings pill both follow. Gated on that
+     server number, so the whole pill is present or ABSENT: early in a session
+     nobody has finished, and it shows as no pill at all rather than zeros. The
+     population (FINISHED) is stated ONCE, its count carried once — the same
+     shape as the earnings pill it sits beside. */
+  var ts = data.time_summary;
+  if (ts && ts.n > 0) {
+    out += '<span class="sum-item" title="Intro and completion time over ' +
+           'FINISHED participants only — the mean time in the intro app and ' +
+           'the mean time for the whole run (first stamp to finished), both ' +
+           'summed on the server from the same stage timestamps, so neither ' +
+           'can disagree with the rows. Both are over the same finished ' +
+           'population; nobody who has not finished is counted.">' +
+           '<span class="sum-label">time</span>' +
+           '<span class="sum-n">avg intro</span>' +
+           '<span class="pill">' + fmtSecs(Math.round(ts.intro_avg)) +
+           '</span>' +
+           '<span class="sum-n">avg completion</span>' +
+           '<span class="pill">' + fmtSecs(Math.round(ts.completion_avg)) +
+           '</span><span class="sum-n">of ' + ts.n + ' finished</span></span>';
   }
-  if (times.length)
-    out += '<span class="sum-item" title="Mean intro time over everyone who ' +
-           'has COMPLETED the intro app, whatever they are doing now. Anyone ' +
-           'still inside intro is excluded: their timer is still running.">' +
-           '<span class="sum-label">avg intro time</span>' +
-           '<span class="pill">' + fmtSecs(Math.round(mean(times))) +
-           '</span><span class="sum-n">of ' + times.length +
-           ' past intro</span></span>';
   /* EARNINGS — ONE pill, avg and total as two subsections. So this one
      dashboard tab carries the payment picture and nobody opens oTree's own
      Payments page. Both figures come from the ONE server-summed number
@@ -2148,6 +2725,261 @@ function tick() {
 document.getElementById('hide-entry').addEventListener('change', function () {
   if (lastGood) repaint(lastGood);
 });
+
+/* ============================ QUIZ-MISTAKES PANEL ==========================
+   ON DEMAND, never on the poll (spec §3b): the Quiz header's ⓘ issues ONE
+   fetch to /quiz_mistakes and opens the overlay. tick() never touches this
+   endpoint, so the panel cannot slow the live table and the table cannot
+   re-trigger the panel. Everything shown is computed SERVER-SIDE (the counts,
+   the rates, the ordering); the client only formats it and ESCAPES every value
+   with esc() before it reaches the DOM — the same discipline renderRow uses,
+   because the templates here do not auto-escape (a reflected XSS happened once
+   already, CLAUDE.md). Escape closes it. */
+var QM_URL = DATA_URL.replace(/\\/data$/, '/quiz_mistakes');
+var qmOverlay = document.getElementById('qm-overlay');
+var qmLoading = false;
+
+function qmOpen() {
+  qmOverlay.classList.add('open');
+  qmOverlay.setAttribute('aria-hidden', 'false');
+}
+function qmClose() {
+  qmOverlay.classList.remove('open');
+  qmOverlay.setAttribute('aria-hidden', 'true');
+}
+function qmShow(inner) {
+  qmOverlay.innerHTML = '<div class="qm-panel">' + inner + '</div>';
+  qmOpen();
+}
+function qmPct(num, den) { return den > 0 ? Math.round(num / den * 100) : 0; }
+
+function qmOptsHTML(pass) {
+  if (!pass || !pass.n) return '<div class="opt-none">No attempts.</div>';
+  var wrong = pass.options.filter(function (o) { return !o.correct; });
+  if (!wrong.length)
+    return '<div class="opt-none">No first-attempt mistakes.</div>';
+  return '<div class="opts">' + pass.options.map(function (o) {
+    var cls = o.correct ? 'correct' : 'wrong';
+    var mark = o.correct ? '✓' : '✗';
+    var cnt = o.correct ? (o.count + ' correct') : (o.count + ' chose');
+    return '<div class="opt ' + cls + '"><div class="lbl">' +
+      '<span class="mark">' + mark + '</span><span class="txt" title="' +
+      esc(o.text) + '">' + esc(o.text) + '</span></div><span class="cnt">' +
+      esc(cnt) + '</span><div class="track"><i style="width:' +
+      qmPct(o.count, pass.n) + '%"></i></div></div>';
+  }).join('') + '</div>';
+}
+
+function qmPassHTML(pass, kind, emptyMsg) {
+  var name = kind === 'reread' ? 'Re-read pass' : 'First pass';
+  var head = '<div class="phdr"><span class="name">' + name + '</span>';
+  if (!pass || !pass.n) {
+    return '<div class="pass ' + kind + '">' + head + '</div>' +
+      '<div class="opt-none">' + esc(emptyMsg) + '</div></div>';
+  }
+  var pct = qmPct(pass.n_correct, pass.n);
+  head += '<span class="n">n = ' + pass.n + '</span></div>';
+  var rate = '<div class="rate' + (pct < 50 ? ' bad' : '') +
+    '"><div class="bar"><i style="width:' + pct + '%"></i></div>' +
+    '<div class="txt">' + pass.n_correct + ' of ' + pass.n + ' correct · ' +
+    pct + '%</div></div>';
+  return '<div class="pass ' + kind + '">' + head + rate +
+    qmOptsHTML(pass) + '</div>';
+}
+
+function qmItemsHTML(data) {
+  var rrEmpty = data.passes.reread.empty;
+  return data.items.map(function (it) {
+    var qno = it.qno != null ? ('Q' + it.qno) : it.field;
+    var badge = it.missed
+      ? '<span class="badge-missed">most missed</span>' : '';
+    var drift = it.drifted
+      ? '<span class="badge-missed" title="this field is no longer in the ' +
+        'quiz">no longer in the quiz</span>' : '';
+    var rr = rrEmpty ? qmPassHTML(null, 'reread', 'no re-read attempts')
+                     : qmPassHTML(it.reread, 'reread', 'no re-read attempts');
+    return '<div class="item-card' + (it.missed ? ' missed' : '') +
+      '"><div class="prompt"><span class="qno">' + esc(qno) +
+      '</span><span class="qtext">' + esc(it.prompt) + '</span>' + badge +
+      drift + '</div><div class="passes">' +
+      qmPassHTML(it.first, 'first', 'no attempts') + rr + '</div></div>';
+  }).join('');
+}
+
+function qmMark(marks, field) {
+  var m = marks && marks[field];
+  if (!m || m.chosen_text == null) return '<span class="mk blank">·</span>';
+  if (m.correct) return '<span class="mk ok">✓</span>';
+  return '<span class="mk no" title="chose: ' + esc(m.chosen_text) +
+    '">✗</span>';
+}
+
+function qmRowCells(data, marks) {
+  return data.items.map(function (it) {
+    return '<td class="cell">' + qmMark(marks, it.field) + '</td>';
+  }).join('');
+}
+
+function qmLaterHTML(data, later, rowId) {
+  var lines = later.map(function (l) {
+    var name = l.pass === 'reread' ? 'Re-read pass' : 'First pass';
+    var chips = data.items.map(function (it) {
+      var m = l.items[it.field];
+      if (!m || m.chosen_text == null) return '';
+      var qno = it.qno != null ? ('Q' + it.qno) : it.field;
+      return '<span class="chip ' + (m.correct ? 'ok' : 'no') + '" title="' +
+        esc(it.prompt) + ' — ' + esc(m.chosen_text) + '">' + esc(qno) + ' ' +
+        (m.correct ? '✓' : '✗') + ' ' + esc(m.chosen_text) + '</span>';
+    }).join('');
+    return '<div class="later-line"><span class="an">' + esc(name) +
+      ' · attempt ' + l.n + ':</span>' + chips + '</div>';
+  }).join('');
+  return '<tr class="later-row hidden" data-later="' + rowId +
+    '"><td colspan="' + (data.items.length + 3) + '"><div class="later-wrap">' +
+    lines + '</div></td></tr>';
+}
+
+function qmParticipantsHTML(data) {
+  var colspan = data.items.length + 3;
+  var rows = data.participants.map(function (p, idx) {
+    var who = esc(p.label || p.code);
+    if (p.unreadable) {
+      return '<tr class="qm-unreadable"><td class="name">' + who +
+        '</td><td colspan="' + (colspan - 1) + '">unreadable log — left out ' +
+        'of the counts above</td></tr>';
+    }
+    var rowId = 'r' + idx;
+    var html;
+    if (p.first_excluded) {
+      html = '<tr class="forced-row"><td class="name">' + who +
+        '</td><td class="pass-tag">first</td>' + data.items.map(function () {
+          return '<td class="cell"><span class="mk blank">·</span></td>';
+        }).join('') + '<td><span class="forced-tag">force-advanced — no ' +
+        'answer</span></td></tr>';
+    } else {
+      var expander = p.later.length
+        ? '<button class="expander" type="button" data-toggle="' + rowId +
+          '">▾ ' + p.later.length + ' more</button>' : '';
+      html = '<tr><td class="name">' + who +
+        '</td><td class="pass-tag">first</td>' + qmRowCells(data, p.first) +
+        '<td>' + expander + '</td></tr>';
+    }
+    if (p.reread) {
+      html += '<tr><td class="name">' + who +
+        '</td><td class="pass-tag reread">re-read</td>' +
+        qmRowCells(data, p.reread) + '<td></td></tr>';
+    }
+    if (p.later.length) html += qmLaterHTML(data, p.later, rowId);
+    return html;
+  }).join('');
+  var heads = data.items.map(function (it) {
+    var qno = it.qno != null ? ('Q' + it.qno) : it.field;
+    return '<th class="qh" title="' + esc(it.prompt) + '">' + esc(qno) +
+      '</th>';
+  }).join('');
+  return '<div class="pp-scroll"><table class="pp"><thead><tr>' +
+    '<th>Participant</th><th>Pass</th>' + heads +
+    '<th></th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+
+function qmExcludedHTML(data) {
+  var f = data.passes.first, r = data.passes.reread;
+  if (!f.n_excluded && !r.n_excluded) return '';
+  var names = f.excluded_labels.concat(r.excluded_labels).map(function (n) {
+    return esc(n);
+  }).join(', ');
+  return '<div class="qm-excluded"><span>🚫</span><div><b>' + f.n_excluded +
+    ' blank submission' + (f.n_excluded === 1 ? '' : 's') + ' excluded</b> ' +
+    'from the first pass (' + r.n_excluded + ' from the re-read pass). A ' +
+    'blank submission is what oTree posts when an experimenter uses ' +
+    '<em>advance slowest participants</em> — every answer empty — not a ' +
+    "participant's answers." + (names ? (' Here that was ' + names + '.') : '') +
+    '</div></div>';
+}
+
+function qmRender(data) {
+  if (!data.available) {
+    return '<div class="qm-body"><div class="qm-msg">No quiz-mistake data ' +
+      'available for this session' +
+      (data.reason ? (' (' + esc(data.reason) + ')') : '') + '.</div></div>';
+  }
+  var p = data.passes;
+  var pop = 'Headline is the <b>first attempt only</b> (later attempts are ' +
+    'contaminated by guessing — kept underneath). First pass: <b>' +
+    p.first.n_valid + ' valid attempt' + (p.first.n_valid === 1 ? '' : 's') +
+    '</b> · Re-read pass: <b>' + (p.reread.empty ? '0' : p.reread.n_valid) +
+    '</b>.';
+  var asof = new Date(data.generated * 1000).toLocaleTimeString();
+  var head = '<div class="qm-head"><div><h2>Comprehension quiz — what people ' +
+    'got wrong</h2><div class="pop">' + pop + '</div></div>' +
+    '<div class="spacer"></div><div style="text-align:right;display:flex;' +
+    'flex-direction:column;gap:6px;align-items:flex-end"><span class="qm-asof">' +
+    'data as of ' + esc(asof) + '</span><button class="qm-btn" type="button" ' +
+    'id="qm-refresh">↻ Refresh</button></div><button class="qm-close" ' +
+    'type="button" title="Close" id="qm-close">×</button></div>';
+  var legend = '<div class="qm-legend"><span><span class="mk ok">✓</span> ' +
+    'correct on first attempt</span><span><span class="mk no">✗</span> wrong ' +
+    '(hover for the chosen option)</span><span><span class="forced-tag">' +
+    'force-advanced</span> blank, excluded</span><span>▾ expand a row for ' +
+    'later attempts</span></div>';
+  var body = '<div class="qm-body">' + qmExcludedHTML(data) +
+    '<div class="qm-section-label">By item · first attempt · worst first' +
+    '</div>' + qmItemsHTML(data) + '<div class="qm-section-label" ' +
+    'style="margin-top:22px">By participant · first-attempt marks</div>' +
+    legend + qmParticipantsHTML(data) + '</div>';
+  return head + body;
+}
+
+function qmLoad() {
+  if (qmLoading) return;
+  qmLoading = true;
+  qmShow('<div class="qm-body"><div class="qm-msg">Loading…</div></div>');
+  fetch(QM_URL, {credentials: 'same-origin'})
+    .then(function (resp) { return resp.json(); })
+    .then(function (data) {
+      if (!data.ok) throw new Error(data.error || 'server error');
+      qmShow(qmRender(data));
+    })
+    .catch(function (err) {
+      qmShow('<div class="qm-body"><div class="qm-err">Couldn’t build the ' +
+        'quiz breakdown (' + esc(err.message) + ') — the table is ' +
+        'unaffected.</div><div class="qm-msg"><button class="qm-btn" ' +
+        'type="button" id="qm-refresh">↻ Try again</button> ' +
+        '<button class="qm-btn" type="button" id="qm-close">Close</button>' +
+        '</div></div>');
+    })
+    .then(function () { qmLoading = false; });
+}
+
+/* One delegated listener: close, refresh, expand a row, or click the scrim. */
+qmOverlay.addEventListener('click', function (ev) {
+  var t = ev.target;
+  if (t.closest('#qm-close')) { qmClose(); return; }
+  if (t.closest('#qm-refresh')) { qmLoad(); return; }
+  var exp = t.closest('.expander');
+  if (exp) {
+    var lr = qmOverlay.querySelector(
+      '.later-row[data-later="' + exp.getAttribute('data-toggle') + '"]');
+    if (lr) {
+      var hidden = lr.classList.toggle('hidden');
+      exp.textContent = (hidden ? '▾ ' : '▴ ') +
+        exp.textContent.replace(/^[▾▴]\\s*/, '');
+    }
+    return;
+  }
+  if (t === qmOverlay) qmClose();      // click outside the panel closes
+});
+document.addEventListener('keydown', function (ev) {
+  if (ev.key === 'Escape' && qmOverlay.classList.contains('open')) qmClose();
+});
+var qmInfo = document.getElementById('quiz-mistakes-info');
+if (qmInfo) {
+  qmInfo.addEventListener('click', qmLoad);
+  qmInfo.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); qmLoad(); }
+  });
+}
+
 tick();
 setInterval(tick, POLL_MS);
 </script>

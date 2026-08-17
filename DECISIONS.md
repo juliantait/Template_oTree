@@ -11,6 +11,103 @@ working.
 
 ---
 
+## The quiz-mistakes panel is on-demand, first-attempt-only, and reads only what already exists — 2026-08-17
+
+Decided by Julian; design in `_ai/quiz_mistakes_spec.md` and the approved mock
+`_ai/quiz_mistakes_mock.html` (both local only, `_ai/` is gitignored). The
+dashboard gains an on-demand panel — a quiet ⓘ in the Quiz column header — that
+shows what people got wrong in the comprehension quiz and what they answered
+instead. It reads entirely from `intro.Player.quiz_attempt_log`, the per-round
+record already written by `intro.log_quiz_attempt`: **no new tracking, no
+participant field, no schema change.**
+
+The load-bearing choices, each of which had a wrong alternative:
+
+- **On demand from its OWN route, never on the 2-second poll.** The main poll is
+  deliberately a cheap walk of one session's rows under oTree's global commit
+  lock; this parses a JSON log per participant and aggregates across attempts, a
+  cost that grows with *attempts*. Putting that on every tick would lengthen
+  every hold of the lock and delay participant pages, for reference data nobody
+  watches second-by-second. *Rejected:* folding it into `/data`.
+- **The headline is the FIRST attempt only** (`n == 1`). Later attempts are
+  contaminated by guessing; they are kept underneath (the per-participant
+  expander) but never feed the rates or the chosen-option counts. *Rejected:*
+  pooling all attempts, which would make a hard item look learnable purely
+  because people eventually guessed it.
+- **The two passes are never pooled.** Round 1 is the first pass, round 2 the
+  lab re-read pass; because the log is a per-round column they separate for
+  free. Pooling them would answer a different question with one number.
+- **Correctness comes from the stored `wrong` list, never recomputed** against
+  today's `quiz_items` (which change between studies and sessions); `answers` is
+  used only to recover the chosen option text, shown verbatim and escaped.
+- **Blank admin-advance submissions are excluded and the count stated.** An
+  all-blank submission is what oTree posts for *advance slowest participants*
+  (the same mechanism `_quiz_outcome_map` documents), not a participant's
+  answers; a blank first attempt drops that participant from the headline and
+  into the excluded tally, rather than being promoted to "first attempt".
+- **Degrades one level tighter than the dashboard's rule 2**: a bug here costs
+  the panel, never the table. It is a separate route and a separate fetch, so a
+  raising builder returns `ok:false`, a missing/renamed `intro` app returns
+  `available:false` (a single "no data" message, not an error), and one corrupt
+  log renders that participant "unreadable" while every other participant still
+  aggregates.
+- **Escape-dismissible, styled from the dashboard's own tokens** (the mock's
+  tints carried over so it reads as the same control room), reusing `.th-info`
+  for the trigger and adding no colour outside the palette.
+
+**Enforced:** `scripts/tests/dashboard_test.py` §F drives the `/quiz_mistakes`
+endpoint over real HTTP (real content, the two passes unpooled, blank excluded +
+counted, the three degradations, and the answer text carried for escaping);
+`scripts/tests/dashboard_render_check.py` opens the panel in real Chromium and
+measures that a hostile answer is escaped into the DOM (injecting no element),
+the passes render side by side, the exclusion note states its count, later
+attempts expand, and Escape closes it. The monitor site-preview is regenerated
+from this file (`scripts/site_previews/`).
+
+## The summary strip is two merged pills over ONE finished population, and shows nothing until someone finishes — 2026-08-17
+
+Decided by Julian. The strip below the table gains a **time** pill in the same
+shape as the merged **earnings** pill: one item labelled `time` with two
+subsections, **avg intro** (mean time in the intro app) and **avg completion**
+(mean time for the whole run, the *first* stamp to the *finished* stamp, read
+from `participant.stage_timestamps` whose `common.STAGE_*` keys are frozen
+values). Both figures are summed **server-side** in `_time_summary`, exactly as
+`_earnings_total` sums the earnings, and never re-derived in the client — the
+one-number-in-one-place discipline the whole dashboard is built on.
+
+The load-bearing choices:
+
+- **Both subsections are over FINISHED participants only — one population,
+  stated once.** This is Julian's explicit call and is *not* to be reopened: the
+  strip is an at-a-glance operator impression, not an analysis statistic, so it
+  carries one denominator and no per-subsection population wording. The
+  consequence, handled honestly: the pre-existing **avg intro time** item, which
+  averaged over everyone *past intro*, is now finished-only and **merged into
+  this pill** — it stops being its own item, matched to the earnings population
+  it sits beside. *Rejected:* keeping intro time over the wider "past intro"
+  population, which would have put two different denominators side by side again
+  — the very thing merging the earnings pill removed.
+- **Early in a session it is NO PILL AT ALL.** Nobody has finished, so both
+  means are undefined; `_time_summary` returns `n=0` and the client shows
+  nothing — never `0:00`, never an empty shell — exactly as the earnings pill
+  already degrades. A participant is counted only once they carry a
+  `STAGE_FINISHED` stamp *and* both durations are computable, so a missing stamp
+  drops them from BOTH means together and the single denominator stays honest.
+- **Same rules as everything else on this screen:** read-only (it reads
+  `pp._vars`, never `.vars`, and assigns nothing), degrades to `n=0` rather than
+  raising, adds no colour outside the palette (the subsections reuse `.pill`),
+  and survives the narrow viewport the render check drives.
+
+**Enforced:** `scripts/tests/dashboard_test.py` §D asserts `time_summary` covers
+exactly the finished participants (one shared denominator with the finished
+rows), both means present with completion ≥ intro, and the `n=0` no-pill
+degradation paired with earnings; §D7 asserts the served page ships the merged
+`time` pill markup reading `data.time_summary`. `scripts/tests/dashboard_render_check.py`
+measures the two merged pills side by side over the same `of 2 finished`
+population, that the old "past intro" item is gone, and that nothing clips or
+scrolls. The monitor site-preview is regenerated from `experimenter_dashboard.py`
+(`scripts/site_previews/`).
+
 ## The dashboard may fail a LAUNCH loudly, but never a running session silently — 2026-08-17
 
 Decided by Julian, from the empirical blast-radius study

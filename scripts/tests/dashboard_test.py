@@ -162,6 +162,17 @@ def rows_by_code(client, session):
     return data, {r['code']: r for r in data['rows'] if not r.get('error')}
 
 
+def items_first(data, field):
+    """The first-pass per-item aggregate for one field, from a quiz-mistakes
+    payload."""
+    return {i['field']: i for i in data['items']}[field]['first']
+
+
+def items_reread(data, field):
+    """The re-read-pass per-item aggregate for one field."""
+    return {i['field']: i for i in data['items']}[field]['reread']
+
+
 def participant_dump():
     """A canonical dump of every participant row — the read-only witness."""
     from otree.database import DBSession
@@ -220,6 +231,30 @@ def set_outro_sepa(code, value):
         Player = get_models_module('outro').Player
         row = s.query(Player).filter(Player.participant_id == p.id).first()
         row.sepa = value
+        s.commit()
+    finally:
+        s.close()
+
+
+def set_intro_log(code, round_number, value):
+    """Plant an intro.Player.quiz_attempt_log for one round (test-side write;
+    the dashboard only reads). `value` is a list of attempt dicts (JSON-encoded
+    here) OR a raw string (planted verbatim, to stage a CORRUPT log). oTree
+    creates every round's Player row at session creation, so a round-2 log can
+    be planted for a participant who never re-read — which is how the two-pass
+    separation is tested without walking the whole lab re-read flow."""
+    from otree.common import get_models_module
+    from otree.database import DBSession
+    from otree.models import Participant
+    s = DBSession()
+    try:
+        p = s.query(Participant).filter_by(code=code).one()
+        Player = get_models_module('intro').Player
+        row = s.query(Player).filter(
+            Player.participant_id == p.id,
+            Player.round_number == round_number).one()
+        row.quiz_attempt_log = (value if isinstance(value, str)
+                                else json.dumps(value))
         s.commit()
     finally:
         s.close()
@@ -497,6 +532,30 @@ def main():
           and abs(et['total'] - sum(row_earnings)) < 1e-6,
           f"earnings_total.total is the SUM of the row earnings, computed "
           f"server-side (got {et['total']}, sum of rows {sum(row_earnings)})")
+    # THE TIME PILL (summary strip): mean intro time AND mean COMPLETION time,
+    # BOTH over the SAME finished population — one denominator, computed
+    # server-side from stage_timestamps (never re-derived in the client), the
+    # same discipline earnings_total follows (Julian, 2026-08-17).
+    ts = data['time_summary']
+    fin_rows = [r for r in data['rows'] if r.get('finished')]
+    check(ts['n'] == len(fin_rows) and ts['n'] >= 1,
+          f"time_summary covers exactly the FINISHED participants — one "
+          f"population (n={ts['n']}, finished rows={len(fin_rows)})")
+    # PAIRED PRESENCE: both subsections carry a value, and completion (the whole
+    # run) is at least the intro block it contains — never a subsection missing.
+    check(ts.get('intro_avg') is not None and ts.get('completion_avg') is not None
+          and ts['completion_avg'] >= ts['intro_avg'] - 1,
+          f"both means are present and completion >= intro (the whole run is at "
+          f"least the intro block): intro={ts.get('intro_avg')}, "
+          f"completion={ts.get('completion_avg')}")
+    # DEGRADES TO NO PILL: a session nobody has finished has n=0 (no pill at
+    # all), exactly as earnings_total does — the honest early-session state.
+    empty = ot.create_session('lab', num_participants=2)
+    de = admin.get(f'{URL}/{empty.code}/data').json()
+    check(de['time_summary']['n'] == 0 and de['earnings_total']['n'] == 0,
+          f"early in a session nobody has finished: the TIME pill and the "
+          f"earnings pill both degrade to n=0 — no pill (time n="
+          f"{de['time_summary']['n']}, earnings n={de['earnings_total']['n']})")
     r4 = rows[codes[4]]
     check(r4['quiz']['state'] == 'progress'
           and r4['quiz']['attempts_wrong'] == 1,
@@ -963,11 +1022,31 @@ def main():
     check('state-pills' in page and 'spill-nonsepa' in page
           and 'spill-stall' in page and 'spill-finished' in page,
           'the served page ships the pill renderer and all pill classes')
-    # The summary strip ships the TOTAL PAYMENTS pill, reading the server-side
-    # earnings_total rather than re-summing the rendered cells.
-    check('total payments' in page and 'data.earnings_total' in page,
-          'the served page ships the TOTAL PAYMENTS summary pill, computed '
-          'from the server-side earnings_total (not re-summed in the client)')
+    # THE MERGED EARNINGS PILL — asserted on its actual STRUCTURE, not on a
+    # phrase. 'total payments' used to appear in the rendered pill, but since
+    # avg and total were merged into one pill (Julian, 2026-08-17) that phrase
+    # survives ONLY in the pill's tooltip — so testing for it no longer proves
+    # the pill renders; it would pass against any page carrying the tooltip
+    # text. The subsection markup is what the pill is made of: the label
+    # "earnings", an "avg" subsection and a "total" subsection, with the total
+    # still read from the SERVER-side earnings_total (not re-summed in the
+    # client — the one-number-in-one-place discipline).
+    check('sum-label">earnings' in page
+          and 'sum-n">avg' in page and 'sum-n">total' in page
+          and 'data.earnings_total' in page,
+          'the served page ships the MERGED earnings pill — label "earnings" '
+          'with both an avg AND a total subsection — computed from the '
+          'server-side earnings_total (not re-summed in the client)')
+    # THE MERGED TIME PILL — same structural check: the label "time" with an
+    # "avg intro" and an "avg completion" subsection, both read from the
+    # SERVER-side time_summary (never re-derived in the client). Asserting the
+    # markup, not a tooltip phrase, so it proves the pill renders.
+    check('sum-label">time' in page
+          and 'sum-n">avg intro' in page and 'sum-n">avg completion' in page
+          and 'data.time_summary' in page,
+          'the served page ships the MERGED time pill — label "time" with both '
+          'an avg-intro AND an avg-completion subsection — computed from the '
+          'server-side time_summary (not re-derived in the client)')
 
     section('D8. the no-return-click pill, the monitor count, the arrival '
             'count')
@@ -1217,12 +1296,220 @@ def main():
           'the guard is clean again once URL_BASE is restored (it was testing '
           'the broken state, not failing unconditionally)')
 
+    # ------------------------------------------------------------------ F
+    section('F. the quiz-mistakes panel — on-demand, over real HTTP')
+    # Everything here drives the /quiz_mistakes ENDPOINT over HTTP (the panel
+    # itself renders client-side, like the main table; the rendered DOM and its
+    # escaping are dashboard_render_check.py's job). The endpoint's JSON is the
+    # server-side aggregate, which is where the correctness lives.
+    QM = lambda code: admin.get(f'{URL}/{code}/quiz_mistakes').json()  # noqa
+
+    correct2 = {'quiz1': 'YES', 'quiz2': 'Water'}   # the shipped example items
+    w1 = dict(correct2, quiz1='NO')                 # quiz1 wrong
+    w2 = dict(correct2, quiz2='Metal')              # quiz2 wrong
+
+    qm = ot.create_session('lab', num_participants=5)
+    qcodes = ot.participant_codes(qm)
+    # p0, p4 correct first try; p1, p2 miss quiz1 first (then pass); p3 misses
+    # quiz2 first. The ones who retry leave a SECOND attempt underneath.
+    walk(ot.client(), qcodes[0], correct2)
+    walk(ot.client(), qcodes[1], correct2, quiz_posts=[w1])
+    walk(ot.client(), qcodes[2], correct2, quiz_posts=[w1])
+    walk(ot.client(), qcodes[3], correct2, quiz_posts=[w2])
+    walk(ot.client(), qcodes[4], correct2)
+
+    d = QM(qm.code)
+    check(d.get('ok') is True and d.get('available') is True,
+          f"a session with quiz attempts returns available data "
+          f"(ok={d.get('ok')}, available={d.get('available')})")
+    items = {it['field']: it for it in d['items']}
+    check(len(d['items']) == 2 and 'quiz1' in items and 'quiz2' in items,
+          f"the two shipped quiz items are present ({list(items)})")
+    # FIRST ATTEMPT ONLY, and the real content: quiz1 was missed by two (both
+    # chose NO), got right by three. PAIRED PRESENCE — the wrong option AND the
+    # correct option, never one without the other (the leak-test rule).
+    q1 = items['quiz1']['first']
+    by_text = {o['text']: o for o in q1['options']}
+    check(d['passes']['first']['n_valid'] == 5,
+          f"all five reached the quiz with a valid first attempt "
+          f"(n_valid={d['passes']['first']['n_valid']})")
+    check(q1['n'] == 5 and q1['n_correct'] == 3,
+          f"quiz1 first-attempt rate is 3 of 5 (got {q1['n_correct']}/{q1['n']})")
+    check('NO' in by_text and by_text['NO']['count'] == 2
+          and by_text['NO']['correct'] is False,
+          f"the wrong option 'NO' is shown with its count of 2 ({by_text})")
+    check('YES' in by_text and by_text['YES']['count'] == 3
+          and by_text['YES']['correct'] is True,
+          f"…and the correct option 'YES' alongside it ({by_text})")
+    # WORST FIRST: quiz1 (0.6) before quiz2 (0.8), and quiz1 badged most-missed.
+    check(d['items'][0]['field'] == 'quiz1' and d['items'][0]['missed'] is True,
+          f"the worst item is first and badged 'most missed' "
+          f"(order={[it['field'] for it in d['items']]})")
+    # PER-PARTICIPANT DETAIL: at least one first-attempt miss AND at least one
+    # first-attempt pass on quiz1 (paired), and a retried participant carries a
+    # LATER attempt underneath — the 'kept, not headline' data.
+    firsts = [p for p in d['participants'] if p['first']]
+    missed_q1 = [p for p in firsts if p['first'].get('quiz1', {}).get('correct')
+                 is False]
+    got_q1 = [p for p in firsts if p['first'].get('quiz1', {}).get('correct')
+              is True]
+    check(len(missed_q1) == 2 and len(got_q1) == 3,
+          f"the per-participant marks show two quiz1 misses and three passes "
+          f"({len(missed_q1)} missed, {len(got_q1)} passed)")
+    check(any(p['later'] for p in d['participants']),
+          'a retried participant keeps a later attempt underneath (n >= 2)')
+
+    section('F2. a corrupt or missing log costs the panel, not the table')
+    # (a) A RAISING panel builder degrades to ok:false while the main /data
+    #     poll — a SEPARATE route — stays ok:true. This is the check that fails
+    #     if the endpoint's soft-fail wrapper is removed.
+    real_qm = ed.quiz_mistakes_snapshot
+    ed.quiz_mistakes_snapshot = lambda s: (_ for _ in ()).throw(
+        RuntimeError('injected quiz-mistakes bug'))
+    try:
+        r = QM(qm.code)
+        check(r.get('ok') is False
+              and 'injected quiz-mistakes bug' in r.get('error', ''),
+              'a raising panel builder returns ok:false JSON naming the error')
+        dd = admin.get(f'{URL}/{qm.code}/data').json()
+        check(dd.get('ok') is True,
+              'the MAIN table is unaffected — a broken panel is a separate '
+              'route on a separate fetch')
+    finally:
+        ed.quiz_mistakes_snapshot = real_qm
+    check(QM(qm.code).get('ok') is True,
+          'the panel recovers the moment the bug is gone (paired positive)')
+
+    # (b) ONE participant's corrupt log renders THEM unreadable while every
+    #     other participant still aggregates (row-granularity degradation).
+    set_intro_log(qcodes[2], 1, '{not valid json')
+    d2 = QM(qm.code)
+    unreadable = [p for p in d2['participants'] if p.get('unreadable')]
+    check(d2.get('ok') is True and d2.get('available') is True
+          and len(unreadable) == 1,
+          f"a corrupt log marks exactly that participant unreadable, panel "
+          f"still available ({len(unreadable)} unreadable)")
+    # PAIRED: the rest still aggregate — quiz1 now has 4 valid first attempts
+    # (the corrupt one dropped), not zero, so the panel did not collapse.
+    check(d2['passes']['first']['n_valid'] == 4
+          and items_first(d2, 'quiz1')['n'] == 4,
+          f"every other participant still aggregates "
+          f"(n_valid={d2['passes']['first']['n_valid']})")
+
+    # (c) FEATURE-MISSING (a renamed intro app / unreadable quiz_items) degrades
+    #     to available:false — ok:true, NOT an error — so the panel shows a
+    #     single 'no data' message. Paired against the available:true above.
+    real_load = ed._load_quiz_items
+    ed._load_quiz_items = lambda: None
+    try:
+        r = QM(qm.code)
+        check(r.get('ok') is True and r.get('available') is False,
+              f"feature-missing degrades to available:false (not an error): "
+              f"ok={r.get('ok')}, available={r.get('available')}")
+    finally:
+        ed._load_quiz_items = real_load
+
+    section('F3. blank admin-advance submissions are excluded AND counted')
+    # A blank submission (every answer empty) is what oTree posts for 'advance
+    # slowest participants'. It is dropped from the headline and the drop is
+    # surfaced with its count. Planted directly for determinism (D5b proves the
+    # real force-advance produces exactly this shape).
+    qmb = ot.create_session('lab', num_participants=2)
+    bcodes = ot.participant_codes(qmb)
+    set_intro_log(bcodes[0], 1, [{'n': 1, 't': 1.0,
+                  'answers': {'quiz1': '', 'quiz2': ''},
+                  'wrong': ['quiz1', 'quiz2']}])
+    set_intro_log(bcodes[1], 1, [{'n': 1, 't': 2.0,
+                  'answers': {'quiz1': 'YES', 'quiz2': 'Metal'},
+                  'wrong': ['quiz2']}])
+    db_ = QM(qmb.code)
+    check(db_['passes']['first']['n_excluded'] == 1,
+          f"the blank submission is EXCLUDED and counted "
+          f"(n_excluded={db_['passes']['first']['n_excluded']})")
+    check(db_['passes']['first']['n_valid'] == 1,
+          f"…and the real attempt still counts — the exclusion did not drop it "
+          f"(n_valid={db_['passes']['first']['n_valid']})")
+    forced = [p for p in db_['participants'] if p.get('first_excluded')]
+    real = [p for p in db_['participants'] if p.get('first')]
+    check(len(forced) == 1 and len(real) == 1,
+          f"one participant reads force-advanced, the other carries real marks "
+          f"({len(forced)} forced, {len(real)} real)")
+
+    section('F4. the first pass and the re-read pass are NOT pooled')
+    # Round 1 and round 2 are the two passes (a per-round column). Plant a
+    # DIFFERENT wrong answer in each and check neither leaks into the other.
+    qmp = ot.create_session('lab', num_participants=1)
+    pcode = ot.participant_codes(qmp)[0]
+    set_intro_log(pcode, 1, [{'n': 1, 't': 1.0,
+                  'answers': {'quiz1': 'NO', 'quiz2': 'Water'},
+                  'wrong': ['quiz1']}])          # first pass: quiz1 wrong (NO)
+    set_intro_log(pcode, 2, [{'n': 1, 't': 2.0,
+                  'answers': {'quiz1': 'YES', 'quiz2': 'Metal'},
+                  'wrong': ['quiz2']}])          # re-read pass: quiz2 wrong
+    dp = QM(qmp.code)
+    check(dp['passes']['reread']['empty'] is False
+          and dp['passes']['first']['n_valid'] == 1
+          and dp['passes']['reread']['n_valid'] == 1,
+          'both passes have one valid attempt and the re-read is not "empty"')
+    q1f = items_first(dp, 'quiz1')
+    q1r = items_reread(dp, 'quiz1')
+    # First-pass quiz1 shows the wrong 'NO'; re-read quiz1 is all correct — if
+    # the two were pooled, 'NO' would appear in the re-read options too.
+    check(q1f['n_correct'] == 0
+          and any(o['text'] == 'NO' and not o['correct']
+                  for o in q1f['options']),
+          f"first pass quiz1 carries the round-1 miss 'NO' ({q1f['options']})")
+    check(q1r['n_correct'] == 1
+          and all(o['text'] != 'NO' for o in q1r['options'])
+          and all(o['correct'] for o in q1r['options']),
+          f"the re-read pass does NOT carry that miss — the passes are not "
+          f"pooled ({q1r['options']})")
+    # And the mirror: quiz2 correct in the first pass, wrong only in the re-read.
+    q2f = items_first(dp, 'quiz2')
+    q2r = items_reread(dp, 'quiz2')
+    check(q2f['n_correct'] == 1
+          and any(o['text'] == 'Metal' and not o['correct']
+                  for o in q2r['options']) and q2r['n_correct'] == 0,
+          f"quiz2 is correct first pass, wrong ONLY in the re-read "
+          f"(first {q2f['n_correct']}/{q2f['n']}, reread opts {q2r['options']})")
+
+    section('F5. answer text is escaped')
+    # The chosen-option text is participant-influenced and reaches the DOM; the
+    # templates here do not auto-escape (a reflected XSS happened once). The
+    # ENDPOINT carries the raw text (JSON transport is safe by construction) and
+    # the PANEL escapes it at render with esc() — the real DOM escaping is
+    # measured in dashboard_render_check.py. Here: the raw value round-trips,
+    # AND the served page's panel renderer wraps every chosen text in esc().
+    xss = '<img src=x onerror=alert(1)>'
+    qmx = ot.create_session('lab', num_participants=1)
+    xcode = ot.participant_codes(qmx)[0]
+    set_intro_log(xcode, 1, [{'n': 1, 't': 1.0,
+                  'answers': {'quiz1': xss, 'quiz2': 'Water'},
+                  'wrong': ['quiz1']}])
+    dx = QM(qmx.code)
+    dx_opts = items_first(dx, 'quiz1')['options']
+    check(any(o['text'] == xss for o in dx_opts),
+          f"the endpoint carries the raw chosen text un-mangled ({dx_opts})")
+    page_x = admin.get(f'{URL}/{qmx.code}').text
+    check('esc(o.text)' in page_x and 'esc(m.chosen_text)' in page_x,
+          'the served panel renderer escapes every chosen text with esc() — '
+          'option breakdown and per-participant marks alike')
+    # The served page ships the panel machinery: the trigger and the fetch.
+    check('quiz-mistakes-info' in page_x and 'QM_URL' in page_x
+          and 'qm-overlay' in page_x,
+          'the served page ships the ⓘ trigger, the overlay and the '
+          '/quiz_mistakes fetch')
+
     # ------------------------------------------------------------------ E
     section('E. strictly read-only')
     before = participant_dump()
     admin.get(f'{URL}/{lab.code}/data')
     admin.get(f'{URL}/{pro.code}/data')
     admin.get(f'{URL}/{lab.code}')
+    # The quiz-mistakes endpoint is read-only too — building the aggregate must
+    # not dirty a single row (it parses the log column, never assigns it).
+    admin.get(f'{URL}/{lab.code}/quiz_mistakes')
+    admin.get(f'{URL}/{qm.code}/quiz_mistakes')
     admin.get(URL)
     after = participant_dump()
     check(before == after,

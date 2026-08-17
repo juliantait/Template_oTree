@@ -201,6 +201,27 @@ def set_participant(code, **fields):
         s.close()
 
 
+def set_intro_log(code, round_number, value):
+    """Plant an intro.Player.quiz_attempt_log for one round (test-side write;
+    the dashboard only reads). `value` is a list of attempt dicts, JSON-encoded
+    here — the deterministic way to stage the quiz-mistakes panel without
+    walking the whole lab re-read flow."""
+    import json as _json
+    from otree.common import get_models_module
+    from otree.database import DBSession
+    from otree.models import Participant
+    s = DBSession()
+    try:
+        p = s.query(Participant).filter_by(code=code).one()
+        Player = get_models_module('intro').Player
+        row = s.query(Player).filter(Player.participant_id == p.id,
+                                     Player.round_number == round_number).one()
+        row.quiz_attempt_log = _json.dumps(value)
+        s.commit()
+    finally:
+        s.close()
+
+
 def stage_intro_time(code, seconds):
     """Backdate a participant's ENTRY-BLOCK stamps so the INTRO TIME column
     shows a realistic duration.
@@ -477,50 +498,42 @@ def check_overview(base, sess):
                     '#summary .sum-item',
                     'els => els.map(e => e.textContent.replace(/\\s+/g," ")'
                     '.trim())')
-                # TWO items now (Julian, 2026-08-17): the intro-time average and
-                # the MERGED EARNINGS pill, which carries avg AND total as two
-                # subsections over ONE population. Each item says in WORDS what
-                # its numbers are, so none can be misread as another participant.
-                intro_items = [s for s in sums if 'past intro' in s]
-                earn_items = [s for s in sums if 'finished' in s]
-                check(len(sums) == 2 and len(intro_items) == 1
+                # TWO items now (Julian, 2026-08-17): the MERGED TIME pill (avg
+                # intro AND avg completion) and the MERGED EARNINGS pill (avg AND
+                # total). Both run over the SAME FINISHED population — the
+                # intro-time average is now finished-only and merged in, no
+                # longer its own "past intro" item. Each pill names its
+                # subsections in words, so none is misread as another.
+                time_items = [s for s in sums if 'avg completion' in s]
+                earn_items = [s for s in sums if 'total' in s]
+                check(len(sums) == 2 and len(time_items) == 1
                       and len(earn_items) == 1,
-                      f'the summary strip shows the intro-time average and the '
+                      f'the summary strip shows the merged TIME pill and the '
                       f'merged earnings pill — two items, not three ({sums})')
-                # THE MERGED EARNINGS PILL names BOTH its avg and its total in
-                # words, so a reader tells them apart at a glance without a
-                # tooltip — the whole point of merging them.
+                # THE MERGED TIME PILL names BOTH subsections in words — avg
+                # intro and avg completion — both over the finished population.
+                check(all('avg intro' in s and 'avg completion' in s
+                          for s in time_items),
+                      f'…the time pill labels BOTH subsections, avg intro and '
+                      f'avg completion, in words ({time_items})')
+                # THE MERGED EARNINGS PILL names BOTH its avg and its total.
                 check(all('avg' in s and 'total' in s for s in earn_items),
                       f'…the earnings pill labels BOTH subsections, avg and '
                       f'total, in words ({earn_items})')
-                # ONE population, stated EXACTLY ONCE on the merged pill: FINISHED
-                # participants (earnings do not exist before the results page).
-                # The old two-item strip stated it twice; the merge states it
-                # once, which is the honesty the merge buys.
-                check(all(s.count('finished') == 1 for s in earn_items),
-                      f'…and states its FINISHED population exactly once ({earn_items})')
-                # THE TWO ITEMS' POPULATIONS ARE DIFFERENT AND MUST SAY SO
-                # (item 18): intro time averages everyone PAST INTRO, earnings
-                # covers only the FINISHED, because earnings do not exist before
-                # the results page. Sitting side by side with unstated
-                # denominators they would be read as sharing one.
-                check(all('avg' in s for s in intro_items),
-                      f'…the intro-time item names its average in words, and its '
-                      f'"past intro" population is distinct from the earnings '
-                      f'item\'s "finished" ({sums})')
-                # The intro-time average must count people still IN THE TASK —
-                # they finished the intro, so their measurement is complete.
-                # The staged session has exactly one finished participant, so a
-                # denominator above one proves the wider population is used.
-                n_intro = pg.evaluate(
-                    '''() => { const m = document.querySelector(
-                        '#summary .sum-item .sum-n');
-                       return m ? parseInt(m.textContent.replace(/\\D/g,''))
-                                : 0; }''')
-                check(n_intro > 1,
-                      f'the intro-time average counts everyone past intro, not '
-                      f'only participants who finished the STUDY '
-                      f'(denominator {n_intro})')
+                # ONE population per pill, stated EXACTLY ONCE, and it is the
+                # SAME finished population on both — the point of Julian's change.
+                # The old "past intro" wording is gone entirely.
+                check(all(s.count('finished') == 1 for s in sums)
+                      and not any('past intro' in s for s in sums),
+                      f'…each pill states its FINISHED population exactly once, '
+                      f'and the old "past intro" item is gone ({sums})')
+                # The staged overview has exactly TWO finished participants, so
+                # BOTH pills are over the same denominator of 2 — the
+                # finished-only population, no longer the wider "past intro" set.
+                check('of 2 finished' in time_items[0]
+                      and 'of 2 finished' in earn_items[0],
+                      f'both pills are over the two finished participants — one '
+                      f'shared finished population ({sums})')
                 # Not a row of the table (Julian was explicit).
                 check(pg.eval_on_selector_all(
                         'table.dash #summary', 'els => els.length') == 0,
@@ -993,6 +1006,112 @@ def check_pills(base):
         browser.close()
 
 
+def check_quiz_mistakes(base):
+    """THE QUIZ-MISTAKES PANEL in a real browser: it opens on the Quiz header's
+    ⓘ, renders real content, keeps the two passes apart, and — the reason a
+    browser check earns its place here — ESCAPES the chosen-option text into the
+    DOM. The panel is a fetch/JSON control like the main table, so its escaping
+    cannot be measured in-process (dashboard_test.py asserts the JSON and that
+    the renderer wraps every value in esc()); only a real DOM shows that a
+    hostile answer injects no element. Escape dismisses it.
+
+    Staged by PLANTING logs directly (deterministic; dashboard_test.py's D5b
+    proves the real force-advance produces the blank-submission shape)."""
+    from playwright.sync_api import sync_playwright
+    section('headless Chromium: the quiz-mistakes panel')
+    XSS = '<img src=x onerror="window.__xss=1">'
+    sess = ot.create_session('lab', num_participants=3)
+    codes = ot.participant_codes(sess)
+    for i, code in enumerate(codes):
+        ot.set_label(code, f'Seat 0{i + 1}')
+    # Seat 01: a first-pass miss on quiz1 with a HOSTILE chosen text, a second
+    # attempt underneath, and a re-read pass that gets it right — so the two
+    # passes are visibly separate and there is a later attempt to expand.
+    set_intro_log(codes[0], 1, [
+        {'n': 1, 't': 1.0, 'answers': {'quiz1': XSS, 'quiz2': 'Water'},
+         'wrong': ['quiz1']},
+        {'n': 2, 't': 2.0, 'answers': {'quiz1': 'YES', 'quiz2': 'Water'},
+         'wrong': []}])
+    set_intro_log(codes[0], 2, [
+        {'n': 1, 't': 3.0, 'answers': {'quiz1': 'YES', 'quiz2': 'Water'},
+         'wrong': []}])
+    # Seat 02: a real first-pass miss (an ordinary wrong option).
+    set_intro_log(codes[1], 1, [
+        {'n': 1, 't': 1.0, 'answers': {'quiz1': 'NO', 'quiz2': 'Metal'},
+         'wrong': ['quiz1', 'quiz2']}])
+    # Seat 03: a BLANK admin-advance submission (excluded and counted).
+    set_intro_log(codes[2], 1, [
+        {'n': 1, 't': 1.0, 'answers': {'quiz1': '', 'quiz2': ''},
+         'wrong': ['quiz1', 'quiz2']}])
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(ignore_default_args=['--hide-scrollbars'])
+        pg = browser.new_page(viewport={'width': 1440, 'height': 900})
+        pg.goto(f'{base}/login')
+        pg.fill('input[name=username]', 'admin')
+        pg.fill('input[name=password]', 'admin')
+        pg.click('button[type=submit], input[type=submit]')
+        pg.goto(f'{base}{ed.URL_BASE}/{sess.code}')
+        pg.wait_for_selector('tbody tr td.c-label', timeout=15000)
+        # INERT UNTIL CLICKED: the only footprint on the live table is the ⓘ.
+        check(pg.eval_on_selector_all('.qm-overlay.open',
+                                      'els => els.length') == 0,
+              'the panel is closed until the ⓘ is clicked')
+        pg.click('#quiz-mistakes-info')
+        pg.wait_for_selector('.qm-overlay.open .qm-panel', timeout=15000)
+        cards = pg.eval_on_selector_all('.item-card', 'els => els.length')
+        check(cards == 2, f'one item card per quiz item ({cards})')
+        # PASSES NOT POOLED, visible: the first card carries BOTH a first-pass
+        # and a re-read sub-panel, side by side.
+        passes = pg.evaluate('''() => { const c =
+            document.querySelector('.item-card');
+            return c ? [...c.querySelectorAll('.pass')].map(e => e.className)
+                     : []; }''')
+        check(any('first' in c for c in passes)
+              and any('reread' in c for c in passes),
+              f'each item shows a first pass AND a re-read pass ({passes})')
+        # ESCAPING — the point of the browser leg: the hostile answer text
+        # produced NO element and did not run, and is shown as TEXT verbatim.
+        injected = pg.eval_on_selector_all('.qm-overlay img',
+                                           'els => els.length')
+        ran = pg.evaluate('() => window.__xss || 0')
+        check(injected == 0 and not ran,
+              f'the hostile answer text injected NO element and did not run '
+              f'(imgs {injected}, ran {ran})')
+        shown = pg.evaluate(
+            "() => document.querySelector('.qm-overlay').textContent")
+        check(XSS in shown,
+              'the hostile answer text is shown as escaped TEXT, verbatim')
+        # The exclusion note states the blank count AND who — a paired presence.
+        note = pg.evaluate('''() => { const e =
+            document.querySelector('.qm-excluded'); return e ? e.textContent : ''; }''')
+        check('1 blank submission excluded' in note and 'Seat 03' in note,
+              f'the exclusion note states the blank count and who ({note!r})')
+        # A later attempt expands and collapses.
+        exp = pg.query_selector('.expander')
+        check(exp is not None, 'a participant with later attempts has an expander')
+        if exp:
+            before_open = pg.eval_on_selector_all(
+                '.later-row:not(.hidden)', 'els => els.length')
+            exp.click()
+            after_open = pg.eval_on_selector_all(
+                '.later-row:not(.hidden)', 'els => els.length')
+            check(after_open > before_open,
+                  f'the expander reveals a hidden later-attempts row '
+                  f'({before_open} -> {after_open})')
+        pg.screenshot(path=os.path.join(OUT_DIR, 'quiz_mistakes.png'),
+                      full_page=True)
+        # ESCAPE dismisses it (the generic-modal convention settled today).
+        pg.keyboard.press('Escape')
+        pg.wait_for_function(
+            "() => !document.querySelector('.qm-overlay').classList"
+            ".contains('open')", timeout=5000)
+        check(pg.eval_on_selector_all('.qm-overlay.open',
+                                      'els => els.length') == 0,
+              'Escape dismisses the panel')
+        browser.close()
+
+
 def main():
     server = Server()
     server.start()
@@ -1002,6 +1121,7 @@ def main():
         check_browser(server.base, lab, pro)
         check_row_order(server.base)
         check_pills(server.base)
+        check_quiz_mistakes(server.base)
         # The overview last: it is the biggest staging job, and running it after
         # the assertions above means a failure there is not hidden behind it.
         check_overview(server.base, stage_overview(server.base))
