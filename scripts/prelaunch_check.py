@@ -222,12 +222,101 @@ def auth_level_problems():
              'port')]
 
 
+def dashboard_problems():
+    """(label, current, must_be) for a broken experimenter dashboard.
+
+    THE LAUNCH HALF OF THE 2026-08-17 FIX (the runtime half is the widened
+    `except` in outro.vars_for_admin_report; see DECISIONS.md). The empirical
+    blast-radius study (`_ai/dashboard_blast_radius.md`) found a drift that
+    BOOTS CLEAN and then 500s oTree's own admin Report tab the first time an
+    operator clicks it mid-session: URL_BASE renamed consistently INSIDE
+    experimenter_dashboard.py while the cross-file read in
+    outro.vars_for_admin_report is missed. A boot-time banner cannot catch it
+    because the boot succeeds; only a click three hours into a session does.
+    This guard turns that click into a launch-blocking failure, while somebody
+    can still fix the rename.
+
+    FOUR CHECKS, each REPORTED as a normal prelaunch problem (never raised, the
+    idiom of every function above): the module imports; URL_BASE exists and is
+    a path (the drift's root cause — catches the rename even though the runtime
+    fix now falls back rather than 500ing); vars_for_admin_report returns a
+    plausible URL without raising (oTree calls it UNGUARDED); and the routes
+    actually install. Importing `outro` here runs the same boot-time install a
+    real server would, so the route check sees the real outcome.
+
+    Deliberately in THIS script, not in settings._prelaunch_problems(): that
+    banner is advisory and prints on every dev boot, and importing the app to
+    build the route table is a deploy-time cost, not a per-render one — the
+    same reasoning that keeps the asset hashing here.
+    """
+    import types
+    LABEL = 'experimenter dashboard'
+    problems = []
+
+    try:
+        import experimenter_dashboard as ed
+    except Exception as exc:
+        # The module both the standalone dashboard and the Report tab read is
+        # broken at import — nothing else here can be checked.
+        return [(f'{LABEL} (import experimenter_dashboard)',
+                 f'{type(exc).__name__}: {exc}',
+                 'importable — the dashboard module fails at import, which '
+                 'takes the whole boot down (it is imported unguarded at the '
+                 'end of outro/__init__.py)')]
+
+    base = getattr(ed, 'URL_BASE', None)
+    if not (isinstance(base, str) and base.startswith('/')):
+        problems.append(
+            (f'{LABEL} (experimenter_dashboard.URL_BASE)', repr(base),
+             "a URL path like '/experimenter_dashboard' — the Report tab and "
+             'the routes both read this constant, so a rename that misses a '
+             'cross-file reader boots clean and then 500s the admin Report tab '
+             'mid-session (blast-radius scenario 4)'))
+
+    try:
+        import outro
+        probe = types.SimpleNamespace(
+            session=types.SimpleNamespace(code='PRELAUNCH_PROBE'))
+        url = outro.vars_for_admin_report(probe).get('dashboard_url')
+        if not (isinstance(url, str) and url.startswith('/')
+                and 'PRELAUNCH_PROBE' in url):
+            problems.append(
+                (f'{LABEL} (outro.vars_for_admin_report dashboard_url)',
+                 repr(url),
+                 'a URL path ending in the session code — the admin Report tab '
+                 'embeds this value; a blank or malformed one leaves the tab '
+                 'with no working dashboard link'))
+    except Exception as exc:
+        problems.append(
+            (f'{LABEL} (outro.vars_for_admin_report raised)',
+             f'{type(exc).__name__}: {exc}',
+             'a dict without raising — oTree calls it UNGUARDED, so any raise '
+             "500s the admin Report tab an operator may click mid-session"))
+
+    try:
+        outcome = ed.install_dashboard_route()
+        if not ed.dashboard_is_installed():
+            problems.append(
+                (f'{LABEL} (routes in otree.urls.routes)',
+                 f'not installed (install_dashboard_route returned {outcome!r})',
+                 'installed — the /experimenter_dashboard routes are absent, so '
+                 'the operator dashboard 404s'))
+    except Exception as exc:
+        problems.append(
+            (f'{LABEL} (install_dashboard_route)', f'{type(exc).__name__}: {exc}',
+             'a clean install — the route builder raised (version drift), so '
+             'the dashboard will not be reachable'))
+
+    return problems
+
+
 def main(argv):
     if '--stamp-assets' in argv:
         return stamp_assets()
 
     problems = (settings._prelaunch_problems() + lab_module_problems()
-                + asset_problems() + auth_level_problems())
+                + asset_problems() + auth_level_problems()
+                + dashboard_problems())
     if not problems:
         print("PRE-LAUNCH OK — no testing/placeholder values detected, "
               "and the asset version matches the files under _static/.")

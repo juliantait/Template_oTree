@@ -1131,6 +1131,92 @@ def main():
     check(ed.note_admin_tab_problems() == 'ok',
           'note_admin_tab_problems reports ok against the installed oTree')
 
+    # --- THE REALISTIC DRIFT, OVER REAL HTTP (blast-radius scenario 4). The
+    # D9 case above breaks the module IMPORT (ImportError, always caught). The
+    # drift that actually shipped is different and was NOT caught: URL_BASE
+    # renamed consistently INSIDE experimenter_dashboard.py, the cross-file read
+    # in vars_for_admin_report missed — an AttributeError, which the old
+    # `except ImportError` let through, 500ing oTree's OWN Report tab (called
+    # unguarded) the first time an operator clicked it mid-session. Delete the
+    # attribute to reproduce the rename and drive the tab over real HTTP.
+    real_url_base = ed.URL_BASE
+    del ed.URL_BASE
+    try:
+        r = admin.get(f'/AdminReport/{lab.code}')
+        # PAIRED PRESENCE, not "< 500" alone (CLAUDE.md testing standard): the
+        # tab must actually RENDER with a working dashboard link (the literal
+        # fallback), not merely avoid a 500 by serving a blank page. status==200
+        # here is the regression guard — reverting the widened except makes this
+        # AttributeError escape and the tab 500 again.
+        check(r.status_code == 200
+              and f'/experimenter_dashboard/{lab.code}' in r.text,
+              f'the Report tab does NOT 500 when URL_BASE cannot be read — it '
+              f'falls back to the literal base URL and still links the '
+              f'dashboard (status {r.status_code})')
+    finally:
+        ed.URL_BASE = real_url_base
+    r = admin.get(f'/AdminReport/{lab.code}')
+    check(r.status_code == 200 and f'{URL}/{lab.code}' in r.text,
+          'and with URL_BASE restored the Report tab renders normally again '
+          '(the check above tested the broken state, not an always-200 page)')
+
+    # --- SCENARIO 4′: the install-failure REPORTER must not raise on the symbol
+    # it reports. install_dashboard_route_or_note formats a "not installed"
+    # message; when URL_BASE is the missing symbol, an f-string reading
+    # {URL_BASE} raises a SECOND NameError while reporting the first, and that
+    # escapes the unguarded call site in outro/__init__.py and kills the boot.
+    # Force install to raise AND remove URL_BASE, then assert the handler
+    # REPORTS (returns 'drift') rather than raising.
+    real_install = ed.install_dashboard_route
+    real_url_base2 = ed.URL_BASE
+    ed.install_dashboard_route = lambda: (_ for _ in ()).throw(
+        NameError("name 'URL_BASE' is not defined"))
+    del ed.URL_BASE
+    try:
+        raised = None
+        try:
+            outcome = ed.install_dashboard_route_or_note()   # must NOT raise
+        except Exception as exc:
+            raised = exc
+        check(raised is None and outcome == 'drift',
+              'the install-failure reporter returns drift WITHOUT raising even '
+              'when URL_BASE — the very symbol it names — is the missing one '
+              f'(raised={raised!r})')
+    finally:
+        ed.install_dashboard_route = real_install
+        ed.URL_BASE = real_url_base2
+    # PAIRED POSITIVE: with the real install restored the same reporter returns
+    # the healthy outcome, so the check above tested the failure path rather
+    # than a function that returns 'drift' unconditionally.
+    check(ed.install_dashboard_route_or_note() == ed.ALREADY,
+          'and on a healthy install the same reporter returns ALREADY')
+
+    section('D10. the PRE-LAUNCH guard catches a broken dashboard')
+    # THE LAUNCH HALF of the 2026-08-17 fix. The runtime widening above stops
+    # the Report tab 500ing; this stops the underlying rename ever SHIPPING —
+    # scripts/prelaunch_check.dashboard_problems() checks the module imports,
+    # URL_BASE exists, vars_for_admin_report returns a plausible URL without
+    # raising, and the routes install, reporting each as a normal prelaunch
+    # problem. Caught at launch, while somebody can still fix it, rather than by
+    # a curious click three hours into a session.
+    sys.path.insert(0, os.path.join(REPO_ROOT, 'scripts'))
+    import prelaunch_check as pc
+    check(pc.dashboard_problems() == [],
+          'the dashboard section of prelaunch_check passes on the healthy '
+          'template (no false positive)')
+    _rub = ed.URL_BASE
+    del ed.URL_BASE
+    try:
+        broken = pc.dashboard_problems()
+        check(any('URL_BASE' in label for label, _c, _m in broken),
+              f'…and REPORTS a problem naming URL_BASE when the constant has '
+              f'been renamed away (got {[l for l, _, _ in broken]})')
+    finally:
+        ed.URL_BASE = _rub
+    check(pc.dashboard_problems() == [],
+          'the guard is clean again once URL_BASE is restored (it was testing '
+          'the broken state, not failing unconditionally)')
+
     # ------------------------------------------------------------------ E
     section('E. strictly read-only')
     before = participant_dump()

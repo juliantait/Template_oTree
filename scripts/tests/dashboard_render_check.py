@@ -477,33 +477,37 @@ def check_overview(base, sess):
                     '#summary .sum-item',
                     'els => els.map(e => e.textContent.replace(/\\s+/g," ")'
                     '.trim())')
-                # THREE pills now: the two averages plus TOTAL PAYMENTS
-                # (2026-08-17). Each says in WORDS what it is — "avg …" or
-                # "total …" — so none can be misread as another participant row.
-                avgs = [s for s in sums if 'avg' in s]
-                totals = [s for s in sums if 'total' in s]
-                check(len(sums) == 3 and len(avgs) == 2 and len(totals) == 1,
-                      f'the summary strip shows the two averages AND the total '
-                      f'payments pill ({sums})')
-                check(all('avg' in s for s in avgs)
-                      and all('total' in s for s in totals),
-                      f'…and each says in words WHAT it is (avg / total), so it '
-                      f'cannot be read as another participant ({sums})')
-                # TOTAL PAYMENTS sums the same earnings over the FINISHED
-                # population and states that denominator, the discipline the
-                # averages follow (2026-08-17).
-                check(all('finished' in s for s in totals),
-                      f'…and the total payments pill names its FINISHED '
-                      f'population ({totals})')
-                # THE TWO DENOMINATORS ARE DIFFERENT AND MUST SAY SO (item 18):
-                # intro time averages everyone PAST INTRO, earnings only the
-                # FINISHED, because earnings do not exist before the results
-                # page. Two pills side by side with unstated denominators would
-                # be read as sharing one.
-                check(any('past intro' in s for s in avgs)
-                      and any('finished' in s for s in avgs),
-                      f'…and each average names its own population, because they '
-                      f'are not the same one ({avgs})')
+                # TWO items now (Julian, 2026-08-17): the intro-time average and
+                # the MERGED EARNINGS pill, which carries avg AND total as two
+                # subsections over ONE population. Each item says in WORDS what
+                # its numbers are, so none can be misread as another participant.
+                intro_items = [s for s in sums if 'past intro' in s]
+                earn_items = [s for s in sums if 'finished' in s]
+                check(len(sums) == 2 and len(intro_items) == 1
+                      and len(earn_items) == 1,
+                      f'the summary strip shows the intro-time average and the '
+                      f'merged earnings pill — two items, not three ({sums})')
+                # THE MERGED EARNINGS PILL names BOTH its avg and its total in
+                # words, so a reader tells them apart at a glance without a
+                # tooltip — the whole point of merging them.
+                check(all('avg' in s and 'total' in s for s in earn_items),
+                      f'…the earnings pill labels BOTH subsections, avg and '
+                      f'total, in words ({earn_items})')
+                # ONE population, stated EXACTLY ONCE on the merged pill: FINISHED
+                # participants (earnings do not exist before the results page).
+                # The old two-item strip stated it twice; the merge states it
+                # once, which is the honesty the merge buys.
+                check(all(s.count('finished') == 1 for s in earn_items),
+                      f'…and states its FINISHED population exactly once ({earn_items})')
+                # THE TWO ITEMS' POPULATIONS ARE DIFFERENT AND MUST SAY SO
+                # (item 18): intro time averages everyone PAST INTRO, earnings
+                # covers only the FINISHED, because earnings do not exist before
+                # the results page. Sitting side by side with unstated
+                # denominators they would be read as sharing one.
+                check(all('avg' in s for s in intro_items),
+                      f'…the intro-time item names its average in words, and its '
+                      f'"past intro" population is distinct from the earnings '
+                      f'item\'s "finished" ({sums})')
                 # The intro-time average must count people still IN THE TASK —
                 # they finished the intro, so their measurement is complete.
                 # The staged session has exactly one finished participant, so a

@@ -838,6 +838,19 @@ admin page, this one included — so `scripts/prelaunch_check.py` fails a launch
 that has not set it to `STUDY`. This page shows earnings and per-participant
 conduct; treat it like the data exports.
 
+**A broken dashboard may fail a LAUNCH loudly, but never a running session
+silently** (DECISIONS.md, 2026-08-17). A bug inside a row degrades to an error
+row, a bug in a handler to the error panel, and a failed route install to a 404 —
+never a participant 500 (that is the module's first rule). The one drift that used
+to boot clean and then 500 oTree's own admin **Report tab** mid-session — the
+dashboard's `URL_BASE` renamed while the cross-file read in
+`outro.vars_for_admin_report` was missed — is now guarded in both directions: at
+runtime that read falls back to the literal URL rather than 500ing the tab, and
+`scripts/prelaunch_check.py` fails the launch when the constant has drifted, so it
+is caught while it can still be fixed. A genuine import-time error in the module
+is *deliberately* left to fail the boot: whoever is launching sees it and fixes
+it, which is the whole point of failing at launch rather than mid-session.
+
 **The settings, all read at request time** (so tuning them needs only a server
 restart, and deleting any line falls back to the same default). They are
 module-level settings rather than session-config parameters on purpose:
@@ -865,22 +878,25 @@ column header lists all four, read from these settings on every poll, so an
 operator can see what counts as too long without opening `settings.py`. An amber
 row additionally names the limit it tripped.
 
-**The summary pills at the foot each state their POPULATION**, and it differs
-from one to the next: **avg intro time** over everyone who has *completed the
+**The summary items at the foot each state their POPULATION**, and it differs
+from one to the next. **avg intro time** averages everyone who has *completed the
 intro* (whatever they are doing now — a participant in round 4 finished the intro
-long ago, so their measurement is complete), and **avg earnings** over *finished*
-participants only, because `earned` does not exist until the results page
-computes it. A still-running intro timer is excluded from the first: averaging a
-number that is still going up would move the mean every two seconds.
+long ago, so their measurement is complete); a still-running intro timer is
+excluded, because averaging a number that is still going up would move the mean
+every two seconds.
 
-A third pill, **total payments**, sums the *same* `earned` figure the rows show,
-over that same *finished* population (`of N finished`), so the one dashboard tab
-carries the payment picture and nobody has to open oTree's own Payments page. It
-is computed **server-side** from the same earnings read the row cells come from —
-not re-added in the browser — so the strip total can never disagree with the
-column it totals. Its mean is not repeated on it: the `avg earnings` pill beside
-it already shows exactly that. There is no `participation_fee` line — the
-template keeps that fee at zero (one payment ledger; see the fee guard).
+**earnings** is one item carrying an **avg** and a **total** subsection, both over
+*finished* participants only (`of N finished`, stated once) — `earned` does not
+exist until the results page computes it. The two were separate items until
+2026-08-17; merged because both run over the *same* population, they no longer
+read as two different denominators sitting side by side. The **total** is summed
+**server-side** from the same earnings read the row cells come from — not re-added
+in the browser — so it can never disagree with the column it totals; the **avg**
+is that one server figure over its count, not a second sum of the cells, so the
+two subsections cannot disagree either. So the one dashboard tab carries the
+payment picture and nobody has to open oTree's own Payments page. There is no
+`participation_fee` line — the template keeps that fee at zero (one payment
+ledger; see the fee guard).
 
 **Adding a column** is three marked places and nothing else — compute the value
 in `_participant_row` (`ADD A COLUMN HERE`), add a `<th>` to `_COLGROUP_HTML`,
@@ -948,7 +964,7 @@ Chromium; on a box without root see `docs/headless_chromium_recipe.md`.
 |---|---|---|
 | **Asks** | is this *configuration* safe to launch? | will the *running study* survive being upgraded to this code? |
 | **Kind** | static, config only, no server, instant | dynamic: boots a real `otree prodserver` and drives real HTTP |
-| **Catches** | `REPLACE_*` completion codes, `DEBUG` still on, `verify_quiz=False` left in | a page that 500s for a participant whose state predates the new code; a missing DB column; a page that 500s with JS-produced hidden fields empty |
+| **Catches** | `REPLACE_*` completion codes, `DEBUG` still on, `verify_quiz=False` left in, `OTREE_AUTH_LEVEL` not locked to `STUDY`, a **drifted experimenter dashboard** (renamed `URL_BASE`, a `vars_for_admin_report` that raises, routes that fail to install) | a page that 500s for a participant whose state predates the new code; a missing DB column; a page that 500s with JS-produced hidden fields empty |
 | **Run it** | in the target environment, before opening a study to participants | before every deploy that lands on a database with participants in it |
 
 Neither replaces the other: pre-launch cannot detect a broken upgrade path, and

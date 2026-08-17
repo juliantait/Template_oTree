@@ -727,17 +727,30 @@ def vars_for_admin_report(subsession):
     extension point carries it — no oTree page is templated over or patched).
 
     INTERNALLY DEFENSIVE, deliberately: oTree calls this UNGUARDED
-    (otree/views/admin.py, AdminReport.get_context_data), so a raise here
-    500s the Report tab. The only thing that can fail is the import, so that
-    is the only thing caught — no bare except across the function. The
-    fallback literal duplicates URL_BASE on purpose: it is the belt for the
-    one state where the shared constant is unreachable, and a tab that still
-    links to the right place beats one that is down because an import broke.
+    (otree/views/admin.py, AdminReport.get_context_data), so ANY raise here
+    500s the Report tab — the one Julian worried an operator would click mid
+    session. Two things can fail, not one: the `import` can fail (the module
+    is absent), AND reading `experimenter_dashboard.URL_BASE` can raise
+    `AttributeError` if the constant is renamed inside the dashboard file and
+    this cross-file read is missed (the realistic drift — proved empirically,
+    `_ai/dashboard_blast_radius.md` scenario 4, where it 500'd this tab while
+    every other page stayed up). An earlier version of this docstring claimed
+    "the only thing that can fail is the import"; that was wrong, and the
+    narrow `except ImportError` it justified let the AttributeError through.
+    So catch EVERYTHING and fall back to the literal base URL: a Report tab
+    that links to a possibly-stale URL beats one that is down. The fallback
+    literal duplicates URL_BASE on purpose — it is the belt for exactly the
+    state where the shared constant is unreachable.
+
+    This is the RUNTIME half of the fix; the LAUNCH half is
+    `scripts/prelaunch_check.py`'s dashboard section, which fails a launch when
+    URL_BASE has drifted so somebody fixes the rename before an operator meets
+    the stale link. See DECISIONS.md (2026-08-17).
     """
     try:
         import experimenter_dashboard
         base = experimenter_dashboard.URL_BASE
-    except ImportError:
+    except Exception:
         base = '/experimenter_dashboard'
     return dict(dashboard_url=f'{base}/{subsession.session.code}')
 
