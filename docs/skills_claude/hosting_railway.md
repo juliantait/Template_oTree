@@ -3,7 +3,8 @@
 Verified workflow, first used for `Experts/exp_pilots` on 2026-08-14 (live at
 `exp-pilots-production.up.railway.app`). Audience: bossman or any agent putting an
 oTree project from this template onto Railway. Update this file when the workflow
-improves.
+improves. Companion for the recruitment side:
+[`hosting_prolific.md`](./hosting_prolific.md).
 
 > **Scope of this file: the Railway PROCEDURE — tokens, CLI, GraphQL, the deploy
 > repo, study day.** What a hosted deploy needs in general, what `DATABASE_URL`
@@ -18,6 +19,15 @@ improves.
 > `scripts/start.sh` is a HOST-SIDE room-binding script run against an already
 > running server — it is not invoked at container boot and does not handle
 > `PORT`. `PORT` is honoured by the Dockerfile `CMD`.
+
+## Agent autonomy: what the token gets you and where a human is unavoidable
+
+With a project token **and an already-created project**, an agent can go end to
+end on its own: deploy the code, create the service, set env vars, generate the
+public domain, bind the session, and run the crash rehearsal. It **cannot** create
+the project or the Postgres (account owner, in the dashboard), and cannot do the
+custom-domain Cloudflare DNS step (a human, and only if a custom domain is chosen;
+the generated domain avoids it). See the `HUMAN STEP` markers below.
 
 ## Why Railway
 
@@ -73,12 +83,73 @@ CLI/API — dashboard only.
 | Restart | GraphQL `deploymentRestart(id)` |
 | RAM/CPU metrics | GraphQL `metrics(serviceId, startDate, measurements: [MEMORY_USAGE_GB, CPU_USAGE])` |
 
-GraphQL endpoint: `https://backboard.railway.app/graphql/v2`, header
+GraphQL endpoint: `https://backboard.railway.app/graphql/v2` (the
+`backboard.railway.com` host is an equivalent alias that serves the identical API
+and also works, and is what the tool-guide source used, so either is fine if you
+meet `.com` in the wild), header
 `Project-Access-Token: <token>`, POST a `{"query": ..., "variables": ...}` JSON
 payload **with curl** — python urllib gets Cloudflare 403 (error 1010). Pattern:
 write the payload to a JSON file, post it with a small curl script. IDs needed in
 payloads (projectId, environmentId, serviceId) come from `railway status` and the
 `serviceCreate`/deploy responses.
+
+## What a project token CANNOT do (so you attempt, then verify)
+
+A project token is scoped to one project's services. Three operations you might
+reach for return **`Not Authorized`**, and the point is the consequence, not the
+list:
+
+- `serviceUpdate` (renaming a service).
+- `serviceDomainAvailable` (checking whether a domain name is free).
+- creating a new **project** (and anything touching the account or another
+  project).
+
+Those need an **account token**, which is an account-owner operation in the
+dashboard, not something a project token can do:
+
+> **HUMAN STEP (no API for a project token).** Creating the project, and any
+> account-scoped action, is done by the account owner in the Railway dashboard.
+> A fresh agent cannot self-serve these with the project token it was handed.
+
+The one that bites is `serviceDomainAvailable`. **You cannot check a name is free
+before taking it,** so the workflow is never check-then-act. It is always
+**attempt, then verify** (next section).
+
+## Attempt, then verify: every Railway mutation
+
+**A Railway mutation's return value is not evidence it did anything.** The proven
+case: `serviceDomainUpdate` **returns `true` even when the requested name is
+already taken and nothing changes.** A create can likewise report success against
+a name you do not actually hold.
+
+So make this a rule for every state-changing call, not just domains:
+
+1. Run the mutation.
+2. **Re-query the real state**, e.g. `domains { serviceDomains { domain } }`,
+   or the `deployments`/`variables` query for what you changed.
+3. **Curl the host** for a `200` where a domain or deploy is involved.
+
+Never trust the mutation's own boolean. This is the same discipline as
+"Verifying a deploy actually shipped" below and the crash rehearsal: a green
+signal from the API is a claim, not a fact, and the only fact is the re-queried
+state and the live host answering.
+
+## Domains
+
+- Generated domains are a **single label**: `<service>-production.up.railway.app`
+  works, but `a.b.up.railway.app` fails TLS, because the wildcard cert covers one
+  level only. Do not build a two-label generated host.
+- `serviceDomainCreate` / `serviceDomainUpdate` are attempt-then-verify (above):
+  re-query `serviceDomains` and curl the host, do not trust the return.
+- **Custom domain:** Railway's cert issuance **fails while Cloudflare proxies the
+  record.** Add the DNS record **grey-clouded (proxy off, DNS-only)**, let the
+  cert issue, then turn the proxy back on if you want it (Cloudflare SSL mode must
+  be **Full (strict)**).
+
+  > **HUMAN STEP (no API).** The DNS record and its grey-cloud/orange-cloud
+  > toggle live in the DNS provider's dashboard (Cloudflare), not in Railway. A
+  > custom-domain deploy stalls here silently (the cert simply never issues)
+  > unless a person sets the record DNS-only until it lands.
 
 ## Env vars for the app service
 
@@ -93,6 +164,30 @@ OTREE_PRODUCTION=1               # debug off; omit during smoke tests to keep sk
 Never set `RESET_DB` as a standing variable. `PORT` is injected by Railway and
 `start.sh` honours it. `FORWARDED_ALLOW_IPS=*` is already in the template
 Dockerfile (needed behind any TLS proxy).
+
+## Deploy ORDER for a schema-changing build (order is load-bearing)
+
+When a build changes the database schema (a rounds change, a new model field, a
+page-sequence change), the reset must land **before** the new code boots, not
+after. Deploying the code first guarantees one boot against an incompatible
+database: the container dies, **Railway emails the account owner "Deploy
+Crashed"**, and the app **502s** until the reset lands. Correct order:
+
+1. `variableUpsert` `RESET_DB=1`.
+2. `railway up`. The new build's **first** boot already resets, so it never
+   meets the incompatible schema.
+3. `variableDelete` `RESET_DB`.
+4. Redeploy.
+
+**Step 3 is not optional.** Railway restarts containers on its own, and a restart
+with `RESET_DB` still set **destroys collected data**. Deleting the variable is
+what stops the next spontaneous restart from wiping a live study.
+
+Two guardrails from `CLAUDE.md` still bind here: `RESET_DB=1` is the **only**
+deliberate wipe (the boot guard leaves a populated database alone otherwise), and
+**`NUM_ROUNDS` is fixed at import, and a rounds or page-sequence change must never
+be deployed over a live session at all.** A schema-changing deploy is for a study
+between sessions, never one mid-flight.
 
 ## Hard-won gotchas
 

@@ -144,6 +144,18 @@ backwards. (The shipped template has more Stag Hunt content in `intro` than in
 `main` — that is an artefact of it being a placeholder that needed something
 concrete to describe, not a pattern to copy.)
 
+0. **Start your own decision log, before you change anything else.** Copy
+   [`docs/DECISIONS_stub.md`](docs/DECISIONS_stub.md) to the repository root as
+   `DECISIONS.md`, put your study's name in the title, and **delete the
+   template's own `DECISIONS.md`** (it logs how the *template* was built, not your
+   study, so carrying it over hands the next agent the wrong precedent). Your
+   study now has a clean, study-specific log. Then **record each deliberate
+   choice with its reason in the same change that makes it**, newest first: a
+   forked study starts with no precedent, and the failure mode that eats
+   undocumented decisions is not ignorance but **helpfulness**: a missing config
+   value reads as an unfinished port and gets filled in, inert code reads as dead
+   weight and gets deleted, a constant only coherent at one value reads as a
+   tunable knob and gets tuned. The stub explains this and shows the entry format.
 1. **Decide the audience and the recruitment settings** — lab or Prolific,
    chosen via the `recruitment` profile plus the module flags and (for
    Prolific) the completion codes; see the parameter scheme below. Then shape
