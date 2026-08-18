@@ -156,6 +156,13 @@ concrete to describe, not a pattern to copy.)
    value reads as an unfinished port and gets filled in, inert code reads as dead
    weight and gets deleted, a constant only coherent at one value reads as a
    tunable knob and gets tuned. The stub explains this and shows the entry format.
+   **The same fork-time step applies to `CODEBOOK.md`:** it opens with an Analyst
+   quick start built around the template's placeholder slider outcome, so replace
+   that quick start with your study's own primary outcomes, exclusions and pooling
+   caveats, and add your study fields to its primary tier (the file marks each
+   spot with a PROMPT box). Do it in the same change that swaps the task in
+   `main`, so an analyst opening the codebook cold sees your outcome first, not
+   the placeholder.
 1. **Decide the audience and the recruitment settings** — lab or Prolific,
    chosen via the `recruitment` profile plus the module flags and (for
    Prolific) the completion codes; see the parameter scheme below. Then shape

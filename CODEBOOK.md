@@ -6,7 +6,248 @@ export is only as trustworthy as this file.
 
 ---
 
-## Exit codes (`participant.exit_code`)
+## Analyst quick start
+
+Read this before the field list. It answers what to load, what carries the
+study, what to drop, and what not to pool, so none of it has to be inferred from
+a field dictionary. Defining a field tells you what it holds, not whether to
+care about it; that is what this section and the tiers below are for.
+
+### a. Unit of observation, and how the levels join
+
+The task app `main` has **one row per participant per round** (`main.Player`,
+rounds `1..C.NUM_ROUNDS`, fewer if the config runs fewer). The other three apps
+(`before`, `intro`, `outro`) have **one row per participant** in practice
+(`intro` has a round 2 that is the lab re-read pass, empty for everyone who
+never takes it). Participant-level fields (`participant.*`, `participant_extra`)
+are one row per participant.
+
+Join on the **participant code** (oTree's `participant.code`, present on every
+app's `Player` export and on the participant-level frame). To get a
+one-row-per-participant analysis frame, aggregate the per-round `main.Player`
+rows up to the participant (sum or mean over rounds, or pick the round you
+model) and merge onto the one-row-per-participant columns from `before`,
+`intro`, `outro` and `participant`. To attach design or treatment to each round
+instead, broadcast the participant-level columns down onto the round rows.
+
+### b. Primary outcomes, and where they live
+
+The shipped placeholder primary outcome is **`main.Player.slider_payoff_points`**
+(int, `0..100`): the value the participant picks on the slider elicitation on the
+task page. It is per round, so it is the outcome you model round by round, and it
+is defined in full under "The payment record" in the primary tier below. The
+treatment variable is **`participant.treatment_group`** (see "Treatment
+assignment"), the randomised cell each analysis conditions on.
+
+> **PROMPT FOR A FORKED STUDY.** Replace this with YOUR primary outcomes. When
+> you swap the task in `main`, `slider_payoff_points` goes with it, so name the
+> column or columns your task elicits, say at what level each is measured (per
+> round or per participant), and list any secondary or pre-registered outcomes
+> here, so an analyst opening this file cold sees the outcome before the
+> telemetry. Add the fields themselves to the primary tier below.
+
+### c. Exclude before analysing anything
+
+Drop these rows before computing anything:
+
+- **No-JavaScript rows.** A participant whose script never ran posts every
+  JS-filled column blank. On the task page `slider_payoff_points`,
+  `focus_trace_departures`, `focus_trace_unfocused_ms` and `client_ms` come back
+  NULL together on a round that still submits; blank is stored, not rejected (see
+  each field entry). That row is a real submission with no measured input, not a
+  zero. Identify it by the whole block of JS-filled columns being blank at once,
+  never by one column.
+- **Admin force-advanced rows.** A row moved on by the admin "advance slowest
+  participant" control, or any skip control, is **fabricated**, not measured. It
+  must be **EXCLUDED, not repaired or imputed**: the values were never the
+  participant's own input.
+- **Test-as-participant and debug rows.** Any live end-to-end walk done as a
+  participant (pre-launch fuzzing, a click-through under DEBUG, a
+  `quiz_verify=False` clickthrough) leaves real-looking rows. Exclude the
+  sessions and participants you created for testing before you analyse;
+  cross-check `exit_code` and the session name against your launch record.
+
+> **PROMPT FOR A FORKED STUDY.** Add YOUR study-specific exclusions here
+> (attention-check failures, duplicate entrants you chose to drop, pilot
+> sessions, a soft-launch wave you are not pooling). Keep the three template
+> exclusions above: they apply to every study built from this template.
+
+### d. What does NOT pool across dates
+
+Nothing in the shipped template changes meaning mid-study, so there is nothing
+to list yet. This is where such a break would otherwise hide.
+
+> **PROMPT FOR A FORKED STUDY.** List any column that was renamed or changed
+> meaning between data-collection waves, with the date and both spellings, so an
+> analyst does not silently pool two different things across the boundary. The
+> event that breaks pooling is a **family-prefix rename** like this template's
+> own `ai_safety_*` to `tab_monitor_*` and its `capture_*` to `telemetry_*`
+> regrouping (both done while the template had no data, so nothing here is
+> affected): one concept living under two column names on either side of a date.
+> If you rename a live column, record it here AND in the spare-column repurpose
+> log below.
+
+---
+
+## Primary measures: the elicited outcome, the treatment, the stimulus
+
+The columns any analysis needs first: the outcome you model, and the treatment
+and stimulus you condition on. The shipped placeholder outcome is
+`main.Player.slider_payoff_points` (per round); the treatment is
+`participant.treatment_group`. Each field in this tier opens with a line on what
+it is FOR, not only what it holds. A forked study adds its own outcome and design
+columns to this tier (see the Analyst quick start).
+
+### The payment record — ONE ledger (J1, 2026-08-13)
+
+**`outro.Player.earned` IS the payment record**: show-up fee + the
+`payment_num_rewarded` randomly selected rounds + the quiz bonus, exactly as the
+participant's receipt states it. Since 2026-08-13 it is mirrored — once, when
+the results page computes payment (`outro.compute_final_payoff`) — into
+oTree's own **`participant.payoff`**, so the admin Payments page and the wide
+export's `participant.payoff` column show the same figure the participant was
+shown. (Precisely: `participant.payoff` is stored as `earned −
+participation_fee`, de-converted from points when `USE_POINTS` is on, because
+the admin page displays `payoff × conversion + participation_fee`; this
+template ships `USE_POINTS=False` and `participation_fee=0`, where the stored
+value is `earned` itself.)
+
+**What it is for:** `earned` is the reconciliation figure, the amount a
+participant was actually paid. Use it to check and issue payment, not as a
+behavioural outcome; the shipped outcome you model is the elicited
+`slider_payoff_points`, listed under "What is NOT a payment record" below.
+
+#### THE ITEMISATION RULE — a total is not a payment instruction (2026-08-14)
+
+> **ANY PAYMENT COMPONENT PAID OUTSIDE OTREE MUST STILL BE REPRESENTED INSIDE
+> OTREE, OR THE ADMIN PAYMENTS PAGE BECOMES A PARTIAL FIGURE THAT LOOKS LIKE A
+> TOTAL.** Corollary: **on Prolific the components are paid by DIFFERENT
+> MECHANISMS** — the base as the study reward, the bonus through the bonus
+> payment flow — **so the total alone is not enough; the bonus must be
+> separately visible.**
+
+Raised by the exp_pilots bossman. `earned` being CORRECT is not the same
+property as `earned` being READABLE component by component, and only the
+second one lets somebody pay. The three components are each recorded, and they
+reconstruct `earned` exactly:
+
+| Component | Column / source | Prolific mechanism |
+| --- | --- | --- |
+| base (show-up fee) | `payment_show_up` — a **session-config value**, not a per-participant column; on the receipt as "Base payment" | study reward |
+| decision bonus | **`outro.Player.selected_sum`** — sum of the `payment_num_rewarded` selected rounds | bonus payment |
+| quiz bonus | **`outro.Player.quiz_bonus_awarded`** | bonus payment |
+| total | **`outro.Player.earned`** = the three above; mirrored once into `participant.payoff` | — |
+
+So the **bonus figure a Prolific payer needs is `selected_sum +
+quiz_bonus_awarded`**, and it is recoverable from the app export today. The
+admin Payments page shows the total ONLY (`participation_fee` ships 0.00, so
+that one figure covers base plus bonus) — correct, but not actionable where two
+mechanisms pay. Whether `participation_fee` should carry the base is an open
+decision; it changes what these columns mean, so nothing has moved yet.
+`scripts/tests/payoff_ledger_test.py` §9 asserts the bonus in isolation as well as the
+total, and records the admin-page gap as measured.
+
+**What is NOT a payment record:**
+
+- **`main.Player.slider_payoff_points`** — int / blank, `0..100`. The value the
+  participant PICKED on the slider elicitation (the placeholder task,
+  `main/game.html`). It is copied into `round_payoff` in
+  `GameStart.before_next_page`, so it is the raw input and `round_payoff` is the
+  paid-out form. **Blank means the slider was never moved** (a no-JS or
+  untouched submit posts nothing) — that round then pays 0; blank is stored, not
+  rejected. A study that replaces the slider task replaces this column.
+  **What it is for:** this is the shipped PRIMARY OUTCOME, the participant's
+  elicited choice, and it is the column you model round by round; a forked study
+  swaps it for its own outcome (see the Analyst quick start).
+- **`main.Player.round_payoff`** — the game's per-round result (the value the
+  payoff page shows; for the shipped task, the chosen `slider_payoff_points`).
+  It feeds `participant.payoff_vector`, from which only
+  `payment_num_rewarded` rounds are actually paid; summing it tells you what the
+  session *generated*, not what anyone was paid.
+  **What it is for:** the paid-out form of the per-round result; use it to see
+  what the task produced each round, as an intermediate between the elicited
+  input and `earned`, not as the outcome itself.
+- **`participant.payoff_vector`** — the per-round record across the task, one
+  entry per round, missing-value sentinels included. The raw material of
+  payment, not its result.
+  **What it is for:** the per-round audit trail behind payment; reach for it
+  when reconstructing how `earned` was reached, not as an outcome.
+- **oTree's per-round `payoff` column — DELIBERATELY GONE from the export**
+  (`AUTO_TABULATE_PAYOFFS=False` in settings.py; oTree omits the column
+  entirely, and a build that writes `player.payoff` is refused at boot by
+  `payoff_guard` — oTree's own setter also raises under that flag, but inside
+  a participant's request, which is why the check moved to start-up).
+  **An export from before
+  2026-08-13 carries `main.Player.payoff`; one from after does not. NO DATA
+  WAS LOST**: the same values now live in `round_payoff` and, as ever, in
+  `payoff_vector`. Before this change `participant.payoff` was the running SUM
+  of every round's raw value — a number that matched nothing anybody was paid
+  — while `earned` held the real figure: two ledgers, and the admin page read
+  the wrong one.
+- A **non-completer's `participant.payoff` is 0** (they never reached the
+  results page, so the one write never ran). Before this change it held the
+  meaningless running sum; 0-until-paid is the honest value. Early-exit
+  participants are handled outside this pipeline (Prolific pays through the
+  platform).
+
+Pinned by `scripts/tests/payoff_ledger_test.py`: the admin-visible figure equals
+`earned`, the value survives a Results re-render, `player.payoff` writes
+raise, and the per-round column is absent from the export.
+
+### Treatment assignment (`participant.treatment_group`)
+
+The treatment cell a participant was assigned. A **participant field** (exported
+at participant level), holding one of `settings.TREATMENT_CELLS` — shipped as the
+placeholder cells `row` / `column`, to be replaced wholesale by a real study.
+
+**What it is for:** the randomised assignment every analysis conditions on, the
+primary right-hand-side variable; you compare the outcome across its cells. A
+forked study sets its own cells and keeps the assignment mechanism.
+
+**Assigned ON ARRIVAL, not at session creation (changed 2026-08-18).** The cell
+is assigned the moment the participant first reaches the **instructions page**
+(`intro.instructing`), by `before.treatment_assignment.assign_on_arrival`. Until
+then the field is the empty string `''`, set at session creation
+(`before.creating_session` → `treatment_assignment.init_unassigned`) so the
+column is never blank.
+
+**So `''` is meaningful: it means "never took a cell".** A participant who
+abandoned at consent, declined consent (exit `-1`), or was screened out by the
+device gate (exit `-4`) exports `treatment_group == ''` — they never reached the
+study, so no cell was spent on them. This is the point of the move: randomisation
+is as late as possible, so post-randomisation dropout is limited. Before this
+date the cell was dealt to **every** participant at creation, so an abandoner
+carried a cell that was never used — which biased any balance computed over the
+assigned rows.
+
+**Balance is over ARRIVALS, not completers, and assignments are PERMANENT.** Each
+arrival is given the **least-filled** cell in its session, ties broken at random;
+counting only the cells already taken so far keeps the session balanced at every
+intermediate moment (not just when it fills). An assigned participant **keeps
+their cell even if they then abandon** — the balance is of who *arrived*, and a
+cell is never released or re-dealt. A real multi-cell study that would rather
+balance *completers* (release an abandoned cell) is a deliberately deferred
+decision — see `DECISIONS.md`. The count-and-assign is race-safe per session (a
+DB row lock serialises simultaneous arrivals), so two people arriving at the same
+instant cannot both grab the same least-filled cell.
+
+**At analysis time:** `treatment_group in settings.TREATMENT_CELLS` is "arrived
+and was randomised"; `treatment_group == ''` is "never randomised" (cross-check
+`exit_code`). A per-cell count over a finished session is balanced by arrivals;
+it will **not** in general equal a count over *completers*, because dropout after
+assignment is not rebalanced.
+
+---
+
+## Design and flow: disposition, timing and the entry gate
+
+Who arrived, who finished, who was turned away, when each stage was cleared, and
+why the entry gate screened someone out. These fields decide inclusion and
+timing; read them alongside the primary tier, not as an afterthought. `exit_code`
+in particular is how you tell a completer from an abandoner, a decliner or a
+screen-out (see the Analyst quick start on what to exclude).
+
+### Exit codes (`participant.exit_code`)
 
 Every participant carries a numeric `exit_code`, **initialised to 0 at session
 creation** (`common.init_participant`) so no export row is ever blank. It is
@@ -18,7 +259,7 @@ participant leaves early. Defined in `settings.EXIT_CODES`.
 | `1` | finished | Completed the study normally. | `outro.Results.vars_for_template` |
 | `0` | abandoned | Created but never reached the end (the default). | `common.init_participant` |
 | `-1` | no_consent | Declined consent on the entry page. | `before.welcome.before_next_page` |
-| `-2` | comprehension | Disqualified: failed the comprehension check too many times. **Prolific only** — see the next section for what the same threshold means in a lab session. | `intro.quiz.error_message` |
+| `-2` | comprehension | Disqualified: failed the comprehension check too many times. **Prolific only** — see "Comprehension failure means different things by study type" in the comprehension tier below for what the same threshold means in a lab session. | `intro.quiz.error_message` |
 | `-3` | tab_monitor | Disqualified: tab-switch monitor. **Prolific only** — the tab monitor is not supported in the lab. **Only the ejecting phases (intro + main) can set it** — outro violations never do; see "Tab-monitor violation counts" below. | `common.focus_live_method` |
 | `-4` | screened_out | **General** "removed at entry, before the consent page" bucket. Set by the **device allow-list** (`prolific_allowed_devices`) and by any future entry gate. WHICH DEVICE was detected is in `participant_extra['screenout_cause']` — see below. The code is deliberately NOT device-specific: one bucket, split by cause. **NOT write-once** — see the note directly below. | `common.set_screened_out`, called by `before._apply_device_gate` |
 
@@ -43,6 +284,221 @@ with the place that sets it. Every code in the table must be set by real code:
 a code that nothing records is a lie in the export, so a reserved-but-unwired
 code gets deleted, not documented. (One such code, `-5`, has already been
 removed on those grounds; `-4` was wired up instead of removed.)
+
+### Screen-out causes (`participant_extra['screenout_cause']`)
+
+`-4` is deliberately **generic**. A study that screens participants out at entry
+for a second reason adds a **cause**, not a new exit code — so analysis keeps one
+clean "screened out at entry" bucket and splits by this column, and the exit-code
+table stays a short list where every entry is genuinely wired up.
+
+Since 2026-08-11 the entry gate is a **device allow-list**, so the cause is the
+**device type the server detected** — not the name of the gate. A study lists the
+types it accepts in `prolific_allowed_devices` (default: all four = no gate at all), and
+anything else is screened out with the detected type recorded here. The
+screen-out page (`before/screened_out.html` — the ONLY page that writes
+screen-out copy; the duplicate branch `outro/Ended.html` carried was deleted
+2026-08-14 as unreachable, and the unreachability is pinned by
+`scripts/tests/screenout_softwall_test.py`) writes a different sentence per type.
+
+| Cause | Meaning | Set where |
+|-------|---------|-----------|
+| `phone` | Entry User-Agent classified as a phone; `prolific_allowed_devices` excludes phones. | `before._apply_device_gate` |
+| `tablet` | Entry User-Agent classified as a tablet (iPad, Android without "Mobile", Kindle…); excluded. | `before._apply_device_gate` |
+| `computer` | Entry User-Agent classified as a computer; excluded. **Laptop and desktop are the same type** — see the note below. | `before._apply_device_gate` |
+| `unknown` | A real, readable User-Agent that matches none of the three device families. `unknown` is its own allow-list entry, so admitting it is a study's decision. It does **not** mean "no User-Agent" — see the row below. | `before._apply_device_gate` |
+| *(never recorded)* | **No decision.** No request object, no User-Agent, a blank/malformed/absurdly long one, or an exception in the classifier (`common.UNDETERMINED`). This is NOT a device type and NOT a cause: the participant is allowed through and **nothing at all is written**, so it can never appear in the export. It also never CLEARS an existing screen-out — absence of evidence is not evidence of a device switch. | — |
+| *(empty)* | `-4` recorded without a cause. Valid but discouraged — the screen-out page falls back to its neutral sentence. | — |
+
+**Why there is no `laptop` cause, and why one must never be added.** A browser
+does not expose the form factor of a computer. Neither the User-Agent nor the
+client hints (`Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform`,
+`navigator.userAgentData`) distinguish a laptop from a tower — both report the
+same platform with the mobile hint false — and the usual proxies do not work
+either: a desktop may have a touch screen, a laptop may be docked to a large
+monitor with its lid shut, and the Battery Status API is removed or
+permission-gated in current browsers. A study that genuinely needs "laptop only"
+has to ask the participant. Both are recorded as `computer`.
+
+**Related fields.** `participant_extra['entry_device_type']` holds the server's
+classification for **every** participant, including the ones let through, so
+device mix is analysable even when the gate is wide open;
+`participant_extra['screenout_user_agent']` keeps the evidence for a screen-out;
+and `device_info_json.device_type` (when `telemetry_device_capture` is on) is the CLIENT's
+own guess, recorded for comparison and never enforced.
+
+**Adding a cause** — all three steps, or a participant reads the wrong thing:
+
+1. add it to `common.SCREENOUT_CAUSES` (the registry + its export meaning);
+2. set it at your gate via `common.set_screened_out(participant, '<cause>')`,
+   which records the flag, the `-4` code and the cause together;
+3. give it its own sentence. The three physical device types share ONE template
+   branch, worded from `detected_device_label` (`common.DEVICE_TYPE_LABELS`, via
+   `common.screenout_vars` — the one cause→noun mapping, so the two pages cannot
+   drift); a NEW cause gets no label and therefore falls to the neutral fallback
+   until you either add its own `{% elif %}` branch in
+   `before/screened_out.html` (the page a screened-out participant is held on)
+   and in `outro/Ended.html` (if your gate fires after entry), or — only if it
+   really is a fifth device type — add its label to `DEVICE_TYPE_LABELS`.
+
+The ending picks its copy from the **cause**, never from the bare exit code.
+`mobile` currently says "This study needs a computer" — if a new gate were to
+reuse `-4` without a cause and the template keyed off the code, that participant
+would be told they need a computer. The neutral fallback exists so that failure
+mode degrades to a correct generic sentence instead.
+
+### Stage timestamps (`participant.stage_timestamps`)
+
+A dict `{stage_name: epoch_seconds}` filled as the participant clears each stage
+(`common.stamp_stage`). Stages currently stamped:
+
+| Stage | Set when |
+|-------|----------|
+| `screened_out` | The entry device gate removed the participant (their device type is not in `prolific_allowed_devices`). |
+| `screenout_cleared` | A screen-out was LIFTED: they came back on an accepted device before consent. |
+| `consent` | Leaving the welcome/consent page. |
+| `confirm_id` | Prolific only: leaving the Prolific-ID confirmation page (`prolific_capture_participant_id` on). |
+| `tab_monitor_agreed` | Leaving the tab-monitor agreement page, i.e. when the tab monitor was armed. Only where that page is shown (`tab_monitor` on, so Prolific by default and never the lab). *(Value renamed from `ai_safety_agreed` on 2026-08-17 — a deliberate one-off done while the template still had no data, so no live export was keyed on the old spelling; see the frozen-values note in `common.py`.)* |
+| `left_before_app` | Leaving ANY page of the `before` app — deliberately **overwritten** by each one, so its final value is the moment the participant left the entry block, whichever pages that config showed (`common.stamp_left_before_app`). |
+| `instructions_done` | Leaving the instructions page (round 1). |
+| `quiz_done` | Leaving the quiz page (overwritten by the re-read pass, if any). |
+| `reread_taken` | Lab only: taking the one-time re-read offer (entering intro round 2). |
+| `instructions_reread_done` | Lab only: leaving the re-read instructions page (intro round 2). |
+| `task_done` | Completing the last displayed round of `main`. |
+| `finished` | Reaching the final results page. |
+| `prolific_return_clicked` | Prolific-redirect sessions only, **best-effort**: the first click on the results page's "Back to Prolific" link (`outro.results_live_method`). It rides the page's live socket just before the browser navigates away, so JS off or a dropped socket leaves it ABSENT for somebody who really did return — absence means "no click recorded", never "did not return". Feeds the dashboard's "no return click" pill (a prompt to look, not a verdict); never read by anything participant-facing. |
+
+**Measuring from the end of the entry block.** Use **`left_before_app`**. Which
+page actually ends that block is CONFIG-DEPENDENT — `consent` in the lab,
+`tab_monitor_agreed` for Prolific (with `confirm_id` in between), something else
+again for a study that adds an entry page — so anything that names one page is
+wrong for some configuration, silently, and shows up as dwell time billed to the
+wrong phase. That has already happened once here: the agreement page's dwell was
+counted as instructions time, and only for Prolific. Every `before` page calls
+`common.stamp_left_before_app`, which overwrites, so the stamp is correct for
+every configuration including ones not written yet; a new entry page only has to
+call it.
+
+The older recipe — take the **maximum** of `consent` / `confirm_id` /
+`tab_monitor_agreed` — survives only as a fallback for participants who were
+already mid-flow when `left_before_app` was deployed and will never have it.
+`experimenter_dashboard._intro_seconds` does exactly this (and measures to
+`quiz_done`, i.e. the whole intro block including a re-read, not to
+`instructions_done`).
+
+---
+
+## Comprehension and exit measures
+
+How the comprehension check behaved and what it means by study type, plus the
+per-item quiz record. Comprehension is a covariate and, in the lab, a
+"raise your hand" trigger; it is not an outcome. The outro demographics and
+free-text feedback columns are listed in the Column reference.
+
+### Comprehension failure means different things by study type
+
+`quiz_comprehension_max_failures` is **one counter and one threshold**
+(`participant.comprehension_failed_attempts`, incremented in `intro.quiz.error_message`), the
+same value in both study types. What differs is the consequence of crossing it:
+
+| | Prolific | Lab |
+|---|---|---|
+| Crossing the threshold is | the point of **ejection** | the point at which the study **starts helping** |
+| What happens | `quiz_comprehension_dq` flags the participant, exit code `-2`, straight to the ending, back to Prolific with `prolific_dq_code` | the one-time re-read offer (`quiz_reread`), then a dismissible "raise your hand" notice; at **twice** the threshold that notice also names the attempt count. Attempts are never capped and nobody is ejected |
+| Exit code | `-2` | **`1` (finished)** — they completed the study |
+
+**So `-2` never appears in a lab export, and its absence is not evidence that
+nobody struggled.** The analysis-time flag is
+`comprehension_failed_attempts >= quiz_comprehension_max_failures` — deliberately the *same
+predicate* the online rule ejects on, so "failed comprehension" means one thing
+across both study types. Supporting columns, all existing:
+`comprehension_reread_used` and the `reread_taken` stamp (took the supervised
+re-read); `intro.Player.num_failed_attempts` is **per round**, so round 2's
+count is "still failing after being walked through the instructions again";
+`outro.Player.quiz_bonus_awarded == 0` is the monetary trace of any failure.
+
+**The integrity modules (`quiz_comprehension_dq`, `tab_monitor`) are not supported in
+a lab session**, and `scripts/prelaunch_check.py` fails on a lab config that
+turns either on. The reason is conceptual: in the lab a participant who does not
+consent or does not pass comprehension simply cannot do the study, and that
+essentially never happens because people know what they signed up for when they
+come to the lab. The mechanical consequence — why it is a hard gate rather than
+advice — is that a disqualified participant is not a completer, so they skip the
+page collecting the lab's IBAN/BIC and the payment summary and are stranded at
+the machine with no record of where to send their fee.
+
+### Quiz attempt log (`intro.Player.quiz_attempt_log`)
+
+Every **graded** quiz submission, as a JSON list, so an analyst can see *which
+items people get wrong* rather than only how often they were wrong. Written by
+`intro.log_quiz_attempt`, called from `intro.quiz.error_message`.
+
+**It is a per-round `intro.Player` column**, so round 1 is the first pass and
+round 2 is the post-re-read pass (lab only) — the two are separated for free,
+with no extra field. Deliberately not a participant var: those reach the export
+only through `PARTICIPANT_FIELDS`, and `participant_extra` would mix it in with
+every other ad-hoc value. Deliberately not a spare column either — the spares
+exist to avoid a schema change on a *live* study.
+
+Shape — one object per submission, in submission order:
+
+| Key | Meaning |
+|---|---|
+| `n` | Attempt number **within this round**, from 1. |
+| `t` | Epoch seconds (3 dp) when the submission was graded. |
+| `answers` | `{item_field: submitted_value}` for every item on the page; values truncated at 80 chars. An item left blank is `""`. |
+| `wrong` | The item fields that were wrong **as judged at the time**. `[]` means the attempt passed. |
+
+```json
+[{"n": 1, "t": 1755000000.123, "answers": {"q1": "Yes", "q2": "Nothing happens"}, "wrong": ["q2"]},
+ {"n": 2, "t": 1755000041.880, "answers": {"q1": "Yes", "q2": "I can try again"}, "wrong": []}]
+```
+
+**`wrong` is stored, never recomputed.** `intro/quiz_items.py` changes between
+studies and can change between sessions of one study, so grading an old
+`answers` blob against today's item set would be silently wrong with nothing to
+notice it by. Trust `wrong`; treat `answers` as the raw record.
+
+**Uncapped.** Every attempt is stored, however many there are — including in the
+lab, where attempts themselves are unlimited. The log is for occasional
+curiosity about which items people get wrong, not routine analysis data, so
+completeness beats column size (Julian, 2026-08-12). The number of attempts in a
+round is simply `len(log)`.
+
+**Not every POST is an attempt.** Taking the re-read offer and the DEBUG
+clickthrough (`quiz_verify=False`) both return before grading, so neither
+appears here.
+
+**Where to find it.** The column is in the RAW oTree export (`intro.Player`);
+the standard cleaning script (`format_session_data.py`) strips JSON columns, so
+it is **absent downstream by design** — pull it from the raw export if you want
+it.
+
+**Analysis caveat (Julian, 2026-08-12).** The **last entry is the passing
+attempt for anyone who completed the quiz — but not for everyone**: a Prolific
+participant disqualified at `quiz_comprehension_max_failures`, and anyone who
+abandoned mid-quiz, ends on a FAILING entry. Do not assume the final row is a
+pass; test `wrong == []`, and cross-check `participant.exit_code`.
+
+**Instrumentation, so it never blocks a page.** The whole writer is wrapped
+(CLAUDE.md): if a value will not serialise or the column is corrupt, the answer
+is still graded and the participant still proceeds — the row is simply missing.
+An empty string means "nothing was ever logged", not "no attempts".
+
+---
+
+## SECONDARY tier: passive telemetry (data quality and process, not the outcome)
+
+Everything in this tier is **process and data-quality instrumentation, not
+outcome data.** It exists to judge attention and effort, to catch broken or
+inattentive sessions, and to decide whom to trust or exclude; it is never the
+dependent variable. The tab monitor (`tab_monitor_*`) and the passive focus
+trace (`focus_trace_*`) are described here; the passive time-on-page capture
+(`client_ms`, `telemetry_passive_capture`) and the client device capture
+(`device_info_json`, `is_mobile`, `telemetry_device_capture`) are per-app columns
+detailed in the Column reference and in the Screen-out causes section above. A
+clean telemetry row means "no evidence of a problem", never "nothing happened"
+(each field says how).
 
 ### Tab-monitor violation counts — TWO columns, one deliberate asymmetry
 
@@ -176,327 +632,6 @@ Do not read a NULL as "never left" — it is "not measured".
 > screen regardless of length or arming. A participant can have
 > `focus_trace_departures > 0` with `tab_monitor_focus_loss_count = 0`.
 
-### Comprehension failure means different things by study type
-
-`quiz_comprehension_max_failures` is **one counter and one threshold**
-(`participant.comprehension_failed_attempts`, incremented in `intro.quiz.error_message`), the
-same value in both study types. What differs is the consequence of crossing it:
-
-| | Prolific | Lab |
-|---|---|---|
-| Crossing the threshold is | the point of **ejection** | the point at which the study **starts helping** |
-| What happens | `quiz_comprehension_dq` flags the participant, exit code `-2`, straight to the ending, back to Prolific with `prolific_dq_code` | the one-time re-read offer (`quiz_reread`), then a dismissible "raise your hand" notice; at **twice** the threshold that notice also names the attempt count. Attempts are never capped and nobody is ejected |
-| Exit code | `-2` | **`1` (finished)** — they completed the study |
-
-**So `-2` never appears in a lab export, and its absence is not evidence that
-nobody struggled.** The analysis-time flag is
-`comprehension_failed_attempts >= quiz_comprehension_max_failures` — deliberately the *same
-predicate* the online rule ejects on, so "failed comprehension" means one thing
-across both study types. Supporting columns, all existing:
-`comprehension_reread_used` and the `reread_taken` stamp (took the supervised
-re-read); `intro.Player.num_failed_attempts` is **per round**, so round 2's
-count is "still failing after being walked through the instructions again";
-`outro.Player.quiz_bonus_awarded == 0` is the monetary trace of any failure.
-
-**The integrity modules (`quiz_comprehension_dq`, `tab_monitor`) are not supported in
-a lab session**, and `scripts/prelaunch_check.py` fails on a lab config that
-turns either on. The reason is conceptual: in the lab a participant who does not
-consent or does not pass comprehension simply cannot do the study, and that
-essentially never happens because people know what they signed up for when they
-come to the lab. The mechanical consequence — why it is a hard gate rather than
-advice — is that a disqualified participant is not a completer, so they skip the
-page collecting the lab's IBAN/BIC and the payment summary and are stranded at
-the machine with no record of where to send their fee.
-
-### Screen-out causes (`participant_extra['screenout_cause']`)
-
-`-4` is deliberately **generic**. A study that screens participants out at entry
-for a second reason adds a **cause**, not a new exit code — so analysis keeps one
-clean "screened out at entry" bucket and splits by this column, and the exit-code
-table stays a short list where every entry is genuinely wired up.
-
-Since 2026-08-11 the entry gate is a **device allow-list**, so the cause is the
-**device type the server detected** — not the name of the gate. A study lists the
-types it accepts in `prolific_allowed_devices` (default: all four = no gate at all), and
-anything else is screened out with the detected type recorded here. The
-screen-out page (`before/screened_out.html` — the ONLY page that writes
-screen-out copy; the duplicate branch `outro/Ended.html` carried was deleted
-2026-08-14 as unreachable, and the unreachability is pinned by
-`scripts/tests/screenout_softwall_test.py`) writes a different sentence per type.
-
-| Cause | Meaning | Set where |
-|-------|---------|-----------|
-| `phone` | Entry User-Agent classified as a phone; `prolific_allowed_devices` excludes phones. | `before._apply_device_gate` |
-| `tablet` | Entry User-Agent classified as a tablet (iPad, Android without "Mobile", Kindle…); excluded. | `before._apply_device_gate` |
-| `computer` | Entry User-Agent classified as a computer; excluded. **Laptop and desktop are the same type** — see the note below. | `before._apply_device_gate` |
-| `unknown` | A real, readable User-Agent that matches none of the three device families. `unknown` is its own allow-list entry, so admitting it is a study's decision. It does **not** mean "no User-Agent" — see the row below. | `before._apply_device_gate` |
-| *(never recorded)* | **No decision.** No request object, no User-Agent, a blank/malformed/absurdly long one, or an exception in the classifier (`common.UNDETERMINED`). This is NOT a device type and NOT a cause: the participant is allowed through and **nothing at all is written**, so it can never appear in the export. It also never CLEARS an existing screen-out — absence of evidence is not evidence of a device switch. | — |
-| *(empty)* | `-4` recorded without a cause. Valid but discouraged — the screen-out page falls back to its neutral sentence. | — |
-
-**Why there is no `laptop` cause, and why one must never be added.** A browser
-does not expose the form factor of a computer. Neither the User-Agent nor the
-client hints (`Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform`,
-`navigator.userAgentData`) distinguish a laptop from a tower — both report the
-same platform with the mobile hint false — and the usual proxies do not work
-either: a desktop may have a touch screen, a laptop may be docked to a large
-monitor with its lid shut, and the Battery Status API is removed or
-permission-gated in current browsers. A study that genuinely needs "laptop only"
-has to ask the participant. Both are recorded as `computer`.
-
-**Related fields.** `participant_extra['entry_device_type']` holds the server's
-classification for **every** participant, including the ones let through, so
-device mix is analysable even when the gate is wide open;
-`participant_extra['screenout_user_agent']` keeps the evidence for a screen-out;
-and `device_info_json.device_type` (when `telemetry_device_capture` is on) is the CLIENT's
-own guess, recorded for comparison and never enforced.
-
-**Adding a cause** — all three steps, or a participant reads the wrong thing:
-
-1. add it to `common.SCREENOUT_CAUSES` (the registry + its export meaning);
-2. set it at your gate via `common.set_screened_out(participant, '<cause>')`,
-   which records the flag, the `-4` code and the cause together;
-3. give it its own sentence. The three physical device types share ONE template
-   branch, worded from `detected_device_label` (`common.DEVICE_TYPE_LABELS`, via
-   `common.screenout_vars` — the one cause→noun mapping, so the two pages cannot
-   drift); a NEW cause gets no label and therefore falls to the neutral fallback
-   until you either add its own `{% elif %}` branch in
-   `before/screened_out.html` (the page a screened-out participant is held on)
-   and in `outro/Ended.html` (if your gate fires after entry), or — only if it
-   really is a fifth device type — add its label to `DEVICE_TYPE_LABELS`.
-
-The ending picks its copy from the **cause**, never from the bare exit code.
-`mobile` currently says "This study needs a computer" — if a new gate were to
-reuse `-4` without a cause and the template keyed off the code, that participant
-would be told they need a computer. The neutral fallback exists so that failure
-mode degrades to a correct generic sentence instead.
-
----
-
-## Treatment assignment (`participant.treatment_group`)
-
-The treatment cell a participant was assigned. A **participant field** (exported
-at participant level), holding one of `settings.TREATMENT_CELLS` — shipped as the
-placeholder cells `row` / `column`, to be replaced wholesale by a real study.
-
-**Assigned ON ARRIVAL, not at session creation (changed 2026-08-18).** The cell
-is assigned the moment the participant first reaches the **instructions page**
-(`intro.instructing`), by `before.treatment_assignment.assign_on_arrival`. Until
-then the field is the empty string `''`, set at session creation
-(`before.creating_session` → `treatment_assignment.init_unassigned`) so the
-column is never blank.
-
-**So `''` is meaningful: it means "never took a cell".** A participant who
-abandoned at consent, declined consent (exit `-1`), or was screened out by the
-device gate (exit `-4`) exports `treatment_group == ''` — they never reached the
-study, so no cell was spent on them. This is the point of the move: randomisation
-is as late as possible, so post-randomisation dropout is limited. Before this
-date the cell was dealt to **every** participant at creation, so an abandoner
-carried a cell that was never used — which biased any balance computed over the
-assigned rows.
-
-**Balance is over ARRIVALS, not completers, and assignments are PERMANENT.** Each
-arrival is given the **least-filled** cell in its session, ties broken at random;
-counting only the cells already taken so far keeps the session balanced at every
-intermediate moment (not just when it fills). An assigned participant **keeps
-their cell even if they then abandon** — the balance is of who *arrived*, and a
-cell is never released or re-dealt. A real multi-cell study that would rather
-balance *completers* (release an abandoned cell) is a deliberately deferred
-decision — see `DECISIONS.md`. The count-and-assign is race-safe per session (a
-DB row lock serialises simultaneous arrivals), so two people arriving at the same
-instant cannot both grab the same least-filled cell.
-
-**At analysis time:** `treatment_group in settings.TREATMENT_CELLS` is "arrived
-and was randomised"; `treatment_group == ''` is "never randomised" (cross-check
-`exit_code`). A per-cell count over a finished session is balanced by arrivals;
-it will **not** in general equal a count over *completers*, because dropout after
-assignment is not rebalanced.
-
----
-
-## Stage timestamps (`participant.stage_timestamps`)
-
-A dict `{stage_name: epoch_seconds}` filled as the participant clears each stage
-(`common.stamp_stage`). Stages currently stamped:
-
-| Stage | Set when |
-|-------|----------|
-| `screened_out` | The entry device gate removed the participant (their device type is not in `prolific_allowed_devices`). |
-| `screenout_cleared` | A screen-out was LIFTED: they came back on an accepted device before consent. |
-| `consent` | Leaving the welcome/consent page. |
-| `confirm_id` | Prolific only: leaving the Prolific-ID confirmation page (`prolific_capture_participant_id` on). |
-| `tab_monitor_agreed` | Leaving the tab-monitor agreement page, i.e. when the tab monitor was armed. Only where that page is shown (`tab_monitor` on, so Prolific by default and never the lab). *(Value renamed from `ai_safety_agreed` on 2026-08-17 — a deliberate one-off done while the template still had no data, so no live export was keyed on the old spelling; see the frozen-values note in `common.py`.)* |
-| `left_before_app` | Leaving ANY page of the `before` app — deliberately **overwritten** by each one, so its final value is the moment the participant left the entry block, whichever pages that config showed (`common.stamp_left_before_app`). |
-| `instructions_done` | Leaving the instructions page (round 1). |
-| `quiz_done` | Leaving the quiz page (overwritten by the re-read pass, if any). |
-| `reread_taken` | Lab only: taking the one-time re-read offer (entering intro round 2). |
-| `instructions_reread_done` | Lab only: leaving the re-read instructions page (intro round 2). |
-| `task_done` | Completing the last displayed round of `main`. |
-| `finished` | Reaching the final results page. |
-| `prolific_return_clicked` | Prolific-redirect sessions only, **best-effort**: the first click on the results page's "Back to Prolific" link (`outro.results_live_method`). It rides the page's live socket just before the browser navigates away, so JS off or a dropped socket leaves it ABSENT for somebody who really did return — absence means "no click recorded", never "did not return". Feeds the dashboard's "no return click" pill (a prompt to look, not a verdict); never read by anything participant-facing. |
-
-**Measuring from the end of the entry block.** Use **`left_before_app`**. Which
-page actually ends that block is CONFIG-DEPENDENT — `consent` in the lab,
-`tab_monitor_agreed` for Prolific (with `confirm_id` in between), something else
-again for a study that adds an entry page — so anything that names one page is
-wrong for some configuration, silently, and shows up as dwell time billed to the
-wrong phase. That has already happened once here: the agreement page's dwell was
-counted as instructions time, and only for Prolific. Every `before` page calls
-`common.stamp_left_before_app`, which overwrites, so the stamp is correct for
-every configuration including ones not written yet; a new entry page only has to
-call it.
-
-The older recipe — take the **maximum** of `consent` / `confirm_id` /
-`tab_monitor_agreed` — survives only as a fallback for participants who were
-already mid-flow when `left_before_app` was deployed and will never have it.
-`experimenter_dashboard._intro_seconds` does exactly this (and measures to
-`quiz_done`, i.e. the whole intro block including a re-read, not to
-`instructions_done`).
-
----
-
-## Quiz attempt log (`intro.Player.quiz_attempt_log`)
-
-Every **graded** quiz submission, as a JSON list, so an analyst can see *which
-items people get wrong* rather than only how often they were wrong. Written by
-`intro.log_quiz_attempt`, called from `intro.quiz.error_message`.
-
-**It is a per-round `intro.Player` column**, so round 1 is the first pass and
-round 2 is the post-re-read pass (lab only) — the two are separated for free,
-with no extra field. Deliberately not a participant var: those reach the export
-only through `PARTICIPANT_FIELDS`, and `participant_extra` would mix it in with
-every other ad-hoc value. Deliberately not a spare column either — the spares
-exist to avoid a schema change on a *live* study.
-
-Shape — one object per submission, in submission order:
-
-| Key | Meaning |
-|---|---|
-| `n` | Attempt number **within this round**, from 1. |
-| `t` | Epoch seconds (3 dp) when the submission was graded. |
-| `answers` | `{item_field: submitted_value}` for every item on the page; values truncated at 80 chars. An item left blank is `""`. |
-| `wrong` | The item fields that were wrong **as judged at the time**. `[]` means the attempt passed. |
-
-```json
-[{"n": 1, "t": 1755000000.123, "answers": {"q1": "Yes", "q2": "Nothing happens"}, "wrong": ["q2"]},
- {"n": 2, "t": 1755000041.880, "answers": {"q1": "Yes", "q2": "I can try again"}, "wrong": []}]
-```
-
-**`wrong` is stored, never recomputed.** `intro/quiz_items.py` changes between
-studies and can change between sessions of one study, so grading an old
-`answers` blob against today's item set would be silently wrong with nothing to
-notice it by. Trust `wrong`; treat `answers` as the raw record.
-
-**Uncapped.** Every attempt is stored, however many there are — including in the
-lab, where attempts themselves are unlimited. The log is for occasional
-curiosity about which items people get wrong, not routine analysis data, so
-completeness beats column size (Julian, 2026-08-12). The number of attempts in a
-round is simply `len(log)`.
-
-**Not every POST is an attempt.** Taking the re-read offer and the DEBUG
-clickthrough (`quiz_verify=False`) both return before grading, so neither
-appears here.
-
-**Where to find it.** The column is in the RAW oTree export (`intro.Player`);
-the standard cleaning script (`format_session_data.py`) strips JSON columns, so
-it is **absent downstream by design** — pull it from the raw export if you want
-it.
-
-**Analysis caveat (Julian, 2026-08-12).** The **last entry is the passing
-attempt for anyone who completed the quiz — but not for everyone**: a Prolific
-participant disqualified at `quiz_comprehension_max_failures`, and anyone who
-abandoned mid-quiz, ends on a FAILING entry. Do not assume the final row is a
-pass; test `wrong == []`, and cross-check `participant.exit_code`.
-
-**Instrumentation, so it never blocks a page.** The whole writer is wrapped
-(CLAUDE.md): if a value will not serialise or the column is corrupt, the answer
-is still graded and the participant still proceeds — the row is simply missing.
-An empty string means "nothing was ever logged", not "no attempts".
-
----
-
-## The payment record — ONE ledger (J1, 2026-08-13)
-
-**`outro.Player.earned` IS the payment record**: show-up fee + the
-`payment_num_rewarded` randomly selected rounds + the quiz bonus, exactly as the
-participant's receipt states it. Since 2026-08-13 it is mirrored — once, when
-the results page computes payment (`outro.compute_final_payoff`) — into
-oTree's own **`participant.payoff`**, so the admin Payments page and the wide
-export's `participant.payoff` column show the same figure the participant was
-shown. (Precisely: `participant.payoff` is stored as `earned −
-participation_fee`, de-converted from points when `USE_POINTS` is on, because
-the admin page displays `payoff × conversion + participation_fee`; this
-template ships `USE_POINTS=False` and `participation_fee=0`, where the stored
-value is `earned` itself.)
-
-### THE ITEMISATION RULE — a total is not a payment instruction (2026-08-14)
-
-> **ANY PAYMENT COMPONENT PAID OUTSIDE OTREE MUST STILL BE REPRESENTED INSIDE
-> OTREE, OR THE ADMIN PAYMENTS PAGE BECOMES A PARTIAL FIGURE THAT LOOKS LIKE A
-> TOTAL.** Corollary: **on Prolific the components are paid by DIFFERENT
-> MECHANISMS** — the base as the study reward, the bonus through the bonus
-> payment flow — **so the total alone is not enough; the bonus must be
-> separately visible.**
-
-Raised by the exp_pilots bossman. `earned` being CORRECT is not the same
-property as `earned` being READABLE component by component, and only the
-second one lets somebody pay. The three components are each recorded, and they
-reconstruct `earned` exactly:
-
-| Component | Column / source | Prolific mechanism |
-| --- | --- | --- |
-| base (show-up fee) | `payment_show_up` — a **session-config value**, not a per-participant column; on the receipt as "Base payment" | study reward |
-| decision bonus | **`outro.Player.selected_sum`** — sum of the `payment_num_rewarded` selected rounds | bonus payment |
-| quiz bonus | **`outro.Player.quiz_bonus_awarded`** | bonus payment |
-| total | **`outro.Player.earned`** = the three above; mirrored once into `participant.payoff` | — |
-
-So the **bonus figure a Prolific payer needs is `selected_sum +
-quiz_bonus_awarded`**, and it is recoverable from the app export today. The
-admin Payments page shows the total ONLY (`participation_fee` ships 0.00, so
-that one figure covers base plus bonus) — correct, but not actionable where two
-mechanisms pay. Whether `participation_fee` should carry the base is an open
-decision; it changes what these columns mean, so nothing has moved yet.
-`scripts/tests/payoff_ledger_test.py` §9 asserts the bonus in isolation as well as the
-total, and records the admin-page gap as measured.
-
-**What is NOT a payment record:**
-
-- **`main.Player.slider_payoff_points`** — int / blank, `0..100`. The value the
-  participant PICKED on the slider elicitation (the placeholder task,
-  `main/game.html`). It is copied into `round_payoff` in
-  `GameStart.before_next_page`, so it is the raw input and `round_payoff` is the
-  paid-out form. **Blank means the slider was never moved** (a no-JS or
-  untouched submit posts nothing) — that round then pays 0; blank is stored, not
-  rejected. A study that replaces the slider task replaces this column.
-- **`main.Player.round_payoff`** — the game's per-round result (the value the
-  payoff page shows; for the shipped task, the chosen `slider_payoff_points`).
-  It feeds `participant.payoff_vector`, from which only
-  `payment_num_rewarded` rounds are actually paid; summing it tells you what the
-  session *generated*, not what anyone was paid.
-- **`participant.payoff_vector`** — the per-round record across the task, one
-  entry per round, missing-value sentinels included. The raw material of
-  payment, not its result.
-- **oTree's per-round `payoff` column — DELIBERATELY GONE from the export**
-  (`AUTO_TABULATE_PAYOFFS=False` in settings.py; oTree omits the column
-  entirely, and a build that writes `player.payoff` is refused at boot by
-  `payoff_guard` — oTree's own setter also raises under that flag, but inside
-  a participant's request, which is why the check moved to start-up).
-  **An export from before
-  2026-08-13 carries `main.Player.payoff`; one from after does not. NO DATA
-  WAS LOST**: the same values now live in `round_payoff` and, as ever, in
-  `payoff_vector`. Before this change `participant.payoff` was the running SUM
-  of every round's raw value — a number that matched nothing anybody was paid
-  — while `earned` held the real figure: two ledgers, and the admin page read
-  the wrong one.
-- A **non-completer's `participant.payoff` is 0** (they never reached the
-  results page, so the one write never ran). Before this change it held the
-  meaningless running sum; 0-until-paid is the honest value. Early-exit
-  participants are handled outside this pipeline (Prolific pays through the
-  platform).
-
-Pinned by `scripts/tests/payoff_ledger_test.py`: the admin-visible figure equals
-`earned`, the value survives a Results re-render, `player.payoff` writes
-raise, and the per-round column is absent from the export.
-
 ---
 
 ## Spare columns (future-proofing)
@@ -546,7 +681,7 @@ Fill in per-study fields as you build the task. The template ships with:
     2026-08-18 when treatment assignment moved to arrival). Treatment is now
     assigned in `intro`, AFTER this whole app, so a `before` copy could only ever
     be empty. The record is the participant field `treatment_group` — see
-    "Treatment assignment" below.
+    "Treatment assignment" in the primary tier above.
   - **`consent` is populated exactly when the session ran with
     `explicit_consent` on** (before 2026-08-14 this was decided by
     `prolific_completion_redirects` — the flag was split, see DECISIONS.md).
@@ -648,7 +783,7 @@ Fill in per-study fields as you build the task. The template ships with:
   "The payment record" above), `client_ms` (passive time-on-page capture,
   `telemetry_passive_capture` flag), and the PASSIVE FOCUS TRACE pair
   `focus_trace_departures` / `focus_trace_unfocused_ms` (`telemetry_focus_trace`
-  flag — see "Passive focus trace" below).
+  flag — see "Passive focus trace" in the secondary telemetry tier above).
 - `outro.Player`: demographics + payment fields (`age`, `gender`, `bank`,
   `bic`, `sepa`, `earned`, `payouts`, …), and `feedback` (free text, collected
   only when the `pilot_feedback` flag is on).
@@ -681,7 +816,7 @@ payment record" above).
 
 **Added columns (2026-08-18):** `main.Player.focus_trace_departures` and
 `main.Player.focus_trace_unfocused_ms` — the passive focus trace (see "Passive
-focus trace" below). A SCHEMA change: it appends two columns, so it needs the
+focus trace" in the secondary telemetry tier above). A SCHEMA change: it appends two columns, so it needs the
 same `otree resetdb` treatment as any other added column when deployed over a
 database that predates them (see the deploy note at the end of this section).
 

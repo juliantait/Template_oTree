@@ -22,6 +22,14 @@ and edit this template", step 0) rather than carrying the template's development
 history, so on a real study this file is your study's decisions and nobody
 else's. Keep reading it and adding to it exactly as above.
 
+**`CODEBOOK.md` opens with an Analyst quick start, and a fork fills it in.** The
+same way `DECISIONS.md` starts fresh, a forked study replaces the CODEBOOK's
+Analyst quick start with its own primary outcomes, its own exclusions and its own
+pooling caveats, and adds its study fields to the primary tier (the template
+ships placeholders and PROMPT boxes marking exactly where). Do this in the same
+change that swaps the task in `main`, so the outcome an analyst reads first is
+your study's, not the placeholder slider.
+
 ## The three orthogonal controls
 
 Everything a participant experiences is determined by three **independent** axes,
