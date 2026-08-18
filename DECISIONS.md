@@ -11,6 +11,53 @@ working.
 
 ---
 
+## The placeholder task is now a single-slider payoff elicitation, and the slider is a reusable component — 2026-08-18
+
+Replaced the placeholder payoff-matrix stub (`main.GameStart` drew
+`round_payoff = random.randint(1, 100)` in `before_next_page`) with a real
+worked elicitation: **one slider by which the participant picks their own
+payoff**, which becomes `round_payoff` and is what they are paid. It is the
+reference example a future study copies, so it demonstrates the elicitation
+conventions rather than inventing a throwaway game.
+
+**What ships.** A reusable slider control — `_static/global/css/slider.css`
+(`.slider-elicit`) + `_static/global/js/slider_elicit.js` — lifted from
+`exp_pilots`' bet slider but STRIPPED of its two-step gating and clamped/blocked
+half: one clean slider that picks a value. It sits inside a new shared framed
+container, **`.elicitation`** (base.css), the box EVERY elicitation drops into —
+distinct from `.panel` (quiet grey, secondary information) because it frames an
+ACTIVE input region. A `.popover-anchor` "?" hint sits beside it. Specimens for
+both the box and the slider are in `_static/global/html/template.html`.
+`main.Player.slider_payoff_points` (int, `blank`, `0..100`) is the picked value;
+`GameStart.before_next_page` copies it into `round_payoff`, and the last task
+page still calls `finish_task_block` (payoff_vector + `task_done`) unchanged.
+
+**Two behaviours lifted deliberately, and why they are not accidents.**
+* **No starting value / no pre-positioned thumb.** The range carries no `value`
+  attribute; the thumb is hidden until moved, and the JS strips the field's name
+  on an untouched submit so it posts EMPTY. A pre-positioned thumb biases the
+  answer toward wherever it sits — an untouched control that shows a number is a
+  belief nobody stated. This is the whole reason there is no default; do not add
+  one back.
+* **No-JS safe.** With scripts blocked the thumb stays visible and the range is
+  an ordinary usable control; the field is `blank=True` / `field_maybe_none`, so
+  an empty submit stores 0 for the round and never 500s.
+
+**Rejected:** porting the full two-step bet (a stable-or-growing choice gating a
+bet clamped to half the scale) — far more mechanism than a placeholder needs,
+and it teaches the wrong default to the next author. Kept the page NAMES
+(`GameStart` / `payoff`) rather than renaming, to hold the test blast radius
+down (the names live in `main_contract`, `predeploy_check`, and ~8 suites).
+
+**Enforced:** `scripts/tests/slider_payoff_test.py` proves the chosen value
+reaches `participant.payoff` (a high slider is paid that, not just show-up),
+`task_done` is stamped, and an empty no-JS submit is safe;
+`scripts/tests/payoff_ledger_test.py` / `full_journey_test.py` walk the slider
+via `main_contract`; `render_check.py` measures the task page at three
+viewports; `focus_trace_test.py`'s positive control asserts the slider renders.
+The convention is written up in `docs/skills_claude/writing_task.md`
+("Elicitations — the shipped slider is the reference").
+
 ## Passive focus trace ported alongside the tab monitor, as a separate observer — 2026-08-18
 
 Ported the passive focus/multitasking trace from `exp_pilots` (which forked from

@@ -245,9 +245,9 @@ def http_checks(server):
           '…and focus_trace.js is not shipped at all')
     # Positive control: the page itself DID render (so the absence above is a
     # real absence on a real page, not an assertion against a blank/error page).
-    check('Press Next' in html_off,
-          'the flag-OFF page is the real task page (absence asserted against '
-          'presence, per writing_tests.md)')
+    check('slider_payoff_points' in html_off,
+          'the flag-OFF page is the real task page — it carries the slider '
+          '(absence asserted against presence, per writing_tests.md)')
 
     section('2. THE OBSERVATION ARRIVES — a positive trace reaches main.Player')
     # A browser fills these hidden inputs from focus_trace.js; here we post the

@@ -460,8 +460,16 @@ total, and records the admin-page gap as measured.
 
 **What is NOT a payment record:**
 
+- **`main.Player.slider_payoff_points`** — int / blank, `0..100`. The value the
+  participant PICKED on the slider elicitation (the placeholder task,
+  `main/game.html`). It is copied into `round_payoff` in
+  `GameStart.before_next_page`, so it is the raw input and `round_payoff` is the
+  paid-out form. **Blank means the slider was never moved** (a no-JS or
+  untouched submit posts nothing) — that round then pays 0; blank is stored, not
+  rejected. A study that replaces the slider task replaces this column.
 - **`main.Player.round_payoff`** — the game's per-round result (the value the
-  payoff page shows). It feeds `participant.payoff_vector`, from which only
+  payoff page shows; for the shipped task, the chosen `slider_payoff_points`).
+  It feeds `participant.payoff_vector`, from which only
   `payment_num_rewarded` rounds are actually paid; summing it tells you what the
   session *generated*, not what anyone was paid.
 - **`participant.payoff_vector`** — the per-round record across the task, one
@@ -633,7 +641,9 @@ Fill in per-study fields as you build the task. The template ships with:
   recorded for the "raise your hand" notice, nor for its escalated form — both
   are implied by `comprehension_failed_attempts` against `quiz_comprehension_max_failures`; see the
   exit-code section above).
-- `main.Player`: `round_payoff` (the game's per-round result — the value the
+- `main.Player`: `slider_payoff_points` (the value picked on the slider
+  elicitation, `0..100`; copied into `round_payoff` — see its own entry above),
+  `round_payoff` (the game's per-round result — the value the
   payoff page shows and `payoff_vector` collects; NOT the payment record, see
   "The payment record" above), `client_ms` (passive time-on-page capture,
   `telemetry_passive_capture` flag), and the PASSIVE FOCUS TRACE pair
@@ -674,6 +684,13 @@ payment record" above).
 focus trace" below). A SCHEMA change: it appends two columns, so it needs the
 same `otree resetdb` treatment as any other added column when deployed over a
 database that predates them (see the deploy note at the end of this section).
+
+**Added column (2026-08-18):** `main.Player.slider_payoff_points` — the value
+the participant picks on the shipped slider elicitation (the placeholder task),
+copied into `round_payoff`. A SCHEMA change (one appended column) that replaced
+the old random-draw placeholder task; needs the same `otree resetdb` treatment
+as any added column when deployed over a database that predates it. A study
+swapping the game replaces this column.
 
 **Removed column (2026-08-18):** `before.Player.treatment_group`. It was a copy
 of the participant-level cell, written on the consent page — but treatment

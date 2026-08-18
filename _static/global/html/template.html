@@ -1,6 +1,7 @@
 {{ block content }}
 {% include '_static/global/html/css_bundle.html' %}
 <script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
+<script src="{% static 'global/js/slider_elicit.js' %}?v={{ C.STATIC_VERSION }}"></script>
 
 <!-- ===========================================================================
      DESIGN REFERENCE — every shared component, in use.
@@ -114,6 +115,37 @@
                     <div class="form-check"><input type="radio" name="demo_scale" value="8" id="ds8"><label for="ds8">8</label></div>
                     <div class="form-check"><input type="radio" name="demo_scale" value="9" id="ds9"><label for="ds9">9</label></div>
                     <div class="form-check"><input type="radio" name="demo_scale" value="10" id="ds10"><label for="ds10">10</label></div>
+                </div>
+            </div>
+
+            <!-- ELICITATION BOX + SLIDER ELICITATION. The .elicitation box is the
+                 SHARED frame every elicitation sits in (base.css) — a raised
+                 white active-input region, distinct from the quiet grey .panel.
+                 Any elicitation (slider, allocation, rating) drops inside it and
+                 is framed automatically. Inside here is the reusable
+                 .slider-elicit control (slider.css + slider_elicit.js): NO
+                 starting value and NO pre-positioned thumb — the thumb is hidden
+                 until the participant moves it (an untouched slider must never
+                 read as an answer), and an untouched slider posts EMPTY, so the
+                 control is no-JS-safe. The task screen (main/game.html) is the
+                 real user; there the chosen value IS the participant's payoff. -->
+            <h3 class="section-title">Elicitation box + slider
+                <span class="popover-anchor" tabindex="0">?<span class="popover-panel" role="tooltip">Move the slider to pick a value. It is blank until you move it — no starting position, no thumb — so an untouched control never reads as an answer.</span></span>
+            </h3>
+            <div class="elicitation">
+                <div class="slider-elicit" data-unset-display="—">
+                    <div class="slider-readout">
+                        <span class="slider-value">—</span>
+                        <span class="slider-unit">points</span>
+                    </div>
+                    <div class="slider-track-wrap">
+                        <input type="range" name="demo_slider" min="0" max="100" step="1"
+                               aria-label="Demo value in points">
+                    </div>
+                    <div class="slider-ends">
+                        <span>0 points</span>
+                        <span>100 points</span>
+                    </div>
                 </div>
             </div>
 

@@ -167,6 +167,51 @@ is assigned before that page renders).
   `main_contract.py`; run them rather than editing them.
   (`http_flow_test` and `gated_flow_test` walk generically and need nothing.)
 
+## Elicitations — the shipped slider is the reference
+
+The placeholder task in `main/` **is** a worked elicitation: one slider that
+picks the participant's payoff. Copy it before building your own. The pieces:
+
+- **The reusable control** — `.slider-elicit`
+  (`_static/global/css/slider.css` + `_static/global/js/slider_elicit.js`),
+  with a specimen in `_static/global/html/template.html`. It is a plain
+  styled range; a page composes it, never patches it (the CLAUDE.md styling
+  rule).
+- **The container** — wrap EVERY elicitation in the shared `.elicitation` box
+  (base.css). It frames the active response region and is visually distinct
+  from `.panel` (the quiet grey box for secondary information). A slider, an
+  allocation, a rating: all drop inside `.elicitation` and look right by
+  convention, so the next author does not restyle the frame.
+- **The help affordance** — the anchored popover (`.popover-anchor` /
+  `.popover-panel`, base.css): a CSS-only "?" hint, no-JS-safe.
+
+Rules a beginner cannot infer from the code alone:
+
+- **No starting value, ever.** The range carries no `value` attribute and the
+  thumb is HIDDEN until the participant moves it. A pre-positioned thumb biases
+  the answer toward wherever it sits — an untouched control that already shows a
+  number reads as an answer nobody gave. The JS reveals the thumb on the first
+  move and, if the slider is never touched, STRIPS THE NAME so it posts empty.
+- **Slider vs discrete choice.** Use a slider only for a genuinely CONTINUOUS
+  or fine-grained quantity (a payoff, a probability, a confidence). For a small
+  set of distinct options use the `.mc-option` cards or a radio group — a
+  slider over 3–5 categories invents a spurious ordering and a spurious
+  midpoint. If the extremes matter more than the middle, reconsider the slider.
+- **Telemetry rides the page's OWN form.** Any client-captured measurement
+  (time on page, interaction traces) is a hidden `<input>` on the same form,
+  submitted in the same POST — never a side request. Every such field is
+  `blank=True` and read with `field_maybe_none`, because JS may be blocked and
+  the field then arrives empty; the shipped `client_ms` is the pattern.
+- **Family-first field names.** The slider's answer is `slider_payoff_points`
+  (`main/Player`): `slider_` groups the elicitation's columns in an export
+  (docs/conventions.md). Name yours the same way — family first, unit last.
+- **Where the two duties are wired.** The chosen value becomes the round's
+  result in `main.GameStart.before_next_page`
+  (`round_payoff = cu(slider_payoff_points)`), and the LAST task page
+  (`main.payoff`) calls `finish_task_block`, which collects `payoff_vector` and
+  stamps `task_done`. `scripts/tests/slider_payoff_test.py` proves both — a high
+  slider is paid that, and an empty (no-JS) submit is safe.
+
 ## Checklist before you finish
 
 - [ ] Audience decided first; game built in `main` second; `intro` rewritten

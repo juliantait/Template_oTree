@@ -709,6 +709,31 @@ a { color: var(--accent); }
     box-shadow: inset 3px 0 0 var(--danger);
 }
 
+/* COMPONENT — elicitation box. INTENTION: the SHARED FRAME every elicitation
+   sits in, so a slider, an allocation, a rating or any other ACTIVE input
+   region looks the same and reads as "here is where you answer" — visual
+   separation of the response from the surrounding prose, as a CONVENTION rather
+   than styling local to one control. The next agent adding an elicitation drops
+   the control inside `<div class="elicitation">…</div>` and it is framed
+   automatically; the control itself (e.g. .slider-elicit) carries only its own
+   internal look.
+
+   DISTINCT FROM .panel ON PURPOSE, and it must stay two classes not one. .panel
+   is the quiet grey box for SECONDARY INFORMATION (a note, a reminder); this
+   frames an ACTIVE INPUT the participant acts on. So it is the raised WHITE
+   surface with a stronger border and a soft lift — it stands forward off the
+   card as the thing to interact with, where the panel sits back into it. Do not
+   collapse them by tinting a panel: the intention differs, so the class does.
+   Specimen in _static/global/html/template.html (the slider elicitation is its
+   first user). */
+.elicitation {
+    background: var(--card-bg);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow);
+    padding: clamp(16px, 2.6vw, 22px);
+}
+
 .hint { color: var(--ink-mute); font-size: 0.86em; }
 
 /* COMPONENT — template note. INTENTION: a muted italic aside addressed to the
