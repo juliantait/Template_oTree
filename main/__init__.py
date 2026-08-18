@@ -79,6 +79,23 @@ class Player(BasePlayer):
     # disabled/blocked) is stored, not rejected. Only collected when the
     # telemetry_passive_capture flag is on.
     client_ms = models.LongStringField(blank=True)
+    # PASSIVE FOCUS TRACE — per-page MEASUREMENT, filled by hidden fields on this
+    # page's OWN form (no side request), the same reliable path as client_ms. A
+    # SEPARATE OBSERVER from the tab monitor (tab_monitor_* participant fields):
+    # it only MEASURES, never enforces — see _static/global/js/focus_trace.js and
+    # DECISIONS.md. Named under the non-colliding `focus_trace_` family
+    # DELIBERATELY: `tab_monitor_focus_loss_count` already exists and means a
+    # different thing (long departures on monitored pages that count toward
+    # disqualification), so the bare name `focus_loss_count` is NOT reused.
+    # Both blank=True so an EMPTY submission (JS disabled/blocked) is stored, not
+    # rejected — read them with field_maybe_none, never bare (CLAUDE.md). Only
+    # collected when the telemetry_focus_trace flag is on.
+    #
+    # focus_trace_departures is bounded (blank still passes): an unbounded
+    # IntegerField accepts an integer too large for SQLite and 500s the page at
+    # flush. No honest browser gets near the cap. (Mirrors exp_pilots' bound.)
+    focus_trace_departures = models.IntegerField(blank=True, min=0, max=10_000)
+    focus_trace_unfocused_ms = models.FloatField(blank=True)
     # --- spare columns (future-proofing) -------------------------------------
     # Never rename in place. To repurpose one, record the mapping (with a date)
     # in CODEBOOK.md and add a rename-before-launch todo. See the repurpose
@@ -212,13 +229,21 @@ class GameStart(TaskPage):
 
     @staticmethod
     def get_form_fields(player):
-        # The passive-capture hidden field rides on this page's own form.
-        return ['client_ms'] if _flag(player, 'telemetry_passive_capture') else []
+        # Each telemetry module's hidden field(s) ride on this page's own form,
+        # added ONLY when that module is on. Two independent modules, two
+        # independent flags — the focus trace is never gated on passive capture.
+        fields = []
+        if _flag(player, 'telemetry_passive_capture'):
+            fields.append('client_ms')
+        if _flag(player, 'telemetry_focus_trace'):
+            fields += ['focus_trace_departures', 'focus_trace_unfocused_ms']
+        return fields
 
     def vars_for_template(self):
         return dict(
             task_template_vars(self),
             telemetry_passive_capture=_flag(self, 'telemetry_passive_capture'),
+            telemetry_focus_trace=_flag(self, 'telemetry_focus_trace'),
         )
 
     @staticmethod

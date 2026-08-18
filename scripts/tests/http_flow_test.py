@@ -235,7 +235,11 @@ def main():
     # 2) The key case bots can't do: JS-produced hidden fields submitted EMPTY.
     results['prolific+empty-hidden'] = walk(
         base, 'prolific',
-        overrides={'is_mobile': '', 'device_info_json': '', 'client_ms': ''},
+        overrides={'is_mobile': '', 'device_info_json': '', 'client_ms': '',
+                   # The passive focus trace's hidden fields, submitted EMPTY —
+                   # a participant whose JS never ran. field_maybe_none must keep
+                   # the task submit off the TypeError that a bare null read is.
+                   'focus_trace_departures': '', 'focus_trace_unfocused_ms': ''},
         label='prolific+empty-hidden')
 
     print("\n=== RESULTS ===")

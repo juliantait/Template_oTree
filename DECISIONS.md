@@ -11,6 +11,75 @@ working.
 
 ---
 
+## Passive focus trace ported alongside the tab monitor, as a separate observer — 2026-08-18
+
+Ported the passive focus/multitasking trace from `exp_pilots` (which forked from
+this template) as NET-NEW per-page MEASUREMENT, added ALONGSIDE the existing tab
+monitor and never on top of it. The template already logs a rich tab-monitor
+event log and DISQUALIFIES on long departures; what it lacked is a passive,
+per-page record of how much time the page spent unfocused/hidden and how many
+times the participant left — as measurement, not enforcement.
+
+**What it is.** A new browser file `_static/global/js/focus_trace.js` and two
+per-round `main.Player` columns, gated by a new telemetry flag. Both columns are
+`blank=True`, filled by hidden inputs on the task page's own form (the
+`client_ms` mechanism, never a side request), and read with `field_maybe_none`.
+
+**Naming (proposed for Julian to confirm).** The bare `exp_pilots` names collide
+here — `focus_loss_count` reads as a sibling of the template's
+`tab_monitor_focus_loss_count`, which means a *different* thing — so the trace
+takes its own non-colliding `focus_trace_` family:
+* flag: **`telemetry_focus_trace`** (telemetry family; ON in the prolific
+  profile, OFF in lab, like `telemetry_passive_capture` / `_device_capture`);
+* columns: **`focus_trace_departures`** (was `focus_loss_count`) and
+  **`focus_trace_unfocused_ms`** (was `focus_unfocused_ms`);
+* hidden-input ids match the column names; the JS is its own static file.
+
+**The separate-observer guarantee (the load-bearing part).** `tab_monitor.js` /
+`tab_monitor.py` are UNCHANGED. `focus_trace.js` adds only its own DOM listeners
+(`blur`, `focus`, `visibilitychange`, `mousedown`), keeps only its own state,
+and NEVER calls `preventDefault`, NEVER calls `liveSend`, NEVER reads or writes
+any tab-monitor variable, and NEVER disqualifies. DOM listeners are additive, so
+two independent listeners on the same event cannot interfere. It is a NO-OP on
+any page without its hidden inputs, and the whole body is wrapped so
+instrumentation can never break a page. This is deliberately the same design
+`exp_pilots` used, and for the same reason: the cost of entangling measurement
+with the disqualification path is a participant wrongly ejected (or wrongly not).
+
+**Verified against the exp_pilots CLAIMS, not the docs.** A real-Chromium check
+drives synthetic `blur`/`visibilitychange`/`mousedown` at the actual JS and
+confirms: one departure counts once however the browser reports it (blur +
+visibilitychange dedupe via the open-interval guard); a blur within 300 ms of a
+mousedown is ignored; the unfocused ms include an interval still open at submit;
+a clean page posts 0 / 0.0. And that the trace ARRIVES in `main.Player`
+end-to-end, independent of the tab monitor (positive trace, zero violations).
+
+**Rejected — storing in the participant JSON bucket to dodge the schema change.**
+It would have kept the upgrade path hot-deployable, but it breaks parity with
+the sibling `client_ms` telemetry (a real `main.Player` column) and with
+`exp_pilots` (per-round `main.Player` fields), and the per-round export wants
+real columns. So the trace is two real columns, and the schema-change cost is
+accepted and documented (below).
+
+**Enforced:** `scripts/tests/focus_trace_test.py` (wiring both ways, arrival,
+no-JS safety, independence from the tab monitor incl. a source-level check that
+`focus_trace.js` names no tab-monitor symbol, and the exp_pilots claims in a real
+browser); `scripts/tests/http_flow_test.py` and `frozen_config_test.py` extended
+for the two new fields; `CODEBOOK.md` ("Passive focus trace").
+
+**Schema-change consequence (the same rule as `round_payoff`).** This appends
+two `main.Player` columns, and oTree's `create_all` never ALTERs an existing
+table, so deploying it over a database that predates the columns 500s on every
+page that loads the model — it needs `otree resetdb`, exactly like every prior
+added column (CODEBOOK.md deploy note). The template has no live data, so this is
+free here; a STUDY already running must add the trace at a reset boundary, never
+hot over live sessions (the CLAUDE.md rule on schema changes). The local
+predeploy fixture (`_ai/live_data/`, gitignored) was regenerated on the current
+schema so `predeploy_check.sh` upgrade mode returns to its documented 8/9
+baseline (only the deliberate REPLACE_* completion-code check fails).
+
+---
+
 ## Treatment randomisation moved from session creation to arrival, balanced on arrival — 2026-08-18
 
 Treatment was dealt to EVERY participant in `before.creating_session` with

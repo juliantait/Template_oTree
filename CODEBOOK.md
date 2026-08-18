@@ -145,6 +145,37 @@ Nothing above replaces the raw columns. `tab_monitor_focus_loss_count`,
 `tab_monitor_flag` is derived from them in ONE place
 (`common.derive_tab_monitor_flag`).
 
+### Passive focus trace (`main.Player.focus_trace_*`) — MEASUREMENT, not the tab monitor
+
+Added **2026-08-18**, ported net-new from `exp_pilots` (`focus_trace.js`). Two
+per-round `main.Player` columns, filled by hidden fields on the task page's own
+form (the `client_ms` mechanism, never a side request), collected only when the
+**`telemetry_focus_trace`** flag is on. Both `blank=True`; read with
+`field_maybe_none`, never bare.
+
+| Column | Type | Units | Meaning |
+|--------|------|-------|---------|
+| `focus_trace_departures` | int / blank | count | Times the window lost focus **or** the tab was hidden during THIS round. One *departure* counts once however the browser reports it — a tab switch fires both `blur` and `visibilitychange`, and an open-interval guard makes that pair count once. A `blur` within **300 ms** of a mousedown inside the page is ignored (clicking a control can drop window focus for an instant; that is not the participant leaving). Normal navigation (submit / page unload) is not a departure. Bounded `0..10_000` so a garbage value cannot 500 the flush. |
+| `focus_trace_unfocused_ms` | float / blank | ms | Total time this round's page spent hidden or unfocused, **including an interval still open at submit**. |
+
+**BLANK is the no-JS case, and it is legitimate.** A participant whose script
+never ran posts both empty; the columns read NULL and the round still submits.
+Do not read a NULL as "never left" — it is "not measured".
+
+> **THIS IS NOT THE TAB MONITOR, AND CHANGES NOTHING ABOUT IT.** The
+> disqualification machinery (`tab_monitor_*`, above) is untouched:
+> `focus_trace.js` is a SEPARATE OBSERVER — its own file, its own state; it adds
+> only its own DOM listeners, never calls `liveSend` or `preventDefault`, never
+> reads or writes any tab-monitor variable, and never reports to the server
+> outside the page's own form post. So violation counting, the warning
+> thresholds and the route to the ending behave exactly as before (proven end to
+> end in `scripts/tests/focus_trace_test.py`). **The two also MEAN different
+> things:** `tab_monitor_focus_loss_count` counts only departures longer than
+> `tab_monitor_threshold_ms` on *monitored pages* for a participant who *armed*
+> the monitor; `focus_trace_departures` counts **every** departure on the task
+> screen regardless of length or arming. A participant can have
+> `focus_trace_departures > 0` with `tab_monitor_focus_loss_count = 0`.
+
 ### Comprehension failure means different things by study type
 
 `quiz_comprehension_max_failures` is **one counter and one threshold**
@@ -604,8 +635,10 @@ Fill in per-study fields as you build the task. The template ships with:
   exit-code section above).
 - `main.Player`: `round_payoff` (the game's per-round result — the value the
   payoff page shows and `payoff_vector` collects; NOT the payment record, see
-  "The payment record" above) and `client_ms` (passive time-on-page capture,
-  `telemetry_passive_capture` flag).
+  "The payment record" above), `client_ms` (passive time-on-page capture,
+  `telemetry_passive_capture` flag), and the PASSIVE FOCUS TRACE pair
+  `focus_trace_departures` / `focus_trace_unfocused_ms` (`telemetry_focus_trace`
+  flag — see "Passive focus trace" below).
 - `outro.Player`: demographics + payment fields (`age`, `gender`, `bank`,
   `bic`, `sepa`, `earned`, `payouts`, …), and `feedback` (free text, collected
   only when the `pilot_feedback` flag is on).
@@ -636,6 +669,12 @@ carries the six columns, blank.
 per-round result, replacing the use of oTree's `player.payoff` (see "The
 payment record" above).
 
+**Added columns (2026-08-18):** `main.Player.focus_trace_departures` and
+`main.Player.focus_trace_unfocused_ms` — the passive focus trace (see "Passive
+focus trace" below). A SCHEMA change: it appends two columns, so it needs the
+same `otree resetdb` treatment as any other added column when deployed over a
+database that predates them (see the deploy note at the end of this section).
+
 **Removed column (2026-08-18):** `before.Player.treatment_group`. It was a copy
 of the participant-level cell, written on the consent page — but treatment
 assignment moved to `intro` (arrival), which is after the whole `before` app, so
@@ -645,8 +684,10 @@ benign for an existing database — the leftover table column is simply unread �
 this needs no `resetdb`, unlike an ADDED column.
 
 **Deploying this over a study that HAS data needs `otree resetdb`** — the
-build ADDS `before.Player.prolific_label_conflict` and (since 2026-08-13)
-`main.Player.round_payoff`, and oTree has no migrations, so a database without
-those columns 500s on every page that loads the model. Retiring the in-flight sessions is not sufficient. See the warning box
+build ADDS `before.Player.prolific_label_conflict`, (since 2026-08-13)
+`main.Player.round_payoff`, and (since 2026-08-18) `main.Player.
+focus_trace_departures` / `focus_trace_unfocused_ms`, and oTree has no
+migrations, so a database without those columns 500s on every page that loads
+the model. Retiring the in-flight sessions is not sufficient. See the warning box
 under "Before a deploy" in README.md for the full procedure and the one
 hand-migration alternative.
