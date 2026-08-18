@@ -928,6 +928,8 @@ def check_room_welcome_gate(server, browser):
             const card = document.querySelector('.screen-card');
             const btn = document.querySelector('.button-row .next-button');
             const logo = document.querySelector('.logo-section');
+            const header = document.querySelector('.experimental-header');
+            const title = document.querySelector('.header-title');
             const content = document.querySelector('.experimental-content');
             const copy = document.querySelector('.section-text');
             const r = el => { if (!el) return null; const b = el.getBoundingClientRect();
@@ -935,9 +937,16 @@ def check_room_welcome_gate(server, browser):
                         w: Math.round(b.width), h: Math.round(b.height),
                         bottom: Math.round(b.bottom)}; };
             const cs = card ? getComputedStyle(card) : null;
+            const titleFont = title
+                ? Math.round(parseFloat(getComputedStyle(title).fontSize)) : null;
+            const copyFont = copy
+                ? Math.round(parseFloat(getComputedStyle(copy).fontSize)) : null;
             return {
                 card: r(card), button: r(btn), logo: r(logo),
+                header: r(header), title: r(title),
                 content: r(content), copy: r(copy),
+                titleText: title ? (title.innerText || '').trim() : null,
+                titleFont: titleFont, copyFont: copyFont,
                 // Resolved floor and the card's own top padding, so the centring
                 // maths can be checked against real px rather than assumed vh.
                 cardMinPx: cs ? Math.round(parseFloat(cs.minHeight)) : null,
@@ -976,6 +985,33 @@ def check_room_welcome_gate(server, browser):
               f'{label}: no sideways overflow ({m["docW"]}px document in a '
               f'{m["winW"]}px window)')
 
+        # THE STYLED WELCOME HEADER — PRESENT, STYLED, AND ABOVE THE BODY COPY.
+        # This is the study's own header (an eyebrow + a `Welcome` title, the
+        # same shape every other screen uses); the .room-gate work once shipped
+        # this page with the copy alone and no heading, which read as a different
+        # piece of software. Three things, all measured — not "there is an <h2>":
+        #   * the title renders with real size (a box, not a zero-height node),
+        #     carries the word "Welcome", and is set LARGER than the body copy,
+        #     which is what "styled heading" versus "plain text" actually means;
+        #   * it sits ABOVE the body copy (its bottom is above the copy's top), so
+        #     it reads as a header introducing the line, not beside or below it.
+        if m['title'] and m['copy'] and m['titleFont'] and m['copyFont']:
+            check(m['title']['h'] > 0 and m['title']['w'] > 0,
+                  f'{label}: the Welcome header renders as a real box '
+                  f'({m["title"]["w"]}x{m["title"]["h"]}px), not an empty node')
+            check((m['titleText'] or '').lower() == 'welcome',
+                  f'{label}: the header reads "Welcome" (got {m["titleText"]!r})')
+            check(m['titleFont'] > m['copyFont'],
+                  f'{label}: the header is styled LARGER than the body copy '
+                  f'({m["titleFont"]}px title vs {m["copyFont"]}px copy) — a '
+                  f'heading, not plain text')
+            check(m['title']['bottom'] <= m['copy']['y'] + 1,
+                  f'{label}: the header sits ABOVE the body copy '
+                  f'(title bottom {m["title"]["bottom"]}px, copy top '
+                  f'{m["copy"]["y"]}px)')
+        else:
+            check(False, f'{label}: the styled Welcome header is present')
+
         # THE `.room-gate` CONTRACT — MEASURED, NOT EYEBALLED. This page is a
         # degenerate short card (one line of copy + Start), and base.css gives it
         # its OWN class that KEEPS the --card-min floor but CENTRES the
@@ -992,21 +1028,24 @@ def check_room_welcome_gate(server, browser):
         #   3. THE DEAD BAND IS GONE. The gap from the last line of copy to the
         #      Start button is ordinary rhythm (~tens of px), not the ~270px
         #      chasm the foot-anchored card left on a page this short.
-        if all(m[k] for k in ('content', 'button', 'logo', 'copy')) \
+        if all(m[k] for k in ('header', 'content', 'button', 'logo', 'copy')) \
                 and m['cardMinPx'] and m['cardPadTop'] is not None:
             # 1. floor kept (min-height honoured; short content sits AT the floor)
             check(m['card']['h'] >= m['cardMinPx'] - 1,
                   f'{label}: the card keeps the --card-min floor '
                   f'({m["card"]["h"]}px tall vs floor {m["cardMinPx"]}px) — the '
                   f'gate does not shrink below every other screen')
-            # 2. content+button centred in the space above the footer
+            # 2. header+content+button centred in the space above the footer. The
+            #    group now starts at the HEADER (the Welcome title), so its top is
+            #    the header's top, not the copy's — the .room-gate class moved the
+            #    upper centring margin onto the header for exactly this reason.
             region_top = m['card']['y'] + m['cardPadTop']
             region_mid = (region_top + m['logo']['y']) / 2
-            group_mid = (m['content']['y'] + m['button']['bottom']) / 2
+            group_mid = (m['header']['y'] + m['button']['bottom']) / 2
             off = round(group_mid - region_mid)
             check(abs(off) <= 6,
-                  f'{label}: the content+button group is vertically centred above '
-                  f'the footer (off by {off}px, tol 6px) — not foot-anchored')
+                  f'{label}: the header+content+button group is vertically centred '
+                  f'above the footer (off by {off}px, tol 6px) — not foot-anchored')
             # 3. no dead band between the copy and the Start button
             gap = m['button']['y'] - m['copy']['bottom']
             check(0 <= gap <= 60,
@@ -1015,6 +1054,7 @@ def check_room_welcome_gate(server, browser):
 
         geometry.setdefault('room_welcome', {})[vp_name] = {
             'card': m['card'], 'button': m['button'], 'logo': m['logo'],
+            'header': m['header'], 'title': m['title'],
             'content': m['content'], 'copy': m['copy']}
         page.screenshot(
             path=os.path.join(OUT_DIR, f'room_welcome_{vp_name}.png'),

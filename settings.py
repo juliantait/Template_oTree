@@ -314,7 +314,12 @@ DASHBOARD_RETURN_GRACE_SECONDS = 90
 # NOTE: `_templates/room_welcome.html` links base.css DIRECTLY and carries no
 # `?v=`, so this bump does NOT refresh that one page — it is the css_bundle
 # pages that pick it up. The gate relies on a fresh fetch of base.css instead.
-STATIC_VERSION = '17'
+# 17 -> 18 on 2026-08-18: the room gate regained its styled `Welcome` header
+# (eyebrow + title), and `.room-gate` in base.css moved the upper centring margin
+# onto that header so the header+copy+button stay centred as a group. base.css
+# and _templates/room_welcome.html both changed; same NOTE as 17 applies — the
+# gate's own <link> carries no `?v=`, so verify it by fetching the rendered page.
+STATIC_VERSION = '18'
 
 # --- whose study this is ------------------------------------------------------
 # THE ONE PLACE A COPIED STUDY NAMES ITS INSTITUTION IN PROSE (Julian,

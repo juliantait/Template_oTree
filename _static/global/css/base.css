@@ -711,8 +711,10 @@ a { color: var(--accent); }
    and the button alone at the bottom with a wide dead band between them
    (measured ~270px in the downstream study this mirrors). So the gate KEEPS the
    floor — visual consistency with every other screen is the whole reason not to
-   just shrink the card — but CENTRES its content+button as a group within that
-   floor rather than splitting them to the two edges.
+   just shrink the card — but CENTRES its header+content+button as a group within
+   that floor rather than splitting them to the two edges. (The header is the
+   study's styled `Welcome` — eyebrow + title — added 2026-08-18; the group it
+   centres is those three, top to bottom.)
 
    THIS IS ITS OWN CLASS ON PURPOSE. It does NOT reuse or extend `.narrative-card`
    (which only decides HORIZONTAL text treatment — the gate still composes that
@@ -725,12 +727,16 @@ a { color: var(--accent); }
 
    HOW IT CENTRES, with the footer still at the foot. The card is a flex column.
    TWO auto margins, BOTH OWNED BY THIS BLOCK, share the free space equally: a
-   `margin-top: auto` on `.experimental-content` and a `margin-bottom: auto` on
-   the button row. The result is F/2 above the copy and F/2 between the button
-   and the logo, so the content+button pair is centred in the space above the
-   footer, and that same lower margin pushes the logo strip flush to the card's
-   bottom edge — the LOGO FOOTER RULE's outcome (order 999, divider above, at the
-   foot) is preserved; only the mechanism that pins it there changes.
+   `margin-top: auto` on `.experimental-header` (the FIRST element of the group)
+   and a `margin-bottom: auto` on the button row. The result is F/2 above the
+   header and F/2 between the button and the logo, so the header+content+button
+   trio is centred in the space above the footer, and that same lower margin
+   pushes the logo strip flush to the card's bottom edge — the LOGO FOOTER RULE's
+   outcome (order 999, divider above, at the foot) is preserved; only the
+   mechanism that pins it there changes. (The upper margin lived on
+   `.experimental-content` until 2026-08-18, when the header was added above the
+   copy; an auto margin on the content would now split the header off the top
+   instead of centring the whole group, so it moved up to the header.)
 
    WHY THIS BLOCK PINS THE FOOTER ITSELF INSTEAD OF LEANING ON THE FOOTER RULE'S
    OWN `margin-top: auto`. Because that margin is NOT there on the screens that
@@ -760,17 +766,27 @@ a { color: var(--accent); }
    the gate's own <link> carries no `?v=` cache-buster (no page context for
    C.STATIC_VERSION), a change here is easy to miss in a version bump — verify by
    fetching the RENDERED page. Measured by scripts/tests/render_check.py leg AR. */
-/* ZERO THE CARD'S FLEX GAP, and let the button row's own padding-top carry the
+/* ZERO THE CARD'S FLEX GAP, and let explicit margins carry the header->copy and
    copy->button rhythm instead. This is not cosmetic — it is what makes the
    centring EXACT. The card's `gap` is inserted BETWEEN flex items, so there is a
-   gap between the button row and the logo but NONE above the copy (it is the
+   gap between the button row and the logo but NONE above the header (it is the
    first child). That single unmirrored trailing gap rides the whole group up by
    half its size — measured as an 8px error at the 16px laptop gap and 12px at
    the 26px desktop gap, i.e. exactly gap/2, and it grows with the gap. With the
    gap at 0, the two auto margins are the only vertical space, so they frame the
-   group symmetrically. (The copy->button spacing is then the button row's
+   group symmetrically. (The header->copy spacing is the content's own
+   margin-top below, and the copy->button spacing is the button row's
    padding-top, the same rhythm every page's forward action already uses.) */
 .room-gate.screen-card { gap: 0; }
+/* THE UPPER HALF OF THE CENTRING lives on the HEADER, because the header is the
+   FIRST element of the centred group (eyebrow + Welcome title, added 2026-08-18
+   to restore the styled heading the .room-gate work had left off). It used to
+   sit on `.experimental-content` back when the copy was the first child; with a
+   header above the copy, an auto margin on the content would open a gap BETWEEN
+   the header and the copy and strand the header at the top instead of centring
+   the whole group. `.experimental-header` is already `flex: 0 0 auto` (it will
+   not grow), so this margin is free to take the upper share of the slack. */
+.room-gate .experimental-header { margin-top: auto; }
 .room-gate .experimental-content {
     /* Hug the copy instead of ballooning to fill the card, so the free space
        survives for the two auto margins to centre the group. */
@@ -780,11 +796,13 @@ a { color: var(--accent); }
        gutter is pointless here — and its negative BOTTOM margin would pull the
        button up into the copy, overlapping the rhythm the button row's
        padding-top is meant to set. Drop both — netting to zero horizontally, as
-       the phone breakpoint already does — and keep only `margin-top: auto`, the
-       upper half of the centring. (The centring itself is squared away by the
-       gap:0 rule above, not here.) */
+       the phone breakpoint already does. The TOP margin is now header->copy
+       RHYTHM (not centring — the centring auto margin moved up to the header
+       above): the card's normal inter-block gap, so the space under the Welcome
+       title matches the header->content spacing every other screen gets from
+       that same gap. */
     padding: 0;
-    margin: auto 0 0 0;
+    margin: clamp(16px, 2.6vw, 26px) 0 0 0;
 }
 /* Un-foot-anchor the button (margin-top: 0) so it hugs directly under its copy —
    the padding-top from the base rule stays as ordinary rhythm; that 24px is

@@ -92,11 +92,35 @@
     {# NARRATIVE family, exactly as before/startpage.html: a short piece of
        running copy, not a form or a table. Without it the card falls through to
        its flush-left default. `room-gate` is THIS PAGE'S OWN class (base.css):
-       it keeps the card's --card-min floor but centres the content+button as a
-       group instead of foot-anchoring the button, so this very short page has no
-       dead band between its one line of copy and Start. It is deliberately not
+       it keeps the card's --card-min floor but centres the header+content+button
+       as a group instead of foot-anchoring the button, so this very short page
+       has no dead band between its copy and Start. It is deliberately not
        shared with any other screen — see the class's comment in base.css. #}
     <div class="screen-card narrative-card room-gate">
+        {# THE STUDY'S OWN STYLED HEADER — an eyebrow above a `Welcome` title,
+           the same header shape every other screen uses (see the consent page,
+           before/welcome+consent.html) and the shape the downstream study
+           exp_pilots renders here too. Composed from the SHARED components
+           `.experimental-header` / `.eyebrow` / `.header-title` (base.css), NOT
+           from a page-local tweak and NOT from the lab-only `welcome_header.html`
+           include — that one says "Welcome to CREED", is scoped to the lab gate
+           by its own contract, and must never reach a Prolific participant (see
+           the header note at the foot of this comment block). This header names
+           no institution: it is true in both recruitment modes, so it obeys the
+           two-variants rule the same way the body copy does. The institution is
+           carried by the logo footer below, exactly as elsewhere.
+
+           It sits INSIDE the centred group: `.room-gate` gives the header the
+           upper centring margin (base.css), so the header+copy+button block
+           stays vertically centred within the card floor with the header on top.
+           EYEBROW COPY: neutral and mode-agnostic; do not put a university name
+           here — this repo is the template (exp_pilots fills it with its own
+           institution, which is a downstream edit, not a thing the template
+           ships). #}
+        <div class="experimental-header">
+            <div class="eyebrow">Before you begin</div>
+            <h2 class="header-title">Welcome</h2>
+        </div>
         <div class="experimental-content">
             <div class="section-text">
                 {# Hidden with the native `hidden` ATTRIBUTE, not inline style:
@@ -114,7 +138,7 @@
                 <input type="text" id="participant_label" name="participant_label"
                        form="room-welcome-form">
                 {% else %}
-                <p>Welcome. Press Start when you are ready to begin.</p>
+                <p>Press Start when you are ready to begin.</p>
                 {% endif %}
             </div>
 
