@@ -221,6 +221,13 @@ def instructions_context(player) -> dict:
         'payment_quiz_bonus': cu(common.cfg(cfg, 'payment_quiz_bonus')),
         'num_experimental_rounds': common.cfg(cfg, 'num_experimental_rounds'),
         # Participant fields via .vars.get(), never getattr() (KeyError trap).
+        # The cell was assigned at the START of intro (instructing.get ->
+        # treatment_assignment.assign_on_arrival), so it is already set by the
+        # time this renders — on the instructions page AND on the quiz's re-read
+        # dialog, both of which are reached only after instructing. '' would mean
+        # the participant somehow reached here without passing instructing, in
+        # which case the treatment-conditional content simply falls back to its
+        # no-treatment form rather than erroring.
         'treatment': player.participant.vars.get('treatment_group', ''),
         'stag_payoff': C.STAG_PAYOFF,
         'hare_payoff': C.HARE_PAYOFF,
@@ -297,6 +304,31 @@ class instructing(participant_tab_monitor.MonitoredPage):
     # a QUIZ field (the POST that takes the re-read offer); declaring it here
     # rendered no control and stored nothing.
     is_displayed = staticmethod(intro_page_visible)
+
+    def get(self):
+        """Assign the treatment cell HERE, at the first instructions page.
+
+        This is the very start of intro and the LATEST point before anything
+        reads treatment_group — this page's own vars_for_template reads it (via
+        instructions_context), so the cell must exist by the time super().get()
+        renders. Assigning on arrival (rather than at session creation) means a
+        participant who abandoned at consent or was screened out by the device
+        gate never took a cell; the assignment balances the session's cells on
+        arrival, is permanent, and is race-safe per session — the whole argument
+        lives in before/treatment_assignment.py.
+
+        NOT WRAPPED in a swallowing try/except, deliberately. This is core
+        experimental assignment, not instrumentation: a silent failure here would
+        leave every participant unassigned ('') while the page still rendered —
+        exactly the "silent refusal to run reads as success" trap CLAUDE.md warns
+        against. If it can fail it must fail loudly, and the treatment test
+        asserts arrivals actually receive balanced cells. It is called only on a
+        real page GET (never during oTree's request-less skip-chain walk), and it
+        is idempotent, so the re-read pass (round 2) simply re-confirms the cell.
+        """
+        from before import treatment_assignment
+        treatment_assignment.assign_on_arrival(self.player)
+        return super().get()
 
     @staticmethod
     def vars_for_template(player):

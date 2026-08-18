@@ -353,6 +353,24 @@ STATIC_VERSION = '19'
 # whichever reads correctly after "researchers at ...".
 INSTITUTION_NAME = 'the University of Amsterdam'
 
+# --- treatment cells (PLACEHOLDER) -------------------------------------------
+# THE TREATMENT CELLS A PARTICIPANT CAN BE ASSIGNED TO. Shipped as a two-cell
+# PLACEHOLDER ('row' / 'column') for a study that has no real treatments yet —
+# swap in your own here, in this one place. This is a CODE constant, not a
+# session-config parameter, deliberately: the cells are part of the experimental
+# design, fixed for a study, not something to vary per session (the same reason
+# NUM_ROUNDS is fixed at import).
+#
+# WHAT IS REAL, AND WHAT IS PLACEHOLDER. The cells above are the placeholder; the
+# MECHANISM that consumes them — balance-on-arrival, assigned at the first
+# instructions page, permanent and race-safe per session — is real and lives in
+# `before/treatment_assignment.py`. A copied study changes THIS list and keeps
+# that mechanism. Assignment MOVED from session creation to arrival on
+# 2026-08-18 (see DECISIONS.md): a cell is now spent only by a participant who
+# actually reached the study, not by anyone who abandoned at consent or was
+# turned away by the device gate.
+TREATMENT_CELLS = ['row', 'column']
+
 
 SESSION_CONFIG_DEFAULTS = dict(
     # THE ORDER OF THIS DICT IS THE ORDER OF THE ADMIN'S SESSION-CONFIG FORM.
@@ -789,7 +807,7 @@ PARTICIPANT_FIELDS = [
     'temp_data',            # scratch storage for any participant-specific data
     'payoff_vector',        # all payoff-relevant values across rounds/apps
     'comprehension_failed_attempts',      # number of wrong quiz submissions (comprehension)
-    'treatment_group',      # treatment cell, assigned at session creation
+    'treatment_group',      # treatment cell, assigned ON ARRIVAL at intro ('' until then)
     'exit_code',            # numeric outcome (see EXIT_CODES); init 0 = abandoned
     'participant_id_external',  # external recruitment ID (e.g. Prolific), if captured
     'stage_timestamps',     # dict {stage_name: epoch_seconds} filled as the flow advances
@@ -813,7 +831,13 @@ PARTICIPANT_FIELDS = [
 # - temp_data: Temporary storage for any participant-specific data during the session.
 # - payoff_vector: A list storing all payoff-relevant values across all rounds and apps.
 # - comprehension_failed_attempts: Counts the number of times a participant answers the quiz incorrectly.
-# - treatment_group: The treatment cell assigned in before/creating_session.
+# - treatment_group: The treatment cell (see TREATMENT_CELLS). Assigned ON
+#   ARRIVAL at the intro instructions page (intro.instructing), NOT at session
+#   creation — so a participant who abandons at consent or is screened out by the
+#   device gate never takes a cell. Initialised to '' at creation
+#   (before.creating_session -> treatment_assignment.init_unassigned) so the
+#   column is never blank; '' means "created but never reached the study".
+#   Balance-on-arrival, permanent, race-safe: see before/treatment_assignment.py.
 # - exit_code: Numeric outcome; see EXIT_CODES. Initialised to 0 (abandoned) so
 #   no export row is ever blank; set to 1 on a clean finish or a negative reason.
 # - participant_id_external: External platform participant id (Prolific etc.).

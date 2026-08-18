@@ -11,6 +11,36 @@ working.
 
 ---
 
+## Treatment randomisation moved from session creation to arrival, balanced on arrival — 2026-08-18
+
+Treatment was dealt to EVERY participant in `before.creating_session` with
+`itertools.cycle` — balanced by construction, but it spent a cell on anyone who
+then declined consent or was screened out by the device gate. It now assigns a
+cell only when a participant reaches the first instructions page
+(`intro.instructing.get`), the latest safe point (instructions may themselves be
+treatment-specific). Once the deck is no longer dealt at once `cycle` cannot hold
+balance, so each arrival COUNTS the cells already taken in this session, takes the
+LEAST-FILLED, and breaks ties AT RANDOM (a deterministic tie-break makes the next
+cell guessable from the running order). Balance holds at every intermediate
+moment, not merely once a session is full.
+
+Assignments are PERMANENT: we balance who ARRIVED, not who finished. An abandoned
+cell is never released or re-dealt, and a page refresh returns the cell already
+held (idempotent). **Rejected / deferred (Julian):** balancing COMPLETERS
+(releasing an abandoned cell so it can be re-dealt) is a real statistical choice a
+multi-cell study may want; it is deliberately not done here and can be revisited
+in `before/treatment_assignment.py`.
+
+Count-and-assign is RACE-SAFE per session: two simultaneous arrivals would
+otherwise both read the same least-filled cell and skew the balance. It runs under
+a database row lock on the session row (`SELECT ... FOR UPDATE`), held to the
+request's commit, so a second arrival blocks until the first has committed its
+cell. The mechanism is a PLACEHOLDER a study swaps its real treatments into, but
+the balance-on-arrival algorithm is real, not a stub.
+**Enforced:** `before/treatment_assignment.py`;
+`scripts/tests/treatment_assignment_test.py` (balanced arrivals, seeded-imbalance
+compensation, and a declined / screened-out participant taking no cell).
+
 ## The scroll model is three modes: whole-window by default, single-page fit as enhancement, inner-scroll kept dormant — 2026-08-18
 
 The card layout was reworked from ONE model (every card capped at 88vh with its
