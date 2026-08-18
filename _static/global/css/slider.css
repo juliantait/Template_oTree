@@ -1,0 +1,90 @@
+/* ===========================================================================
+   SLIDER ELICITATION — a reusable single-slider value control.
+
+   ONE shared component, used by the task page (main/game.html) and demonstrated
+   in _static/global/html/template.html. A page COMPOSES it; it never carries
+   its own tweaks (the CLAUDE.md styling rule). Everything general — colour,
+   radius, focus ring, the base range look — is inherited from base.css; this
+   file adds only what the elicitation itself needs.
+
+   INTENTION: let a participant pick ONE value on a continuous scale. In the
+   shipped task that value IS the payoff they are paid. This lifts the GOOD
+   behaviours of exp_pilots' bet slider WITHOUT its two-step gating or its
+   clamped/blocked half — one clean slider that picks a value:
+     * a touch-sized hit area and a thick, legible track;
+     * NO STARTING VALUE and NO PRE-POSITIONED THUMB — the thumb is hidden until
+       the participant moves it, so an untouched control never reads as an
+       answer. Pre-positioning a thumb biases the response toward wherever it
+       sits, which is the whole reason there is no default here. The hiding is
+       applied by _static/global/js/slider_elicit.js (the .is-unset class), so
+       with NO JavaScript the native thumb stays visible and the control is
+       still fully usable — the server tolerates an empty submission either way.
+     * a live readout of the chosen value, em-dash until it is set.
+   =========================================================================== */
+
+/* FAMILY — elicitation (FULL-WIDTH functional). INTENTION: a control fills the
+   card width, so it is never clamped to the prose reading measure. */
+.slider-elicit {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(10px, 1.8vw, 16px);
+    width: 100%;
+}
+
+/* THE LIVE READOUT — the big current value, centred above the track. It shows
+   the em-dash (from data-unset-display, via the script) until the participant
+   moves the slider: there is no starting value, so there is no number to show
+   and showing one would be a value nobody chose. */
+.slider-readout {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: .4em;
+}
+.slider-value {
+    font-size: clamp(30px, 4vw, 44px);
+    font-weight: 700;
+    line-height: 1;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.02em;
+}
+.slider-unit { font-size: .9em; color: var(--ink-mute); }
+
+/* THE TRACK. A GENEROUS HIT AREA bought by the input's HEIGHT — a native range
+   takes a click anywhere inside its own box, so a tall box is a tall target,
+   comfortable with a thumb on a phone. Width is left at 100% of the column, so
+   the widget never grows sideways; only the horizontal strip gets taller.
+
+   The visible track is thickened (base.css ships 6px) on BOTH engines' own
+   pseudo-elements, each in its OWN rule — never a comma-joined selector list,
+   which is invalid as a whole if either half is unrecognised, so one engine
+   would drop both (the exp_pilots lesson). */
+.slider-track-wrap { position: relative; }
+.slider-track-wrap input[type="range"] { height: 44px; }
+.slider-track-wrap input[type="range"]::-webkit-slider-runnable-track { height: 10px; }
+.slider-track-wrap input[type="range"]::-moz-range-track { height: 10px; }
+/* Re-centre the webkit thumb on the thicker (10px) track: (10 - 30) / 2 = -10px
+   (base.css sets -12px, correct for its own 6px track, which would leave the
+   thumb clipped here). Firefox centres its thumb on the track itself. */
+.slider-track-wrap input[type="range"]::-webkit-slider-thumb { margin-top: -10px; }
+
+/* NO THUMB UNTIL THE VALUE IS SET. .is-unset is added by slider_elicit.js on
+   load and removed on the first move. With no JavaScript it is never added, so
+   the thumb stays visible and a scriptless participant can still drag it — the
+   one state that MUST keep working without the script. Opacity only: hiding the
+   thumb must not resize or move anything. */
+.slider-elicit.is-unset .slider-track-wrap input[type="range"]::-webkit-slider-thumb { opacity: 0; }
+.slider-elicit.is-unset .slider-track-wrap input[type="range"]::-moz-range-thumb { opacity: 0; }
+
+/* The end labels, naming each end of the scale. Muted, and the right one is
+   right-aligned so both hug their own end of the track. */
+.slider-ends {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: .78em;
+    line-height: 1.35;
+    color: var(--ink-mute);
+}
+.slider-ends span:last-child { text-align: right; }

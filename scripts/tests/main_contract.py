@@ -21,12 +21,20 @@ TASK_PAGES = ['GameStart', 'payoff']
 def task_page_submits():
     """The form payload each task page needs for one walked round.
 
+    `slider_payoff_points` is the SLIDER ELICITATION's answer — the value the
+    participant picks, which becomes this round's payoff (main.GameStart). A
+    fixed nonzero value here so a walked journey produces a real, nonzero payoff
+    to pay (payoff_ledger_test / full_journey_test assert earned > 0); a study
+    swapping the game replaces this with its own page's form.
+
     `client_ms` is the passive-capture hidden field, submitted EMPTY — the
     no-JS submit every suite must tolerate (docs/conventions.md: an empty hidden
-    field is stored, never rejected). A fresh dict per call, so one test's
-    mutation cannot leak into another's walk.
+    field is stored, never rejected). The SLIDER's own no-JS/empty tolerance
+    (an untouched slider posts nothing -> round pays 0, no 500) is proven
+    separately in scripts/tests/slider_payoff_test.py, which posts it empty.
+    A fresh dict per call, so one test's mutation cannot leak into another's walk.
     """
     return {
-        'GameStart': {'client_ms': ''},
+        'GameStart': {'slider_payoff_points': '40', 'client_ms': ''},
         'payoff': {},
     }

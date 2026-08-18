@@ -1,14 +1,75 @@
 {{ block content }}
 {% include '_static/global/html/css_bundle.html' %}
 
+{# THE TASK: a SINGLE-SLIDER PAYOFF ELICITATION — the shipped placeholder task,
+   and the reference example a real study copies (docs/skills_claude/writing_task.md).
+   The participant moves ONE slider to choose their payoff for the round; that
+   value becomes player.round_payoff (GameStart.before_next_page), flows into
+   participant.payoff_vector on the last round (finish_task_block) and is what
+   they are paid. The slider is the reusable .slider-elicit component
+   (_static/global/css/slider.css + _static/global/js/slider_elicit.js), with a
+   specimen in _static/global/html/template.html — a page composes it, never
+   patches it (the CLAUDE.md styling rule).
+
+   STANDARD CARD FRAMING: the shared three zones (.experimental-header with the
+   progress strip / .experimental-content / .button-row), so the slider sits in
+   the normal card, not bare. NO .header-title here — the task screen states the
+   round through the progress strip, not a title (pinned by render_check). #}
 <div class="experimental-screen">
     <div class="screen-card">
         <div class="experimental-header">
             {% include '_static/global/html/task_progress_strip.html' %}
         </div>
         <div class="experimental-content">
-            <div class="section-text">
-                Here's your game. Press Next to generate your payoff!
+            {# NO in-content title here either: the task screen states the round
+               through the progress strip, and leading with a titled heading
+               (whose top margin is larger than its bottom) would push the
+               centred content off-centre in the frame (render_check Q2). The
+               prompt is the first child and carries no outer margin, so the two
+               children — this line and the elicitation box — sit balanced in the
+               card. #}
+            <p class="section-text">
+                Move the slider to choose your payoff for this round. Whatever
+                value you set is what you earn for the round.
+            </p>
+
+            {# THE ELICITATION BOX (.elicitation, base.css): the SHARED frame every
+               elicitation sits in, so the response region is visibly separated
+               from the prose above — a convention, not styling local to this
+               slider. Inside it, THE SLIDER (the reusable .slider-elicit
+               component). The range is a real named form field with NO `value`
+               attribute — no starting value, no pre-positioned thumb.
+               slider_elicit.js hides the thumb until it is moved and posts EMPTY
+               if it never is; with no JavaScript it is an ordinary usable range
+               and the server stores whatever it posts (slider_payoff_points is
+               blank=True, read with field_maybe_none). #}
+            <div class="elicitation">
+                <div class="slider-elicit" data-unset-display="—">
+                    <div class="slider-readout">
+                        <span class="slider-value">—</span>
+                        <span class="slider-unit">points</span>
+                        {# The ANCHORED POPOVER (base.css --- ".popover-anchor /
+                           .popover-panel"): a CSS-only passive "?" hint, shown on
+                           hover/focus, absolutely positioned so it reserves no
+                           layout space and never shifts the page. No JavaScript,
+                           so it is safe with scripts blocked. It rides in the
+                           CENTRED readout row DELIBERATELY: the panel is centred
+                           on the "?", so keeping the "?" near the horizontal
+                           centre is what keeps the 280px panel on screen at phone
+                           width — anchored at the end of a full-width line it
+                           would poke off the edge and grow a horizontal scrollbar
+                           (render_check leg O). #}
+                        <span class="popover-anchor" tabindex="0">?<span class="popover-panel" role="tooltip">The slider runs from 0 to 100 points. Wherever you leave it is your payoff for this round — points are converted to your bonus at the end. There is no right answer and no starting position: the slider is blank until you move it, so your choice is entirely your own.</span></span>
+                    </div>
+                    <div class="slider-track-wrap">
+                        <input type="range" name="slider_payoff_points" id="slider_payoff_points"
+                               min="0" max="100" step="1" aria-label="Your payoff in points">
+                    </div>
+                    <div class="slider-ends">
+                        <span>0 points</span>
+                        <span>100 points</span>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -35,6 +96,10 @@
 </div>
 
 <script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
+{# The slider component's behaviour (no starting value, live readout, empty
+   submit when untouched). Included here because this page carries the slider;
+   it is a no-op on any page without a .slider-elicit. #}
+<script src="{% static 'global/js/slider_elicit.js' %}?v={{ C.STATIC_VERSION }}"></script>
 
 {% if telemetry_passive_capture %}
 <script>

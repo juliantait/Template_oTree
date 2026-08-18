@@ -1,5 +1,4 @@
 from otree.api import *
-import random
 
 # Take NUM_ROUNDS from session defaults (static at import time for oTree).
 from settings import INSTITUTION_NAME, SESSION_CONFIG_DEFAULTS, STATIC_VERSION
@@ -74,6 +73,18 @@ class Player(BasePlayer):
     # the indirection a source scan cannot see; scripts/tests/payoff_ledger_test.py
     # §7/§8 pin both halves.
     round_payoff = models.CurrencyField(blank=True)
+    # THE SLIDER ELICITATION'S OWN INPUT — the value the participant picks on the
+    # task screen (main/game.html), which BECOMES this round's payoff in
+    # GameStart.before_next_page (round_payoff = cu(this)). Family-first name
+    # (docs/conventions.md): `slider_` groups the elicitation's fields.
+    #   * blank=True + read with field_maybe_none: the slider has NO starting
+    #     value, so an untouched/no-JS submission arrives EMPTY and must be
+    #     STORED, not rejected (the hidden-field rule; empty -> paid 0 for the
+    #     round, never a 500). See _static/global/js/slider_elicit.js.
+    #   * bounded to the payoff scale (0..100), so a hand-crafted POST cannot
+    #     write an out-of-range integer that 500s at flush (the focus-trace
+    #     bound, applied here for the same reason).
+    slider_payoff_points = models.IntegerField(blank=True, min=0, max=100)
     # Passive measurement: time on page in ms, filled by a hidden field on the
     # page's OWN form (no side request). blank=True so an EMPTY submission (JS
     # disabled/blocked) is stored, not rejected. Only collected when the
@@ -225,14 +236,15 @@ class GameStart(TaskPage):
     # is INHERITED from TaskPage — subclass it, never copy it (see its
     # docstring for the two gotchas).
     template_name = 'main/game.html'
-    form_model = 'player'   # for the optional passive-capture hidden field
+    form_model = 'player'   # the slider answer (+ any telemetry hidden fields)
 
     @staticmethod
     def get_form_fields(player):
-        # Each telemetry module's hidden field(s) ride on this page's own form,
-        # added ONLY when that module is on. Two independent modules, two
-        # independent flags — the focus trace is never gated on passive capture.
-        fields = []
+        # The slider is the TASK's own answer and is always on this page's form.
+        # (Its telemetry hidden field(s) below ride on the same POST, added ONLY
+        # when their module is on. Two independent modules, two independent
+        # flags — the focus trace is never gated on passive capture.)
+        fields = ['slider_payoff_points']
         if _flag(player, 'telemetry_passive_capture'):
             fields.append('client_ms')
         if _flag(player, 'telemetry_focus_trace'):
@@ -248,9 +260,15 @@ class GameStart(TaskPage):
 
     @staticmethod
     def before_next_page(player, timeout_happened):
-        # Generate a payoff for this round before showing the payoff page.
-        # Into round_payoff, NEVER player.payoff — see the field's comment.
-        player.round_payoff = random.randint(1, 100)
+        # THE PARTICIPANT'S CHOSEN PAYOFF becomes this round's result. Into
+        # round_payoff, NEVER player.payoff — see the field's comment. Read with
+        # field_maybe_none because the slider is blank=True and arrives EMPTY on
+        # a no-JS/untouched submit; an empty choice pays 0 for the round rather
+        # than 500-ing. The confirmation page (payoff.html) then shows it, and
+        # finish_task_block collects it into participant.payoff_vector on the
+        # last round — which is what outro.compute_final_payoff pays from.
+        chosen = player.field_maybe_none('slider_payoff_points')
+        player.round_payoff = cu(chosen) if chosen is not None else cu(0)
         # Passive measurement: store the client-captured hidden fields (empty if
         # JS didn't run). No-op unless telemetry_passive_capture is on.
         if _flag(player, 'telemetry_passive_capture'):
