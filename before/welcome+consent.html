@@ -23,8 +23,14 @@
         wording anywhere else, and never CREED plus Prolific on one page. The
         remaining config branches vary PAYMENT MECHANICS wording only and stay
         neutral about the platform. #}
+{# MODE 2 — SINGLE-PAGE FIT (data-single-page). On a desktop, global.js shrinks
+   the body font within a narrow band and tightens spacing so this whole page
+   fits one viewport with no scroll; if it cannot fit at or above the legibility
+   floor it falls back to plain Mode 1 whole-window scroll. The consent options
+   (the button row) are never pinned — they stay after the reading. See MODE 2 in
+   base.css and initSinglePageFit in global.js. #}
 <div class="experimental-screen">
-    <div class="screen-card narrative-card">
+    <div class="screen-card narrative-card" data-single-page>
         <div class="experimental-header">
             <div class="eyebrow">Before you begin</div>
             <h2 class="header-title">Welcome</h2>

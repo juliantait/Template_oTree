@@ -120,6 +120,17 @@
     {% endif %}
 </div>
 
+<!--------- ONE SLIDE, ON PURPOSE — the payoff matrix followed by its
+            interpretation (Julian, 2026-08-18). These were two separate
+            instruction-blocks ("The payoff matrix" and "What this means in
+            practice"); they are merged into this single slide so the matrix and
+            the reading of it stay together, AND so the slide is tall enough to
+            OVERFLOW a 1280x720 laptop — making the instructions page the
+            template's permanent demonstration of Mode 1 whole-window scroll (the
+            card grows, the whole page scrolls, and Back/Next sit at the natural
+            bottom). Keep it one block: if a study trims this content back below a
+            laptop viewport the scroll demo goes quiet, which is fine for that
+            study but is why the shipped template keeps it long. --------->
 <div class="instruction-block">
     <h2>The payoff matrix</h2>
     <p>The table below shows the points each player earns for every combination of choices.</p>
@@ -164,10 +175,10 @@
         row and your column.
     </p>
     {% endif %}
-</div>
 
-<div class="instruction-block">
-    <h2>What this means in practice</h2>
+    {# The interpretation, now a subsection (h3) of the same slide rather than a
+       page of its own — the matrix and what it means read as one thing. #}
+    <h3>What this means in practice</h3>
     <ul>
         <li>If <strong>both</strong> of you choose Stag, you each earn {{ stag_payoff }} points.</li>
         <li>If <strong>both</strong> of you choose Hare, you each earn {{ hare_payoff }} points.</li>

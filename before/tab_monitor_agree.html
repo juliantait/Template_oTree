@@ -1,8 +1,12 @@
 {{ block content }}
 {% include '_static/global/html/css_bundle.html' %}
 
+{# MODE 2 — SINGLE-PAGE FIT (data-single-page): on a desktop global.js fits this
+   agreement in one viewport by tightening font/spacing, else falls back to Mode 1
+   whole-window scroll. The "I agree" button is never pinned — it stays after the
+   text the participant is agreeing to. See MODE 2 in base.css. #}
 <div class="experimental-screen">
-    <div class="screen-card narrative-card">
+    <div class="screen-card narrative-card" data-single-page>
         <div class="experimental-header">
             {# The entry block's shared header anatomy (B3, Julian 2026-08-13):
                eyebrow "Before you begin" over a REAL title, like the consent,

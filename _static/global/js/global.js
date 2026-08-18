@@ -255,6 +255,73 @@
         } catch (e) { /* never block a page */ }
     });
 
+    // --- SINGLE-PAGE FIT (Mode 2, progressive enhancement) ------------------
+    // The consent welcome page and the tab-monitor agreement opt in by marking
+    // their .screen-card with data-single-page. On a DESKTOP only, shrink the
+    // card's body font within a narrow band — from the base scale down to
+    // --single-page-font-floor — and let base.css's `.single-page-fit` tighten
+    // the spacing, so all the content fits ONE viewport with no scroll. Pick the
+    // LARGEST font at which it fits. If it fits at or above the floor: one centred
+    // screen. If even the floor will not fit: GIVE UP and fall back to plain
+    // Mode 1 whole-window scroll (the safe default).
+    //
+    // This only ever ENHANCES: with the script blocked no class is added and the
+    // page is plain Mode 1; on a phone it never runs (phones are always Mode 1).
+    // The whole block is wrapped so instrumentation can never break a page. The
+    // decision controls are NEVER pinned — this touches font/spacing only, never
+    // the layout order, so accept/decline/acknowledge stay after the content.
+    onReady(function initSinglePageFit() {
+        try {
+            var card = document.querySelector('.screen-card[data-single-page]');
+            if (!card) { return; }
+            var PHONE = 520;         // matches base.css's phone breakpoint
+            var STEP = 0.5;          // px granularity of the font search
+
+            function clearFit() {
+                card.classList.remove('single-page-fit');
+                card.style.removeProperty('--single-page-font');
+            }
+            // The whole document must sit inside the viewport with no scroll.
+            function fits() {
+                return document.documentElement.scrollHeight
+                    <= window.innerHeight + 1;
+            }
+            function floorPx() {
+                var f = parseFloat(getComputedStyle(card)
+                    .getPropertyValue('--single-page-font-floor'));
+                return f > 0 ? f : 15;
+            }
+
+            function fit() {
+                clearFit();
+                // Phones are always Mode 1: single-page never applies.
+                if (window.innerWidth <= PHONE) { return; }
+                // The card's inherited body font, measured with no override.
+                var base = parseFloat(getComputedStyle(card).fontSize) || 16;
+                var floor = floorPx();
+                if (base <= floor) { return; }   // no band to work within
+                card.classList.add('single-page-fit');
+                var chosen = null;
+                for (var f = base; f >= floor - 0.001; f -= STEP) {
+                    card.style.setProperty('--single-page-font',
+                        f.toFixed(2) + 'px');
+                    if (fits()) { chosen = f; break; }
+                }
+                // Even at the floor it does not fit -> give up, plain Mode 1.
+                if (chosen === null) { clearFit(); }
+            }
+
+            fit();
+            // Late layout shifts (web-safe font swap is none here, but logos and
+            // a retracting URL bar both change height) and any viewport change
+            // re-decide the fit; debounced so a drag does not thrash it.
+            var t;
+            function schedule() { clearTimeout(t); t = setTimeout(fit, 150); }
+            window.addEventListener('resize', schedule);
+            window.addEventListener('load', fit);
+        } catch (e) { /* never block a page */ }
+    });
+
     // --- POPUP LADDER (shared) ----------------------------------------------
     // The behaviour half of the four notification tiers catalogued in base.css
     // ("THE NOTIFICATION TIER LADDER"). ONE implementation, keyed off the

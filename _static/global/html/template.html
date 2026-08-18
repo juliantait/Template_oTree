@@ -353,4 +353,86 @@
     </div>
 </div>
 
+<!-- ---------------------------------------------------------------------------
+     CARD 4 — THE SCROLL MODES (base.css: MODE 1 default / MODE 2 single-page /
+     MODE 3 inner-scroll; 2026-08-18 overhaul). MODE 1 is the default and needs no
+     opt-in: EVERY other card on this page already demonstrates it — the card
+     grows with its content, the whole window scrolls, and the button row sits at
+     the natural bottom. The two specimens here are the two OPT-INS.
+     --------------------------------------------------------------------------- -->
+
+<!-- MODE 3 — INNER-CARD SCROLL (.inner-scroll). The dormant opt-in the results
+     page uses: the card is capped and its middle region scrolls INSIDE the white
+     card, with the styled scrollbar, edge shadow, content fade and the pulsing V
+     cue. This specimen carries deliberately tall content so the inner scroll and
+     its affordances are visible. -->
+<div class="experimental-screen">
+    <div class="screen-card inner-scroll">
+        <div class="experimental-header">
+            <div class="eyebrow">Design reference</div>
+            <h2 class="header-title">Mode 3 — inner-card scroll</h2>
+        </div>
+        <div class="experimental-content">
+            <p class="section-text">
+                Opt a card into <code>.inner-scroll</code> and it goes back to the
+                old model: the card stops at <code>--inner-scroll-max</code> and
+                this middle region scrolls inside it while the header and footer
+                stay pinned. The results page uses it so a long payout table
+                scrolls inside the receipt rather than growing the window.
+            </p>
+            <p class="section-text">Scroll this region: the styled scrollbar, the
+                soft edge shadow, the content fade and the wide low V cue below all
+                appear only while there is more to read, and clear at the end.</p>
+            <p class="section-text">Every page but the results page is Mode 1
+                whole-window scroll instead — the card grows and the page scrolls,
+                so nothing a participant needs is ever hidden inside a box.</p>
+            <p class="section-text">This filler exists only to make the region
+                taller than the capped card, so the inner scroll is demonstrated
+                rather than described. A real page's own content plays this role.</p>
+            <p class="section-text">One more line of filler, so the region
+                overflows at a comfortable desktop height and the affordances are
+                unmistakably present for anyone flicking through the screenshots.</p>
+        </div>
+        <div class="button-row">
+            <input type="submit" value="Next" class="next-button">
+        </div>
+        {% include '_static/global/html/logo_section.html' %}
+    </div>
+</div>
+
+<!-- MODE 2 — SINGLE-PAGE FIT (data-single-page). THE OPT-IN MARKUP a study
+     copies is the `data-single-page` attribute; global.js measures on a desktop
+     and adds `.single-page-fit`, shrinking the body font within a narrow band and
+     tightening spacing so the whole card fits one viewport with no scroll —
+     falling back to Mode 1 if it cannot fit at or above --single-page-font-floor.
+     The consent welcome page and the tab-monitor agreement are its live users.
+     NOTE: on THIS multi-card reference page the fit self-reverts (the gallery is
+     far taller than one viewport), so this specimen renders as plain Mode 1 — the
+     point here is the correct opt-in markup, not the shrunk look. -->
+<div class="experimental-screen">
+    <div class="screen-card narrative-card" data-single-page>
+        <div class="experimental-header">
+            <div class="eyebrow">Design reference</div>
+            <h2 class="header-title">Mode 2 — single-page fit</h2>
+        </div>
+        <div class="experimental-content">
+            <p class="section-text">
+                A short desktop page marked <code>data-single-page</code> is fitted
+                into one viewport by global.js — font and spacing only, never
+                transform or zoom (which would trap the tab-monitor overlay inside
+                the card). The decision controls are never pinned; they stay after
+                the reading, below.
+            </p>
+            <div class="panel panel--hug">
+                If fitting would need a body font below the legibility floor, the
+                page gives up and scrolls the whole window instead (Mode 1).
+            </div>
+        </div>
+        <div class="button-row">
+            <input type="submit" value="Continue" class="next-button">
+        </div>
+        {% include '_static/global/html/logo_section.html' %}
+    </div>
+</div>
+
 {{ endblock }}

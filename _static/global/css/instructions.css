@@ -76,50 +76,40 @@
     padding-inline: calc(2 * var(--scroll-gutter));
 }
 
-/* --- scroll chain EXCEPTION (instructions page only) -------------------------
-   base.css makes .experimental-content the scroll region and pins the card's
-   .button-row. The instructions page has no .button-row: its Back/Next pager
-   (.instruction-controls) lives INSIDE the content, so under the shared rule it
-   would scroll away with a long slide.
+/* --- MODE 1 on the instructions page (2026-08-18 scroll overhaul) -----------
+   The instructions page is a Mode-1 content page like every other: the card
+   grows with the slide and the WHOLE WINDOW scrolls, with the Back/Next pager at
+   the natural bottom of the slide rather than pinned inside a capped scroller.
+   This is the PERMANENT SCROLL DEMO — the merged payoff-matrix slide in
+   intro/instructions_text.html is deliberately tall enough to overflow a 1280x720
+   laptop, so the box that starts from this template demonstrates Mode 1
+   whole-window scroll out of the gate.
 
-   Fix: pass the available height down the chain so the SLIDE BODY becomes the
-   scroller and the pager stays pinned beneath it. Every link needs
-   `min-height: 0`, because a flex child defaults to min-height:auto and refuses
-   to shrink below its content; miss one link and the page silently stops
-   scrolling and overflows instead.
-
-   THE CHAIN IS ONLY TWO LINKS, and that is not an oversight. The DOM is
-       .experimental-content > .instructions > .instruction-wrapper
-   with no form element in between: oTree wraps the whole PAGE in
-   <form class="otree-form">, and instructing.html deliberately writes no form
-   of its own. (A nested <form method="post"> start tag used to sit there — the
-   HTML5 parsing spec DROPS it, so it never reached the DOM; it was removed
-   2026-08-13 so the markup matches this chain.) If an element is ever
-   introduced between these links, it needs `min-height: 0` adding here. */
-.instructions { flex: 1 1 auto; min-height: 0; }
+   HISTORY: this page used to be the ONE inner-scroll exception. The slide body
+   (.instruction-wrapper) was the scroll region and the pager was pinned beneath
+   it by passing the available height down a two-link flex chain
+   (.experimental-content > .instructions > .instruction-wrapper, each
+   `min-height: 0`, no form element between them because oTree wraps the whole
+   page in <form class="otree-form">). That chain is gone with the inner-scroll
+   default; a study that wants the pager pinned again opts the card into
+   `.inner-scroll` (base.css) and restores the chain here. */
+.instructions {
+    /* Fill the content region so the pager's `margin-top: auto` can foot-anchor
+       it on a SHORT slide (the card is a stable floor-height frame); on a tall
+       slide there is no free space, so the pager follows the slide in document
+       order and is reached by scrolling — Mode 1. */
+    flex: 1 1 auto;
+    min-height: 0;
+}
 
 .instruction-wrapper {
+    /* PLAIN FLOW — no inner scroll. The wrapper is just the current slide's box;
+       it grows with the slide and the PAGE scrolls. It keeps its id/class because
+       instructions.js still targets #instruction-wrapper, and base.css still
+       styles a scrollbar for it should a study re-enable `.inner-scroll`. */
     display: flex;
     flex-direction: column;
-    flex: 1 1 auto;
-    /* MUST stay 0 — see the scroll-chain note above. NOTE there is deliberately
-       NO min-height floor here any more. The old floor (and the matching inline
-       min-height that instructions.js used to set from each slide's scrollHeight)
-       existed to stop the controls jumping between slides of different lengths.
-       The flex fill now does that job perfectly: the wrapper always expands to
-       all remaining space, so the pager sits at a constant position whatever the
-       slide contains. Re-introducing a floor here would stop the wrapper
-       shrinking and silently break scrolling on short viewports. */
-    min-height: 0;
-    overflow-y: auto;
-    /* room so a :focus-visible ring inside a slide is not sliced by the
-       scroll edge (overflow-y:auto clips horizontally too). The negative margin
-       cancels it again — which only works while this element has NO explicit
-       `width`: with `width: 100%` the box cannot widen, so the negative left
-       margin just shifts the whole slide 6px off the card's centre line (the
-       same defect measured on .experimental-content, base.css). */
-    padding: 6px;
-    margin: -6px;
+    overflow: visible;
 }
 
 /* THE INSTRUCTIONS COLUMN — where this page's text column begins and ends,
@@ -318,6 +308,13 @@
    are the full width of the card anyway. */
 .instruction-controls {
     flex: 0 0 auto;
+    /* FOOT-ANCHOR on a short slide, natural bottom on a tall one — the pager's
+       equivalent of `.screen-card > .button-row { margin-top: auto }`. On a short
+       slide `.instructions` fills the content region and this margin pushes the
+       pager to its foot (the stable frame's bottom); on a tall slide there is no
+       free space, so the pager simply follows the slide and the page scrolls to
+       it (Mode 1 — controls at the natural bottom, never pinned mid-scroll). */
+    margin-top: auto;
     display: flex;
     gap: 12px;
     justify-content: space-between;
@@ -341,25 +338,10 @@
     .instruction-controls { gap: 8px; }
     .instruction-progress { padding-inline: 2px; font-size: .78em; }
 
-    /* THE PHONE MODEL: the page scrolls, not a box inside the card
-       (improvement_suggestions item 1 — the shared half is in base.css's phone
-       breakpoint, which explains the whole decision).
-       IT HAS TO BE REPEATED HERE, not merely written there: this file loads
-       AFTER base.css, so `.instruction-wrapper { overflow-y: auto }` above wins
-       over an identical-specificity rule in base.css whatever the media query
-       says. Miss this and the instructions page keeps its inner scroller on a
-       phone while every other page has let go of it — which is exactly how it
-       failed the eyebrow check on the first attempt (the wrapper kept its
-       reserved scrollbar gutter, so the copy sat 10px right of the eyebrow).
-       The pager follows the slide in document order, so with the wrapper in
-       normal flow Next lands after the text, which is the point. */
-    .instruction-wrapper {
-        overflow: visible;
-        padding: 0;
-        margin: 0;
-    }
-    /* No scroll container, no reserved gutters: the strip lines up with the
-       copy directly (base.css, THE GUTTER COUPLING). */
+    /* The slide body is already plain flow at every width now (Mode 1 — see the
+       .instruction-wrapper rule above), so there is no phone-specific inner
+       scroller to switch off any more. The header strip still drops its reading
+       band on a phone so the eyebrow lines up with the full-width copy. */
     .screen-card:has(.instructions) .experimental-header {
         max-width: 100%;
         padding-inline: 0;

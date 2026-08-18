@@ -21,14 +21,36 @@ participant glimpse the controls being set before navigation.
 `visibility` (space kept) in `_static/global/js/instructions.js`, and the
 DEBUG skip veils the frame before submitting in `_static/global/js/quiz.js`.
 
-## Layout — fill and centre the viewport, scroll only on overflow
+## Layout — a stable top-anchored frame; three scroll modes
 
-A card that fits the viewport sits centred both vertically and horizontally, with
-comfortable margins. A card taller than the viewport grows the page and scrolls
-downward — it is never clipped, and short pages never collapse to a stub.
-*Where:* `.experimental-screen` (`min-height: 100vh`, flex-centred, roomy
-padding) and `.screen-card` (`min-height: 75vh` floor) in
-`_static/global/css/base.css`.
+The white card's TOP EDGE sits at the same place on every page — a constant
+`--card-margin` below the viewport top — and never moves as content changes; a
+viewport-centred card that shifts its top between pages is the jump this
+deliberately avoids. At rest the card is a FIXED frame of height
+`--card-min = 100dvh − 2·--card-margin`, so its top margin equals its bottom
+margin and it reads as centred; short content fills or centres INSIDE that frame,
+which never shrinks to hug it, so two short pages show the identical card. How
+OVERFLOW is handled is the one thing that differs, by MODE:
+
+1. **Mode 1 — whole-window scroll (the default, every content page).** No
+   ceiling: a card taller than the floor grows downward and the WHOLE PAGE
+   scrolls, with the forward/decision control at the natural bottom, never pinned.
+   This is the SAFE default — exactly what renders if no page script runs.
+2. **Mode 2 — single-page fit (opt-in; consent + agreement; desktop only).** A
+   script tightens font and spacing within a narrow band down to a legibility
+   floor to fit one viewport with no scroll; if it cannot fit at the floor it
+   falls back to Mode 1. Controls are never pinned; phones are always Mode 1.
+3. **Mode 3 — inner-card scroll (opt-in; the results page).** The card is capped
+   at the resting height and its overflow scrolls INSIDE the white card, with the
+   scroll affordances. Kept as a documented dormant opt-in any page can re-enable.
+
+Content is never clipped and a short page never collapses to a stub.
+*Where:* `--card-margin` / `--card-min` / `--inner-scroll-max` /
+`--single-page-font-floor` and `.screen-card` (floor, no ceiling),
+`.inner-scroll` (Mode 3) and `.single-page-fit` (Mode 2) in
+`_static/global/css/base.css`; `initSinglePageFit` in
+`_static/global/js/global.js`; the full rationale is in `DECISIONS.md` ("The
+scroll model is three modes") and `_ai/scroll_model/`.
 
 ## Typography — reading measure for prose, full width for controls
 

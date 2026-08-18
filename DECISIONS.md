@@ -11,6 +11,57 @@ working.
 
 ---
 
+## The scroll model is three modes: whole-window by default, single-page fit as enhancement, inner-scroll kept dormant — 2026-08-18
+
+The card layout was reworked from ONE model (every card capped at 88vh with its
+middle region scrolling inside it) into THREE. **Mode 1 — whole-window document
+scroll — is the DEFAULT for every content page:** the card has no max-height, it
+grows with its content and the whole browser viewport scrolls, with the forward /
+decision control at the natural bottom. This is the SAFE default *because* it is
+exactly what renders if a page's fit-check script never runs — nothing a
+participant needs can be hidden by a script that fails silently, which is the
+failure mode CLAUDE.md warns about. **Mode 2 — single-page fit — is progressive
+enhancement layered on top of Mode 1**, opt-in on exactly the consent welcome
+page and the tab-monitor agreement, desktop only: `global.js` measures and, if it
+can, shrinks the body font within a narrow band (down to
+`--single-page-font-floor`, ~15px) and tightens spacing to fit one viewport;
+if fitting would drop below the floor it GIVES UP and the page is plain Mode 1.
+It scales with **font-size and spacing only, never transform/zoom** — those make
+the card a containing block and would trap the tab-monitor's fixed overlay inside
+it. **The decision controls are never pinned** in either mode: a pinned Next lets
+a participant reach the choice before seeing what they are agreeing to, or miss
+that more exists below. **Mode 3 — inner-card scroll — is retained ONLY for the
+results page** (its round-payment detail collapses to fit one page and expands to
+scroll inside the card) and kept as a documented DORMANT opt-in (`.inner-scroll`)
+rather than deleted, because the cap, the overflow region and the four scroll
+affordances are real work any page may want again.
+
+The card's TOP EDGE is **anchored** at a constant `--card-margin` below the
+viewport top on every page, never viewport-centred, so it does not jump between
+pages of different content height (Julian). One proportional token feeds both the
+anchor offset and the resting floor `--card-min = 100dvh − 2·--card-margin`, so a
+resting card is symmetric top-to-bottom (reads as centred) yet fixed: content
+shorter than the floor fills/centres inside the frame and never shrinks it, so two
+short pages show the identical card. The instructions page is deliberately kept a
+Mode-1 page whose shipped payoff-matrix slide (the two blocks "The payoff matrix"
+and "What this means in practice" merged into one) overflows a 1280×720 laptop,
+so the template ships a permanent demonstration of whole-window scroll.
+
+**Rejected:** the old single capped-and-inner-scroll model (hid consent options
+below an inner fold at 1280×720, and made the safe path depend on the fade
+script); pinning the decision controls (reach-the-action-before-reading);
+scaling the card with `transform`/`zoom` (traps the tab-monitor overlay);
+deleting the inner-scroll scaffolding (results still needs it, and it is a
+reasonable future opt-in).
+**Enforced:** `--card-margin` / `--card-min` / `--inner-scroll-max` /
+`--single-page-font-floor`, `.screen-card` (floor, no ceiling), `.inner-scroll`
+and `.single-page-fit` in `_static/global/css/base.css`; `initSinglePageFit` in
+`_static/global/js/global.js`; `scripts/tests/render_check.py` (Check B asserts
+Mode-1 whole-window scroll on content pages and Mode-3 inner scroll on the results
+page; Check Q asserts the fixed resting floor and that a tall page grows past it);
+the committed `scripts/tests/geometry_baseline.json`. Working notes in
+`_ai/scroll_model/` (local only).
+
 ## Session-config keys are named family-first and ordered into families, so the admin form reads as sections — 2026-08-18
 
 Decided by Julian, while the template has **NO live studies** (so the rename is
