@@ -18,6 +18,16 @@
         <input type="hidden" name="client_ms" id="client_ms" value="">
         {% endif %}
 
+        {% if telemetry_focus_trace %}
+        <!-- Passive focus trace — a SEPARATE observer from the tab monitor (see
+             focus_trace.js). Rides on THIS page's own form; empty if JS is
+             disabled/blocked (read server-side with field_maybe_none). These
+             inputs are what makes focus_trace.js do anything — it is a no-op on
+             any page without them. -->
+        <input type="hidden" name="focus_trace_departures" id="focus_trace_departures" value="">
+        <input type="hidden" name="focus_trace_unfocused_ms" id="focus_trace_unfocused_ms" value="">
+        {% endif %}
+
         <div class="button-row">
             <input type="submit" value="Next" class="next-button">
         </div>
@@ -37,6 +47,14 @@
         }, true);
     })();
 </script>
+{% endif %}
+
+{% if telemetry_focus_trace %}
+<!-- The passive focus trace's browser half — a SEPARATE OBSERVER from the tab
+     monitor (its own file, its own state; never touches a tab-monitor variable).
+     Shipped only when the module is on, and itself a no-op on any page without
+     the hidden inputs above. -->
+<script src="{% static 'global/js/focus_trace.js' %}?v={{ C.STATIC_VERSION }}"></script>
 {% endif %}
 
 {# No tabmonitor_assets include here any more: the monitor ships to EVERY page

@@ -120,6 +120,7 @@ RECRUITMENT_PROFILES = {
         quiz_comprehension_dq=False,
         telemetry_passive_capture=False,
         telemetry_device_capture=False,
+        telemetry_focus_trace=False,       # measurement only; off in the lab, like the sibling telemetry flags
         collect_outro_bank_details=True,   # lab pays by bank transfer
         collect_outro_demographics=True,   # lab asks demographics itself (no platform export)
         quiz_reread=True,            # one supervised re-read pass instead of DQ
@@ -134,6 +135,7 @@ RECRUITMENT_PROFILES = {
         quiz_comprehension_dq=True,
         telemetry_passive_capture=True,
         telemetry_device_capture=True,
+        telemetry_focus_trace=True,        # measurement only; on for online runs, like the sibling telemetry flags
         collect_outro_bank_details=False,  # Prolific pays through the platform
         collect_outro_demographics=False,  # Prolific supplies demographics in its own export
         quiz_reread=False,           # no re-read pass online; quiz_comprehension_dq instead
@@ -328,7 +330,12 @@ DASHBOARD_RETURN_GRACE_SECONDS = 90
 # manifest hashes file bytes, so the version is bumped and the manifest re-stamped
 # like any other `_static/` change. See DECISIONS.md, 'Session-config keys are
 # named family-first'.
-STATIC_VERSION = '19'
+# 19 -> 20 on 2026-08-18: NEW file `_static/global/js/focus_trace.js` (the passive
+# per-page focus trace, ported net-new from exp_pilots alongside the untouched tab
+# monitor), plus its conditional include in main/game.html. Adding a file under
+# `_static/` bumps the version and re-stamps the manifest like any other change.
+# See DECISIONS.md, 'Passive focus trace ported alongside the tab monitor'.
+STATIC_VERSION = '20'
 
 # --- whose study this is ------------------------------------------------------
 # THE ONE PLACE A COPIED STUDY NAMES ITS INSTITUTION IN PROSE (Julian,
@@ -554,6 +561,18 @@ SESSION_CONFIG_DEFAULTS = dict(
     # exists yet; it would belong here.)
     telemetry_passive_capture=False,          # passive hidden-field measurement on the page form
     telemetry_device_capture=False,           # capture device / screen info at entry
+    # PASSIVE FOCUS TRACE — per-page MEASUREMENT of how many times the page lost
+    # focus / was hidden and the total ms it spent that way. NET-NEW capability
+    # ported from exp_pilots (focus_trace_*). It is a SEPARATE OBSERVER from the
+    # tab monitor above (tab_monitor*): the tab monitor ENFORCES (counts long
+    # departures on monitored pages and disqualifies at a threshold); this only
+    # MEASURES (counts EVERY departure on a page carrying its hidden inputs,
+    # never disqualifies, never touches a tab-monitor variable). A participant
+    # can carry a positive trace with zero tab-monitor violations. Browser half:
+    # _static/global/js/focus_trace.js; server half: the focus_trace_* fields on
+    # main.Player and their wiring in main/__init__.py. See DECISIONS.md and
+    # CODEBOOK.md §2a.
+    telemetry_focus_trace=False,              # passive per-page focus/unfocused-time trace
 
     # =========================================================================
     # BUILD  (build_*)

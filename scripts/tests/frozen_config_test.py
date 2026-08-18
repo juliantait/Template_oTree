@@ -71,8 +71,8 @@ STRIPPED = [
     'tab_monitor', 'quiz_comprehension_dq', 'tab_monitor_max_violations',
     'tab_monitor_threshold_ms', 'tab_monitor_overlay_delay_ms',
     # measurement
-    'telemetry_passive_capture', 'telemetry_device_capture', 'collect_outro_demographics',
-    'collect_outro_bank_details',
+    'telemetry_passive_capture', 'telemetry_device_capture', 'telemetry_focus_trace',
+    'collect_outro_demographics', 'collect_outro_bank_details',
     # consent-page copy switches
     'display_before_show_duration_and_fee',
     # consent mechanics: a frozen session without the key reads it as OFF
