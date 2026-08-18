@@ -91,8 +91,12 @@
 <div class="experimental-screen">
     {# NARRATIVE family, exactly as before/startpage.html: a short piece of
        running copy, not a form or a table. Without it the card falls through to
-       its flush-left default. #}
-    <div class="screen-card narrative-card">
+       its flush-left default. `room-gate` is THIS PAGE'S OWN class (base.css):
+       it keeps the card's --card-min floor but centres the content+button as a
+       group instead of foot-anchoring the button, so this very short page has no
+       dead band between its one line of copy and Start. It is deliberately not
+       shared with any other screen — see the class's comment in base.css. #}
+    <div class="screen-card narrative-card room-gate">
         <div class="experimental-content">
             <div class="section-text">
                 {# Hidden with the native `hidden` ATTRIBUTE, not inline style:

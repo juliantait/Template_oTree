@@ -928,15 +928,25 @@ def check_room_welcome_gate(server, browser):
             const card = document.querySelector('.screen-card');
             const btn = document.querySelector('.button-row .next-button');
             const logo = document.querySelector('.logo-section');
+            const content = document.querySelector('.experimental-content');
+            const copy = document.querySelector('.section-text');
             const r = el => { if (!el) return null; const b = el.getBoundingClientRect();
                 return {x: Math.round(b.left), y: Math.round(b.top),
-                        w: Math.round(b.width), h: Math.round(b.height)}; };
+                        w: Math.round(b.width), h: Math.round(b.height),
+                        bottom: Math.round(b.bottom)}; };
+            const cs = card ? getComputedStyle(card) : null;
             return {
                 card: r(card), button: r(btn), logo: r(logo),
+                content: r(content), copy: r(copy),
+                // Resolved floor and the card's own top padding, so the centring
+                // maths can be checked against real px rather than assumed vh.
+                cardMinPx: cs ? Math.round(parseFloat(cs.minHeight)) : null,
+                cardPadTop: cs ? Math.round(parseFloat(cs.paddingTop)) : null,
                 stockBootstrap: !!document.querySelector('.container.m-5'),
                 creedHeader: !!document.querySelector('.welcome-header-row'),
                 docW: document.documentElement.scrollWidth,
                 winW: window.innerWidth,
+                winH: window.innerHeight,
                 text: (document.body.innerText || '').replace(/\s+/g, ' ').trim(),
             };
         }""")
@@ -965,8 +975,47 @@ def check_room_welcome_gate(server, browser):
         check(m['docW'] <= m['winW'] + 1,
               f'{label}: no sideways overflow ({m["docW"]}px document in a '
               f'{m["winW"]}px window)')
+
+        # THE `.room-gate` CONTRACT — MEASURED, NOT EYEBALLED. This page is a
+        # degenerate short card (one line of copy + Start), and base.css gives it
+        # its OWN class that KEEPS the --card-min floor but CENTRES the
+        # content+button as a group instead of foot-anchoring the button and
+        # leaving a dead band between them. Three properties, all measurable:
+        #
+        #   1. THE FLOOR IS KEPT. The card still stands at least --card-min tall,
+        #      so the frame does not shrink for the first screen a participant
+        #      sees. (Not eyeballed as "88vh" — read from the resolved minHeight,
+        #      so it holds whatever a downstream study derives its floor to.)
+        #   2. THE GROUP IS CENTRED. The content+button block's mid-line sits at
+        #      the mid-line of the space above the footer (card top padding edge
+        #      down to the logo strip), within a few px.
+        #   3. THE DEAD BAND IS GONE. The gap from the last line of copy to the
+        #      Start button is ordinary rhythm (~tens of px), not the ~270px
+        #      chasm the foot-anchored card left on a page this short.
+        if all(m[k] for k in ('content', 'button', 'logo', 'copy')) \
+                and m['cardMinPx'] and m['cardPadTop'] is not None:
+            # 1. floor kept (min-height honoured; short content sits AT the floor)
+            check(m['card']['h'] >= m['cardMinPx'] - 1,
+                  f'{label}: the card keeps the --card-min floor '
+                  f'({m["card"]["h"]}px tall vs floor {m["cardMinPx"]}px) — the '
+                  f'gate does not shrink below every other screen')
+            # 2. content+button centred in the space above the footer
+            region_top = m['card']['y'] + m['cardPadTop']
+            region_mid = (region_top + m['logo']['y']) / 2
+            group_mid = (m['content']['y'] + m['button']['bottom']) / 2
+            off = round(group_mid - region_mid)
+            check(abs(off) <= 6,
+                  f'{label}: the content+button group is vertically centred above '
+                  f'the footer (off by {off}px, tol 6px) — not foot-anchored')
+            # 3. no dead band between the copy and the Start button
+            gap = m['button']['y'] - m['copy']['bottom']
+            check(0 <= gap <= 60,
+                  f'{label}: no dead band between the copy and Start '
+                  f'({gap}px gap — the foot-anchored card left ~270px here)')
+
         geometry.setdefault('room_welcome', {})[vp_name] = {
-            'card': m['card'], 'button': m['button'], 'logo': m['logo']}
+            'card': m['card'], 'button': m['button'], 'logo': m['logo'],
+            'content': m['content'], 'copy': m['copy']}
         page.screenshot(
             path=os.path.join(OUT_DIR, f'room_welcome_{vp_name}.png'),
             full_page=True)
