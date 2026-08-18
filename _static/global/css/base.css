@@ -694,6 +694,113 @@ a { color: var(--accent); }
 
 .screen-card > .button-row { margin-top: auto; padding-top: 24px; }
 
+/* COMPONENT — THE ROOM ENTRY GATE  (Julian, 2026-08-18)
+   =============================================================================
+   INTENTION: vertically centre the content on oTree's room-entry interstitial
+   (`_templates/room_welcome.html`, wired via `welcome_page` on settings.ROOMS),
+   instead of foot-anchoring its one button the way every in-app page does.
+
+   WHY THIS PAGE IS AN EXCEPTION, AND WHY IT IS *NOT* THE SAME EXCEPTION AS ANY
+   OTHER. The default card layout (above) does two things a normal page wants:
+   it holds the `--card-min` floor so the frame never jumps between screens, and
+   it pushes the forward action to the FOOT (`.screen-card > .button-row`,
+   `margin-top: auto`) so content sits up top and the action sits near the
+   bottom. That reads well when the card is FULL — a consent page, the quiz, the
+   task. The room gate is the degenerate case: one line of copy and a Start
+   button. Foot-anchoring the button there leaves the copy stranded at the top
+   and the button alone at the bottom with a wide dead band between them
+   (measured ~270px in the downstream study this mirrors). So the gate KEEPS the
+   floor — visual consistency with every other screen is the whole reason not to
+   just shrink the card — but CENTRES its content+button as a group within that
+   floor rather than splitting them to the two edges.
+
+   THIS IS ITS OWN CLASS ON PURPOSE. It does NOT reuse or extend `.narrative-card`
+   (which only decides HORIZONTAL text treatment — the gate still composes that
+   for its centred copy), nor any other page's exception. One class silently
+   governing two unrelated screens is exactly the trap: a future tweak aimed at
+   some other short page would quietly move the FIRST screen every participant
+   sees. `.room-gate` names one screen and one screen only; do not reach for it
+   from anywhere else, and if another short page ever wants centring, give it its
+   own class rather than sharing this one.
+
+   HOW IT CENTRES, with the footer still at the foot. The card is a flex column.
+   TWO auto margins, BOTH OWNED BY THIS BLOCK, share the free space equally: a
+   `margin-top: auto` on `.experimental-content` and a `margin-bottom: auto` on
+   the button row. The result is F/2 above the copy and F/2 between the button
+   and the logo, so the content+button pair is centred in the space above the
+   footer, and that same lower margin pushes the logo strip flush to the card's
+   bottom edge — the LOGO FOOTER RULE's outcome (order 999, divider above, at the
+   foot) is preserved; only the mechanism that pins it there changes.
+
+   WHY THIS BLOCK PINS THE FOOTER ITSELF INSTEAD OF LEANING ON THE FOOTER RULE'S
+   OWN `margin-top: auto`. Because that margin is NOT there on the screens that
+   matter. The `@media (max-height: 820px)` block below zeroes
+   `.logo-section`'s margin-top to buy back rhythm — and a 1280x720 laptop (the
+   single most common participant display) and every phone match it. Had this
+   block used the footer's margin as the second centring margin, only ONE auto
+   margin would survive on those screens, it would eat all the free space, and
+   the copy would sit at the BOTTOM of the card instead of centred — green on a
+   tall desktop, broken on the screen most participants actually arrive on. So
+   this block sets `.logo-section`'s margin-top to 0 in ALL viewports and does
+   its own pinning with the button's bottom margin. Two margins, both here, no
+   dependency on a rule a media query rewrites out from under it.
+
+   For the two margins to have space to share, the content region must NOT grow
+   (it defaults to `flex: 1 1 auto`, which would eat the free space first and
+   leave the margins nothing) and the button must NOT foot-anchor (or it lands at
+   the bottom, not under its copy). Both are overridden below. This page is
+   always short by construction, so dropping the grow/scroll behaviour costs
+   nothing here.
+
+   NOTE ON ASSET LOADING — this is easy to get wrong. The gate links base.css
+   ITSELF (see the template header), NOT via css_bundle.html, so this rule only
+   reaches the page because it lives in base.css. Do not move `.room-gate` into a
+   per-page stylesheet: the gate does not load those, and the class would
+   silently do nothing, falling back to the plain foot-anchored card. And because
+   the gate's own <link> carries no `?v=` cache-buster (no page context for
+   C.STATIC_VERSION), a change here is easy to miss in a version bump — verify by
+   fetching the RENDERED page. Measured by scripts/tests/render_check.py leg AR. */
+/* ZERO THE CARD'S FLEX GAP, and let the button row's own padding-top carry the
+   copy->button rhythm instead. This is not cosmetic — it is what makes the
+   centring EXACT. The card's `gap` is inserted BETWEEN flex items, so there is a
+   gap between the button row and the logo but NONE above the copy (it is the
+   first child). That single unmirrored trailing gap rides the whole group up by
+   half its size — measured as an 8px error at the 16px laptop gap and 12px at
+   the 26px desktop gap, i.e. exactly gap/2, and it grows with the gap. With the
+   gap at 0, the two auto margins are the only vertical space, so they frame the
+   group symmetrically. (The copy->button spacing is then the button row's
+   padding-top, the same rhythm every page's forward action already uses.) */
+.room-gate.screen-card { gap: 0; }
+.room-gate .experimental-content {
+    /* Hug the copy instead of ballooning to fill the card, so the free space
+       survives for the two auto margins to centre the group. */
+    flex: 0 0 auto;
+    /* The base rule pairs `padding: 8px` with `margin: -8px` to hold a focus-ring
+       gutter open inside the scroll region. This page never scrolls, so the
+       gutter is pointless here — and its negative BOTTOM margin would pull the
+       button up into the copy, overlapping the rhythm the button row's
+       padding-top is meant to set. Drop both — netting to zero horizontally, as
+       the phone breakpoint already does — and keep only `margin-top: auto`, the
+       upper half of the centring. (The centring itself is squared away by the
+       gap:0 rule above, not here.) */
+    padding: 0;
+    margin: auto 0 0 0;
+}
+/* Un-foot-anchor the button (margin-top: 0) so it hugs directly under its copy —
+   the padding-top from the base rule stays as ordinary rhythm; that 24px is
+   spacing, not the dead band this fixes. `margin-bottom: auto` is the lower half
+   of the centring AND what pins the logo strip to the foot (see the block header
+   for why this block owns that pin rather than the footer rule). Higher
+   specificity than `.screen-card > .button-row`. */
+.room-gate.screen-card > .button-row { margin-top: 0; margin-bottom: auto; }
+/* Take the footer's own top margin out of the centring maths in EVERY viewport,
+   so exactly two auto margins (both above) do the work. On short screens the
+   media query already sets this to 0; here we also beat the tall-screen
+   `.screen-card > .logo-section { margin-top: auto }` (same specificity, this
+   rule is later). The strip still lands at the foot — the button's bottom margin
+   puts it there. */
+.room-gate .logo-section { margin-top: 0; }
+
 .next-button,
 button.next-button,
 input.next-button {

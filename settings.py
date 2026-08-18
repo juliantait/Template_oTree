@@ -309,7 +309,12 @@ DASHBOARD_RETURN_GRACE_SECONDS = 90
 # below).
 # 15 -> 16 on 2026-08-17: the notification tier ladder (base.css, tabmonitor.css,
 # global.js, quiz.js, template.html) — see DECISIONS.md.
-STATIC_VERSION = '16'
+# 16 -> 17 on 2026-08-18: the room entry gate's own `.room-gate` class in
+# base.css (centre the welcome content instead of foot-anchoring its button).
+# NOTE: `_templates/room_welcome.html` links base.css DIRECTLY and carries no
+# `?v=`, so this bump does NOT refresh that one page — it is the css_bundle
+# pages that pick it up. The gate relies on a fresh fetch of base.css instead.
+STATIC_VERSION = '17'
 
 # --- whose study this is ------------------------------------------------------
 # THE ONE PLACE A COPIED STUDY NAMES ITS INSTITUTION IN PROSE (Julian,
