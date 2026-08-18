@@ -35,10 +35,10 @@
                welcome.vars_for_template). Neither may be typed in here — a
                testing config would then advertise a length and a fee the study
                does not actually run.
-               OFF BY DEFAULT (`show_duration_and_fee`, settings.py): this
+               OFF BY DEFAULT (`display_before_show_duration_and_fee`, settings.py): this
                sentence is hidden unless a study switches it on, e.g. because
                its ethics text requires the fee to be stated. #}
-            {% if show_duration_and_fee %}
+            {% if display_before_show_duration_and_fee %}
             <p class="section-text">
                 This study takes about {{ expected_duration_minutes }} minutes.
                 You will receive a payment of <strong>{{ showup_fee }}</strong>
@@ -59,7 +59,7 @@
             <div class="panel panel--hug">
                 All recorded data are stored anonymously and used solely for
                 research purposes by researchers at {{ C.INSTITUTION_NAME }}.
-                {% if collect_bank_details %}
+                {% if collect_outro_bank_details %}
                 Your contact and bank details are used only to arrange your
                 payment and are never linked to the published data.
                 {% else %}
@@ -143,16 +143,16 @@
    any unplaced form field as a visible labelled box, so these must stay here and
    stay hidden. They are only in the form when their module is enabled.
 
-   BOTH DEVICE FIELDS ARE UNDER `device_capture` AND NOTHING ELSE — the same
+   BOTH DEVICE FIELDS ARE UNDER `telemetry_device_capture` AND NOTHING ELSE — the same
    single flag `welcome.get_form_fields` uses (it used to be
-   `prolific_capture_participant_id or device_capture` here and in two other
+   `prolific_capture_participant_id or telemetry_device_capture` here and in two other
    places, which is how one flag came to switch on another flag's data). The
    template and the field list must agree exactly, and the failure mode of their
    drifting is the visible labelled box described above. #}
-{% if device_capture %}
+{% if telemetry_device_capture %}
 <input type="hidden" name="is_mobile" id="is_mobile" value="False">
 {% endif %}
-{% if device_capture %}
+{% if telemetry_device_capture %}
 <input type="hidden" name="device_info_json" id="device_info_json" value="">
 {% endif %}
 {% if prolific_capture_participant_id %}
@@ -167,7 +167,7 @@
 {% endif %}
 
 <script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
-{% if device_capture %}
+{% if telemetry_device_capture %}
 {# Same flag as the hidden inputs above and as get_form_fields: the script must
    be present exactly when the fields it fills are. It reads the server's
    User-Agent rules from js_vars (welcome.js_vars -> common.device_ua_rules), so

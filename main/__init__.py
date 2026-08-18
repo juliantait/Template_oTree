@@ -17,7 +17,7 @@ tasks
 
 class C(BaseConstants):
     # Asset cache-buster for this BUILD (settings.STATIC_VERSION).
-    # Templates read C.STATIC_VERSION, never session.config.static_version:
+    # Templates read C.STATIC_VERSION, never session.config.build_static_version:
     # a session config is frozen at creation, so the template read 500s
     # for in-flight participants when the parameter post-dates them.
     STATIC_VERSION = STATIC_VERSION
@@ -50,7 +50,7 @@ class Group(BaseGroup):
 class Player(BasePlayer):
     # THE GAME'S OWN per-round result — deliberately NOT oTree's player.payoff
     # (J1, Julian 2026-08-13). oTree automatically SUMS player.payoff across
-    # rounds into participant.payoff — wrong here, where only `num_rewarded`
+    # rounds into participant.payoff — wrong here, where only `payment_num_rewarded`
     # randomly selected rounds are paid, so the per-round result and the
     # amount paid are different numbers and must not share a field.
     # The template pays from participant.payoff_vector
@@ -77,7 +77,7 @@ class Player(BasePlayer):
     # Passive measurement: time on page in ms, filled by a hidden field on the
     # page's OWN form (no side request). blank=True so an EMPTY submission (JS
     # disabled/blocked) is stored, not rejected. Only collected when the
-    # passive_capture flag is on.
+    # telemetry_passive_capture flag is on.
     client_ms = models.LongStringField(blank=True)
     # --- spare columns (future-proofing) -------------------------------------
     # Never rename in place. To repurpose one, record the mapping (with a date)
@@ -213,12 +213,12 @@ class GameStart(TaskPage):
     @staticmethod
     def get_form_fields(player):
         # The passive-capture hidden field rides on this page's own form.
-        return ['client_ms'] if _flag(player, 'passive_capture') else []
+        return ['client_ms'] if _flag(player, 'telemetry_passive_capture') else []
 
     def vars_for_template(self):
         return dict(
             task_template_vars(self),
-            passive_capture=_flag(self, 'passive_capture'),
+            telemetry_passive_capture=_flag(self, 'telemetry_passive_capture'),
         )
 
     @staticmethod
@@ -227,8 +227,8 @@ class GameStart(TaskPage):
         # Into round_payoff, NEVER player.payoff — see the field's comment.
         player.round_payoff = random.randint(1, 100)
         # Passive measurement: store the client-captured hidden fields (empty if
-        # JS didn't run). No-op unless passive_capture is on.
-        if _flag(player, 'passive_capture'):
+        # JS didn't run). No-op unless telemetry_passive_capture is on.
+        if _flag(player, 'telemetry_passive_capture'):
             common.extra_set(player.participant, f'client_ms_round_{player.round_number}',
                              player.field_maybe_none('client_ms') or '')
 

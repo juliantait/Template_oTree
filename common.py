@@ -31,7 +31,7 @@ from settings import EXIT_CODES  # re-exported for convenience
 # `unknown` IS ITS OWN TYPE, not a synonym for "computer". It means a real
 # User-Agent was read and matches none of the three families. Whether such a
 # device may take part is a study's decision, so it is listed in
-# `allowed_devices` exactly like the other three and can be admitted or
+# `prolific_allowed_devices` exactly like the other three and can be admitted or
 # excluded without touching any code. It does NOT mean "no User-Agent" — that
 # is UNDETERMINED, immediately below, and the difference is load-bearing.
 #
@@ -48,13 +48,13 @@ DEVICE_TYPES = ('phone', 'tablet', 'computer', 'unknown')
 # waiting to happen: `unknown` was returned BOTH for "we read a real User-Agent
 # and it matches none of the three families" AND for "there was nothing to read"
 # (absent header, empty string, an exception in the classifier). A study that
-# narrows `allowed_devices` and leaves 'unknown' off the list was therefore
+# narrows `prolific_allowed_devices` and leaves 'unknown' off the list was therefore
 # ejecting laptops whose header merely failed to arrive — the exact false
 # positive that costs real participants.
 #
 #   'unknown'     — DETERMINED. A usable User-Agent string was read and did not
 #                   match phone, tablet or computer. It is a real device type: a
-#                   study may list it in `allowed_devices` or leave it out, and
+#                   study may list it in `prolific_allowed_devices` or leave it out, and
 #                   leaving it out screens such a participant out on purpose.
 #   UNDETERMINED  — NO DECISION. There was no usable header to classify: no
 #                   request object at all (oTree instantiates pages WITHOUT one
@@ -62,7 +62,7 @@ DEVICE_TYPES = ('phone', 'tablet', 'computer', 'unknown')
 #                   whitespace-only one, one carrying characters a header may not
 #                   contain, one absurdly longer than any real browser sends, or
 #                   an exception anywhere in the classifier. It is NEVER a
-#                   member of `allowed_devices`, it can never screen anybody out,
+#                   member of `prolific_allowed_devices`, it can never screen anybody out,
 #                   and — see the asymmetry below — it can never clear anybody
 #                   either. The gate records NOTHING and tries again on the next
 #                   real request.
@@ -459,10 +459,10 @@ def classify_device(user_agent) -> str:
 
       * 'unknown'    — a real, usable User-Agent that matches none of the three
                        device families. A DEVICE TYPE: a study may admit or
-                       exclude it in `allowed_devices` like any other.
+                       exclude it in `prolific_allowed_devices` like any other.
       * UNDETERMINED — no usable header at all (missing, empty, malformed,
                        absurdly long, or an exception on the way). NOT a device
-                       type, never in `allowed_devices`, screens nobody out and
+                       type, never in `prolific_allowed_devices`, screens nobody out and
                        clears nobody. The gate records nothing and re-decides on
                        the next real request.
 
@@ -563,7 +563,7 @@ def removed_from_study(participant) -> bool:
     )
 
 
-def allowed_devices(config) -> tuple:
+def prolific_allowed_devices(config) -> tuple:
     """The device types this session admits, normalised and validated.
 
     Accepts what a human might reasonably put in a session config: a list, a
@@ -581,7 +581,7 @@ def allowed_devices(config) -> tuple:
     Read through common.cfg, so a session config frozen before this parameter
     existed transparently gets the permissive default instead of 500-ing.
     """
-    raw = cfg(config, 'allowed_devices')
+    raw = cfg(config, 'prolific_allowed_devices')
     if isinstance(raw, str):
         items = raw.split(',')
     elif isinstance(raw, (list, tuple, set, frozenset)):
@@ -630,14 +630,14 @@ def device_screens_out(config, detected) -> bool:
     """
     if detected not in DEVICE_TYPES:      # UNDETERMINED, or a value from nowhere
         return False
-    return detected not in allowed_devices(config)
+    return detected not in prolific_allowed_devices(config)
 
 
 def device_clears_screenout(config, detected) -> bool:
     """Is this classification positive evidence of an ACCEPTED device?
 
     EXPLICIT MEMBERSHIP, deliberately — see the asymmetry note above.
-    `allowed_devices` only ever contains members of DEVICE_TYPES, so
+    `prolific_allowed_devices` only ever contains members of DEVICE_TYPES, so
     UNDETERMINED cannot satisfy this no matter what a config says.
 
     THE INVARIANT, AND THE TEST TO APPLY TO ANY NEW DEVICE TYPE
@@ -674,7 +674,7 @@ def device_clears_screenout(config, detected) -> bool:
     phone who switches to a laptop that sends no usable header stays screened.
     Their remedy is the way off the page, not a header we cannot read.
     """
-    return detected in allowed_devices(config)
+    return detected in prolific_allowed_devices(config)
 
 
 def device_gate_decision(config, user_agent):
@@ -804,15 +804,15 @@ def prolific_screenout_return_url(config) -> str:
 # single cause, 'mobile', from a phones-only gate; the allow-list replaced it.)
 SCREENOUT_CAUSE_KEY = 'screenout_cause'
 SCREENOUT_CAUSES = {
-    'phone': 'Entry device detected as a phone, which allowed_devices excludes.',
-    'tablet': 'Entry device detected as a tablet, which allowed_devices excludes.',
+    'phone': 'Entry device detected as a phone, which prolific_allowed_devices excludes.',
+    'tablet': 'Entry device detected as a tablet, which prolific_allowed_devices excludes.',
     'computer': 'Entry device detected as a computer (desktop or laptop — the '
-                'browser cannot tell them apart), which allowed_devices excludes.',
+                'browser cannot tell them apart), which prolific_allowed_devices excludes.',
     # NB: 'unknown' is the DETERMINED unknown — a real User-Agent that matches
     # no device family. A request with NO usable User-Agent is UNDETERMINED, is
     # never screened out and never reaches this table at all.
     'unknown': 'Entry device sent a User-Agent this template does not recognise, '
-               'and allowed_devices does not admit unknown devices.',
+               'and prolific_allowed_devices does not admit unknown devices.',
 }
 
 
@@ -929,7 +929,7 @@ def screenout_vars(participant, config) -> dict:
         screenout_cause=cause,
         detected_device_label=(DEVICE_TYPE_LABELS[cause]
                                if cause in ('phone', 'tablet', 'computer') else ''),
-        allowed_devices_phrase=device_types_phrase(allowed_devices(config)),
+        allowed_devices_phrase=device_types_phrase(prolific_allowed_devices(config)),
         prolific_screenout_return_url=prolific_screenout_return_url(config),
     )
 

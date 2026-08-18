@@ -100,7 +100,7 @@ server-side with `player.field_maybe_none('name')`.
 
 ## Simulating a phone
 
-A gate decided from the entry REQUEST (this template's `allowed_devices`) can
+A gate decided from the entry REQUEST (this template's `prolific_allowed_devices`) can
 only be exercised by sending a phone User-Agent — no bot has one, and the
 client-side `is_mobile` field is measurement that blocks nobody:
 
@@ -179,7 +179,7 @@ today's defaults:
 ```python
 requests.post(base + '/api/sessions', json={
     'session_config_name': 'prolific', 'num_participants': 2,
-    'modified_session_config_fields': {'allowed_devices': ['computer']}})
+    'modified_session_config_fields': {'prolific_allowed_devices': ['computer']}})
 ```
 
 The strongest form of this: create a SECOND session with deliberately different

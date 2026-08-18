@@ -22,10 +22,10 @@ the WRONG ending (see below).
 WHY THE ENDING IS CHECKED, NOT JUST "an end marker". Every happy-path walk here
 means to prove the participant COMPLETED. Reaching *some* end screen does not
 prove that: a walker that cannot pass the comprehension quiz is routed — on the
-Prolific config, where `comprehension_dq` is on — to the comprehension-DQ ending
+Prolific config, where `quiz_comprehension_dq` is on — to the comprehension-DQ ending
 (exit -2), which is also an end screen, so an END_MARKER-only check reports PASS
 against the wrong page (the collapsed-distinction fault in CLAUDE.md). And in the
-`comprehension_dq`-off profiles a quiz-failing walker simply LOOPS on the quiz
+`quiz_comprehension_dq`-off profiles a quiz-failing walker simply LOOPS on the quiz
 until the step budget runs out. Both are why the quiz must be answered CORRECTLY,
 from the shipped items rather than by guessing the first radio option — and why
 each walk now asserts the exact exit code it claims to test.

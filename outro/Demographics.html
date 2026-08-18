@@ -29,12 +29,12 @@
                the page.) #}
             <div class="section-text demographics-section">
                 <div class="stacked-form">
-                    {% if collect_demographics %}
+                    {% if collect_outro_demographics %}
                     {% formfield player.age label="Age*" %}
                     {% formfield player.gender label="Gender*" %}
                     {% endif %}
 
-                    {% if collect_bank_details %}
+                    {% if collect_outro_bank_details %}
                     {% formfield player.bank label="IBAN Number*" %}
                     {% formfield player.bank_confirmation label="IBAN Number Confirmation*" %}
                     {% formfield player.bic label="BIC (if not NL-)" %}
@@ -51,7 +51,7 @@
 
 <script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
 
-{% if collect_bank_details %}
+{% if collect_outro_bank_details %}
 <script>
     // Disable copy/cut on the IBAN and paste on its confirmation, so the
     // confirmation is really retyped. The ids are oTree's own (`id_<field>`)

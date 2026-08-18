@@ -153,7 +153,7 @@ def lab_module_problems():
     signed up for when they come to the lab. Disqualification has nothing to
     accomplish that the experimenter in the room does not already handle; the
     lab's comprehension rule is the re-read pass plus the "raise your hand"
-    notice (see `comprehension_max_failures` in settings.py).
+    notice (see `quiz_comprehension_max_failures` in settings.py).
 
     This is a FAILURE rather than a comment because of the mechanical
     consequence: a disqualified participant is not a completer
@@ -175,7 +175,7 @@ def lab_module_problems():
         eff = {**settings.SESSION_CONFIG_DEFAULTS, **cfg}
         if eff.get('recruitment') != 'lab':
             continue
-        for flag in ('comprehension_dq', 'tab_monitor'):
+        for flag in ('quiz_comprehension_dq', 'tab_monitor'):
             if eff.get(flag):
                 problems.append(
                     (f"config {cfg['name']!r} {flag} (lab session)", True,

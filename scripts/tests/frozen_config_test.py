@@ -61,29 +61,29 @@ def section(title):
 # stripped here is a parameter whose frozen-config behaviour is untested.
 STRIPPED = [
     # payment / display
-    'showup', 'quiz_bonus', 'num_rewarded', 'expected_duration_minutes',
+    'payment_show_up', 'payment_quiz_bonus', 'payment_num_rewarded', 'expected_duration_minutes',
     'real_world_currency_per_point', 'participation_fee',
     # structure
     'num_experimental_rounds',
     # comprehension
-    'comprehension_max_failures', 'quiz_reread', 'verify_quiz',
+    'quiz_comprehension_max_failures', 'quiz_reread', 'quiz_verify',
     # integrity modules and their thresholds
-    'tab_monitor', 'comprehension_dq', 'tab_monitor_max_violations',
+    'tab_monitor', 'quiz_comprehension_dq', 'tab_monitor_max_violations',
     'tab_monitor_threshold_ms', 'tab_monitor_overlay_delay_ms',
     # measurement
-    'passive_capture', 'device_capture', 'collect_demographics',
-    'collect_bank_details',
+    'telemetry_passive_capture', 'telemetry_device_capture', 'collect_outro_demographics',
+    'collect_outro_bank_details',
     # consent-page copy switches
-    'show_duration_and_fee',
+    'display_before_show_duration_and_fee',
     # consent mechanics: a frozen session without the key reads it as OFF
     # (common.flag), so the radio is absent and the page must not 500
     'explicit_consent',
     # recruitment plumbing
-    'prolific_capture_participant_id', 'prolific_completion_redirects', 'allowed_devices',
+    'prolific_capture_participant_id', 'prolific_completion_redirects', 'prolific_allowed_devices',
     'prolific_cc_code', 'prolific_noconsent_code', 'prolific_dq_quiz_code',
     'prolific_dq_tab_code', 'prolific_device_code',
     # misc
-    'pilot_feedback', 'static_version',
+    'pilot_feedback', 'build_static_version',
 ]
 
 TERMINAL = {'Results', 'Ended'}
@@ -230,11 +230,11 @@ def main():
           'common.cfg exists (the safe accessor CLAUDE.md requires)')
     if hasattr(common, 'cfg'):
         import settings
-        for key in ('num_rewarded', 'showup', 'quiz_bonus'):
+        for key in ('payment_num_rewarded', 'payment_show_up', 'payment_quiz_bonus'):
             check(common.cfg({}, key) == settings.SESSION_CONFIG_DEFAULTS[key],
                   f'a config missing {key!r} falls back to the SHIPPED value '
                   f'{settings.SESSION_CONFIG_DEFAULTS[key]!r}')
-        check(common.cfg({'showup': 9.5}, 'showup') == 9.5,
+        check(common.cfg({'payment_show_up': 9.5}, 'payment_show_up') == 9.5,
               'a config that HAS the key still wins over the default')
         # The screen-out page is the one page a stranded participant needs, and
         # its way out comes from a parameter added in a later deploy. A session

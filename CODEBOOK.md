@@ -20,7 +20,7 @@ participant leaves early. Defined in `settings.EXIT_CODES`.
 | `-1` | no_consent | Declined consent on the entry page. | `before.welcome.before_next_page` |
 | `-2` | comprehension | Disqualified: failed the comprehension check too many times. **Prolific only** — see the next section for what the same threshold means in a lab session. | `intro.quiz.error_message` |
 | `-3` | tab_monitor | Disqualified: tab-switch monitor. **Prolific only** — the tab monitor is not supported in the lab. **Only the ejecting phases (intro + main) can set it** — outro violations never do; see "Tab-monitor violation counts" below. | `common.focus_live_method` |
-| `-4` | screened_out | **General** "removed at entry, before the consent page" bucket. Set by the **device allow-list** (`allowed_devices`) and by any future entry gate. WHICH DEVICE was detected is in `participant_extra['screenout_cause']` — see below. The code is deliberately NOT device-specific: one bucket, split by cause. **NOT write-once** — see the note directly below. | `common.set_screened_out`, called by `before._apply_device_gate` |
+| `-4` | screened_out | **General** "removed at entry, before the consent page" bucket. Set by the **device allow-list** (`prolific_allowed_devices`) and by any future entry gate. WHICH DEVICE was detected is in `participant_extra['screenout_cause']` — see below. The code is deliberately NOT device-specific: one bucket, split by cause. **NOT write-once** — see the note directly below. | `common.set_screened_out`, called by `before._apply_device_gate` |
 
 > **`-4` IS THE ONE CODE THAT CAN CHANGE BACK.** The device screen-out is a soft
 > wall: a participant who returns on an accepted device **before consent** is
@@ -147,19 +147,19 @@ Nothing above replaces the raw columns. `tab_monitor_focus_loss_count`,
 
 ### Comprehension failure means different things by study type
 
-`comprehension_max_failures` is **one counter and one threshold**
+`quiz_comprehension_max_failures` is **one counter and one threshold**
 (`participant.comprehension_failed_attempts`, incremented in `intro.quiz.error_message`), the
 same value in both study types. What differs is the consequence of crossing it:
 
 | | Prolific | Lab |
 |---|---|---|
 | Crossing the threshold is | the point of **ejection** | the point at which the study **starts helping** |
-| What happens | `comprehension_dq` flags the participant, exit code `-2`, straight to the ending, back to Prolific with `prolific_dq_code` | the one-time re-read offer (`quiz_reread`), then a dismissible "raise your hand" notice; at **twice** the threshold that notice also names the attempt count. Attempts are never capped and nobody is ejected |
+| What happens | `quiz_comprehension_dq` flags the participant, exit code `-2`, straight to the ending, back to Prolific with `prolific_dq_code` | the one-time re-read offer (`quiz_reread`), then a dismissible "raise your hand" notice; at **twice** the threshold that notice also names the attempt count. Attempts are never capped and nobody is ejected |
 | Exit code | `-2` | **`1` (finished)** — they completed the study |
 
 **So `-2` never appears in a lab export, and its absence is not evidence that
 nobody struggled.** The analysis-time flag is
-`comprehension_failed_attempts >= comprehension_max_failures` — deliberately the *same
+`comprehension_failed_attempts >= quiz_comprehension_max_failures` — deliberately the *same
 predicate* the online rule ejects on, so "failed comprehension" means one thing
 across both study types. Supporting columns, all existing:
 `comprehension_reread_used` and the `reread_taken` stamp (took the supervised
@@ -167,7 +167,7 @@ re-read); `intro.Player.num_failed_attempts` is **per round**, so round 2's
 count is "still failing after being walked through the instructions again";
 `outro.Player.quiz_bonus_awarded == 0` is the monetary trace of any failure.
 
-**The integrity modules (`comprehension_dq`, `tab_monitor`) are not supported in
+**The integrity modules (`quiz_comprehension_dq`, `tab_monitor`) are not supported in
 a lab session**, and `scripts/prelaunch_check.py` fails on a lab config that
 turns either on. The reason is conceptual: in the lab a participant who does not
 consent or does not pass comprehension simply cannot do the study, and that
@@ -186,7 +186,7 @@ table stays a short list where every entry is genuinely wired up.
 
 Since 2026-08-11 the entry gate is a **device allow-list**, so the cause is the
 **device type the server detected** — not the name of the gate. A study lists the
-types it accepts in `allowed_devices` (default: all four = no gate at all), and
+types it accepts in `prolific_allowed_devices` (default: all four = no gate at all), and
 anything else is screened out with the detected type recorded here. The
 screen-out page (`before/screened_out.html` — the ONLY page that writes
 screen-out copy; the duplicate branch `outro/Ended.html` carried was deleted
@@ -195,7 +195,7 @@ screen-out copy; the duplicate branch `outro/Ended.html` carried was deleted
 
 | Cause | Meaning | Set where |
 |-------|---------|-----------|
-| `phone` | Entry User-Agent classified as a phone; `allowed_devices` excludes phones. | `before._apply_device_gate` |
+| `phone` | Entry User-Agent classified as a phone; `prolific_allowed_devices` excludes phones. | `before._apply_device_gate` |
 | `tablet` | Entry User-Agent classified as a tablet (iPad, Android without "Mobile", Kindle…); excluded. | `before._apply_device_gate` |
 | `computer` | Entry User-Agent classified as a computer; excluded. **Laptop and desktop are the same type** — see the note below. | `before._apply_device_gate` |
 | `unknown` | A real, readable User-Agent that matches none of the three device families. `unknown` is its own allow-list entry, so admitting it is a study's decision. It does **not** mean "no User-Agent" — see the row below. | `before._apply_device_gate` |
@@ -216,7 +216,7 @@ has to ask the participant. Both are recorded as `computer`.
 classification for **every** participant, including the ones let through, so
 device mix is analysable even when the gate is wide open;
 `participant_extra['screenout_user_agent']` keeps the evidence for a screen-out;
-and `device_info_json.device_type` (when `device_capture` is on) is the CLIENT's
+and `device_info_json.device_type` (when `telemetry_device_capture` is on) is the CLIENT's
 own guess, recorded for comparison and never enforced.
 
 **Adding a cause** — all three steps, or a participant reads the wrong thing:
@@ -248,7 +248,7 @@ A dict `{stage_name: epoch_seconds}` filled as the participant clears each stage
 
 | Stage | Set when |
 |-------|----------|
-| `screened_out` | The entry device gate removed the participant (their device type is not in `allowed_devices`). |
+| `screened_out` | The entry device gate removed the participant (their device type is not in `prolific_allowed_devices`). |
 | `screenout_cleared` | A screen-out was LIFTED: they came back on an accepted device before consent. |
 | `consent` | Leaving the welcome/consent page. |
 | `confirm_id` | Prolific only: leaving the Prolific-ID confirmation page (`prolific_capture_participant_id` on). |
@@ -321,7 +321,7 @@ completeness beats column size (Julian, 2026-08-12). The number of attempts in a
 round is simply `len(log)`.
 
 **Not every POST is an attempt.** Taking the re-read offer and the DEBUG
-clickthrough (`verify_quiz=False`) both return before grading, so neither
+clickthrough (`quiz_verify=False`) both return before grading, so neither
 appears here.
 
 **Where to find it.** The column is in the RAW oTree export (`intro.Player`);
@@ -331,7 +331,7 @@ it.
 
 **Analysis caveat (Julian, 2026-08-12).** The **last entry is the passing
 attempt for anyone who completed the quiz — but not for everyone**: a Prolific
-participant disqualified at `comprehension_max_failures`, and anyone who
+participant disqualified at `quiz_comprehension_max_failures`, and anyone who
 abandoned mid-quiz, ends on a FAILING entry. Do not assume the final row is a
 pass; test `wrong == []`, and cross-check `participant.exit_code`.
 
@@ -345,7 +345,7 @@ An empty string means "nothing was ever logged", not "no attempts".
 ## The payment record — ONE ledger (J1, 2026-08-13)
 
 **`outro.Player.earned` IS the payment record**: show-up fee + the
-`num_rewarded` randomly selected rounds + the quiz bonus, exactly as the
+`payment_num_rewarded` randomly selected rounds + the quiz bonus, exactly as the
 participant's receipt states it. Since 2026-08-13 it is mirrored — once, when
 the results page computes payment (`outro.compute_final_payoff`) — into
 oTree's own **`participant.payoff`**, so the admin Payments page and the wide
@@ -372,8 +372,8 @@ reconstruct `earned` exactly:
 
 | Component | Column / source | Prolific mechanism |
 | --- | --- | --- |
-| base (show-up fee) | `showup` — a **session-config value**, not a per-participant column; on the receipt as "Base payment" | study reward |
-| decision bonus | **`outro.Player.selected_sum`** — sum of the `num_rewarded` selected rounds | bonus payment |
+| base (show-up fee) | `payment_show_up` — a **session-config value**, not a per-participant column; on the receipt as "Base payment" | study reward |
+| decision bonus | **`outro.Player.selected_sum`** — sum of the `payment_num_rewarded` selected rounds | bonus payment |
 | quiz bonus | **`outro.Player.quiz_bonus_awarded`** | bonus payment |
 | total | **`outro.Player.earned`** = the three above; mirrored once into `participant.payoff` | — |
 
@@ -390,7 +390,7 @@ total, and records the admin-page gap as measured.
 
 - **`main.Player.round_payoff`** — the game's per-round result (the value the
   payoff page shows). It feeds `participant.payoff_vector`, from which only
-  `num_rewarded` rounds are actually paid; summing it tells you what the
+  `payment_num_rewarded` rounds are actually paid; summing it tells you what the
   session *generated*, not what anyone was paid.
 - **`participant.payoff_vector`** — the per-round record across the task, one
   entry per round, missing-value sentinels included. The raw material of
@@ -524,17 +524,17 @@ Fill in per-study fields as you build the task. The template ships with:
     disagreement this measurement exists for, and it is attributable to a named
     signal. Nothing here ever gates: the gate is the server's alone.
   - **CHANGED 2026-08-13 — what switches device capture on.** `is_mobile` and
-    `device_info_json` are now filled if and only if **`device_capture`** is on.
+    `device_info_json` are now filled if and only if **`telemetry_device_capture`** is on.
     Until this date the two fields were also switched on by
     `prolific_capture_participant_id` (then named `capture_participant_id`), so
     turning on Prolific ID capture silently turned on device capture as well.
-    **A config with `prolific_capture_participant_id` ON and `device_capture`
+    **A config with `prolific_capture_participant_id` ON and `telemetry_device_capture`
     OFF recorded device info before this change and records none after it.**
     Neither shipped recruitment profile is affected — `lab` has both off and
     `prolific` has both on — and the template had no live studies, so no data is
     lost; but an export compared ACROSS this date must be read with it in mind.
   - `is_mobile` is the client-side device measurement only — it blocks nobody;
-    the screen-out is the server-side `allowed_devices` gate, whose User-Agent
+    the screen-out is the server-side `prolific_allowed_devices` gate, whose User-Agent
     evidence is in `participant_extra['screenout_user_agent']`, whose detected
     device type is in `participant_extra['entry_device_type']` (recorded for
     everyone, not only the screened-out), and whose reason — the same detected
@@ -554,19 +554,19 @@ Fill in per-study fields as you build the task. The template ships with:
   `participant.comprehension_reread_used` records whether the pass was taken;
   `comprehension_failed_attempts` is the experimenter's record of quiz trouble (no flag is
   recorded for the "raise your hand" notice, nor for its escalated form — both
-  are implied by `comprehension_failed_attempts` against `comprehension_max_failures`; see the
+  are implied by `comprehension_failed_attempts` against `quiz_comprehension_max_failures`; see the
   exit-code section above).
 - `main.Player`: `round_payoff` (the game's per-round result — the value the
   payoff page shows and `payoff_vector` collects; NOT the payment record, see
   "The payment record" above) and `client_ms` (passive time-on-page capture,
-  `passive_capture` flag).
+  `telemetry_passive_capture` flag).
 - `outro.Player`: demographics + payment fields (`age`, `gender`, `bank`,
   `bic`, `sepa`, `earned`, `payouts`, …), and `feedback` (free text, collected
   only when the `pilot_feedback` flag is on).
   - **`sepa` has three states (CHANGED 2026-08-13): `1` = IBAN checked, inside
     SEPA; `0` = IBAN checked, OUTSIDE SEPA; empty = the check never ran** — no
     bank details were collected (every Prolific participant, and any config with
-    `collect_bank_details` off). Until this date the field shipped `initial=1`,
+    `collect_outro_bank_details` off). Until this date the field shipped `initial=1`,
     which collapsed "checked, fine" with "never asked": every Prolific row
     exported `sepa=1` as if a SEPA check had passed. A lab participant whose row
     holds `1` or `0` means exactly what it did before; only the never-asked rows

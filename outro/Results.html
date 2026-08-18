@@ -31,7 +31,7 @@
                     </div>
                     {% if show_quiz_bonus %}
                     <div class="payout-line">
-                        <span>Quiz bonus</span><span class="amount">{{ quiz_bonus }}</span>
+                        <span>Quiz bonus</span><span class="amount">{{ payment_quiz_bonus }}</span>
                     </div>
                     {% endif %}
                     <div class="payout-line">
@@ -84,7 +84,7 @@
                    table and not to the receipt. #}
                 {% if has_rounds %}
                 <p class="section-text results-lead">
-                    <strong>{{ num_rewarded }}</strong> of your rounds were selected at
+                    <strong>{{ payment_num_rewarded }}</strong> of your rounds were selected at
                     random to count for payment; they are highlighted below.
                 </p>
                 {% endif %}

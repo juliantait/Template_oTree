@@ -441,7 +441,7 @@ def page_specs():
         # carries the phone User-Agent too, so the gate re-decides the same way
         # for the real browser request as it did for the walker's.
         dict(key='screened_out', config='prolific', stop='welcome',
-             modified={'allowed_devices': ['computer']}, user_agent=PHONE_UA),
+             modified={'prolific_allowed_devices': ['computer']}, user_agent=PHONE_UA),
         # THE SAME PAGE IN A NARROW DESKTOP WINDOW is NOT screened out: the gate
         # reads the User-Agent and nothing else, so window width cannot remove
         # anybody. Rendered with a computer User-Agent at 640px — the case a
@@ -1109,7 +1109,7 @@ def check_eyebrow_alignment(server, browser):
             ('prolific_id', 'prolific', 'ConfirmProlificID', '.stacked-form'),
             ('screened_out', 'prolific', 'welcome', '.section-text'),
             ('instructions', 'lab', 'instructing', '.instruction-block')):
-        modified = ({'allowed_devices': ['computer']}
+        modified = ({'prolific_allowed_devices': ['computer']}
                     if key == 'screened_out' else None)
         ua = PHONE_UA if key == 'screened_out' else None
         session = create_session(config, num_participants=2,
@@ -2071,7 +2071,7 @@ def check_lab_experimenter_notice(server, browser):
 
     Driven with quiz_reread OFF, which is the case that used to get NO help at
     all (the notice required the re-read module; fixed 2026-08-12) — so this
-    also proves the hole stays closed. Past TWICE comprehension_max_failures the
+    also proves the hole stays closed. Past TWICE quiz_comprehension_max_failures the
     notice gains a line naming the attempt count, and the point of measuring
     rather than grepping is that the second line must actually RENDER inside the
     card: a modal whose card is a fixed height would push it out of view with
@@ -2086,7 +2086,7 @@ def check_lab_experimenter_notice(server, browser):
     session = create_session(
         'lab', num_participants=2,
         modified_session_config_fields={'quiz_reread': False,
-                                        'comprehension_max_failures': threshold})
+                                        'quiz_comprehension_max_failures': threshold})
     code, _ = walk_to(server.base, session, 'quiz')
     wrong = {}
     for item in QUIZ_ITEMS:
@@ -2391,7 +2391,7 @@ def check_lab_only_copy(server, browser):
     )
     for page_key, stop, bold_phrase, tail in cases:
         for config in ('lab', 'prolific'):
-            modified = ({'allowed_devices': ['computer']}
+            modified = ({'prolific_allowed_devices': ['computer']}
                         if page_key == 'screenout' else None)
             ua = PHONE_UA if page_key == 'screenout' else None
             session = create_session(config, num_participants=2,
@@ -2447,7 +2447,7 @@ def check_screenout_way_out(server, browser):
     # study's way out.
     session = create_session('prolific', num_participants=2,
                              modified_session_config_fields={
-                                 'allowed_devices': ['computer']})
+                                 'prolific_allowed_devices': ['computer']})
     code, _ = walk_to(server.base, session, 'welcome', user_agent=PHONE_UA)
     for vp_name, vp in VIEWPORTS.items():
         context = browser.new_context(viewport=vp, user_agent=PHONE_UA,
@@ -2590,7 +2590,7 @@ def check_narrow_desktop_window(server, browser):
     section('AE. A 640px-wide desktop window still gets consent')
     session = create_session('prolific', num_participants=2,
                              modified_session_config_fields={
-                                 'allowed_devices': ['computer']})
+                                 'prolific_allowed_devices': ['computer']})
     code, _ = walk_to(server.base, session, 'welcome', user_agent=DESKTOP_UA)
     context = browser.new_context(viewport={'width': 640, 'height': 900},
                                   user_agent=DESKTOP_UA)
@@ -2714,7 +2714,7 @@ def check_dq_ending(server, browser):
     """Y. The ending says WHY the study ended (change_requests item 16).
 
     Drives a REAL comprehension failure: walk to the quiz, then submit wrong
-    answers until comprehension_dq fires. The participant must be told which
+    answers until quiz_comprehension_dq fires. The participant must be told which
     check they failed, not just that participation "cannot continue" — and the
     tab-monitor wording must not be what they get.
     """
@@ -3705,7 +3705,7 @@ def check_features(server, browser, facts):
         # The duration/fee sentence is behind a flag that ships OFF (item 1).
         check('takes about' not in text and 'You will receive a payment' not in text,
               f'{key}: the duration/fee paragraph is hidden by default '
-              f'(show_duration_and_fee)')
+              f'(display_before_show_duration_and_fee)')
     idtext = facts['prolific_id']['laptop_1280x720']['text']
     check('Prolific' in idtext,
           'the ID page names Prolific (the one page that may)')

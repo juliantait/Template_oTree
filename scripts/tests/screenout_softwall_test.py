@@ -117,7 +117,7 @@ def walk_on(base, s, r, label, budget=60):
     """Keep submitting forms until an ending, the screen-out page, or a dead end."""
     # Seed the quiz answers from the shipped items (quiz_answers.py): in
     # production the DEBUG-only solutions blob is absent, so a walker that only
-    # read solutions off the page would fail the quiz and, with comprehension_dq
+    # read solutions off the page would fail the quiz and, with quiz_comprehension_dq
     # on, land on the DQ ending (exit -2) — which is exactly what made the two
     # "completes with exit code 1" checks below fail. The solutions_json read is
     # kept so the walk still works under DEBUG, where it re-affirms these values.
@@ -399,7 +399,7 @@ def scenario_no_request_object(base):
         got = common.classify_device(value)
         check(got == common.UNDETERMINED,
               f'no request -> classify_device({value!r}) is UNDETERMINED')
-    narrow = {'allowed_devices': ['computer']}
+    narrow = {'prolific_allowed_devices': ['computer']}
     check(common.device_screens_out(narrow, common.UNDETERMINED) is False,
           'no request on a FRESH participant: cannot screen anybody out')
     check(common.device_clears_screenout(narrow, common.UNDETERMINED) is False,
@@ -408,7 +408,7 @@ def scenario_no_request_object(base):
     # EXPLICIT membership of the allow-list. If somebody ever rewrites it as
     # "not screened out", this check is what goes red.
     for detected in ('phone', 'tablet', 'computer', 'unknown', common.UNDETERMINED):
-        expected = detected in common.allowed_devices(narrow)
+        expected = detected in common.prolific_allowed_devices(narrow)
         check(common.device_clears_screenout(narrow, detected) is expected,
               f'clears({detected!r}) is membership of the allow-list, not a negation')
 

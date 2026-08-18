@@ -563,7 +563,7 @@ def main():
     section('D2. terminal states (prolific config)')
     pro = ot.create_session(
         'prolific', num_participants=4,
-        modified_session_config_fields={'allowed_devices': 'computer'})
+        modified_session_config_fields={'prolific_allowed_devices': 'computer'})
     pcodes = ot.participant_codes(pro)
 
     # declined consent
@@ -573,7 +573,7 @@ def main():
     c.post(path_of(r), data={'consent': 'False', 'is_mobile': '',
                              'device_info_json': '', 'participant_id_url': ''},
            allow_redirects=True, headers=DESKTOP)
-    # comprehension DQ (threshold 3, comprehension_dq on for prolific)
+    # comprehension DQ (threshold 3, quiz_comprehension_dq on for prolific)
     walk(ot.client(), pcodes[1], correct, quiz_posts=[wrong, wrong, wrong],
          headers=DESKTOP)
     # device screen-out (phone UA against a computers-only allow-list)

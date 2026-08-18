@@ -122,7 +122,7 @@ MATCH_MSG = "don't match"
 
 
 def main():
-    # The 'lab' config: collect_bank_details and collect_demographics both on
+    # The 'lab' config: collect_outro_bank_details and collect_outro_demographics both on
     # (RECRUITMENT_PROFILES['lab']) — named explicitly, not "whatever the first
     # config is".
     sess = ot.create_session('lab', num_participants=5)

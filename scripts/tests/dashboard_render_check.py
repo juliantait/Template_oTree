@@ -283,8 +283,8 @@ def stage_overview(base):
        1 Seat 01   arrived, sitting at Entry (present, and NOT dimmed)
        2 Seat 02   on the instructions and STALLED (amber)
        3 <pid>     on the quiz, one wrong attempt (cell filling)
-       4 Seat 04   mid-task, round 2 of 10
-       5 <pid>     mid-task, round 9 of 10
+       4 Seat 04   mid-task, round 2 of 5
+       5 <pid>     mid-task, round 4 of 5
        6 Seat 06   on the questionnaire
        7 Seat 07   finished, earnings known, quiz passed first time
        8 <pid>     finished, earnings known, quiz passed on the 3rd attempt
@@ -316,11 +316,13 @@ def stage_overview(base):
     first = QUIZ_ITEMS[0]
     wrong = dict(correct, **{first['field']: WRONG[first['field']]})
 
-    # 10 real rounds (so the task marker reads "2 of 10"), the quiz really
-    # verified, and `allowed_devices` narrowed to make the screen-out reachable.
+    # 5 real rounds (the SESSION_CONFIG_DEFAULTS num_experimental_rounds, which is
+    # also the import-fixed C.NUM_ROUNDS maximum — a config can ask for fewer,
+    # never more — so the task marker reads "2 of 5"), the quiz really verified,
+    # and `prolific_allowed_devices` narrowed to make the screen-out reachable.
     sess = ot.create_session(
         'prolific', num_participants=13,
-        modified_session_config_fields={'allowed_devices': 'computer',
+        modified_session_config_fields={'prolific_allowed_devices': 'computer',
                                         'pilot_feedback': True})
     codes = ot.participant_codes(sess)
     pid = ['5f8a3c1b9d2e4f6a7c8b0d1e', '5b21d94e0a7c3f8b6d2e1a9c',
@@ -353,11 +355,14 @@ def stage_overview(base):
     walk(base, codes[1], correct, stop_after='TabMonitorAgree')
     # 3. on the quiz with one wrong attempt (below the DQ threshold of 3)
     walk(base, codes[2], correct, quiz_posts=[wrong], stop_after='quiz')
-    # 4-5. mid-task, early and late
+    # 4-5. mid-task, early and late (round 2 of 5 and round 4 of 5). stop_after_n
+    #      counts payoff submits, so n leaves them on round n+1; with 5 rounds the
+    #      late row must stay BELOW 5 or it walks off the end and finishes.
     walk(base, codes[3], correct, stop_after='payoff', stop_after_n=1)
-    walk(base, codes[4], correct, stop_after='payoff', stop_after_n=8)
-    # 6. through the task and into the questionnaire (the feedback form)
-    walk(base, codes[5], correct, stop_after='payoff', stop_after_n=10)
+    walk(base, codes[4], correct, stop_after='payoff', stop_after_n=3)
+    # 6. through the task and into the questionnaire (the feedback form): all 5
+    #    rounds submitted, stopped before the questionnaire is itself submitted.
+    walk(base, codes[5], correct, stop_after='payoff', stop_after_n=5)
     # 7-8. finished, first-try and third-try quiz
     walk(base, codes[6], correct)
     walk(base, codes[7], correct, quiz_posts=[wrong, wrong])
@@ -466,7 +471,7 @@ def check_overview(base, sess):
             if width == 1728:
                 markers = pg.eval_on_selector_all(
                     '.tl .marker', 'els => els.map(e => e.textContent.trim())')
-                check('2 of 10' in markers and '9 of 10' in markers,
+                check('2 of 5' in markers and '4 of 5' in markers,
                       f'the task markers carry their round ({markers})')
                 emojis = pg.eval_on_selector_all(
                     '.terminal-marker',
@@ -614,7 +619,7 @@ def stage_sessions(base):
 
     pro = ot.create_session(
         'prolific', num_participants=4,
-        modified_session_config_fields={'allowed_devices': 'computer'})
+        modified_session_config_fields={'prolific_allowed_devices': 'computer'})
     pcodes = ot.participant_codes(pro)
     for i, pid in enumerate(pcodes):
         ot.set_label(pid, f'PROLIFIC{i:02d}')

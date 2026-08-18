@@ -116,7 +116,7 @@ names; nothing enforces the pattern by design.
 
 Three independent axes (top of `settings.py`) determine what a participant
 experiences: **study type** (`recruitment`: `prolific` | `lab`), **DEBUG**
-(env-driven; all dev loosenings, including `verify_quiz=False`, are honoured
+(env-driven; all dev loosenings, including `quiz_verify=False`, are honoured
 only under DEBUG), and the **pilot feedback form** (`pilot_feedback`). None of
 them implies another; there is no `testing` study type.
 
@@ -211,7 +211,7 @@ documented. See `settings.EXIT_CODES` and the CODEBOOK.md exit-code table.
   and the data collected — disqualifying a completer would cost a real
   participant for no benefit. Thresholds are config values; the client JS
   reads them via `js_vars` and shows no warnings in the record-only phase.
-- **comprehension_dq** — disqualify after `comprehension_max_failures` wrong quiz
+- **quiz_comprehension_dq** — disqualify after `quiz_comprehension_max_failures` wrong quiz
   attempts, routing to the ending (`intro`). The online (Prolific) rule. **Not
   supported in the lab** (with `tab_monitor`; the pre-launch check fails on it).
 - **quiz_reread** — the lab rule for the same threshold: offer ONE re-read pass
@@ -220,10 +220,10 @@ documented. See `settings.EXIT_CODES` and the CODEBOOK.md exit-code table.
   the participant may keep trying — no disqualification (`intro`). The notice
   itself is NOT part of this module: it is keyed on the threshold and the study
   type, so a lab session with `quiz_reread` off still calls the experimenter.
-- **passive_capture** — hidden-field time-on-page on the task form (`main`).
-- **device_capture** — device/screen JSON at entry, measurement only (`before`);
+- **telemetry_passive_capture** — hidden-field time-on-page on the task form (`main`).
+- **telemetry_device_capture** — device/screen JSON at entry, measurement only (`before`);
   the `is_mobile` field it fills blocks nobody.
-- **allowed_devices** — the entry DEVICE ALLOW-LIST, and a SOFT WALL: the device
+- **prolific_allowed_devices** — the entry DEVICE ALLOW-LIST, and a SOFT WALL: the device
   types a study accepts, from `phone`, `tablet`, `computer`, `unknown` (not part
   of any recruitment profile, so choosing `prolific` never narrows it). The
   entry request's User-Agent is classified server-side BEFORE the consent page
@@ -241,8 +241,8 @@ documented. See `settings.EXIT_CODES` and the CODEBOOK.md exit-code table.
   type); `unknown` is a real User-Agent that matches nothing, and is admitted or
   excluded like any other type — while NO usable User-Agent at all is not a type
   and always allows. Full reference: "The device check" in README.md.
-- **collect_bank_details** — lab IBAN/BIC/SEPA payment collection (`outro`).
-- **collect_demographics** — explicit demographics questionnaire (`outro`); off
+- **collect_outro_bank_details** — lab IBAN/BIC/SEPA payment collection (`outro`).
+- **collect_outro_demographics** — explicit demographics questionnaire (`outro`); off
   for Prolific, which supplies demographics in its own export.
 - **pilot_feedback** — free-text feedback page before the results (`outro`);
   its own axis: on for pilots/friend tests, off for the real run, independent

@@ -62,7 +62,7 @@ study breaks silently. What you inherit:
   `AUTO_TABULATE_PAYOFFS=False` makes the setter raise *inside a participant's
   request*, i.e. a dead page mid-round on a live upgrade, which is exactly the
   failure the boot guard exists to get in front of (payoff_guard.py).
-  oTree auto-sums `player.payoff` across rounds, but only `num_rewarded`
+  oTree auto-sums `player.payoff` across rounds, but only `payment_num_rewarded`
   rounds are paid, so that sum is a figure nobody is paid; kept apart, the
   earned figure in oTree's admin matches the `earned` computed at the end
   (one ledger, see the field's comment). `finish_task_block` collects the
@@ -129,7 +129,7 @@ update it with the contract — it tolerates unknown names by design.)
 **`settings.py`:**
 
 - `num_experimental_rounds` (this fixes `C.NUM_ROUNDS` at import),
-  `num_rewarded`, `showup`, `quiz_bonus` — your study's real quantities.
+  `payment_num_rewarded`, `payment_show_up`, `payment_quiz_bonus` — your study's real quantities.
 - `DASHBOARD_STALL_SECONDS_TASK` — per single round; RAISE it if your task
   page runs longer than the placeholder's seconds (its comment reasons from
   the Stag Hunt).
@@ -141,7 +141,7 @@ conditionals and `instructions_context['treatment']` read the result.
 **`outro/` (step 4):**
 
 - `outro/payment_rule.py` — `select_random_payouts` is the shipped rule
-  (pay `num_rewarded` random rounds). Change the rule here; the participant-
+  (pay `payment_num_rewarded` random rounds). Change the rule here; the participant-
   facing description of it lives in the instructions (factual wording only —
   see `writing_instructions.md`'s Payment section).
 - `outro/Results.html` renders the receipt from `compute_final_payoff`'s

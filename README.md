@@ -259,7 +259,7 @@ participant experiences:
      demographics; supervised one-time quiz re-read instead of disqualification.
 2. **DEBUG** — from the environment (`OTREE_PRODUCTION` unset → DEBUG on).
    Drives every dev affordance: skip controls, quiz solutions in the browser,
-   and the `verify_quiz=False` clickthrough loosening (honoured **only** under
+   and the `quiz_verify=False` clickthrough loosening (honoured **only** under
    DEBUG). Orthogonal to study type: a prolific-configured session under DEBUG
    still runs all its integrity modules.
 3. **Pilot feedback form** — `pilot_feedback`: shows a free-text feedback page
@@ -275,21 +275,21 @@ loosenings belong to the DEBUG axis; see the `test` session config for the
 pattern.)
 
 Modules (all off by default): `prolific_capture_participant_id`, `prolific_completion_redirects`,
-`tab_monitor`, `comprehension_dq`, `quiz_reread`, `passive_capture`,
-`device_capture`, `collect_bank_details`,
-`collect_demographics`, `pilot_feedback`. The one deliberate exception to
+`tab_monitor`, `quiz_comprehension_dq`, `quiz_reread`, `telemetry_passive_capture`,
+`telemetry_device_capture`, `collect_outro_bank_details`,
+`collect_outro_demographics`, `pilot_feedback`. The one deliberate exception to
 off-by-default is **`explicit_consent`** (the consent page asks an explicit
 "I consent / I do not consent" question, declining routed to exit code -1):
 it ships **ON**, because asking is the safer ethical footing and a study must
 opt out — the lab profile resolves it OFF (implicit consent by continuing,
 with an experimenter in the room). It is an ethics decision with its own flag,
-not Prolific plumbing — see DECISIONS.md (2026-08-14). Thresholds (`comprehension_max_failures`,
+not Prolific plumbing — see DECISIONS.md (2026-08-14). Thresholds (`quiz_comprehension_max_failures`,
 `tab_monitor_*`) and Prolific codes (`prolific_cc_code`, `prolific_noconsent_code`, `prolific_dq_code`)
 are config values too. Each participant records a numeric
 `exit_code` (see `CODEBOOK.md`). `C.NUM_ROUNDS` is fixed at import — a config may
 run fewer rounds, never more.
 
-**`allowed_devices`** (the entry device allow-list) and **`prolific_screenout_return_url`**
+**`prolific_allowed_devices`** (the entry device allow-list) and **`prolific_screenout_return_url`**
 (where a screened-out participant is sent, codeless) have their own reference
 section — **[The device check](#the-device-check-what-it-inspects-and-what-it-cannot)**
 — because the name promises more certainty than any User-Agent check can
@@ -301,7 +301,7 @@ spares: never rename in place).
 
 ## The device check: what it inspects, and what it cannot
 
-`allowed_devices` is called a device check, and the name promises more than any
+`prolific_allowed_devices` is called a device check, and the name promises more than any
 browser can deliver. This section is the reference for what it actually does, so
 nobody has to read the classifier to find out.
 
@@ -316,7 +316,7 @@ exists, and none of that has been sent yet. Two consequences, both deliberate:
   by `scripts/tests/render_check.py`, leg AE);
 - a **phone held in landscape IS screened out**, because it is still a phone.
 
-`device_capture` separately records what the client says about itself
+`telemetry_device_capture` separately records what the client says about itself
 (`is_mobile`, `device_type`, screen size) as **measurement**. It arrives later,
 on the consent form, it can be edited by anyone, and it gates nothing.
 
@@ -346,7 +346,7 @@ chain), no `User-Agent`, an empty or whitespace-only one, one carrying
 characters a header may not contain, one absurdly longer than any real browser
 sends, or an exception anywhere in the classifier.
 
-`UNDETERMINED` is never a member of `allowed_devices`, and the rule about it is
+`UNDETERMINED` is never a member of `prolific_allowed_devices`, and the rule about it is
 **asymmetric — this is the part that is easy to get backwards**:
 
 - **on entry it ALWAYS allows**, and records nothing at all. The gate simply
@@ -358,7 +358,7 @@ sends, or an exception anywhere in the classifier.
   seconds, and the check would be a suggestion.
 
 Clearing therefore requires the detected type to be **explicitly in**
-`allowed_devices` (`common.device_clears_screenout`), never "not rejected".
+`prolific_allowed_devices` (`common.device_clears_screenout`), never "not rejected".
 
 **`unknown` and `UNDETERMINED` are not interchangeable, and the whole safety
 property rests on that.** `unknown` is a device type: a real header we could
@@ -399,21 +399,21 @@ remedy is the way off the page.
 
 ### The default, and two worked configs
 
-Shipped: `allowed_devices=['phone', 'tablet', 'computer', 'unknown']` — every
+Shipped: `prolific_allowed_devices=['phone', 'tablet', 'computer', 'unknown']` — every
 type permitted, so **the check has no participant-visible effect whatsoever**
 until a study opts in. It lives in the Prolific block but is *not* part of the
 prolific profile bundle: choosing the prolific study type never narrows it.
 
 ```python
 # Computers only — the common case for a study with charts or a wide table.
-dict(name='prolific', recruitment='prolific', allowed_devices=['computer'], …)
+dict(name='prolific', recruitment='prolific', prolific_allowed_devices=['computer'], …)
 
 # Phones turned away, tablets fine.
 dict(name='prolific', recruitment='prolific',
-     allowed_devices=['tablet', 'computer', 'unknown'], …)
+     prolific_allowed_devices=['tablet', 'computer', 'unknown'], …)
 ```
 
-A comma-separated string works too (`allowed_devices='computer'`). Unknown words
+A comma-separated string works too (`prolific_allowed_devices='computer'`). Unknown words
 are dropped, and an empty list is treated as "no gate" rather than screening the
 whole sample out.
 
@@ -585,7 +585,7 @@ flowchart TD
 
     Start(["Opens the Prolific study link"]) --> Gate
     subgraph BEFORE ["before — entry"]
-        Gate{"device in allowed_devices?<br>server-side User-Agent check,<br>runs on the consent page's own request"}
+        Gate{"device in prolific_allowed_devices?<br>server-side User-Agent check,<br>runs on the consent page's own request"}
         Gate -- "default list (all devices), or a permitted type" --> Welcome
         Welcome["welcome + consent<br>explicit consent question,<br>Prolific ID + device capture"]
         ScreenOut["screened_out — shown INSTEAD of consent,<br>at the same page index (exit code -4).<br>Codeless link back to Prolific."]
@@ -603,7 +603,7 @@ flowchart TD
         Instr1["instructing — instructions (round 1)"] --> Quiz1["quiz (round 1)"]
         Quiz1 -- "wrong answers, failures below<br>the cap: error, try again" --> Quiz1
     end
-    Quiz1 -- "failures reach comprehension_max_failures" --> EndedDQ
+    Quiz1 -- "failures reach quiz_comprehension_max_failures" --> EndedDQ
     Quiz1 -. "tab-away violations reach<br>tab_monitor_max_violations<br>(counted on the instructions and quiz too)" .-> EndedTM
 
     Quiz1 -- "all correct" --> Game
@@ -638,9 +638,9 @@ flowchart TD
 | `1` finished | Completed the study | `outro` Results → "Back to Prolific" | `prolific_cc_code` |
 | `0` abandoned | Closed the tab, never reached the end | none (handled by Prolific as timed-out/returned) | none |
 | `-1` no_consent | Declined consent at entry | `outro` Ended → "Back to Prolific" | `prolific_noconsent_code` |
-| `-2` comprehension | Failed the quiz `comprehension_max_failures` times | `outro` Ended → "Back to Prolific" | `prolific_dq_code` |
+| `-2` comprehension | Failed the quiz `quiz_comprehension_max_failures` times | `outro` Ended → "Back to Prolific" | `prolific_dq_code` |
 | `-3` tab_monitor | Tab-away violations reached the cap | `outro` Ended → "Back to Prolific" | `prolific_dq_code` |
-| `-4` screened_out | Device stopped by the entry allow-list (only when `allowed_devices` is narrowed) | `before` screened_out, in place of consent and their FIRST page — a plain link back to Prolific | **none, deliberately** ([why](#the-device-check-what-it-inspects-and-what-it-cannot)) |
+| `-4` screened_out | Device stopped by the entry allow-list (only when `prolific_allowed_devices` is narrowed) | `before` screened_out, in place of consent and their FIRST page — a plain link back to Prolific | **none, deliberately** ([why](#the-device-check-what-it-inspects-and-what-it-cannot)) |
 
 > **The table above is the whole table:** every code in `settings.EXIT_CODES` is
 > set by real code and appears here (`CODEBOOK.md` names the line that sets
@@ -665,7 +665,7 @@ flowchart TD
     subgraph INTRO ["intro — instructions + quiz (round 2 = the single supervised re-read pass)"]
         Instr1["instructing — instructions (round 1)"] --> Quiz1["quiz (round 1)"]
         Quiz1 -- "wrong answers, failures below<br>the threshold: error, try again" --> Quiz1
-        Quiz1 -- "failures reach comprehension_max_failures<br>while the re-read is unused" --> Offer{"modal: re-read the<br>instructions? (available once)"}
+        Quiz1 -- "failures reach quiz_comprehension_max_failures<br>while the re-read is unused" --> Offer{"modal: re-read the<br>instructions? (available once)"}
         Offer -- "dismiss — keep trying,<br>offer stays open" --> Quiz1
         Offer -- "take it — consumed on entering<br>the second pass, not when offered" --> Instr2["instructing (round 2) —<br>instructions again from the start"]
         Instr2 --> Quiz2["quiz (round 2)"]
@@ -702,7 +702,7 @@ flowchart TD
 | `0` abandoned | Left the session | none — `comprehension_failed_attempts` and the stage timestamps are the experimenter's record | n/a |
 
 `-1`/`-2`/`-3` cannot occur in lab: consent is implicit, and **the integrity
-modules (`comprehension_dq`, `tab_monitor`) are not supported in a lab session**
+modules (`quiz_comprehension_dq`, `tab_monitor`) are not supported in a lab session**
 — `scripts/prelaunch_check.py` FAILS on a lab config that turns either on. The
 reason is conceptual: in the lab, a participant who does not consent or does not
 pass the comprehension check simply cannot do the study, and that essentially
@@ -712,8 +712,8 @@ disqualified participant is not a completer, so they skip the bank-details page
 and the payment summary and are stranded at the machine. The lab's comprehension
 rule is the re-read pass plus the "raise your hand" notice; a failed lab
 participant is identified at analysis time by
-`comprehension_failed_attempts >= comprehension_max_failures` (see `CODEBOOK.md`).
-`-4` cannot occur either unless you narrow `allowed_devices` on the config — it
+`comprehension_failed_attempts >= quiz_comprehension_max_failures` (see `CODEBOOK.md`).
+`-4` cannot occur either unless you narrow `prolific_allowed_devices` on the config — it
 permits every device type by default in every profile, and a lab session's
 computers would pass anyway.
 
@@ -782,7 +782,7 @@ Otherwise the generator lives in the intro app it previews: run `python3 intro/g
 > `participant.payoff` on the admin Payments page, so a non-zero value splits
 > what you owe across two numbers, and it never reaches the CSV export at all.
 > **A study copied from here that already sets a fee will refuse to boot until
-> the money is moved into the ledger** (into `showup`, or into `earned`). That
+> the money is moved into the ledger** (into `payment_show_up`, or into `earned`). That
 > cost is deliberate — see `DECISIONS.md`.
 
 > **ANY PAYMENT COMPONENT PAID OUTSIDE OTREE MUST STILL BE REPRESENTED INSIDE
@@ -810,8 +810,8 @@ set**. What this template records per participant, all of it inside oTree:
 
 | Figure | Where it lives | Paid on Prolific as |
 | --- | --- | --- |
-| base / show-up fee | `showup` in the session config; rendered on the receipt as **Base payment** | study reward |
-| decision bonus | `outro.Player.selected_sum` (the `num_rewarded` selected rounds) | bonus payment |
+| base / show-up fee | `payment_show_up` in the session config; rendered on the receipt as **Base payment** | study reward |
+| decision bonus | `outro.Player.selected_sum` (the `payment_num_rewarded` selected rounds) | bonus payment |
 | quiz bonus | `outro.Player.quiz_bonus_awarded` | bonus payment |
 | **total** | `outro.Player.earned`, mirrored once into `participant.payoff` | — |
 
@@ -850,7 +850,7 @@ the Prolific ID online; the participant code, dimmed, until a label exists). Eac
 row carries a six-step timeline — **Entry → Instructions → Quiz → Task →
 Questionnaire → Done** — with the marker on the current step, carrying the round
 number ("2 of 10") while they are in the task. Then the quiz-attempts cell (white
-→ filling → red at `comprehension_max_failures` → green with the attempt count
+→ filling → red at `quiz_comprehension_max_failures` → green with the attempt count
 once passed, so `1` means passed first time), time on the instructions, earnings
 once known, and a state cell. A terminal state **overrides the marker** with an
 emoji at the step the participant had reached: 📵 screened out, ✋ declined
@@ -998,7 +998,7 @@ configs, browser rendering checks) rather than just listing these files.
 | **`scripts/tests/full_journey_test.py`** — ONE participant, **room entry to the final page**, over real HTTP, at the config's **real round count**, **failing the quiz once** on the way. **NEVER TRIM OR DELETE THIS** (the file says why) | **that a participant can actually FINISH**: every screen in the real order, every round walked, the failed-attempt retry path, and `exit_code == 1` read back over the REST API | rendering; anything that only breaks for an EXISTING participant; the configs and edge cases the slice suites cover | before any launch, and after any change to the page sequence, the quiz rule or the round count |
 | **`scripts/tests/http_flow_test.py`** — walks every shipped config entry→ending over real HTTP, including a POST with the JS-produced hidden fields deliberately **empty** | a participant can complete the study in each config; no page 5xxs; the no-JS participant is not stranded | anything about how a page looks or reads; anything that only breaks for an EXISTING participant. **It cannot tell finishing from being thrown out** — its end markers ("Back to Prolific", "participation has ended") are on `Ended.html` as well as `Results.html`; that is what `full_journey_test.py` is for | after any change to a page, form field or flow |
 | **`scripts/tests/gated_flow_test.py`** — lab vs Prolific scenarios: the one-time re-read offer, comprehension DQ, pilot feedback, the two-variant consent rule | the three orthogonal controls actually route people where the design says | rendering; data written to the export | after touching `settings.py` profiles, gates, or the intro/outro flow |
-| **`scripts/tests/device_gate_test.py`** — the entry allow-list, weighted towards FALSE POSITIVES: eleven real browsers (desktop Chrome/Safari/Firefox/Edge, Chrome OS, a touchscreen laptop, an iPad, an Android tablet, phones) plus every shape of unusable User-Agent | the listed types are admitted and nothing else is screened by accident: those browsers are never removed, an unusable User-Agent always proceeds recording nothing, an excluded type gets `-4` with the DETECTED type as its cause, and the default list does nothing at all | client-side behaviour; anything past entry | after touching the entry gate, the classifier or `allowed_devices` |
+| **`scripts/tests/device_gate_test.py`** — the entry allow-list, weighted towards FALSE POSITIVES: eleven real browsers (desktop Chrome/Safari/Firefox/Edge, Chrome OS, a touchscreen laptop, an iPad, an Android tablet, phones) plus every shape of unusable User-Agent | the listed types are admitted and nothing else is screened by accident: those browsers are never removed, an unusable User-Agent always proceeds recording nothing, an excluded type gets `-4` with the DETECTED type as its cause, and the default list does nothing at all | client-side behaviour; anything past entry | after touching the entry gate, the classifier or `prolific_allowed_devices` |
 | **`scripts/tests/screenout_softwall_test.py`** — the screen-out lifecycle over real HTTP: screened → cleared → re-screened → completes, the post-consent immunity, the way out, and the no-decision asymmetry | the verdict is written immediately (a closed tab still exports `-4`), clears only on POSITIVE evidence of an accepted device before consent, never touches anyone after consent, and the way out is a codeless real link | rendering; anything a browser does with the page | after touching the gate, the clear rules or the screen-out page |
 | **`scripts/tests/identity_test.py`** — in-process: re-entry, two tabs on one id, case/whitespace variants, a clashing id claim, a PLANTED duplicate label, and a room rebound to a new session | one participant row per id (which is what re-entry and the soft wall depend on); a clashing claim is refused silently with the owner's code recorded; a duplicate that exists anyway does not 500 | anything about the pages themselves | after touching label writes, `identity.py` or the entry sequence |
 | **`scripts/tests/dashboard_test.py`** — in-process, production + `AUTH_LEVEL=STUDY`: the install discipline, the two dashboard acceptance criteria, row truth for every stage and all four terminal states, the entry-block boundary, an unmapped app, and read-only | that the dashboard is **unreachable without an admin login** (page, data and index, for an anonymous client AND for a mid-study participant's own cookies; the redirect leaks nothing; POST is 405); that a raising handler yields the **error panel** and `ok:false` JSON rather than a 500, and one poisoned ROW leaves the table `ok:true` with every other row live; that it **writes nothing** (byte-identical participant rows plus an ORM dirty-flag check); that an app missing from `APP_STEPS` is visibly unplaced instead of silently at Entry; and that the **quiz-mistakes** endpoint returns the first-attempt aggregate (worst-item-first, chosen-option counts), keeps the two passes unpooled, excludes and counts blank admin-advance submissions, degrades to `ok:false`/`available:false` without touching the main table, and carries the answer text for the renderer to escape | **it is NOT proof that the wrapper is what protects participants.** Section C's participant walks are a regression guard: participant survival rests partly on oTree's `NEW_IDMAP_EACH_REQUEST` giving every request a fresh DB session, and those checks still pass with the wrapper deleted (check C0 pins that oTree property so a future version changing it goes red). The checks that fail when the wrapper is removed are the error-panel ones. Also blind to: anything about how the page LOOKS, and concurrency — the polls here are sequential | after touching `experimenter_dashboard.py`, the entry-block stamps, or any app's `page_sequence`/app list |
@@ -1035,7 +1035,7 @@ Chromium; on a box without root see `docs/headless_chromium_recipe.md`.
 |---|---|---|
 | **Asks** | is this *configuration* safe to launch? | will the *running study* survive being upgraded to this code? |
 | **Kind** | static, config only, no server, instant | dynamic: boots a real `otree prodserver` and drives real HTTP |
-| **Catches** | `REPLACE_*` completion codes, `DEBUG` still on, `verify_quiz=False` left in, `OTREE_AUTH_LEVEL` not locked to `STUDY`, a **drifted experimenter dashboard** (renamed `URL_BASE`, a `vars_for_admin_report` that raises, routes that fail to install) | a page that 500s for a participant whose state predates the new code; a missing DB column; a page that 500s with JS-produced hidden fields empty |
+| **Catches** | `REPLACE_*` completion codes, `DEBUG` still on, `quiz_verify=False` left in, `OTREE_AUTH_LEVEL` not locked to `STUDY`, a **drifted experimenter dashboard** (renamed `URL_BASE`, a `vars_for_admin_report` that raises, routes that fail to install) | a page that 500s for a participant whose state predates the new code; a missing DB column; a page that 500s with JS-produced hidden fields empty |
 | **Run it** | in the target environment, before opening a study to participants | before every deploy that lands on a database with participants in it |
 
 Neither replaces the other: pre-launch cannot detect a broken upgrade path, and
@@ -1222,8 +1222,8 @@ refuses to launch while any `REPLACE` survives**, matching by shape rather than 
 exact string. The COMPLETION code is the one to guard hardest: on Prolific it can
 auto-approve a payment, so keep its random part six or more characters and never
 a short number. Full operational detail: `docs/running_on_prolific.md`.
-- the **integrity modules** — `tab_monitor`, `comprehension_dq`, plus
-  `passive_capture` and `device_capture`. With `tab_monitor` on, **every page
+- the **integrity modules** — `tab_monitor`, `quiz_comprehension_dq`, plus
+  `telemetry_passive_capture` and `telemetry_device_capture`. With `tab_monitor` on, **every page
   after the agreement screen is monitored by default** (`participant_tab_monitor.py` — a
   page can only be unmonitored by opting out explicitly), with one deliberate
   asymmetry: same monitor, same counting, **different consequence by phase**.
@@ -1236,9 +1236,9 @@ a short number. Full operational detail: `docs/running_on_prolific.md`.
   real participant for no benefit. A nonzero outro count on a finished
   participant is measurement, not a near-miss.
 
-The profile deliberately does **not** narrow `allowed_devices` (see the
+The profile deliberately does **not** narrow `prolific_allowed_devices` (see the
 parameter scheme above): screening devices out is a separate, explicit decision,
-so set e.g. `allowed_devices=['computer']` on the config if you want it.
+so set e.g. `prolific_allowed_devices=['computer']` on the config if you want it.
 
 **Completion codes** are config values, set in `settings.py`: the
 `SESSION_CONFIG_DEFAULTS` placeholders `prolific_cc_code` (normal), `prolific_noconsent_code`

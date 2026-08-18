@@ -26,7 +26,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from otree_inprocess import boot, path_of, page_name_of  # noqa: E402
 
-# PRODUCTION: DEBUG off is the build participants get, and verify_quiz=False
+# PRODUCTION: DEBUG off is the build participants get, and quiz_verify=False
 # would skip grading entirely (and so log nothing).
 ot = boot(production=True)
 
@@ -155,7 +155,7 @@ def main():
     section('4. Taking the re-read offer is not logged as an attempt')
     # A lab session: quiz_reread is on, so crossing the threshold opens the
     # offer, and submitting redoinstructions=1 returns before grading.
-    threshold = int(session.config['comprehension_max_failures'])
+    threshold = int(session.config['quiz_comprehension_max_failures'])
     resp = walk_to_quiz(client, codes[3])
     for _ in range(threshold):
         resp = client.post(path_of(resp), data=wrong, allow_redirects=True)

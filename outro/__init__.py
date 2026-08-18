@@ -205,7 +205,7 @@ Outro.
 """
 class C(BaseConstants):
     # Asset cache-buster for this BUILD (settings.STATIC_VERSION).
-    # Templates read C.STATIC_VERSION, never session.config.static_version:
+    # Templates read C.STATIC_VERSION, never session.config.build_static_version:
     # a session config is frozen at creation, so the template read 500s
     # for in-flight participants when the parameter post-dates them.
     STATIC_VERSION = STATIC_VERSION
@@ -247,7 +247,7 @@ class Player(BasePlayer):
     #   1     = IBAN checked and inside SEPA
     #   0     = IBAN checked and OUTSIDE SEPA (the Results page warns on this)
     #   empty = the check NEVER RAN — no bank details were collected (every
-    #           Prolific participant, and any config with collect_bank_details
+    #           Prolific participant, and any config with collect_outro_bank_details
     #           off). It previously shipped as initial=1, which collapsed
     #           "checked, fine" with "never asked": every Prolific row exported
     #           as if a SEPA check had passed. See CODEBOOK.md.
@@ -338,7 +338,7 @@ class Ended(participant_tab_monitor.OutroMonitoredPage):
     redirects are on it sends them back to Prolific with the matching code.
 
     A SCREENED-OUT PARTICIPANT DOES NOT NORMALLY REACH IT. (Corrected
-    2026-08-13: this used to say a phone stopped by the allowed_devices gate
+    2026-08-13: this used to say a phone stopped by the prolific_allowed_devices gate
     "lands here as its FIRST page", which contradicted `was_screened_out` twelve
     lines above and described the behaviour the soft wall replaced.) The gate
     HOLDS them on `before.welcome` instead, because the verdict has to stay
@@ -414,37 +414,37 @@ class Demographics(participant_tab_monitor.OutroMonitoredPage):
         # neither (Prolific supplies demographics with its own export), so with
         # both flags off the page is skipped entirely.
         return is_completer(player) and (
-            _flag(player, 'collect_demographics') or _flag(player, 'collect_bank_details'))
+            _flag(player, 'collect_outro_demographics') or _flag(player, 'collect_outro_bank_details'))
 
     @staticmethod
     def get_form_fields(player):
         fields = []
-        if _flag(player, 'collect_demographics'):
+        if _flag(player, 'collect_outro_demographics'):
             fields += ['age', 'gender']
         # Bank / SEPA collection is the lab payment model; Prolific pays through
-        # the platform, so these fields only appear when collect_bank_details is on.
-        if _flag(player, 'collect_bank_details'):
+        # the platform, so these fields only appear when collect_outro_bank_details is on.
+        if _flag(player, 'collect_outro_bank_details'):
             fields += ['bank', 'bank_confirmation', 'bic']
         return fields
 
     @staticmethod
     def vars_for_template(player):
         return dict(
-            collect_demographics=_flag(player, 'collect_demographics'),
-            collect_bank_details=_flag(player, 'collect_bank_details'),
+            collect_outro_demographics=_flag(player, 'collect_outro_demographics'),
+            collect_outro_bank_details=_flag(player, 'collect_outro_bank_details'),
         )
 
     def error_message(player, values):
         # Missing-field errors beat the mismatch error: the mismatch is only
         # judged once both bank boxes actually hold something.
         required = []
-        if _flag(player, 'collect_demographics'):
+        if _flag(player, 'collect_outro_demographics'):
             required += ['gender', 'age']
-        if _flag(player, 'collect_bank_details'):
+        if _flag(player, 'collect_outro_bank_details'):
             required += ['bank', 'bank_confirmation']
         if any(not values.get(f) for f in required):
             return "Please answer all questions with an asterisk (*)."
-        if _flag(player, 'collect_bank_details') and values['bank'] != values['bank_confirmation']:
+        if _flag(player, 'collect_outro_bank_details') and values['bank'] != values['bank_confirmation']:
             return "Your bank numbers don't match. Please doublecheck them."
         # A NON-DUTCH IBAN NEEDS A BIC (Julian, 2026-08-13). Dutch (NL)
         # accounts are routed without one; for ANY other country the transfer
@@ -464,7 +464,7 @@ class Demographics(participant_tab_monitor.OutroMonitoredPage):
         #     eye even for a participant who typed a perfectly good BIC.
         # Both read the country through iban_country_code — ONE implementation
         # of "which country", two predicates on top of it.
-        if (_flag(player, 'collect_bank_details')
+        if (_flag(player, 'collect_outro_bank_details')
                 and iban_country_code(values.get('bank')) != 'NL'
                 and not str(values.get('bic') or '').strip()):
             return ("Your IBAN is not Dutch (NL), so we also need your "
@@ -472,7 +472,7 @@ class Demographics(participant_tab_monitor.OutroMonitoredPage):
 
     def before_next_page(p, timeout_happened):
         # CHECK IF THE PARTICIPANT'S BANK ACCOUNT IS IN SEPA (lab payment only) ===
-        if _flag(p, 'collect_bank_details') and p.bank:
+        if _flag(p, 'collect_outro_bank_details') and p.bank:
             check_sepa_code(p)
 
 
@@ -493,18 +493,18 @@ def compute_final_payoff(p):
     # common.cfg, never []-indexing: a session created before a parameter
     # existed does not carry it, and a KeyError here is a 500 on the payment
     # page — the worst possible place (CLAUDE.md).
-    num_rewarded = common.cfg(p.session.config, 'num_rewarded')
-    payouts = select_random_payouts(round_payoffs, num_rewarded)
+    payment_num_rewarded = common.cfg(p.session.config, 'payment_num_rewarded')
+    payouts = select_random_payouts(round_payoffs, payment_num_rewarded)
 
-    # Calculate the experiment payoff from i) the selected payoffs, ii) the quiz bonus and iii) the showup fee
+    # Calculate the experiment payoff from i) the selected payoffs, ii) the quiz bonus and iii) the payment_show_up fee
     p.selected_sum = sum(float(pay) for _, pay in payouts)
-    # Quiz bonus awarded only if no failed attempts and quiz_bonus is positive
+    # Quiz bonus awarded only if no failed attempts and payment_quiz_bonus is positive
     # (.vars.get() rather than getattr()/attribute access — KeyError trap.)
     participant_failed_attempts = p.participant.vars.get('comprehension_failed_attempts', 0) or 0
-    quiz_bonus = common.cfg(p.session.config, 'quiz_bonus')
-    quiz_bonus_awarded = quiz_bonus if (participant_failed_attempts == 0 and quiz_bonus > 0) else 0
+    payment_quiz_bonus = common.cfg(p.session.config, 'payment_quiz_bonus')
+    quiz_bonus_awarded = payment_quiz_bonus if (participant_failed_attempts == 0 and payment_quiz_bonus > 0) else 0
     p.quiz_bonus_awarded = quiz_bonus_awarded
-    showup_fee = common.cfg(p.session.config, 'showup')
+    showup_fee = common.cfg(p.session.config, 'payment_show_up')
     p.earned = showup_fee + p.selected_sum + p.quiz_bonus_awarded
     p.payouts = json.dumps(payouts)
     p.all_round_payoffs = json.dumps(round_payoffs)
@@ -527,7 +527,7 @@ def compute_final_payoff(p):
     # de-converted from points when USE_POINTS is on — the one formula that
     # lands the ADMIN-VISIBLE real-world figure exactly on `earned` under any
     # currency config. (This template ships USE_POINTS=False and
-    # participation_fee=0, where it reduces to `earned` itself. `showup` is
+    # participation_fee=0, where it reduces to `earned` itself. `payment_show_up` is
     # already inside `earned`; participation_fee is oTree's own separate
     # add-on, shipped 0.00.)
     # Guarded by the `earned` idempotence check above, so a Results re-render
@@ -668,7 +668,7 @@ class Results(participant_tab_monitor.OutroMonitoredPage):
         # it: base (the show-up fee) + quiz bonus + the selected rounds.
         # `base_payment` is the show-up fee under the name the receipt uses;
         # `decision_bonus` is the sum of the randomly selected rounds. ONE name
-        # per figure — the old duplicate keys (`showup`, `selected_sum`, the raw
+        # per figure — the old duplicate keys (`payment_show_up`, `selected_sum`, the raw
         # `payouts` list) were dead template vars and are gone, so the receipt
         # cannot be "fixed" against a name the template does not read.
         return{
@@ -679,9 +679,9 @@ class Results(participant_tab_monitor.OutroMonitoredPage):
             # code — unpaid, and looking like an abandoner in the data.
             'completionlink': completion_link(player),
             'earned': cu(player.earned),
-            'base_payment': cu(common.cfg(player.session.config, 'showup')),
+            'base_payment': cu(common.cfg(player.session.config, 'payment_show_up')),
             'decision_bonus': cu(player.selected_sum),
-            'quiz_bonus': cu(player.quiz_bonus_awarded),
+            'payment_quiz_bonus': cu(player.quiz_bonus_awarded),
             'show_quiz_bonus': player.quiz_bonus_awarded > 0,
             'has_rounds': bool(payout_rows),
             # NULLABLE, so field_maybe_none, never a bare read (CLAUDE.md).
@@ -690,7 +690,7 @@ class Results(participant_tab_monitor.OutroMonitoredPage):
             # participant who was never asked never sees the warning.
             'sepa': player.field_maybe_none('sepa'),
             'payout_rows': payout_rows,
-            'num_rewarded': common.cfg(player.session.config, 'num_rewarded'),
+            'payment_num_rewarded': common.cfg(player.session.config, 'payment_num_rewarded'),
             # The shared ending footer include branches on `reason` (Ended's
             # variant carries the codeless screened-out exit). This page has no
             # early-ending reason by definition; '' is passed EXPLICITLY rather

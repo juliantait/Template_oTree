@@ -7,7 +7,7 @@
 #   IT IS ALSO WHERE THE DEVICE ALLOW-LIST IS DECIDED AND WHERE A SCREENED-OUT
 #   PARTICIPANT IS HELD. The entry request's User-Agent is classified
 #   server-side in `welcome.get()`, before a byte of consent exists; a device
-#   the study's `allowed_devices` list excludes is recorded with exit code -4
+#   the study's `prolific_allowed_devices` list excludes is recorded with exit code -4
 #   and served `before/screened_out.html` INSTEAD of the consent page, on this
 #   same page index. Holding them here rather than walking them to the outro is
 #   what makes the wall SOFT: they never advance, so every later request lands
@@ -97,7 +97,7 @@ fee_guard.assert_participation_fee_is_zero()
 
 class C(BaseConstants):
     # Asset cache-buster for this BUILD (settings.STATIC_VERSION).
-    # Templates read C.STATIC_VERSION, never session.config.static_version:
+    # Templates read C.STATIC_VERSION, never session.config.build_static_version:
     # a session config is frozen at creation, so the template read 500s
     # for in-flight participants when the parameter post-dates them.
     STATIC_VERSION = STATIC_VERSION
@@ -190,13 +190,13 @@ def _apply_device_gate(player, user_agent):
     """DEVICE ALLOW-LIST GATE — a SOFT WALL decided on the consent page's own
     request, before a byte of consent is rendered.
 
-    The study STATES which device types it accepts (`allowed_devices`: any of
+    The study STATES which device types it accepts (`prolific_allowed_devices`: any of
     'phone', 'tablet', 'computer', 'unknown'); anything else is screened out at
     entry and held on this page (see `welcome.get_template_name`).
 
     NO-OP BY DEFAULT. The shipped list is all four types, so every device is
     permitted and this function changes nothing a participant could see.
-    (device_capture still RECORDS the device as measurement; it never blocks
+    (telemetry_device_capture still RECORDS the device as measurement; it never blocks
     anyone.)
 
     THE SERVER DECIDES, from this request's User-Agent. The client's own idea of
@@ -379,14 +379,14 @@ def _leaving_study(player) -> bool:
     return common.is_screened_out(player.participant) or _declined_consent(player)
 
 
-# DEVICE CAPTURE IS DECIDED BY `device_capture` ALONE (Julian, 2026-08-13).
+# DEVICE CAPTURE IS DECIDED BY `telemetry_device_capture` ALONE (Julian, 2026-08-13).
 #
-# It used to be `prolific_capture_participant_id or device_capture`, so turning
+# It used to be `prolific_capture_participant_id or telemetry_device_capture`, so turning
 # on Prolific ID capture SILENTLY also turned on device capture — one flag
 # quietly doing a second flag's job, and changing what an export column records.
 # Nobody reading either flag name would expect that. One flag, one job.
 #
-# THE THREE SITES THAT MUST AGREE, all now reading `device_capture`:
+# THE THREE SITES THAT MUST AGREE, all now reading `telemetry_device_capture`:
 # `welcome.get_form_fields` (which fields exist), `welcome.js_vars` (the
 # server's UA rules for the script) and welcome+consent.html (the hidden inputs
 # and the <script> tag). oTree renders any form field the template does not
@@ -395,7 +395,7 @@ def _leaving_study(player) -> bool:
 # and no failing bot test to say so.
 #
 # WHAT THIS CHANGES IN THE DATA: a config with `prolific_capture_participant_id`
-# ON and `device_capture` OFF used to record device info and no longer does.
+# ON and `telemetry_device_capture` OFF used to record device info and no longer does.
 # Neither shipped profile is affected (both set the two together), but an export
 # compared across this change must be read with it in mind — see CODEBOOK.md.
 
@@ -551,7 +551,7 @@ class welcome(Page):
         # BOTH device fields under the ONE flag that owns them (see the note
         # above `_claim_participant_label`'s section): they are filled by the
         # same script, so they appear and disappear together.
-        if _flag(player, 'device_capture'):
+        if _flag(player, 'telemetry_device_capture'):
             fields += ['is_mobile', 'device_info_json']
         return fields
 
@@ -567,7 +567,7 @@ class welcome(Page):
         client records `ua_rules: 'unavailable'` and classifies nothing rather
         than falling back to a private list.
         """
-        if not _flag(player, 'device_capture'):
+        if not _flag(player, 'telemetry_device_capture'):
             return {}
         return dict(DEVICE_UA_RULES=common.device_ua_rules())
 
@@ -578,25 +578,25 @@ class welcome(Page):
             return _screenout_vars(player)
         return dict(
             prolific_capture_participant_id=_flag(player, 'prolific_capture_participant_id'),
-            device_capture=_flag(player, 'device_capture'),
+            telemetry_device_capture=_flag(player, 'telemetry_device_capture'),
             # Drives the template's radio-vs-implicit branch; see
             # get_form_fields, which adds the field under the same flag.
             explicit_consent=_flag(player, 'explicit_consent'),
-            # Payment-mechanics wording only. Branching on collect_bank_details
+            # Payment-mechanics wording only. Branching on collect_outro_bank_details
             # (not on prolific_capture_participant_id) because the sentence is about HOW
             # the participant is paid — and it keeps this page from having any
             # notion of a recruitment platform.
-            collect_bank_details=_flag(player, 'collect_bank_details'),
+            collect_outro_bank_details=_flag(player, 'collect_outro_bank_details'),
             # Consent quotes duration and payment from config, so a lab session
             # can state its own show-up fee (safe reads: defaults if unset).
-            # Rendered only when show_duration_and_fee is on (off by default).
-            show_duration_and_fee=bool(common.cfg(cfg, 'show_duration_and_fee')),
+            # Rendered only when display_before_show_duration_and_fee is on (off by default).
+            display_before_show_duration_and_fee=bool(common.cfg(cfg, 'display_before_show_duration_and_fee')),
             expected_duration_minutes=common.cfg(cfg, 'expected_duration_minutes'),
             # BARE READ, no `or 0` (B4, Julian 2026-08-13): one guard policy for one
             # money value — the payment side reads this key bare and fails loudly,
             # so the promise side must not silently advertise €0.00 for the same
             # broken config. See intro.instructions_context for the full note.
-            showup_fee=cu(common.cfg(cfg, 'showup')),
+            showup_fee=cu(common.cfg(cfg, 'payment_show_up')),
             # WHICH CONTACT ROUTE the closing sentence offers. BOTH branches
             # come from the STUDY TYPE, never from a module flag: this is copy,
             # and copy is `recruitment`'s to decide (the rule is written out in
@@ -615,8 +615,8 @@ class welcome(Page):
         )
 
     # NB: there is deliberately no error_message here blocking `is_mobile`.
-    # The client-side `is_mobile` field is MEASUREMENT (device_capture) and
-    # never blocks anyone; screening devices out is the `allowed_devices`
+    # The client-side `is_mobile` field is MEASUREMENT (telemetry_device_capture) and
+    # never blocks anyone; screening devices out is the `prolific_allowed_devices`
     # gate's job alone, and it happens before this page (see
     # _apply_device_gate). Blocking here as well would give the device check a
     # participant-visible effect even when the allow-list permits everything.
@@ -646,7 +646,7 @@ class welcome(Page):
                     # sharing a label is a permanent 500 on the front door for
                     # the id's real owner (identity.py).
                     _claim_participant_label(player, url_id)
-        if _flag(player, 'device_capture') and player.device_info_json:
+        if _flag(player, 'telemetry_device_capture') and player.device_info_json:
             common.extra_set(player.participant, 'device_info_json', player.device_info_json)
 
         common.stamp_stage(player.participant, common.STAGE_CONSENT)

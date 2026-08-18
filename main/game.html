@@ -12,7 +12,7 @@
             </div>
         </div>
 
-        {% if passive_capture %}
+        {% if telemetry_passive_capture %}
         <!-- Passive measurement rides on THIS page's own form (no side request).
              Empty if JS is disabled/blocked — the server tolerates that. -->
         <input type="hidden" name="client_ms" id="client_ms" value="">
@@ -26,7 +26,7 @@
 
 <script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
 
-{% if passive_capture %}
+{% if telemetry_passive_capture %}
 <script>
     // Time on page, in ms, written into the hidden field just before submit.
     (function () {

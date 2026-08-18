@@ -122,7 +122,7 @@ def prequiz_text(html):
     tag because the prequiz block contains only <h2> and <p> — no nested divs.
     Reading to the END of the document instead (the first attempt) swept up
     oTree's DEBUG INFO panel, which dumps `vars_for_template` and therefore
-    prints the literal string `quiz_bonus`, failing a "does not mention the
+    prints the literal string `payment_quiz_bonus`, failing a "does not mention the
     bonus" assertion on a debug panel no participant sees in production.
     """
     m = re.search(r'<div class="[^"]*prequiz-block[^"]*">(.*?)</div>', html,
@@ -155,14 +155,14 @@ def advance_until(s, r, name_fragment, limit=40, overrides=None, answers=None):
 
 def scenario_lab_reread(base):
     print("[lab-reread]")
-    # show_duration_and_fee is switched ON for this scenario ONLY, because the
+    # display_before_show_duration_and_fee is switched ON for this scenario ONLY, because the
     # flag ships OFF (change_requests item 1) and this is the one place the
     # duration/fee sentence can be exercised at all. The prolific scenario below
     # asserts the shipped default: no such sentence.
-    s, r = new_participant(base, 'lab', modified={'showup': 7.5,
+    s, r = new_participant(base, 'lab', modified={'payment_show_up': 7.5,
                                                   'expected_duration_minutes': 45,
-                                                  'show_duration_and_fee': True,
-                                                  'comprehension_max_failures': THRESHOLD})
+                                                  'display_before_show_duration_and_fee': True,
+                                                  'quiz_comprehension_max_failures': THRESHOLD})
     r = advance_until(s, r, '/welcome/')
     check('contact and bank details are used only to arrange your payment'
           in visible_text(r.text), 'consent shows the LAB payment sentence')
@@ -284,7 +284,7 @@ def scenario_lab_no_reread(base):
     """
     print("[lab-no-reread]")
     s, r = new_participant(base, 'lab', modified={
-        'quiz_reread': False, 'comprehension_max_failures': THRESHOLD})
+        'quiz_reread': False, 'quiz_comprehension_max_failures': THRESHOLD})
     r = advance_until(s, r, '/quiz/')
     i_quiz1 = page_index(r.url)
 
@@ -324,7 +324,7 @@ def scenario_lab_no_reread(base):
 def scenario_prolific_dq(base):
     print("[prolific-dq]")
     s, r = new_participant(
-        base, 'prolific', modified={'comprehension_max_failures': THRESHOLD})
+        base, 'prolific', modified={'quiz_comprehension_max_failures': THRESHOLD})
     r = advance_until(s, r, '/welcome/')
     check('kept separate from your responses' in visible_text(r.text),
           'consent shows the NON-LAB payment sentence')

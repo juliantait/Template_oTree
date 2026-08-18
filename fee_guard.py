@@ -17,12 +17,12 @@ participant across two numbers computed by different code, and it splits them
 where a human reads off what to pay while leaving the data you analyse looking
 untouched. Exactly the condition the single-ledger decision exists to prevent.
 
-This template already pays the base amount THROUGH the ledger: `showup` is a
+This template already pays the base amount THROUGH the ledger: `payment_show_up` is a
 session-config value that `outro.compute_final_payoff` folds into
 `participant.payoff` along with the bonus, so the admin figure equals the amount
 actually owed. Setting a `participation_fee` as well would pay part of the base
 twice — once inside `earned`, once as oTree's separate addend — or, if the study
-moved the base out of `showup`, would leave the ledger under-reporting it. Both
+moved the base out of `payment_show_up`, would leave the ledger under-reporting it. Both
 failures look like a working study right up until somebody pays people.
 
 WHY A GUARD AND NOT JUST A ZERO IN settings.py
@@ -93,7 +93,7 @@ THE KNOWN COST, ACCEPTED WITH EYES OPEN (Julian, 2026-08-14)
 ============================================================
 
 **A study copied from this template that already sets a `participation_fee` will
-refuse to boot** until the fee is moved into the ledger (put it in `showup`, or
+refuse to boot** until the fee is moved into the ledger (put it in `payment_show_up`, or
 add it wherever `outro.compute_final_payoff` computes `earned`). That is a real
 cost, paid by a real person, and it is the point: the alternative is that the
 study runs and the payment record is wrong in a way nobody notices until payout.
@@ -283,12 +283,12 @@ def assert_participation_fee_is_zero(root=None, defaults=None, configs=None):
             "(payoff_plus_participation_fee), and nowhere else — it never "
             "reaches the CSV export, so the split is invisible in your data. "
             "This template keeps ONE ledger — the base is paid through "
-            "`showup`, which outro.compute_final_payoff folds into "
+            "`payment_show_up`, which outro.compute_final_payoff folds into "
             "participant.payoff with the bonus — so a fee here splits the "
             "amount owed across two numbers and somebody gets paid the wrong "
             "one.\n"
             "If this is a study copied from the template that already had a "
-            "fee: move it into the ledger (add it to `showup`, or into the "
+            "fee: move it into the ledger (add it to `payment_show_up`, or into the "
             "`earned` computation in outro) and set participation_fee back to "
             "0. See DECISIONS.md, 'participation_fee ships 0, and a boot guard "
             "holds it there'.")
@@ -303,7 +303,7 @@ def assert_participation_fee_is_zero(root=None, defaults=None, configs=None):
             "the boot is being refused rather than letting a second payment "
             "channel open quietly.\n"
             f"{listing}\n"
-            "One payment ledger: the base belongs in `showup` and the total in "
+            "One payment ledger: the base belongs in `payment_show_up` and the total in "
             "participant.payoff. If the value really is zero but computed, make "
             "it a literal 0 here and compute elsewhere. See DECISIONS.md, "
             "'participation_fee ships 0, and a boot guard holds it there'.")

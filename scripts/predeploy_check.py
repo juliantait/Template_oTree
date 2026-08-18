@@ -5,7 +5,7 @@ WHICH CHECK IS THIS? (there are two, and they are complementary)
 -----------------------------------------------------------------------------
   scripts/prelaunch_check.py  — STATIC, config-only, no server, instant. Asks
       "is this configuration safe to launch?": placeholder REPLACE_* completion
-      codes, DEBUG still on, testing loosenings (verify_quiz=False) left in.
+      codes, DEBUG still on, testing loosenings (quiz_verify=False) left in.
       Run it in the target environment BEFORE opening a study to participants.
   scripts/predeploy_check.py  — DYNAMIC, this file. Boots the candidate build
       against a COPY of the live database and drives real participants over
@@ -427,7 +427,7 @@ class ServerUnderTest:
         env = os.environ.copy()
         # DEBUG axis: default to the PRODUCTION shape, because production is
         # what this build is about to be deployed into and debug loosenings
-        # (verify_quiz=False) would mask a broken gate. --debug flips it.
+        # (quiz_verify=False) would mask a broken gate. --debug flips it.
         # NB oTree treats OTREE_PRODUCTION as set-or-not, so an EMPTY string
         # still means production — the variable has to be removed, not blanked.
         if self.debug:

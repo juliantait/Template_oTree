@@ -1,4 +1,4 @@
-"""HTTP scenario tests for the entry DEVICE ALLOW-LIST (`allowed_devices`).
+"""HTTP scenario tests for the entry DEVICE ALLOW-LIST (`prolific_allowed_devices`).
 
 A study STATES the device types it accepts — any of 'phone', 'tablet',
 'computer', 'unknown' — and everything else is screened out at entry with the
@@ -190,7 +190,7 @@ COMPLETION_URL_RE = re.compile(
 
 
 def create(base, allowed, config='prolific', **modified):
-    fields = {'allowed_devices': allowed}
+    fields = {'prolific_allowed_devices': allowed}
     fields.update(CODES)
     fields.update(modified)
     return requests.post(
@@ -219,7 +219,7 @@ def extra_of(base, session_code, p_code, key):
 def run(base, label, user_agent, allowed):
     """Walk one participant through the whole flow with the given User-Agent."""
     shown_ua = (user_agent[:38] + '...') if user_agent else '<none>'
-    print(f"[{label}]  allowed_devices={allowed}  UA={shown_ua!r}")
+    print(f"[{label}]  prolific_allowed_devices={allowed}  UA={shown_ua!r}")
     created = create(base, allowed)
     session_code = created['code']
 
@@ -231,7 +231,7 @@ def run(base, label, user_agent, allowed):
 
     # ANSWER THE QUIZ FROM THE SHIPPED ITEMS, not from the page. In production
     # the DEBUG-only solutions blob is absent, so a walker that read answers off
-    # the page would fail the quiz and — Prolific's comprehension_dq being on —
+    # the page would fail the quiz and — Prolific's quiz_comprehension_dq being on —
     # be routed to the comprehension-DQ ending (exit -2) instead of completing.
     # The admitted-device checks below assert exit code 1, so that misroute used
     # to fail every one of them. QUIZ_CORRECT is derived from intro/quiz_items.py
@@ -399,7 +399,7 @@ def main():
         check(got == common.UNDETERMINED,
               f'classifier: {label} -> UNDETERMINED (got {got!r})')
     # ...and the two halves of the asymmetry, side by side, on the sentinel:
-    narrow = {'allowed_devices': ['computer']}
+    narrow = {'prolific_allowed_devices': ['computer']}
     check(common.device_screens_out(narrow, common.UNDETERMINED) is False,
           'UNDETERMINED never screens anybody out (fail open on entry)')
     check(common.device_clears_screenout(narrow, common.UNDETERMINED) is False,

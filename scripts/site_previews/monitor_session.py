@@ -39,13 +39,13 @@ IT IS A **LAB** SESSION, AS THE LAB PROFILE ACTUALLY RESOLVES
 The generator's standing rule — EVERY SCREEN MUST BE THE PROFILE AS RESOLVED,
 NOT AS REMEMBERED — decides which states may appear here, and it rules out the
 most eye-catching ones. `RECRUITMENT_PROFILES['lab']` sets `tab_monitor=False`,
-`comprehension_dq=False`, `device_capture=False` and `explicit_consent=False`,
+`quiz_comprehension_dq=False`, `telemetry_device_capture=False` and `explicit_consent=False`,
 and every one of the four TERMINAL states needs a module the lab profile turns
 off:
 
     📵 screened out    needs the device/screen-out gate   (lab: off)
     ✋ declined consent needs the explicit consent radio   (lab: implicit)
-    ❌ comprehension DQ needs comprehension_dq             (lab: off)
+    ❌ comprehension DQ needs quiz_comprehension_dq             (lab: off)
     👀 tab monitor DQ   needs tab_monitor                  (lab: off)
 
 So a lab monitor shows NO terminal pills and no pink rows, and putting them
@@ -68,7 +68,7 @@ Usage: imported by build_site_previews.py. Not executable on its own.
 
 # --- the session-constant half of the payload --------------------------------
 # These are the values the LAB config actually resolves (settings.py:
-# SESSION_CONFIG_DEFAULTS num_experimental_rounds=10, comprehension_max_failures=3,
+# SESSION_CONFIG_DEFAULTS num_experimental_rounds=5, quiz_comprehension_max_failures=3,
 # REAL_WORLD_CURRENCY_CODE=EUR) and the shipped stall thresholds
 # (experimenter_dashboard.stall_legend). They are restated here rather than
 # imported because this file is a FIXTURE: the preview must keep showing a
@@ -180,7 +180,7 @@ ROWS = [
          quiz=_quiz('forced'), intro_seconds=245),
 
     # Hit the three-failure limit. In a LAB session that is not a
-    # disqualification — comprehension_dq is off — so the row runs on and the
+    # disqualification — quiz_comprehension_dq is off — so the row runs on and the
     # red cell is the operator's cue to go and speak to them.
     _row('Seat 11', 'quiz', current_page='Quiz', quiz=_quiz('red', 3),
          intro_seconds=402, intro_live=True),

@@ -11,6 +11,77 @@ working.
 
 ---
 
+## Session-config keys are named family-first and ordered into families, so the admin form reads as sections — 2026-08-18
+
+Decided by Julian, while the template has **NO live studies** (so the rename is
+safe now and would be a schema change across running sessions later). The admin's
+session-configuration form renders `SESSION_CONFIG_DEFAULTS` in **insertion
+order** and gives it **no section headings at all** — so the only structure
+available is the key order plus a shared naming prefix per family. Every key was
+renamed into a prefixed family and the dict reordered so the families are
+contiguous: unprefixed top-level keys (`doc`, `recruitment`, `pilot_feedback`,
+`num_experimental_rounds`, `explicit_consent`, `expected_duration_minutes`), then
+`payment_*` (`payment_show_up`, `payment_num_rewarded`, `payment_quiz_bonus`,
+with the two oTree built-ins `real_world_currency_per_point` /
+`participation_fee` kept at the bottom of the block under their built-in names),
+`quiz_*` (`quiz_comprehension_max_failures`, `quiz_comprehension_dq`,
+`quiz_reread`, `quiz_verify`), `display_*`
+(`display_before_show_duration_and_fee`), `collect_outro_*`
+(`collect_outro_demographics`, `collect_outro_bank_details`), `telemetry_*`
+(`telemetry_passive_capture`, `telemetry_device_capture`), `build_*`
+(`build_static_version`), `tab_monitor*`, and `prolific_*` last. This is the same
+move the participant-tracking fields made (see 'Participant tracking fields are
+named family-first' — 2026-08-17), applied to the config form.
+
+The old names named the *thing* and lost the family: `showup`, `num_rewarded`,
+`quiz_bonus`, `verify_quiz`, `device_capture` each sat alone in a form with no
+grouping, so a lab operator scrolled past Prolific-only machinery with nothing to
+say which keys were theirs. The rename is **complete and grep-verified** — a
+config key is a string-keyed lookup, so a half-rename is a silent wrong default,
+not an import error — reaching `settings.py`, `common.py`'s safe accessors, the
+`before/`/`intro/`/`main/`/`outro/` modules and their templates (oTree exposes a
+config value to a template as a bare `vars_for_template` name, so `{% if
+device_capture %}` had to move too), the scripts, the tests, and the docs. Two
+disambiguations were held apart deliberately: the config key `static_version`
+became `build_static_version`, but the **module-level `STATIC_VERSION` constant,
+`C.STATIC_VERSION`, the asset-manifest `static_version` field and the template
+reads of `C.STATIC_VERSION` are the code asset version — a different thing — and
+did NOT move**; and `quiz_comprehension_max_failures` / `quiz_comprehension_dq`
+renamed while the participant field `comprehension_failed_attempts` did not. The
+default `num_experimental_rounds` was also dropped `10 → 5` in the same pass.
+
+### The device allow-list joins the `prolific_` naming family — 2026-08-18
+
+`allowed_devices` became `prolific_allowed_devices` and moved into the
+`prolific_` block at the bottom of the form. **This is a form-navigation choice
+about the prefix and the position, and NOTHING about the runtime changed** — the
+gate is still decided from the entry request in every study type, the key is
+still absent from both `RECRUITMENT_PROFILES` bundles (so selecting the prolific
+study type never starts screening devices out on its own), and it still falls
+through to the all-four baseline meaning the gate is off.
+
+**The superseded rationale is preserved, not deleted.** The key previously lived
+in its own ENTRY section specifically *because* it is "not a Prolific parameter":
+that reasoning was correct about the behaviour and is still true of the
+behaviour. What overrode it is that the form has no headings, so a key outside
+the `prolific_` block but conceptually distinct from the payment/quiz/telemetry
+families had no home that read cleanly — and grouping it by prefix with the other
+end-of-form machinery keeps it out of a lab operator's way. The `prolific_`
+prefix is therefore a **grouping label, not a claim of Prolific-specificity**;
+the note above `prolific_allowed_devices` in `settings.py` and the bundle comment
+in `RECRUITMENT_PROFILES` both say so at the point of use. **Rejected:** leaving
+it in a lone one-key ENTRY section (a section of one in a form with no section
+headings reads as noise); adding it to the prolific bundle to match the prefix
+(that would change behaviour — the exact trap the prefix must not cause).
+
+**Enforced:** `scripts/prelaunch_check.py` and the config-key set in
+`scripts/tests/frozen_config_test.py` (`STRIPPED`) both enumerate the new names,
+so a missed rename or a bundle that wrongly gained `prolific_allowed_devices`
+shows up there; the HTTP/bot suites go red on a half-done rename because a wrong
+config default changes what a participant reaches; and every old name was grepped
+to zero across the repo (this entry and superseded code comments are the only
+places the old spellings survive, as history).
+
 ## Popups are a four-tier ladder, chosen by distance from the experiment frame — 2026-08-17
 
 Decided by Julian; brief in `_ai/template_adoption_brief.md` Topic A (local only —
@@ -606,7 +677,7 @@ participant screens still build on the standard library alone).
 
 **It is a LAB session, and that is why it shows no "ended early" rows.** All
 four terminal states need a module `RECRUITMENT_PROFILES['lab']` switches off —
-`device_capture` (📵 screened out), `explicit_consent` (✋ declined), `comprehension_dq`
+`telemetry_device_capture` (📵 screened out), `explicit_consent` (✋ declined), `quiz_comprehension_dq`
 (❌), `tab_monitor` (👀) — so a real lab monitor never shows one. Putting them on
 anyway would repeat the exact error that once shipped a consent preview with a
 radio button no lab participant has ever seen. The built file says this in its
@@ -749,7 +820,7 @@ refactor one away — that is the thing not to do.**
 - Two test-construction faults were found and fixed while writing the above,
   both worth knowing because they would have produced false confidence: a walker
   using the default `python-requests` User-Agent is classified `unknown` and is
-  SCREENED OUT by `allowed_devices=['computer']`, and setting a DQ flag on a
+  SCREENED OUT by `prolific_allowed_devices=['computer']`, and setting a DQ flag on a
   participant still at the consent page does not put them on their ending. In
   both cases the code assertions passed against the wrong page until the journey
   itself was asserted.
@@ -764,7 +835,7 @@ which feeds the admin Payments page (`otree/views/admin.py:274`,
 NOT reach the CSV export — verified against 6.0.15, the participant column list
 ends at `payoff` (`otree/export.py:76-96`) — so a fee is invisible in the data
 and visible only where a human reads off what to pay, which is worse. This template keeps **one payment ledger** — the base is
-`showup`, which `outro.compute_final_payoff` folds into `participant.payoff` with
+`payment_show_up`, which `outro.compute_final_payoff` folds into `participant.payoff` with
 the bonus, so the admin figure equals the amount actually owed. A non-zero fee
 splits that across two numbers computed by different code in different places,
 which is the condition the single-ledger decision exists to prevent.
@@ -786,7 +857,7 @@ request is a dead page for whoever is mid-study. `fee_guard.py` is called from
 
 **THE KNOWN COST, ACCEPTED WITH EYES OPEN.** A study copied from this template
 that already sets a `participation_fee` **will refuse to boot** until the money
-is moved into the ledger (into `showup`, or into `outro`'s `earned`). A real cost
+is moved into the ledger (into `payment_show_up`, or into `outro`'s `earned`). A real cost
 paid by a real person — and the trade is deliberate: the alternative is a study
 that runs happily with a payment record that is wrong in a way nobody notices
 until payout, when somebody is underpaid.
@@ -1399,7 +1470,7 @@ channel, both message types), and the checker refusing a dodger.
 
 ## One guard policy for a config-read money value: fail loudly — 2026-08-13
 
-Whole-app review B4, decided by Julian. `showup` / `quiz_bonus` were read two
+Whole-app review B4, decided by Julian. `payment_show_up` / `payment_quiz_bonus` were read two
 ways: the promise side (consent, instructions) guarded with `or 0`, the
 payment side (`outro.compute_final_payoff`) bare. For a config holding None
 that split is the worst arrangement — the participant is silently promised
@@ -1499,7 +1570,7 @@ fallback, and the drift check reports ok against the installed oTree.
 
 Review item J1 (Julian; sub-decision also his). The underlying conflation:
 oTree automatically sums `player.payoff` across rounds into
-`participant.payoff`, but this template pays only `num_rewarded` randomly
+`participant.payoff`, but this template pays only `payment_num_rewarded` randomly
 selected rounds — the per-round result and the amount paid are different
 things, and the auto-sum is a total nobody is paid. So the game records each
 round in its own `main.Player.round_payoff`; the template pays from
@@ -1622,11 +1693,11 @@ own export columns. It also records the admin-page state as a **measured gap**.
 **THE CONCRETE FIGURES THIS DECISION IS BEING MADE AGAINST**, so nobody reading
 it later has to reconstruct what the admin page actually showed. One real
 walked Prolific completer (participant `240pbcpa`, config `prolific`, 10 rounds,
-`num_rewarded=2`, exit code 1), measured 2026-08-14, all figures EUR:
+`payment_num_rewarded=2`, exit code 1), measured 2026-08-14, all figures EUR:
 
 | Figure | Source | Value |
 | --- | --- | --- |
-| base / show-up | `showup` (session config) | **2.50** |
+| base / show-up | `payment_show_up` (session config) | **2.50** |
 | selected rounds | `outro.Player.selected_sum` (r10 → 45.00, r6 → 98.00) | **143.00** |
 | quiz bonus | `outro.Player.quiz_bonus_awarded` | **5.00** |
 | **total earned** | `outro.Player.earned` — the three above, residue exactly 0 | **150.50** |
@@ -2017,7 +2088,7 @@ screened). Full working: `_ai/device_allowlist_log.md` (local only — `_ai/` is
 
 ## The lab comprehension rule is help, not ejection — unlimited attempts — 2026-08-12
 
-Online, crossing the failure threshold disqualifies (`comprehension_dq`); in
+Online, crossing the failure threshold disqualifies (`quiz_comprehension_dq`); in
 the lab the same threshold *starts the study helping*: the one-time re-read
 offer (if `quiz_reread` is on), then a dismissible "raise your hand" notice,
 escalating at twice the threshold — and the participant may keep trying
@@ -2029,7 +2100,7 @@ should raise a hand instead of brute-forcing radio items.
 keying the notice on the module (left a module-off lab session with no help at
 all).
 **Enforced:** `scripts/tests/gated_flow_test.py` (lab-reread and prolific-dq
-scenarios); the prelaunch check refuses `comprehension_dq` in a lab config;
+scenarios); the prelaunch check refuses `quiz_comprehension_dq` in a lab config;
 attempts proven uncapped by `scripts/tests/quiz_attempt_log_test.py`. Full working:
 `_ai/lab_comprehension_proposal.md` (local only — `_ai/` is gitignored; not in a clone).
 

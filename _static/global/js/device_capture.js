@@ -3,14 +3,14 @@
 // Fills two hidden fields on the entry page's OWN form (no side requests):
 //   - #is_mobile           : "True"/"False" — MEASUREMENT ONLY; it never blocks
 //                            anyone. Screening devices out is the server-side
-//                            `allowed_devices` gate's job (before/__init__.py),
+//                            `prolific_allowed_devices` gate's job (before/__init__.py),
 //                            because it must decide before consent is rendered,
 //                            i.e. before this script has ever run.
 //   - #device_info_json    : a JSON blob of screen/browser facts, INCLUDING the
 //                            client's own `device_type` guess (see below)
 // Both submit with the page, so the values land in the same POST as consent.
 //
-// Enabled by the `device_capture` (and `prolific_capture_participant_id`) session flags;
+// Enabled by the `telemetry_device_capture` (and `prolific_capture_participant_id`) session flags;
 // this script is only included on the page when one of them is on
 // (`captures_device` — one predicate, in before._captures_device).
 //
