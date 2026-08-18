@@ -145,74 +145,100 @@ a { color: var(--accent); }
 .experimental-screen {
     display: flex;
     justify-content: center;   /* horizontal centring */
-    align-items: center;       /* vertical centring of a short card */
-    /* Fill the viewport so a card that does not need to scroll sits centred both
-       ways. min-height (not height) means a card TALLER than the viewport simply
-       grows the page: it stays fully reachable and scrolls downward, rather than
-       being clipped. */
+    /* THE CARD TOP IS ANCHORED, NOT CENTRED, YET SYMMETRIC AT REST (Julian,
+       2026-08-18). The card's top edge must sit at the SAME position on every
+       page — a viewport-centred card moves its top up and down as content height
+       changes, which is exactly the jump he does not want. So the card is aligned
+       to the START of the shell (top-anchored) in ALL THREE modes, at a top
+       offset of --card-margin below the viewport top. Because the resting floor
+       is `--card-min = 100dvh − 2·--card-margin`, a resting card fills the middle
+       and leaves the SAME margin below it as above (top = bottom = --card-margin)
+       — symmetric, so at rest it reads as centred — while a card TALLER than the
+       floor grows DOWNWARD from that fixed top and the whole page scrolls, top
+       unmoved. One token, --card-margin, sets both the offset here and the floor,
+       so the anchor is a viewport FRACTION and the two cannot drift.
+       `safe center` is gone from here on purpose — it was the vertical centring
+       that moved the top. */
+    align-items: flex-start;
+    /* Fill the viewport so a resting card sits in a full-height frame; min-height
+       (not height) means a card TALLER than the viewport simply grows the page
+       downward from the anchored top: it stays fully reachable and the page
+       scrolls, rather than being clipped. */
     min-height: 100vh;
-    /* EQUAL MARGINS. One symmetric gutter on all four sides, so the grey band
-       above the card matches the band beside it. The middle term is 3vw — the
-       SAME as the card's own 94vw side gutter ((100 − 94)/2 = 3vw) — so when the
-       card is width-limited the top gap equals each side gap exactly. Vertical
-       centring then keeps top = bottom on a short card. */
-    padding: clamp(16px, 3vw, 40px);
+    /* VERTICAL padding = --card-margin, so the top offset equals the resting
+       bottom margin (symmetry) and tracks the viewport. HORIZONTAL padding is the
+       3vw side gutter — the SAME as the card's own 94vw side gutter
+       ((100 − 94)/2 = 3vw) — so a width-limited card sits in an even side band. */
+    padding: var(--card-margin) clamp(16px, 3vw, 40px);
     background: var(--page-bg);
 }
 
 /* COMPONENT — card frame. INTENTION: the single white card every page sits in.
-   ONE card width for EVERY page; only its height responds to content. Long-form
-   text stays readable because running text carries its own reading band;
-   functional components (tables, widgets) span the card's inner width.
+   ONE card width for EVERY page; its height responds to content. Long-form text
+   stays readable because running text carries its own reading band; functional
+   components (tables, widgets) span the card's inner width.
 
-   HEIGHT: A FLOOR *AND* A CEILING. The card is never shorter than --card-min
-   (so a one-line page does not look stubby) and never taller than --card-max
-   (so the page background always frames it — the white edge must never touch the
-   top or bottom of the screen). Between the two it sizes to its content. Past
-   the ceiling the card does NOT grow: the middle region scrolls inside it (see
-   .experimental-content), which is why this element is a flex column.
+   HEIGHT — MODE 1, THE DEFAULT: A FLOOR, AND NO CEILING (2026-08-18 scroll-model
+   overhaul; see DECISIONS.md "The scroll model is three modes" and
+   _ai/scroll_model/). The card is never shorter than --card-min, so a one-line
+   page still fills the screen and does not collapse to a stub. There is NO
+   max-height: a card taller than the floor simply grows with its content and the
+   WHOLE BROWSER VIEWPORT scrolls — header, copy and logo footer together — with
+   the forward / decision control at the natural bottom. This is the SAFE default:
+   it is exactly what renders if no page script runs, so nothing a participant
+   needs can be hidden by a fit-check that fails silently (CLAUDE.md's warning).
 
-   dvh with a vh fallback: on mobile `vh` ignores the retracting URL bar, so a
-   88vh card can still overflow the visible area on a phone. Browsers that do not
-   know `dvh` drop the second declaration and keep the first. */
+   THE OTHER TWO MODES DO NOT LIVE ON THIS RULE, on purpose:
+     * MODE 2 (single-page fit) is progressive enhancement layered ON TOP of
+       Mode 1 by the `.single-page-fit` class global.js adds — font + spacing
+       only, never a ceiling. See THE SINGLE-PAGE FIT below.
+     * MODE 3 (inner-card scroll) is the DORMANT opt-in `.inner-scroll` further
+       down — it, and ONLY it, restores the max-height ceiling and the inner
+       scroll region. The results page uses it; any page may re-enable it. */
 :root {
-    /* THE FLOOR IS DERIVED FROM THE TASK SCREEN (change_requests item 5,
-       2026-08-11). A card shorter than the game screen makes the frame jump
-       between pages, which is what Julian saw: measured at 1280x720, short
-       pages (lab gate, Prolific ID, game screen) sat at the 75vh floor = 540px
-       while tall pages (consent, quiz, results) sat at the 88vh cap = 634px —
-       a 94px jump every time the participant moved between them.
-       HOW THE NUMBER IS DERIVED, so it stays stable rather than following
-       whatever the placeholder task screen happens to contain today:
-       scripts/tests/render_check.py renders the task pages with the floor DISABLED and
-       records their NATURAL height (geometry.json -> card_min_derivation). For
-       this template that is ~300px at 1280x720 — far BELOW the tall pages — so
-       the binding constraint is "never shorter than the tall pages" and the
-       derived floor rounds up to the ceiling: one constant card height, no
-       jumping. A real study re-derives --card-derived from ITS task screen;
-       the render check FAILS if the task screen ever grows past the floor,
-       which is the signal to re-derive rather than let the jumping return.
-       THE min() IS LOAD-BEARING. A floor expressed in px alone would, on a
-       short window, exceed the ceiling — and CSS lets min-height beat
-       max-height, so the card would grow past 88vh, touch the top and bottom
-       of the screen and start scrolling the page. Taking the min with
-       --card-max means the ceiling always wins on a short window and the card
-       simply sits at the cap with its content region scrolling, which is what
-       short windows already do. */
-    --card-derived: 88vh;
-    --card-max: 88vh;
-    --card-min: min(var(--card-derived), var(--card-max));
+    /* --card-margin — THE RESTING MARGIN (Julian, 2026-08-18). A PROPORTIONAL,
+       viewport-scaled band that sits above AND below the card at rest, so the
+       resting card looks CENTRED (equal top and bottom) even though it is
+       top-ANCHORED. It is ONE token feeding two things — the resting floor below
+       and the shell's top offset (see .experimental-screen) — so the two cannot
+       drift and the anchor point is a fraction of the viewport, not a fixed pixel
+       count. dvh so it tracks the real visible height on mobile (a bare vh
+       ignores the retracting URL bar); the vh here is the fallback for browsers
+       without dvh, overridden below. ~6dvh reproduces the old 88vh resting card. */
+    --card-margin: 6vh;
+    /* --card-min — THE RESTING FLOOR, AND IT IS A FIXED FRAME, NOT A SHRINK-WRAP.
+       = the viewport MINUS the two resting margins, so at rest the card fills the
+       middle band exactly and its top margin equals its bottom margin (symmetric,
+       reads as centred). Because it is a `min-height` (see .screen-card), a card
+       whose content is SHORTER than this stays pinned at --card-min and NEVER
+       hugs its content — the content fills or centres INSIDE the fixed frame — so
+       two short pages with different amounts of content show the identical card
+       with no jump between them. Only content TALLER than --card-min grows the
+       card, DOWNWARD past the bottom margin, and the whole page scrolls while the
+       anchored top stays put (Mode 1). There is NO max-height on the default card
+       — see .screen-card. */
+    --card-min: calc(100vh - 2 * var(--card-margin));
+    /* --inner-scroll-max — MODE 3'S CEILING, equal to the resting floor. With the
+       min and the max coinciding an `.inner-scroll` card (the results page) is a
+       FIXED --card-min frame whose overflow scrolls INSIDE the card. Used ONLY by
+       `.inner-scroll` (see `.inner-scroll .experimental-content`), never by the
+       default card. */
+    --inner-scroll-max: var(--card-min);
     /* The width a scroll region reserves for its scrollbar on EACH edge
        (`scrollbar-gutter: stable both-edges`). It must equal the
        ::-webkit-scrollbar width below; anything that needs to line up with the
        content INSIDE a scroll region reads it from here. */
     --scroll-gutter: 10px;
+    /* --single-page-font-floor — MODE 2'S LEGIBILITY FLOOR. The smallest body
+       font the single-page fit may shrink to before it GIVES UP and falls back
+       to Mode 1 whole-window scroll. Tied to the base scale (base font is
+       clamp(16px..19px)); ~15px is a narrow band down from it, still readable. */
+    --single-page-font-floor: 15px;
 }
 .screen-card {
     width: 100%;
     max-width: min(94vw, 1200px);
     min-height: var(--card-min);
-    max-height: var(--card-max);
     margin-inline: auto;
     background: var(--card-bg);
     border: 1px solid var(--line);
@@ -225,50 +251,43 @@ a { color: var(--accent); }
     /* Flush-left is the default; the narrative family (below) opts into
        centring, and the card itself is never centre-aligned by default. */
     text-align: left;
-    /* DO NOT add transform / filter / backdrop-filter / contain to this rule.
-       Any of them makes the card a containing block for position:fixed, which
-       would trap the tab-monitor's full-screen overlay inside the card. */
+    /* DO NOT add transform / filter / backdrop-filter / contain / zoom to this
+       rule — nor to the single-page-fit scaling below. Any of them makes the
+       card a containing block for position:fixed, which would trap the
+       tab-monitor's full-screen overlay inside the card. This is WHY Mode 2
+       scales with font-size and spacing tokens and never with transform/zoom. */
 }
 @supports (height: 1dvh) {
-    :root { --card-max: 88dvh; }
+    /* The dvh forms; --inner-scroll-max references --card-min, so it follows. */
+    :root {
+        --card-margin: 6dvh;
+        --card-min: calc(100dvh - 2 * var(--card-margin));
+    }
 }
 
-/* THE SCROLL REGION — ON A WIDE SCREEN. The header strip and the button row are
-   PINNED (they are flex:0 0 auto siblings) and only this middle region scrolls.
+/* THE CONTENT REGION — MODE 1 (THE DEFAULT): PLAIN DOCUMENT FLOW, NO INNER
+   SCROLL. The header strip and the button row are still flex siblings, but with
+   no max-height on the card there is nothing to scroll INSIDE: the region grows
+   with its content, the card grows with the region, and the WHOLE BROWSER
+   VIEWPORT scrolls — so the forward / decision control sits at the natural
+   bottom of the content and is reached by scrolling PAST it, never pinned beside
+   it. That is the property this template wants everywhere now, for the reason it
+   already wanted it on a phone: a pinned action on a screen where the choice is
+   below the cut is the "reach the action before seeing what you are agreeing to"
+   shape, which consent and the agreement page must never have.
 
-   THE INTENTION, STATED HONESTLY (rewritten 2026-08-12, improvement_suggestions
-   item 1). This used to read "so the forward action is always on screen". That
-   is TRUE ON A WIDE SCREEN and is why the pattern exists: a participant on a
-   laptop never has to hunt for Next. IT IS DELIBERATELY NOT TRUE ON A PHONE.
-   Below 520px the card-scroll model is switched off entirely (see the phone
-   breakpoint further down): the card grows, the PAGE scrolls, and Next sits
-   after the content in document order — so on a phone the forward action is
-   reached BY scrolling past the content rather than being pinned beside it.
+   THE INNER-SCROLL MODEL IS NOT GONE — it is the DORMANT `.inner-scroll` opt-in
+   below (Mode 3), which the results page uses and any page may re-enable. Its
+   scroll region, its `min-height: 0` load-bearing line and all four affordance
+   layers live there, scoped to `.inner-scroll .experimental-content`, with their
+   reasoning preserved. On a Mode-1 page the region never overflows (the card
+   grows instead), so global.js never sets the `.is-scrollable-*` classes and the
+   fade/cue simply never fire — no script, no phantom shadow.
 
-   Why the difference is on purpose, and not a compromise: at 375x667 the
-   consent page's copy is ~750px in a ~415px region, so no arrangement of a
-   pinned layout puts the consent options above the fold — the one thing this
-   template may not do is trim consent copy. A pinned Next on a screen where the
-   choice is below the cut is the "reach the action before seeing what you are
-   agreeing to" shape, which is worse than scrolling. Phone participants also
-   expect to scroll a page rather than a box inside it. So: pinned action on a
-   wide screen, natural document flow on a narrow one, and the property claimed
-   here holds exactly where it is claimed.
-
-   `min-height: 0` IS LOAD-BEARING. A flex child's default min-height is `auto`,
-   which refuses to shrink below its content — without this line the region
-   silently never scrolls and the card grows past its max-height instead. This is
-   the single most common way this pattern fails; do not remove it.
-
-   `safe center` keeps the short-page vertical centring while guaranteeing that
-   overflowing content is never cut off at the TOP (plain `center` makes the
-   overflow above the box unreachable). Browsers without `safe` keep plain
-   `center`, which is correct for them because they only reach this rule when the
-   content is short enough not to overflow anyway.
-
-   The padding is not decoration: `overflow-y: auto` also clips horizontally, and
-   a :focus-visible ring is 3px + 2px offset. Without room the focus outline on
-   the first/last option card would be sliced off by the scroll edge. */
+   `safe center` keeps a SHORT page's content vertically centred in the region
+   (the region fills the card's --card-min floor); a tall page just flows from
+   the top. Browsers without `safe` keep plain `center`, correct for them because
+   a Mode-1 card grows rather than clipping. */
 .experimental-content {
     /* NO `width: 100%` HERE, and that is deliberate. As a flex item of the card
        this region already stretches to the card's content width; adding
@@ -282,15 +301,45 @@ a { color: var(--accent); }
     flex-direction: column;
     gap: 16px;
     flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
     justify-content: center;
     justify-content: safe center;
+    /* The symmetric padding/negative-margin pair holds a :focus-visible ring's
+       gutter open without shifting anything (it nets to zero). Kept from the
+       inner-scroll era because it costs nothing and keeps the band-centring math
+       identical whether or not a page opts into inner scroll. */
     padding: 8px;
-    margin: -8px;           /* cancel the focus-ring gutter so nothing shifts */
+    margin: -8px;
     scroll-padding-block: 8px;
+}
 
-    /* SCROLL AFFORDANCE — THREE LAYERS. Measured 2026-08-10: the background
+/* ===========================================================================
+   MODE 3 — INNER-CARD SCROLL. THE DORMANT OPT-IN. (2026-08-18 scroll overhaul.)
+   ---------------------------------------------------------------------------
+   `.inner-scroll` on a `.screen-card` restores the OLD model: the card is capped
+   at --inner-scroll-max and its MIDDLE region scrolls inside it while the header
+   and the footer stay pinned. It is retained for ONE live user — the results
+   page (outro/Results.html), whose round-payment detail is collapsed by default
+   so the collapsed state fits one page and expanding it scrolls INSIDE the white
+   card — and documented as a reusable opt-in any page can turn back on. The
+   reasoning below is the reasoning that used to sit on the unconditional rule;
+   it is preserved because it is still true wherever this mode is used.
+
+   `min-height: 0` IS LOAD-BEARING. A flex child's default min-height is `auto`,
+   which refuses to shrink below its content — without this line the region
+   silently never scrolls and the card grows past its max-height instead. This is
+   the single most common way this pattern fails; do not remove it.
+
+   The padding/margin pair is not decoration here either: `overflow-y: auto` also
+   clips horizontally, and a :focus-visible ring is 3px + 2px offset, so without
+   the gutter the focus outline on the first/last option card would be sliced off
+   by the scroll edge. It is inherited from the default rule above (same value),
+   so it does not need repeating. */
+.screen-card.inner-scroll { max-height: var(--inner-scroll-max); }
+.inner-scroll .experimental-content {
+    min-height: 0;
+    overflow-y: auto;
+
+    /* SCROLL AFFORDANCE — FOUR LAYERS. Measured 2026-08-10: the background
        gradients alone (layer 2) were far too quiet to read as "there is more
        below", and a background can only ever paint BEHIND the text, so a
        partially visible line was still sliced cleanly through the glyphs and
@@ -311,7 +360,8 @@ a { color: var(--accent); }
        3. A CONTENT FADE (the .is-scrollable-* rules below), applied as a MASK
           so it fades the text itself. It is driven by global.js, which knows
           the scroll position, so the LAST line is never faded — the fade means
-          "there is more", always. */
+          "there is more", always.
+       4. THE WIDE LOW PULSING V (the scroll-cue component further down). */
     scrollbar-gutter: stable both-edges;
     /* THE MASKING GRADIENTS MUST BE FULLY OPAQUE FOR AT LEAST THE SHADOW'S
        HEIGHT (16px). They are 30px tall and solid to 60% of that = 18px, then
@@ -320,17 +370,55 @@ a { color: var(--accent); }
        scroll — a phantom band across a card that fits, which is worse than no
        affordance at all (measured on the lab gate and the instructions page,
        2026-08-11).
-       NB 2026-08-11 (2): the `/*` that opens this comment was MISSING, so CSS
-       error recovery swallowed everything from here to the end of the
-       `background` declaration below — layer 2 was silently absent from every
-       page. A comment that does not open is not a comment; it is a deleted
-       rule. */
+       NB the `/*` that opens this comment was once MISSING, so CSS error
+       recovery swallowed everything to the end of the `background` declaration
+       below — layer 2 was silently absent from every page. A comment that does
+       not open is not a comment; it is a deleted rule. */
     background:
         linear-gradient(var(--card-bg) 60%, rgba(255, 255, 255, 0)) top / 100% 30px no-repeat local,
         linear-gradient(rgba(255, 255, 255, 0), var(--card-bg) 40%) bottom / 100% 30px no-repeat local,
         radial-gradient(farthest-side at 50% 0, rgba(16, 32, 52, .30), rgba(255, 255, 255, 0)) top / 100% 16px no-repeat scroll,
         radial-gradient(farthest-side at 50% 100%, rgba(16, 32, 52, .30), rgba(255, 255, 255, 0)) bottom / 100% 16px no-repeat scroll;
 }
+
+/* ===========================================================================
+   MODE 2 — SINGLE-PAGE FIT. PROGRESSIVE ENHANCEMENT, DESKTOP, TWO PAGES.
+   ---------------------------------------------------------------------------
+   COMPONENT — single-page fit. INTENTION: fit all of a short-ish page's content
+   in ONE viewport with no scroll, by tightening spacing and reducing the body
+   font within a narrow band — used on exactly the consent welcome page
+   (before/welcome+consent.html) and the tab-monitor agreement
+   (before/tab_monitor_agree.html), and only on desktop.
+
+   A page opts in by marking its `.screen-card` `data-single-page`. global.js's
+   `initSinglePageFit` then MEASURES and, on a desktop only, adds
+   `.single-page-fit` and sets `--single-page-font` to the largest body font
+   (from the base scale DOWN TO --single-page-font-floor) at which the whole card
+   fits one viewport. If it fits at or above the floor: one centred screen, no
+   scroll. If even the floor will not fit, the JS GIVES UP — removes the class —
+   and the page is plain Mode 1 whole-window scroll.
+
+   SCALES WITH FONT-SIZE AND SPACING ONLY — never transform/zoom/filter, each of
+   which would make the card a containing block and trap the tab-monitor overlay
+   inside it (see the .screen-card warning). Dropping the card's font shrinks
+   every em-based pad/gap with it; this block tightens the few fixed px/vw rhythms
+   on top of that. `font-size` is set from the JS-provided custom property so the
+   value the fit chose is data, not a hard-coded step.
+
+   THE DECISION CONTROLS ARE NEVER PINNED: accept / decline / acknowledge stay at
+   the end of the content (the ordinary foot button row), so a participant cannot
+   reach the choice without passing the reading, and cannot miss that there is
+   more. Phones never run this (always Mode 1); with no JS the class is never
+   added, so the SAFE Mode-1 default always shows through.
+   Specimen in _static/global/html/template.html. */
+.screen-card.single-page-fit {
+    font-size: var(--single-page-font, 1rem);
+    gap: clamp(10px, 1.6vw, 18px);
+}
+.screen-card.single-page-fit .experimental-header { gap: 8px; }
+.screen-card.single-page-fit .experimental-content { gap: 10px; }
+.screen-card.single-page-fit > .button-row { padding-top: 14px; }
+.screen-card.single-page-fit .panel { padding: clamp(10px, 1.8vw, 16px); }
 
 /* Layer 1 — the scrollbar itself. WebKit/Blink ignores scrollbar-width when a
    ::-webkit-scrollbar rule exists, and painting one explicitly is what stops
@@ -1205,21 +1293,28 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
     :root { --logo-box-h: 32px; --logo-box-w: 224px; }
     .logo-row { gap: 18px; }
 
-    .screen-card { max-height: none; }
-    /* A card that now EXCEEDS the viewport must not be centred by the old
-       rule: `align-items: center` on an overflowing flex item pushes its top
-       above the container's start edge, where it cannot be scrolled back to.
-       `safe center` centres a card that fits and falls back to start-aligning
-       one that does not; browsers without `safe` keep the flex-start line
-       above it, which is the correct behaviour for them for the same reason. */
-    .experimental-screen {
-        align-items: flex-start;
-        align-items: safe center;
-    }
-    .experimental-content {
+    /* THE INNER-SCROLL OPT-IN LETS GO ON A PHONE. A Mode-1 card already has no
+       ceiling and no inner scroll, so these only affect a `.inner-scroll` page
+       (the results page): on a phone it drops the cap and scrolls the PAGE like
+       everything else, rather than trapping the receipt in a box inside the card.
+       `.inner-scroll …` is needed on both because the opt-in rules out-rank the
+       bare-class defaults on specificity (a media query adds none). The
+       affordance background is cleared with it, or its local gradients would
+       paint phantom bands once the region no longer scrolls. */
+    .inner-scroll.screen-card { max-height: none; }
+    .inner-scroll .experimental-content {
         overflow: visible;
-        /* the padding/negative-margin pair existed to stop `overflow-y: auto`
-           clipping a focus ring; with nothing clipping, it only adds width. */
+        background: none;
+        scrollbar-gutter: auto;
+    }
+    /* The card top is already anchored (base `.experimental-screen`,
+       align-items: flex-start), so a phone card that exceeds the viewport grows
+       downward and the page scrolls — no per-breakpoint alignment override is
+       needed any more. */
+    .experimental-content {
+        /* the padding/negative-margin pair held a focus-ring gutter open inside
+           the (now absent) inner scroller; with nothing clipping it only adds
+           width, so drop it on a phone. */
         padding: 0;
         margin: 0;
     }
@@ -1242,6 +1337,17 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
    only 634px tall. Measured 2026-08-10: on that screen the consent options sat
    entirely below the fold, so a participant could reach Next without ever seeing
    the choice they were consenting to.
+
+   ITS ROLE UNDER THE THREE-MODE MODEL (2026-08-18): this block is NO LONGER what
+   clears the consent fold — consent and the agreement are Mode 2 single-page fit
+   on a desktop, which fits the whole choice in one viewport by tightening
+   font+spacing itself, and on a phone / on a Mode-1 fallback the choice is
+   reached by scrolling the page (bypass-proof, never pinned). What survives is
+   this block's ORIGINAL, broader job: on any SHORT screen it tightens the
+   card's vw-driven rhythm so a Mode-1 page needs less scrolling and a short page
+   frames its content better. It is general Mode-1 short-screen tightening now,
+   not a fold-clearing patch for a capped scroller — the capped scroller is the
+   dormant `.inner-scroll` opt-in above.
 
    This block buys back ~60px of visible content on a 720px-tall screen by
    tightening spacing ONLY — no font size, no copy, no component changes, so

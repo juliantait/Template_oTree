@@ -302,8 +302,10 @@ BOX_JS = """(sel) => {
             borderTopWidth: cs.borderTopWidth, borderColor: cs.borderTopColor,
             borderRadius: cs.borderTopLeftRadius,
             overflowY: cs.overflowY, minHeight: cs.minHeight,
+            maxHeight: cs.maxHeight,
             scrollH: el.scrollHeight, clientH: el.clientHeight,
-            paddingTop: cs.paddingTop, position: cs.position};
+            paddingTop: cs.paddingTop, paddingLeft: cs.paddingLeft,
+            position: cs.position};
 }"""
 
 
@@ -501,6 +503,13 @@ def collect_facts(page, key):
         'section_text': box(page, '.section-text'),
         'has_creed_header': page.locator('.welcome-header-row').count() > 0,
         'has_logo_strip': page.locator('.logo-section').count() > 0,
+        # THE SCROLL MODE OF THIS CARD (2026-08-18 overhaul): Mode 3 opts into
+        # `.inner-scroll` (the capped card + inner scroll region); Mode 2 opts into
+        # single-page fit by data-single-page and gets `.single-page-fit` from
+        # global.js on a desktop. A card with neither is a Mode-1 page.
+        'inner_scroll': page.locator('.screen-card.inner-scroll').count() > 0,
+        'single_page_fit': page.locator(
+            '.screen-card.single-page-fit').count() > 0,
         'has_header_title': page.locator(
             '.experimental-header .header-title').count() > 0,
         'logo_inline_attrs': page.evaluate(
@@ -528,9 +537,14 @@ def check_card_gaps(facts):
             # the document can be taller for reasons that are not the layout.
             top_gap = card['y'] - shell['y']
             bottom_gap = (shell['y'] + shell['h']) - (card['y'] + card['h'])
-            # The shell is at least 100vh tall, so a card that fits also has a
-            # real on-screen gap; assert that too where the card fits.
-            on_screen = view['h'] - (card['y'] + card['h']) if card['h'] < view['h'] else None
+            # The shell is at least 100vh tall, so a card whose BOTTOM is within
+            # the viewport also has a real on-screen bottom gap; assert that too.
+            # TOP-ANCHORED (2026-08-18): the test is the card's bottom against the
+            # viewport, NOT "card shorter than the viewport" — a tall Mode-1 card
+            # grows past the bottom from a fixed top and the page scrolls, so there
+            # is simply no on-screen bottom gap to assert then.
+            on_screen = (view['h'] - (card['y'] + card['h'])
+                         if card['y'] + card['h'] < view['h'] else None)
             ok = top_gap >= 1 and bottom_gap >= 1 and (on_screen is None or on_screen >= 1)
             if worst is None or min(top_gap, bottom_gap) < worst[0]:
                 worst = (min(top_gap, bottom_gap), key, vp)
@@ -543,29 +557,149 @@ def check_card_gaps(facts):
 
 
 # ==========================================================================
-# CHECK B — the card stops at max-height and the content REALLY scrolls
+# THE INNER-SCROLL FIXTURE (Mode 3) — the results page driven into overflow
+# ==========================================================================
+def _open_inner_scroll_overflow(server, browser, vp, java_script_enabled=True):
+    """Load the RESULTS page (the one `.inner-scroll` page) and force its content
+    region to overflow the capped card, so the Mode-3 inner-scroll mechanism and
+    its affordances can be measured on the real page.
+
+    Results collapsed fits one page by design (that is the Mode-3 contract), so
+    this opens the payout accordion and, if that still fits, injects filler rows
+    until the region overflows by a comfortable margin. Works with JavaScript
+    disabled too (page.evaluate runs in an isolated world), which is what the
+    CSS-only shadow leg needs. Returns (context, page); the caller closes it."""
+    code, _ = walk_to(server.base, create_session('prolific', num_participants=2),
+                      'Results')
+    context = browser.new_context(viewport=vp,
+                                  java_script_enabled=java_script_enabled)
+    page = context.new_page()
+    page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+    page.wait_for_timeout(150)
+    page.evaluate("""() => {
+        // Open the payout-by-round accordion (the round-payment detail).
+        const wrap = document.getElementById('results-table-wrapper');
+        if (wrap) { wrap.classList.remove('is-hidden'); }
+        const arrow = document.getElementById('results-arrow');
+        if (arrow) { arrow.classList.add('open'); }
+        const toggle = document.getElementById('results-toggle');
+        if (toggle) { toggle.setAttribute('aria-expanded', 'true'); }
+        // Guarantee overflow: add filler rows until the region is well over.
+        const body = document.querySelector('.results-table tbody');
+        const region = document.querySelector('.experimental-content');
+        if (body && region) {
+            let guard = 0;
+            while (region.scrollHeight <= region.clientHeight + 60 && guard < 80) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = '<td>Round filler ' + (guard + 1)
+                    + '</td><td>&euro;0.00</td>';
+                body.appendChild(tr);
+                guard++;
+            }
+        }
+    }""")
+    # If global.js is running, let the ResizeObserver re-sync the is-scrollable
+    # classes after the injected rows, and let the layout settle. With JS
+    # DISABLED, wait_for_stable_layout's requestAnimationFrame loop never ticks
+    # (rAF does not fire), so its promise would hang and be GC'd — use a plain
+    # timeout there instead.
+    page.wait_for_timeout(120)
+    if java_script_enabled:
+        wait_for_stable_layout(page)
+    else:
+        page.wait_for_timeout(150)
+    return context, page
+
+
+# ==========================================================================
+# CHECK B — the three-mode scroll contract
 # ==========================================================================
 def check_scrolling(server, browser, facts):
-    section('B. Card stops at max-height and the content region genuinely scrolls')
-    overflowing = [(k, vp, f) for k, per in facts.items() for vp, f in per.items()
-                   if f['content'] and f['content']['scrollH'] >
-                   f['content']['clientH'] + 2]
-    check(bool(overflowing),
-          f'at least one rendered page overflows its card '
-          f'({len(overflowing)} page/viewport combinations do)')
-    for key, vp, f in overflowing:
-        card, view, content = f['card'], f['viewport'], f['content']
-        cap = 0.88 * view['h']
-        check(card['h'] <= cap + 2,
-              f'{key} @ {vp}: card height {card["h"]}px <= max-height '
-              f'{cap:.0f}px (88vh) although its content is '
-              f'{content["scrollH"]}px')
-        check(content['minHeight'] in ('0px', 'auto') and content['overflowY'] == 'auto',
-              f'{key} @ {vp}: content region is overflow-y:auto with '
-              f'min-height:{content["minHeight"]} (must be 0px — `auto` is the '
-              f'silent no-scroll failure)')
-        check(content['minHeight'] == '0px',
-              f'{key} @ {vp}: min-height IS 0px (the load-bearing line)')
+    """B. THE THREE-MODE CONTRACT (2026-08-18 overhaul; see DECISIONS.md).
+
+    MODE 1 (every content page, the default): the content region is PLAIN FLOW —
+    it does not inner-scroll, the card grows and the WHOLE WINDOW scrolls when the
+    page is taller than the viewport. MODE 3 (the results page, `.inner-scroll`):
+    the card is capped and the content region genuinely scrolls INSIDE it, which
+    needs the load-bearing `min-height: 0`.
+
+    (Was: every card capped at 88vh with its middle region scrolling — one model,
+    not three.)
+    """
+    section('B. Mode-1 pages grow & the window scrolls; the inner-scroll page '
+            'scrolls inside the card')
+
+    # --- MODE 1: no content page inner-scrolls -----------------------------
+    for key, per in facts.items():
+        for vp, f in per.items():
+            if not f['content'] or f.get('inner_scroll'):
+                continue
+            c, card = f['content'], f['card']
+            # Plain flow: overflow visible/clip, and the region does NOT overflow
+            # its own box (the CARD grew to contain it instead).
+            check(c['overflowY'] in ('visible', 'clip'),
+                  f'{key} @ {vp}: Mode-1 content region is plain flow, not an '
+                  f'inner scroller (overflow-y: {c["overflowY"]})')
+            check(c['scrollH'] <= c['clientH'] + 2,
+                  f'{key} @ {vp}: the Mode-1 content region does not inner-scroll '
+                  f'(scrollH {c["scrollH"]} <= clientH {c["clientH"]}; the card '
+                  f'grows and the window scrolls instead)')
+            # The default card carries NO ceiling — that is what lets it grow.
+            check(card['maxHeight'] == 'none',
+                  f'{key} @ {vp}: the Mode-1 card has no max-height ceiling '
+                  f'(max-height: {card["maxHeight"]})')
+
+    # --- MODE 1: a page taller than the viewport scrolls the WHOLE WINDOW ---
+    # The long-quiz pass exists to force exactly this overflow; on the normal
+    # pass the tall instructions slide provides it too.
+    winscroll = [(k, vp, f) for k, per in facts.items() for vp, f in per.items()
+                 if not f.get('inner_scroll')
+                 and f['viewport']['scrollH'] > f['viewport']['h'] + 2]
+    check(bool(winscroll),
+          f'at least one Mode-1 page is taller than the viewport, so the WHOLE '
+          f'WINDOW scrolls ({len(winscroll)} page/viewport combinations do)'
+          + (' [long-quiz pass]' if LONG_QUIZ else ''))
+    for key, vp, f in winscroll:
+        card, view = f['card'], f['viewport']
+        # The card's BOTTOM passes the fold from its anchored top — that is what
+        # scrolls the window. (Not "card taller than the viewport": a card
+        # shorter than the viewport still scrolls the page once its top margin
+        # and bottom margin are added, e.g. a 683px card at 1280x720.) The
+        # Mode-1 block above already proved this page has no inner scroll, so the
+        # window scroll is definitionally the card growing past the fold.
+        check(card['y'] + card['h'] > view['h'] - 2,
+              f'{key} @ {vp}: the card grows past the fold from its anchored top '
+              f'(bottom {card["y"] + card["h"]}px in a {view["h"]}px viewport) — '
+              f'the window scroll is the card, not an inner region')
+
+    # --- MODE 3: the inner-scroll page caps and scrolls inside -------------
+    # Results collapsed fits one page by design, so drive it into overflow (open
+    # the accordion + inject filler rows) and assert the capped-card inner scroll.
+    for vp_name in ('laptop_1280x720', 'desktop_1512x1200'):
+        context, page = _open_inner_scroll_overflow(server, browser,
+                                                     VIEWPORTS[vp_name])
+        m = page.evaluate("""() => {
+            const card = document.querySelector('.screen-card');
+            const el = document.querySelector('.experimental-content');
+            const cs = getComputedStyle(el), cc = getComputedStyle(card);
+            return {overflows: el.scrollHeight > el.clientHeight + 2,
+                    overflowY: cs.overflowY, minHeight: cs.minHeight,
+                    cardMax: cc.maxHeight, cardH: Math.round(
+                        card.getBoundingClientRect().height),
+                    vh: window.innerHeight};
+        }""")
+        label = f'results @ {vp_name}'
+        check(m['cardMax'] != 'none',
+              f'{label}: the inner-scroll card IS capped (max-height {m["cardMax"]})')
+        check(m['cardH'] <= 0.88 * m['vh'] + 4,
+              f'{label}: the capped card stays within the resting frame '
+              f'({m["cardH"]}px in a {m["vh"]}px viewport)')
+        check(m['overflows'] and m['overflowY'] == 'auto',
+              f'{label}: the content region genuinely scrolls inside the card '
+              f'(overflow-y {m["overflowY"]}, overflows={m["overflows"]})')
+        check(m['minHeight'] == '0px',
+              f'{label}: min-height IS 0px (the load-bearing line)')
+        context.close()
 
 
 def check_scroll_affordance(server, browser):
@@ -582,21 +716,16 @@ def check_scroll_affordance(server, browser):
     except ImportError:
         check(False, 'Pillow is installed (needed to measure rendered pixels)')
         return
-    for page_key, config, stop in (('consent_prolific', 'prolific', 'welcome'),
-                                   ('quiz', 'lab', 'quiz')):
-        session = create_session(config, num_participants=2)
-        code, _ = walk_to(server.base, session, stop)
-        for vp_name in ('laptop_1280x720', 'phone_375x667'):
-            context = browser.new_context(viewport=VIEWPORTS[vp_name])
-            page = context.new_page()
-            page.goto(f'{server.base}/InitializeParticipant/{code}',
-                      wait_until='load')
-            # SETTLE BEFORE MEASURING — this leg branches on the answer (see
-            # wait_for_stable_layout): an overflow read off a layout that is
-            # still moving would assert "the affordance must be there" against a
-            # region that ends up fitting, or the reverse. A fixed sleep after
-            # `load` is not the same thing and was what stood here.
-            wait_for_stable_layout(page)
+    # RETARGETED TO THE INNER-SCROLL PAGE (2026-08-18). The affordance is the
+    # Mode-3 inner-scroll mechanism, which now lives ONLY on the results page;
+    # every other page is Mode-1 whole-window scroll and has no inner region to
+    # fade. So this drives the results page into overflow (open the accordion +
+    # filler rows) and measures the fade on it. The "fits -> no affordance"
+    # half is asserted by check_no_phantom_affordance on the Mode-1 pages.
+    for page_key in ('results',):
+        for vp_name in ('laptop_1280x720', 'desktop_1512x1200'):
+            context, page = _open_inner_scroll_overflow(
+                server, browser, VIEWPORTS[vp_name])
             st = page.evaluate("""() => {
                 const el = document.querySelector('.experimental-content');
                 const r = el.getBoundingClientRect();
@@ -1216,84 +1345,250 @@ def check_short_page_balance(server, browser):
 
 
 def check_card_min_derivation(server, browser, facts):
-    """Q. --card-min is derived from the TASK screen, and the derivation holds.
+    """Q. The resting card is a FIXED FRAME at --card-min, top-anchored and
+    symmetric; a page taller than the floor grows past it (2026-08-18 overhaul).
 
-    change_requests item 5. The floor exists so the frame stops jumping between
-    pages, and it is DERIVED rather than eyeballed: this leg renders the task
-    pages with the floor disabled, records their NATURAL height, and requires
-    that height to be at or below the floor actually shipped. If a study grows
-    its task screen past the floor, this fails and says re-derive — which is the
-    whole point of writing the number down.
-
-    It also asserts the consequence Julian asked for: with the floor in place
-    the card is the SAME HEIGHT on every page at a given viewport.
+    (Was: the floor was DERIVED from the task screen and rounded up to ONE
+    constant card height on every page. Mode 1 drops that constant-height
+    invariant — cards grow with content and differ in height — and the floor is
+    now an independent viewport fraction, --card-min = 100dvh − 2·--card-margin,
+    that a short page sits at EXACTLY and a tall page grows past. What survives is
+    the no-jump guarantee for SHORT pages: they all rest at the identical floor,
+    top-anchored, so two short pages show the same frame.)
     """
-    section('Q. The card floor is derived from the task screen, and holds')
-    natural = {}
+    section('Q. The resting floor is fixed & anchored; tall pages grow past it')
+    for vp_name, vp in VIEWPORTS.items():
+        # Read the resolved tokens off any rendered page: the shell's top padding
+        # IS --card-margin, and a card's computed min-height IS --card-min.
+        anyf = next(iter(facts.values()))[vp_name]
+        margin = round(float(str(anyf['shell']['paddingTop']).rstrip('px') or 0))
+        floor = round(float(str(anyf['card']['minHeight']).rstrip('px') or 0))
+        expected = vp['height'] - 2 * margin
+        check(abs(floor - expected) <= 3,
+              f'{vp_name}: --card-min ({floor}px) == viewport − 2·--card-margin '
+              f'({vp["height"]} − 2·{margin} = {expected}px) — the resting frame '
+              f'is symmetric (top margin == bottom margin)')
+
+        heights = {k: per[vp_name]['card']['h'] for k, per in facts.items()}
+        tops = {k: per[vp_name]['card']['y'] for k, per in facts.items()}
+        geometry.setdefault('card_heights', {})[vp_name] = heights
+
+        # No page is shorter than the floor (min-height holds the frame), and a
+        # SHORT page sits at EXACTLY the floor — a fixed frame content fills, not
+        # a box that shrink-wraps its content — so two short pages do not jump.
+        shortest = min(heights.values())
+        check(shortest >= floor - 3,
+              f'{vp_name}: no page is shorter than the floor (shortest card '
+              f'{shortest}px vs floor {floor}px) — a short page fills the frame')
+        check(abs(shortest - floor) <= 3,
+              f'{vp_name}: a short page rests at EXACTLY the floor ({shortest}px) '
+              f'— the frame is fixed, so short pages of different content match')
+
+        # THE CARD TOP IS ANCHORED: the same y on every page, and that y is
+        # --card-margin. This is the invariant Julian asked for — the top edge
+        # never moves between pages.
+        top_spread = max(tops.values()) - min(tops.values())
+        check(top_spread <= 3,
+              f'{vp_name}: the card TOP is anchored at the same y on every page '
+              f'(spread {top_spread}px; y {sorted(set(tops.values()))})')
+        check(abs(min(tops.values()) - margin) <= 3,
+              f'{vp_name}: …and that y is --card-margin ({margin}px, so the '
+              f'resting card is centred by symmetry)')
+        geometry.setdefault('card_floor', {})[vp_name] = {
+            'margin_px': margin, 'floor_px': floor, 'vh': vp['height'],
+            'shortest': shortest, 'tallest': max(heights.values()),
+            'top_y': min(tops.values())}
+
+
+def check_task_centring(server, browser):
+    """Q2. The task page is Mode 1 with its content VERTICALLY CENTRED in the
+    fixed --card-min frame (Julian, 2026-08-18).
+
+    main/game.html uses the STANDARD three zones (.experimental-header /
+    .experimental-content / .button-row) — there is no task-specific layout — so
+    the placeholder task, which is deliberately just one line until a study fills
+    it, must centre in the frame rather than sit as a top-anchored stub. This
+    renders the two task pages and asserts the content region's children are
+    vertically centred (the space above them ≈ the space below them, and there
+    IS real space — it is not top-aligned).
+    """
+    section('Q2. The (placeholder) task content is centred in the card frame')
     for key, stop in (('task', TASK_PAGES[0]), ('payoff', TASK_PAGES[1])):
-        session = create_session('prolific', num_participants=2)
-        code, _ = walk_to(server.base, session, stop)
+        code, _ = walk_to(server.base, create_session('prolific',
+                                                      num_participants=2), stop)
         for vp_name, vp in VIEWPORTS.items():
             context = browser.new_context(viewport=vp)
             page = context.new_page()
             page.goto(f'{server.base}/InitializeParticipant/{code}',
                       wait_until='load')
-            page.wait_for_timeout(120)
+            page.wait_for_timeout(150)
             m = page.evaluate("""() => {
-                const card = document.querySelector('.screen-card');
-                const cs = getComputedStyle(card);
-                const shippedMin = parseFloat(cs.minHeight) || 0;
-                // Measure the card's NATURAL height: no floor, no ceiling.
-                const prevMin = card.style.minHeight;
-                const prevMax = card.style.maxHeight;
-                card.style.minHeight = '0px';
-                card.style.maxHeight = 'none';
-                const nat = Math.round(card.getBoundingClientRect().height);
-                card.style.minHeight = prevMin;
-                card.style.maxHeight = prevMax;
-                return {natural: nat, shippedMin: Math.round(shippedMin),
-                        rendered: Math.round(card.getBoundingClientRect().height),
-                        vh: window.innerHeight};
+                const el = document.querySelector('.experimental-content');
+                const kids = Array.from(el.children).filter(c =>
+                    c.getBoundingClientRect().height > 0);
+                if (!kids.length) return null;
+                const r = el.getBoundingClientRect();
+                const first = kids[0].getBoundingClientRect();
+                const last = kids[kids.length - 1].getBoundingClientRect();
+                return {gapTop: Math.round(first.top - r.top),
+                        gapBottom: Math.round(r.bottom - last.bottom),
+                        regionH: Math.round(r.height),
+                        contentH: Math.round(last.bottom - first.top)};
             }""")
             label = f'{key} @ {vp_name}'
-            natural[label] = m
-            check(m['natural'] <= m['shippedMin'] + 2,
-                  f'{label}: the task screen\'s NATURAL height {m["natural"]}px '
-                  f'is at or below the shipped floor {m["shippedMin"]}px '
-                  f'({100 * m["natural"] / m["vh"]:.0f}vh vs '
-                  f'{100 * m["shippedMin"] / m["vh"]:.0f}vh) — if this fails, '
-                  f're-derive --card-derived in base.css from this number')
-            # The trap the spec calls out: a px floor taller than the ceiling
-            # would beat max-height and push the card to the screen edges.
-            check(m['rendered'] <= 0.88 * m['vh'] + 2,
-                  f'{label}: the floor never beats the 88vh ceiling '
-                  f'(card {m["rendered"]}px in a {m["vh"]}px viewport)')
+            if not check(m is not None, f'{label}: the task content renders'):
+                context.close()
+                continue
+            # There is real slack (the frame is taller than the one-line content),
+            # so "centred" is a meaningful claim and not a rounding artefact.
+            if m['gapTop'] + m['gapBottom'] > 24:
+                check(abs(m['gapTop'] - m['gapBottom']) <= 12,
+                      f'{label}: the content is vertically CENTRED in the frame '
+                      f'(space above {m["gapTop"]}px ≈ below {m["gapBottom"]}px in '
+                      f'a {m["regionH"]}px region) — not a top-aligned stub')
+            else:
+                print(f'  [note] {label}: content fills the region '
+                      f'({m["contentH"]}px of {m["regionH"]}px), no slack to '
+                      f'centre')
+            geometry.setdefault('task_centring', {})[label] = m
             context.close()
-    geometry['card_min_derivation'] = natural
 
-    # …and the point of the floor: one card height per viewport.
-    # WIDE SCREENS ONLY. On a phone the card-scroll model is switched off
-    # (improvement_suggestions item 1), so the card is deliberately as tall as
-    # its content and pages differ — the floor still applies as a FLOOR, which
-    # is what is asserted there instead.
-    for vp_name, vp in VIEWPORTS.items():
-        heights = {k: per[vp_name]['card']['h'] for k, per in facts.items()}
-        geometry.setdefault('card_heights', {})[vp_name] = heights
-        if vp['width'] <= 520:
-            floor = 0.88 * vp['height']
-            short = {k: h for k, h in heights.items() if h < floor - 2}
-            check(not short,
-                  f'{vp_name}: the phone card still honours the floor — no page '
-                  f'is shorter than {floor:.0f}px ({sorted(short.items())})')
-            print(f'  [note] {vp_name}: card heights vary by design here '
-                  f'({min(heights.values())}..{max(heights.values())}px) — the '
-                  f'page scrolls, not the card')
-            continue
-        spread = max(heights.values()) - min(heights.values())
-        check(spread <= 2,
-              f'{vp_name}: every page renders the SAME card height '
-              f'(spread {spread}px across {len(heights)} pages: '
-              f'{sorted(set(heights.values()))})')
+
+def check_instructions_scroll_demo(server, browser):
+    """Q4. THE PERMANENT SCROLL DEMO (2026-08-18). intro/instructions_text.html
+    merges the payoff matrix and its interpretation into ONE slide that is
+    deliberately tall enough to overflow a 1280x720 laptop, so the instructions
+    page demonstrates Mode 1 whole-window scroll out of the box. This pages to
+    that merged slide and asserts the card grew past the resting floor and the
+    WHOLE WINDOW scrolls — if a study trims that slide back under a laptop
+    viewport, this goes quiet-but-red rather than silently.
+    """
+    section('Q4. The merged instructions slide overflows a 1280x720 laptop '
+            '(the permanent Mode-1 scroll demo)')
+    code, _ = walk_to(server.base, create_session('lab', num_participants=2),
+                      'instructing')
+    vp_name = 'laptop_1280x720'
+    context = browser.new_context(viewport=VIEWPORTS[vp_name])
+    page = context.new_page()
+    page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+    page.wait_for_timeout(150)
+    # Page forward until the visible slide is the merged payoff-matrix slide.
+    reached = False
+    for _ in range(8):
+        h2 = page.evaluate("""() => {
+            const b = Array.from(document.querySelectorAll('.instruction-block'))
+                .find(el => el.offsetParent !== null
+                    || getComputedStyle(el).display !== 'none');
+            return b ? (b.querySelector('h2') || {}).textContent || '' : '';
+        }""")
+        if h2 and 'payoff matrix' in h2.lower():
+            reached = True
+            break
+        page.click('#nextBtn')
+        page.wait_for_timeout(120)
+    if not check(reached, f'{vp_name}: paged to the merged "payoff matrix" slide'):
+        context.close()
+        return
+    wait_for_stable_layout(page)
+    m = page.evaluate("""() => {
+        const card = document.querySelector('.screen-card');
+        const el = document.querySelector('.experimental-content');
+        return {cardH: Math.round(card.getBoundingClientRect().height),
+                cardBottom: Math.round(card.getBoundingClientRect().bottom),
+                floor: Math.round(parseFloat(getComputedStyle(card).minHeight)),
+                innerScrolls: el.scrollHeight > el.clientHeight + 2,
+                overflowY: getComputedStyle(el).overflowY,
+                pageScrolls: document.documentElement.scrollHeight
+                    > window.innerHeight + 2,
+                vh: window.innerHeight};
+    }""")
+    check(m['cardH'] > m['floor'] + 2,
+          f'{vp_name}: the merged slide grew the card past the resting floor '
+          f'(card {m["cardH"]}px > floor {m["floor"]}px)')
+    check(m['pageScrolls'],
+          f'{vp_name}: the WHOLE WINDOW scrolls (document taller than the '
+          f'{m["vh"]}px viewport) — Mode 1, the scroll demo')
+    check(not m['innerScrolls'] and m['overflowY'] in ('visible', 'clip'),
+          f'{vp_name}: it is the CARD that grew, not an inner scroller '
+          f'(content overflow-y {m["overflowY"]}, inner-scrolls={m["innerScrolls"]})')
+    geometry.setdefault('instructions_demo', {})[vp_name] = m
+    screenshot(page, 'instructions_merged_slide', vp_name)
+    context.close()
+
+
+def check_single_page_fit(server, browser):
+    """Q3. MODE 2 — single-page fit, on the two opt-in pages, desktop only.
+
+    The consent welcome page and the tab-monitor agreement carry
+    `data-single-page`; on a DESKTOP global.js adds `.single-page-fit` and fits
+    the whole card in one viewport with no scroll, at a body font no smaller than
+    --single-page-font-floor. On a PHONE it never applies (always Mode 1). The
+    decision controls stay AFTER the content (never pinned). If it ever cannot
+    fit at the floor it falls back to Mode 1 — so whenever the class is present
+    the resolved font must be at or above the floor, which is the give-up
+    contract asserted from the outcome.
+    """
+    section('Q3. Mode 2 single-page fit on consent + agreement (desktop only)')
+    pages = (('consent', 'prolific', 'welcome'),
+             ('agreement', 'prolific', 'TabMonitorAgree'))
+    for key, config, stop in pages:
+        code, _ = walk_to(server.base, create_session(config, num_participants=2),
+                          stop)
+        for vp_name, vp in VIEWPORTS.items():
+            context = browser.new_context(viewport=vp)
+            page = context.new_page()
+            page.goto(f'{server.base}/InitializeParticipant/{code}',
+                      wait_until='load')
+            # The fit runs on DOMContentLoaded AND window.load (logos change
+            # height on load); settle before reading.
+            page.wait_for_timeout(300)
+            wait_for_stable_layout(page)
+            m = page.evaluate("""() => {
+                const card = document.querySelector('.screen-card[data-single-page]');
+                if (!card) return null;
+                const cs = getComputedStyle(card);
+                const floor = parseFloat(
+                    cs.getPropertyValue('--single-page-font-floor')) || 15;
+                const content = card.querySelector('.experimental-content');
+                const row = card.querySelector('.button-row');
+                return {
+                    hasClass: card.classList.contains('single-page-fit'),
+                    font: parseFloat(cs.fontSize), floor,
+                    docScrolls: document.documentElement.scrollHeight
+                        > window.innerHeight + 2,
+                    ctrlAfter: !!(content && row
+                        && (content.compareDocumentPosition(row)
+                            & Node.DOCUMENT_POSITION_FOLLOWING)),
+                    innerWidth: window.innerWidth,
+                };
+            }""")
+            label = f'{key} @ {vp_name}'
+            if not check(m is not None,
+                         f'{label}: the single-page card renders'):
+                context.close()
+                continue
+            # Controls are NEVER pinned — they follow the content in document
+            # order in every mode, so the participant passes the reading first.
+            check(m['ctrlAfter'],
+                  f'{label}: the decision control FOLLOWS the content, never '
+                  f'pinned (Mode 1 / Mode 2 both)')
+            if vp_name == 'phone_375x667':
+                check(not m['hasClass'],
+                      f'{label}: single-page NEVER applies on a phone — it is '
+                      f'plain Mode 1 (class present: {m["hasClass"]})')
+            else:
+                check(m['hasClass'],
+                      f'{label}: Mode 2 fitted this desktop page in one screen '
+                      f'(single-page-fit applied)')
+                check(not m['docScrolls'],
+                      f'{label}: …with NO window scroll (fits one viewport)')
+                check(m['font'] >= m['floor'] - 0.6,
+                      f'{label}: the fitted font {m["font"]:.1f}px is at/above the '
+                      f'legibility floor {m["floor"]}px (below it, Mode 2 gives up '
+                      f'and falls back to whole-window scroll)')
+            geometry.setdefault('single_page_fit', {})[label] = m
+            screenshot(page, f'{key}_single_page', vp_name)
+            context.close()
 
 
 def check_titles_centred(facts):
@@ -1318,19 +1613,15 @@ def check_scroll_catchment(server, browser):
     point 12px inside the card's left and right edges really lands on it.
     """
     section('S. The scroll catchment is the full card width')
-    pages = (('instructions', 'lab', 'instructing',
-              '.instruction-wrapper', '.instruction-block'),
-             # The quiz page has the same shape: a scroller that used to be
-             # capped at the reading band, with dead card either side of it.
-             ('quiz', 'lab', 'quiz', '.experimental-content', '.quiz-block'))
-    for key, config, stop, scroll_sel, band_sel in pages:
-      code, _ = walk_to(server.base, create_session(config, num_participants=2),
-                        stop)
-      for vp_name, vp in VIEWPORTS.items():
-        context = browser.new_context(viewport=vp)
-        page = context.new_page()
-        page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
-        page.wait_for_timeout(200)
+    # RETARGETED (2026-08-18): the full-width scroll catchment is a property of
+    # the Mode-3 inner-scroll region — the wheel must be caught over the WHOLE
+    # card, not just the narrow reading band inside it. Only the results page
+    # inner-scrolls now, so drive it into overflow and assert the catchment there.
+    for key, scroll_sel, band_sel in (
+            ('results', '.experimental-content', '.payment-summary'),):
+      for vp_name in ('laptop_1280x720', 'desktop_1512x1200'):
+        context, page = _open_inner_scroll_overflow(
+            server, browser, VIEWPORTS[vp_name])
         m = page.evaluate("""([scrollSel, bandSel]) => {
             const card = document.querySelector('.screen-card');
             const wrap = document.querySelector(scrollSel);
@@ -1391,18 +1682,14 @@ def check_scroll_cue(server, browser):
     except ImportError:
         check(False, 'Pillow is installed (needed to measure the cue band)')
         return
-    pages = (('results', 'prolific', 'Results'),
-             ('quiz', 'lab', 'quiz'),
-             ('consent_prolific', 'prolific', 'welcome'))
-    for key, config, stop in pages:
-        code, _ = walk_to(server.base, create_session(config, num_participants=2),
-                          stop)
-        for vp_name in ('laptop_1280x720', 'phone_375x667'):
-            context = browser.new_context(viewport=VIEWPORTS[vp_name])
-            page = context.new_page()
-            page.goto(f'{server.base}/InitializeParticipant/{code}',
-                      wait_until='load')
-            page.wait_for_timeout(250)
+    # RETARGETED (2026-08-18): the cue is the Mode-3 inner-scroll affordance and
+    # lives on the results page only now (every other page is Mode-1 whole-window
+    # scroll). Drive results into overflow at the wide viewports; the cue hangs
+    # off the results footer's .button-row.
+    for key in ('results',):
+        for vp_name in ('laptop_1280x720', 'desktop_1512x1200'):
+            context, page = _open_inner_scroll_overflow(
+                server, browser, VIEWPORTS[vp_name])
             m = page.evaluate("""() => {
                 const el = document.querySelector('.experimental-content');
                 const row = document.querySelector('.screen-card > .button-row');
@@ -1489,34 +1776,13 @@ def check_scroll_cue(server, browser):
                   f'(class={end["cls"]!r})')
             context.close()
 
-    # A separate pass for the instructions pager, whose cue hangs off the pager
-    # row rather than a button row, and only when a slide overflows.
-    code, _ = walk_to(server.base, create_session('lab', num_participants=2),
-                      'instructing')
-    context = browser.new_context(viewport=VIEWPORTS['phone_375x667'])
-    page = context.new_page()
-    page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
-    page.wait_for_timeout(250)
-    m = page.evaluate("""() => {
-        const wrap = document.querySelector('.instruction-wrapper');
-        const row = document.querySelector('.instruction-controls');
-        const cs = getComputedStyle(row);
-        return {overflows: wrap.scrollHeight > wrap.clientHeight + 2,
-                cls: wrap.className,
-                content: getComputedStyle(row, '::before').content,
-                padTop: parseFloat(cs.paddingTop) || 0};
-    }""")
-    if m['overflows']:
-        check(m['content'] not in ('none', 'normal'),
-              'instructions @ phone: the pager carries the cue when a slide '
-              'overflows')
-        check(m['padTop'] >= 10,
-              f'instructions @ phone: the pager reserves the cue strip '
-              f'({m["padTop"]}px padding-top)')
-        screenshot(page, 'instructions_scroll_cue', 'phone_375x667')
-    else:
-        print('  [skip] instructions @ phone: the first slide fits')
-    context.close()
+    # The instructions page no longer has a pager cue: it is a Mode-1 page now
+    # (2026-08-18), so its slide grows the card and the WHOLE WINDOW scrolls with
+    # the pager at the natural bottom — there is no inner scroller to hang a cue
+    # off. The instructions-pager cue rule stays in base.css as part of the
+    # dormant `.inner-scroll` machinery (it fires again only if a study re-enables
+    # inner scroll on the instructions page).
+    print('  [note] instructions is Mode 1 now — no inner-scroll pager cue')
 
 
 def check_task_progress(server, browser, facts):
@@ -2684,29 +2950,37 @@ def check_phone_page_flow(server, browser):
         screenshot(page, f'{key}_phone_flow', 'phone_375x667')
         context.close()
 
-    # …and the WIDE layout still does the opposite, which is what base.css now
-    # claims only for wide screens: the action is pinned and always on screen.
+    # …and the WIDE consent page does NOT need any scroll at all: it is Mode 2
+    # single-page fit, so the whole card (including Next after the options) sits
+    # in one viewport with no INNER scroll and no WINDOW scroll. Same outcome the
+    # old inner-scroll model gave — Next on screen without scrolling — reached by
+    # fitting the page rather than by pinning a scroller.
     code, _ = walk_to(server.base, create_session('prolific', num_participants=2),
                       'welcome')
     context = browser.new_context(viewport=VIEWPORTS['laptop_1280x720'])
     page = context.new_page()
     page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
-    page.wait_for_timeout(200)
+    page.wait_for_timeout(300)
+    wait_for_stable_layout(page)
     w = page.evaluate("""() => {
-        const el = document.querySelector('.experimental-content');
-        const row = document.querySelector('.screen-card > .button-row');
+        const card = document.querySelector('.screen-card');
+        const el = card.querySelector('.experimental-content');
+        const row = card.querySelector('.button-row');
         const r = row.getBoundingClientRect();
-        return {regionScrolls: el.scrollHeight > el.clientHeight + 2,
+        return {singlePage: card.classList.contains('single-page-fit'),
+                regionScrolls: el.scrollHeight > el.clientHeight + 2,
                 overflowY: getComputedStyle(el).overflowY,
                 buttonOnScreen: r.top >= 0 && r.bottom <= window.innerHeight,
                 pageScrolls: document.documentElement.scrollHeight
                              > window.innerHeight + 2};
     }""")
-    check(w['overflowY'] == 'auto' and w['regionScrolls'],
-          'consent @ laptop_1280x720: the card still scrolls internally')
+    check(w['singlePage'] and w['overflowY'] in ('visible', 'clip')
+          and not w['regionScrolls'],
+          'consent @ laptop_1280x720: Mode 2 single-page fit — no inner scroll '
+          f'(overflow-y {w["overflowY"]}, single-page {w["singlePage"]})')
     check(w['buttonOnScreen'] and not w['pageScrolls'],
-          'consent @ laptop_1280x720: …and Next is pinned on screen, with no '
-          'page scroll — the wide-screen intention still holds')
+          'consent @ laptop_1280x720: …and Next is on screen with no window '
+          'scroll — the choice fits one viewport')
     context.close()
 
 
@@ -2761,8 +3035,11 @@ def check_constant_card(facts):
         widths = {k: per[vp_name]['card']['w'] for k, per in facts.items()}
         # The cap is min(94vw, 1200px), but on a narrow screen the page shell's
         # own gutter binds first, so the shell's inner width is the real ceiling.
+        # HORIZONTAL padding, not paddingTop: since 2026-08-18 the shell's vertical
+        # padding is --card-margin (6vh) and its horizontal padding is the 3vw side
+        # gutter, so they differ — the width ceiling is set by the side gutter.
         shell_box = next(iter(facts.values()))[vp_name]['shell']
-        pad = float(str(shell_box['paddingTop']).rstrip('px') or 0)
+        pad = float(str(shell_box['paddingLeft']).rstrip('px') or 0)
         shell = int(shell_box['w'] - 2 * pad)      # the shell's INNER width
         expected = min(int(0.94 * vp['width']), 1200, shell)
         check(len(set(widths.values())) == 1,
@@ -2776,147 +3053,92 @@ def check_constant_card(facts):
 
 
 def check_consent_choice_visible(server, browser, facts):
-    """D3: on the consent page the CHOICE must be on screen without scrolling.
+    """D3: the consent CHOICE must be reachable without a participant being able
+    to skip it — fitted on screen on desktop, bypass-proof on a phone.
 
-    A participant who can see only the privacy panel and a Next button can
-    consent without ever seeing what they are consenting to, so this is asserted
-    at every viewport, on the variant that actually renders the control.
+    A participant who can act without ever seeing what they are consenting to is
+    the failure this guards. Under the three-mode model the guarantee is met two
+    ways: on DESKTOP the consent page is Mode 2 (single-page fit), so the whole
+    choice sits in one viewport with no scroll; on a PHONE it is Mode 1
+    whole-window scroll and the guarantee is that Next FOLLOWS the options in
+    document order, so they cannot be bypassed. If Mode 2 ever cannot fit the
+    desktop page at the legibility floor it falls back to Mode 1, and the same
+    bypass-proof guarantee applies there. The un-pre-checked radio + rejected
+    empty submit (below) is the real backstop in every mode.
     """
-    section('D3. The consent options are visible without scrolling')
+    section('D3. The consent choice: fitted on screen on desktop, bypass-proof '
+            'on a phone')
     session = create_session('prolific', num_participants=2)
     code, _ = walk_to(server.base, session, 'welcome')
     for vp_name, vp in VIEWPORTS.items():
         context = browser.new_context(viewport=vp)
         page = context.new_page()
         page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
-        # The fully-visible assertions below are decided by a few pixels of
-        # headroom (7px at 1280x720), so they are exactly the kind of check a
-        # not-yet-settled layout turns flaky — see wait_for_stable_layout.
+        # The single-page fit runs on load; let it settle before measuring.
+        page.wait_for_timeout(300)
         wait_for_stable_layout(page)
         m = page.evaluate("""() => {
+            const card = document.querySelector('.screen-card');
             const opts = Array.from(document.querySelectorAll(
                 'input[name="consent"]')).map(i =>
                     i.closest('.form-check, .mc-option') || i);
             if (!opts.length) return null;
-            const el = document.querySelector('.experimental-content');
-            const sr = el.getBoundingClientRect();
             const btn = document.querySelector('.button-row');
-            // VISIBILITY IS COMPUTED FROM THE RAW RECTS AND ROUNDED ONCE, at
-            // the end. Rounding the edges first and subtracting afterwards
-            // loses a pixel whenever a box straddles a half-pixel — measured on
-            // 2026-08-13 at 1512x1200, where an option sitting 182px clear of
-            // the fold reported 65 visible of 66. That is a spurious failure in
-            // a check whose whole point is "partial is a failure", so the
-            // arithmetic is done once, here, rather than papered over with a
-            // tolerance downstream.
-            const clipped = el => {
+            const content = card.querySelector('.experimental-content');
+            const vh = window.innerHeight;
+            // Visibility against the VIEWPORT (the real clip now — the content
+            // region is not a capped scroller any more). Rounded once at the end.
+            const seen = el => {
                 const r = el.getBoundingClientRect();
-                return {
-                    top: Math.round(r.top),
-                    bottom: Math.round(r.bottom),
-                    height: Math.round(r.height),
-                    visible: Math.round(Math.min(r.bottom, sr.bottom)
-                                        - Math.max(r.top, sr.top)),
-                };
+                return {top: Math.round(r.top), bottom: Math.round(r.bottom),
+                        height: Math.round(r.height),
+                        visible: Math.round(Math.min(r.bottom, vh)
+                                            - Math.max(r.top, 0))};
             };
             return {
-                n: opts.length,
-                first: clipped(opts[0]),
-                last: clipped(opts[opts.length - 1]),
-                viewTop: Math.round(sr.top), viewBottom: Math.round(sr.bottom),
-                buttonTop: btn ? Math.round(btn.getBoundingClientRect().top) : null,
-                buttonBottom: btn ? Math.round(btn.getBoundingClientRect().bottom)
-                                  : null,
-                viewportH: window.innerHeight,
-                scrollTop: el.scrollTop,
+                singlePage: card.classList.contains('single-page-fit'),
+                first: seen(opts[0]), last: seen(opts[opts.length - 1]),
+                btnBottom: btn ? Math.round(btn.getBoundingClientRect().bottom)
+                               : null,
+                vh, docScrolls: document.documentElement.scrollHeight > vh + 2,
+                ctrlAfter: !!(content && btn
+                    && (content.compareDocumentPosition(btn)
+                        & Node.DOCUMENT_POSITION_FOLLOWING)),
             };
         }""")
         if not check(m is not None,
                      f'{vp_name}: the consent control is rendered'):
             context.close()
             continue
-        visible_px = m['first']['visible']
-        both = m['last']['visible']
         if vp_name == 'phone_375x667':
-            # THE PHONE CONTRACT CHANGED (improvement_suggestions item 1). This
-            # page's copy is ~750px and the viewport is 667px, so the options
-            # cannot be above the fold whatever the layout does — only cutting
-            # consent copy would manage it, and that is the one thing this
-            # template may not do. So the guarantee is no longer "the options
-            # are on screen" but "the options cannot be BYPASSED": the card
-            # scroll model is off here, the page scrolls, and Next comes after
-            # the options in document order. That is asserted in its own leg
-            # (check_phone_page_flow); here we only record where things sat.
-            print(f'  [note] {vp_name}: the first option sits at '
-                  f'{m["first"]["top"]}..{m["first"]["bottom"]} in a '
-                  f'{vp["height"]}px viewport — reached by scrolling the PAGE, '
-                  f'with Next below it (see the phone-flow leg)')
-        else:
-            check(visible_px > 10,
-                  f'{vp_name}: the FIRST consent option is on screen without '
-                  f'scrolling ({visible_px}px of it visible; option '
-                  f'{m["first"]["top"]}..{m["first"]["bottom"]}, scroll viewport '
-                  f'{m["viewTop"]}..{m["viewBottom"]})')
-            # EVERY OPTION WHOLE, NOT JUST THE FIRST (Julian, 2026-08-13).
-            #
-            # THIS ASSERTION IS THE POINT OF THE LEG, and its absence is exactly
-            # how the asymmetry it now catches survived: the check above passes
-            # on 10px of the FIRST option, and the second was only ever PRINTED.
-            # Measured on 2026-08-13 at 1280x720: "I consent" rendered whole at
-            # 408..474 while "I do not consent" ran 484..550 against a scroll
-            # region ending at 514 — half of it, under a complete-looking one.
-            # A fold BETWEEN two options is worse than a fold below both,
-            # because a sliced list still reads as a finished list.
-            #
-            # PARTIAL IS A FAILURE, not a degree: the bar is the option's OWN
-            # height, so a row cut by one pixel fails. (Fixed by the consent
-            # rhythm block in the `max-height: 820px` media query in base.css;
-            # if this goes red, that block is where the space came from.)
-            for which, box, seen in (('FIRST', m['first'], visible_px),
-                                     ('LAST', m['last'], both)):
-                height = box['height']
-                # THE FAILURE MESSAGE HAS TO SAY WHAT TO DO. Whoever trips this
-                # will almost always be someone who added a sentence to the
-                # consent copy — an ethics committee asks for one, nobody ever
-                # removes one — and they have no reason to connect that to a
-                # media query in base.css two files away. A bare pixel
-                # assertion would read as "the layout is broken"; it is not,
-                # the copy has outgrown the fold.
-                short = height - seen
-                check(seen >= height,
-                      f'{vp_name}: the {which} consent option is FULLY visible '
-                      f'without scrolling ({seen}px of {height}px; option '
-                      f'{box["top"]}..{box["bottom"]}, scroll region '
-                      f'{m["viewTop"]}..{m["viewBottom"]})'
-                      + (f' — THE CONSENT COPY HAS OUTGROWN THE FOLD by {short}px. '
-                         f'A participant sees a complete-looking list with the '
-                         f'last option sliced. Two levers, both in the '
-                         f'`@media (max-height: 820px)` block in '
-                         f'_static/global/css/base.css: (1) the consent rhythm '
-                         f'— option row padding-block, currently .5em, with a '
-                         f'hard floor at the 44px touch target (~16px left); '
-                         f'(2) the LOGO STRIP, which yields first by rule — '
-                         f'marks are 32px and go to 24px (~8px). Measured '
-                         f'2026-08-13: about 32px is available in total, and a '
-                         f'line of copy costs ~31px. IF THAT IS NOT ENOUGH, '
-                         f'STOP TIGHTENING: shorten the copy, or accept that '
-                         f'the card scrolls — the scroll affordance is real and '
-                         f'is asserted, and "nobody consents blind" is enforced '
-                         f'by the un-pre-checked radio and the rejected empty '
-                         f'submit, not by the fold.'
-                         if seen < height else ''))
-            # And the forward action itself, in the viewport rather than the
-            # scroll region — it is pinned below it, so a card that grew to fit
-            # the options must not have pushed Next off the screen instead.
-            if m['buttonBottom'] is not None:
-                check(m['buttonBottom'] <= m['viewportH'],
+            # Mode 1: the copy (~750px) cannot fit a 667px phone, so the choice
+            # is reached by scrolling the PAGE — the guarantee is that it cannot
+            # be BYPASSED. (The full phone-flow contract is check_phone_page_flow.)
+            check(m['ctrlAfter'],
+                  f'{vp_name}: Next FOLLOWS the consent options in document order '
+                  f'— they cannot be bypassed (reached by scrolling the page)')
+        elif m['singlePage']:
+            # Mode 2 fitted: BOTH options and Next are fully within the viewport,
+            # with no window scroll. Partial is a failure — the bar is each
+            # option's own height.
+            check(not m['docScrolls'],
+                  f'{vp_name}: Mode 2 single-page fit — the page does not scroll')
+            for which, box in (('FIRST', m['first']), ('LAST', m['last'])):
+                check(box['visible'] >= box['height'],
+                      f'{vp_name}: the {which} consent option is FULLY on screen '
+                      f'({box["visible"]}px of {box["height"]}px; option '
+                      f'{box["top"]}..{box["bottom"]} in a {m["vh"]}px viewport)')
+            if m['btnBottom'] is not None:
+                check(m['btnBottom'] <= m['vh'],
                       f'{vp_name}: the Next button is fully on screen '
-                      f'(button {m["buttonTop"]}..{m["buttonBottom"]} in a '
-                      f'{m["viewportH"]}px viewport)')
-        print(f'       second option: {both}px visible '
-              f'({m["last"]["top"]}..{m["last"]["bottom"]})')
-        geometry.setdefault('consent_choice', {})[vp_name] = dict(
-            m, first_visible_px=visible_px, second_visible_px=both)
+                      f'(bottom {m["btnBottom"]} in a {m["vh"]}px viewport)')
+        else:
+            # Mode 2 could not fit at the floor -> Mode 1 fallback: same
+            # bypass-proof guarantee as the phone.
+            check(m['ctrlAfter'],
+                  f'{vp_name}: single-page fit gave up (font floor) -> Mode 1; '
+                  f'Next still FOLLOWS the options, so they cannot be bypassed')
+        geometry.setdefault('consent_choice', {})[vp_name] = m
         screenshot(page, 'consent_prolific_fold', vp_name)
         context.close()
 
@@ -3029,14 +3251,13 @@ def check_logo_footer_rule(server, browser):
 
 
 def check_scroll_really_moves(server, browser):
-    """Not just "overflow-y:auto is set" — drive the scroll and measure it."""
-    section('B2. Scrolling the content region actually moves the content')
-    session = create_session('lab', num_participants=2)
-    code, _ = walk_to(server.base, session, 'quiz')
-    for vp_name, vp in VIEWPORTS.items():
-        context = browser.new_context(viewport=vp)
-        page = context.new_page()
-        page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+    """B2. Not just "overflow-y:auto is set" — drive the inner scroll and measure
+    it. Retargeted to the Mode-3 inner-scroll page (results), the only page with
+    an inner scroll region now."""
+    section('B2. Scrolling the inner-scroll content region actually moves it')
+    for vp_name in ('laptop_1280x720', 'desktop_1512x1200'):
+        context, page = _open_inner_scroll_overflow(
+            server, browser, VIEWPORTS[vp_name])
         moved = page.evaluate("""() => {
             const el = document.querySelector('.experimental-content');
             if (!el) return null;
@@ -3047,13 +3268,9 @@ def check_scroll_really_moves(server, browser):
                     clientH: el.clientHeight,
                     overflows: el.scrollHeight > el.clientHeight + 2};
         }""")
-        if not moved['overflows']:
-            print(f'  [skip] {vp_name}: quiz fits, nothing to scroll '
-                  f'({moved["scrollH"]} <= {moved["clientH"]})')
-        else:
-            check(moved['after'] > moved['before'],
-                  f'{vp_name}: scrollTop moved {moved["before"]} -> '
-                  f'{moved["after"]} of {moved["scrollH"]}px')
+        check(moved['overflows'] and moved['after'] > moved['before'],
+              f'results @ {vp_name}: scrollTop moved {moved["before"]} -> '
+              f'{moved["after"]} of {moved["scrollH"]}px inside the card')
         geometry.setdefault('scroll_probe', {})[vp_name] = moved
         context.close()
 
@@ -3782,17 +3999,16 @@ def check_scroll_shadow(server, browser):
     except ImportError:
         check(False, 'Pillow is installed (needed to measure the shadow pixels)')
         return
-    session = create_session('lab', num_participants=2)
-    code, _ = walk_to(server.base, session, 'quiz')
-    # LAPTOP, not phone. The phone used to be the surest overflow, but since
-    # improvement_suggestions item 1 a phone has no in-card scroll region at
-    # all — so measuring the in-card shadow there would measure nothing and
-    # skip silently. 1280x720 is now the smallest viewport that still uses the
-    # card-scroll model, which is what this layer belongs to.
+    # RETARGETED TO THE INNER-SCROLL PAGE (2026-08-18): the CSS-only shadow is the
+    # Mode-3 affordance, which lives only on the results page now — every other
+    # page is Mode-1 whole-window scroll with no inner region. Drive results into
+    # overflow with JavaScript DISABLED (the fixture opens/fills it via
+    # page.evaluate in the isolated world, which runs regardless), so no
+    # is-scrollable class is ever set and only the pure-CSS background shadow can
+    # be responsible for what these pixels measure.
     vp = VIEWPORTS['laptop_1280x720']
-    context = browser.new_context(viewport=vp, java_script_enabled=False)
-    page = context.new_page()
-    page.goto(f'{server.base}/InitializeParticipant/{code}', wait_until='load')
+    context, page = _open_inner_scroll_overflow(
+        server, browser, vp, java_script_enabled=False)
     state = page.evaluate("""() => {
         const el = document.querySelector('.experimental-content');
         const r = el.getBoundingClientRect();
@@ -3800,8 +4016,7 @@ def check_scroll_shadow(server, browser):
                 x: r.x, y: r.y, w: r.width, h: r.height};
     }""")
     if not state['overflows']:
-        print('  [skip] the quiz does not overflow at this viewport; the long-quiz '
-              'pass covers the shadow')
+        print('  [skip] the inner-scroll fixture did not overflow')
         context.close()
         return
 
@@ -4119,6 +4334,9 @@ def main():
                 if not LONG_QUIZ:
                     check_constant_card(facts)
                     check_card_min_derivation(server, browser, facts)
+                    check_task_centring(server, browser)
+                    check_instructions_scroll_demo(server, browser)
+                    check_single_page_fit(server, browser)
                     check_titles_centred(facts)
                     check_scroll_catchment(server, browser)
                     check_scroll_cue(server, browser)

@@ -2,8 +2,14 @@
 {% include '_static/global/html/css_bundle.html' %}
 
 
+{# MODE 3 — INNER-CARD SCROLL (the `inner-scroll` opt-in). Results is the one
+   page kept on the old model: the card is capped and its content region scrolls
+   INSIDE the white card rather than growing the window. The round-payment detail
+   (the "See Payoff by Round" accordion below) is collapsed by default so the
+   collapsed state fits one page; expanding it scrolls inside the card. See MODE 3
+   in base.css. Every other page is Mode 1 whole-window scroll. #}
 <div class="experimental-screen">
-    <div class="screen-card">
+    <div class="screen-card inner-scroll">
         <div class="experimental-header">
             <h2 class="header-title">Results</h2>
         </div>

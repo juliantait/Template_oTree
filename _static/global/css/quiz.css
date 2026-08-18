@@ -119,7 +119,13 @@
 
 /* The dialog is the shared modal chrome, widened: it holds a whole document,
    not a sentence. Height-capped so the card can never grow past the viewport;
-   the BODY inside it is what scrolls. */
+   the BODY inside it is what scrolls.
+   NB (2026-08-18 scroll overhaul): this 86vh cap + inner-scrolling body is a
+   MODAL's own inner scroll — a dialog holding a whole document — NOT the page
+   card's scroll model. The page card is Mode 1 (whole-window scroll) by default
+   and Mode 3 (`.inner-scroll`, base.css) only on results; a modal that holds a
+   document has always scrolled its body internally and continues to, on the same
+   family of reasoning as the dormant `.inner-scroll` opt-in. Left unchanged. */
 .reread-backdrop .modal-card.reread-card {
     position: relative;
     max-width: min(1140px, 92vw);
