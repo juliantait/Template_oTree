@@ -42,7 +42,7 @@ module on. `README.md` has the full parameter table.
 Run **`python3 scripts/prelaunch_check.py`**. It is the static config guard, it
 takes a second, and it fails on the things that actually go wrong: completion
 codes still set to `REPLACE_*`, `DEBUG` still on, testing loosenings left in
-(`verify_quiz=False`). It also prints on every server start, so you cannot miss
+(`quiz_verify=False`). It also prints on every server start, so you cannot miss
 it.
 
 If your study already has participants in its database, also run
@@ -97,7 +97,7 @@ are quiet in a way you would only notice at payout:
   (`fee_guard.py`).
 
 **If you are copying a study that already sets a participation fee, it will not
-boot until you move that money into the ledger** — put it in `showup`, or into
+boot until you move that money into the ledger** — put it in `payment_show_up`, or into
 the `earned` computation in `outro`. That is deliberate: oTree adds
 `participation_fee` on top of `participant.payoff` on the admin Payments page, so
 leaving it set splits what you owe across two numbers. It does not appear in the

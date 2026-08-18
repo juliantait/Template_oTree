@@ -38,12 +38,12 @@ session-configuration view shows exactly what ran:
 | `prolific_capture_participant_id` | on | off | Captures the platform id at entry and shows the confirmation page |
 | `prolific_completion_redirects` | on | off | Explicit consent radio + return-to-Prolific buttons with completion codes |
 | `tab_monitor` | on | off | Tab-switch monitor |
-| `comprehension_dq` | on | off | Disqualify after too many quiz failures |
-| `device_capture`, `passive_capture` | on | off | Device/screen and on-page measurement |
-| `collect_bank_details`, `collect_demographics` | off | on | Lab pays by transfer and asks demographics itself |
+| `quiz_comprehension_dq` | on | off | Disqualify after too many quiz failures |
+| `telemetry_device_capture`, `telemetry_passive_capture` | on | off | Device/screen and on-page measurement |
+| `collect_outro_bank_details`, `collect_outro_demographics` | off | on | Lab pays by transfer and asks demographics itself |
 | `quiz_reread` | off | on | The supervised one-time re-read pass |
 
-`allowed_devices` is deliberately **not** narrowed by the profile — see §4.
+`prolific_allowed_devices` is deliberately **not** narrowed by the profile — see §4.
 
 ## 2. Completion codes
 
@@ -133,7 +133,7 @@ not — never both, and never CREED plus Prolific. There is no hybrid entry page
 - `before/welcome+consent.html` is **shared and identical in both variants** —
   no CREED header, no ID field, and no sentence naming the platform, a
   completion code or a participant id. Its config branches vary payment-mechanics
-  wording only (`collect_bank_details`), because the same page renders in a lab
+  wording only (`collect_outro_bank_details`), because the same page renders in a lab
   where Prolific is meaningless.
 - `before/confirm_prolific_id.html` is the **only page in the study that mentions
   Prolific**. Gated on `prolific_capture_participant_id`, so a lab session never sees it.
@@ -142,14 +142,14 @@ not — never both, and never CREED plus Prolific. There is no hybrid entry page
 of both variants, so a regression fails the build rather than reaching a
 participant.
 
-## 4. The device allow-list (`allowed_devices`)
+## 4. The device allow-list (`prolific_allowed_devices`)
 
 **Wide open by default, including in the Prolific profile.** Choosing the
 Prolific study type must never start screening devices out on its own; narrow it
 explicitly:
 
 ```python
-dict(name='prolific', recruitment='prolific', allowed_devices=['computer'], …)
+dict(name='prolific', recruitment='prolific', prolific_allowed_devices=['computer'], …)
 ```
 
 The four types are `phone`, `tablet`, `computer` and `unknown`. **`computer`
@@ -164,7 +164,7 @@ always allowed in. **README's "The device check" section is the full reference**
 (what it inspects, the asymmetry, the limits); this is the operational summary.
 
 With the **default** list (all four) it does nothing at all — every device
-completes normally, and `device_capture` still *records* the device as
+completes normally, and `telemetry_device_capture` still *records* the device as
 measurement that blocks nobody.
 
 When **narrowed**, the decision is made server-side in `before.welcome.get()`,
@@ -237,8 +237,8 @@ never sees platform wording.
 - [ ] Set `OTREE_PRODUCTION=1` so `DEBUG` is off and every skip control and quiz
       solution is gone from the page source.
 - [ ] Set the study URL with `?participant_label={{%PROLIFIC_PID%}}`.
-- [ ] Decide `allowed_devices` explicitly (§4) and, if narrowed, check the ending copy for each excluded type.
-- [ ] Check `showup` and `expected_duration_minutes` — the consent page quotes
+- [ ] Decide `prolific_allowed_devices` explicitly (§4) and, if narrowed, check the ending copy for each excluded type.
+- [ ] Check `payment_show_up` and `expected_duration_minutes` — the consent page quotes
       both from config, so a testing config would advertise a length and a fee
       the study does not run.
 - [ ] Run `OTREE_PRODUCTION=1 python scripts/prelaunch_check.py`. It exits

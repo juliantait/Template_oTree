@@ -1,6 +1,6 @@
 {
   "_comment": "Written by scripts/prelaunch_check.py --stamp-assets. It records the sha256 of everything under _static/ against the settings.STATIC_VERSION that was current when the assets last changed, so the pre-launch check can fail when the files change and the cache-buster does not. Inert data: nothing at runtime reads it.",
   "file_count": 21,
-  "static_sha256": "1bdf317705a9a7e2e7003961a8de131cc8d91fe89d29c09ca86f5ab208742313",
-  "static_version": "18"
+  "static_sha256": "4ac3b08a05fd41cba37149f85e237863ef2c96ed7b62a06873f230c59bd02a63",
+  "static_version": "19"
 }

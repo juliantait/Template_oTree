@@ -7,7 +7,7 @@
 # WHICH CHECK IS THIS? There are two, and they do different jobs:
 #   scripts/prelaunch_check.py  — STATIC config guard, no server, instant. Asks
 #       "is this CONFIGURATION safe to launch?": REPLACE_* completion codes,
-#       DEBUG still on, testing loosenings (verify_quiz=False) left in. Run it
+#       DEBUG still on, testing loosenings (quiz_verify=False) left in. Run it
 #       in the target environment before opening a study to participants.
 #   scripts/predeploy_check.sh  — THIS. DYNAMIC upgrade gate. Boots the
 #       candidate build against a COPY of the live database and drives real
@@ -77,7 +77,7 @@
 #   --require-db      a degraded run (no DB copy) FAILS instead of passing
 #   --debug           drive the app with DEBUG on; the default is the PRODUCTION
 #                     shape, since production is what is being deployed and
-#                     debug loosenings (verify_quiz=False) would mask a broken
+#                     debug loosenings (quiz_verify=False) would mask a broken
 #                     gate
 #   --configs a,b     session configs to drive fresh participants through
 #                     (default: one per recruitment profile, so the lab flow and

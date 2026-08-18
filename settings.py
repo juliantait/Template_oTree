@@ -29,7 +29,7 @@ identity.install_duplicate_label_guard()
 #    flags at import (see RECRUITMENT_PROFILES below).
 # 2. DEBUG (from the environment; never set per config) — dev-only affordances:
 #    skip controls, quiz solutions in the browser, the loosened quiz validation
-#    (verify_quiz=False is honoured ONLY under DEBUG), the prelaunch banner's
+#    (quiz_verify=False is honoured ONLY under DEBUG), the prelaunch banner's
 #    DEBUG warning. Driven by OTREE_PRODUCTION: unset -> DEBUG on; set ->
 #    DEBUG off and every debug affordance is dead, so production cannot
 #    accidentally ship them. Orthogonal to study type: a prolific-configured
@@ -93,7 +93,7 @@ EXIT_CODES = dict(
     no_consent=-1,       # declined consent
     comprehension=-2,    # disqualified: failed the comprehension check
     tab_monitor=-3,      # disqualified: tab-switch monitor
-    screened_out=-4,     # device screened out at entry (allowed_devices gate)
+    screened_out=-4,     # device screened out at entry (prolific_allowed_devices gate)
 )
 
 # --- recruitment profiles (STUDY TYPE axis) ----------------------------------
@@ -101,7 +101,7 @@ EXIT_CODES = dict(
 # (see resolve_recruitment_profile). Add keys here to have a profile govern
 # them; anything not listed falls through to the SESSION_CONFIG_DEFAULTS baseline
 # and can still be overridden per config. Debug loosenings (e.g.
-# verify_quiz=False) do NOT belong here — they live on the DEBUG axis.
+# quiz_verify=False) do NOT belong here — they live on the DEBUG axis.
 RECRUITMENT_PROFILES = {
     # Physical lab (CREED): experimenter-run, paid by bank transfer. No Prolific
     # plumbing, no tab monitor.
@@ -117,11 +117,11 @@ RECRUITMENT_PROFILES = {
         # default, not a Prolific feature.
         explicit_consent=False,
         tab_monitor=False,
-        comprehension_dq=False,
-        passive_capture=False,
-        device_capture=False,
-        collect_bank_details=True,   # lab pays by bank transfer
-        collect_demographics=True,   # lab asks demographics itself (no platform export)
+        quiz_comprehension_dq=False,
+        telemetry_passive_capture=False,
+        telemetry_device_capture=False,
+        collect_outro_bank_details=True,   # lab pays by bank transfer
+        collect_outro_demographics=True,   # lab asks demographics itself (no platform export)
         quiz_reread=True,            # one supervised re-read pass instead of DQ
     ),
     # Online via Prolific: self-serve entry, paid through the platform. Turns on
@@ -131,18 +131,20 @@ RECRUITMENT_PROFILES = {
         prolific_capture_participant_id=True,
         prolific_completion_redirects=True,
         tab_monitor=True,
-        comprehension_dq=True,
-        passive_capture=True,
-        device_capture=True,
-        collect_bank_details=False,  # Prolific pays through the platform
-        collect_demographics=False,  # Prolific supplies demographics in its own export
-        quiz_reread=False,           # no re-read pass online; comprehension_dq instead
-        # NB: `allowed_devices` is deliberately NOT listed here, and is not a
-        # Prolific parameter at all (it has its own ENTRY section): selecting
-        # the prolific study type must never start screening devices out on its
-        # own. It falls
+        quiz_comprehension_dq=True,
+        telemetry_passive_capture=True,
+        telemetry_device_capture=True,
+        collect_outro_bank_details=False,  # Prolific pays through the platform
+        collect_outro_demographics=False,  # Prolific supplies demographics in its own export
+        quiz_reread=False,           # no re-read pass online; quiz_comprehension_dq instead
+        # NB: `prolific_allowed_devices` is deliberately NOT listed here. Its
+        # `prolific_` prefix is a form-grouping label (it was moved into the
+        # naming family 2026-08-18), NOT a claim that the gate is
+        # Prolific-specific — selecting the prolific study type must never start
+        # screening devices out on its own. It falls
         # through to the SESSION_CONFIG_DEFAULTS baseline (all four types = no
-        # gate) and is narrowed explicitly on a config.
+        # gate) and is narrowed explicitly on a config. See its note in
+        # SESSION_CONFIG_DEFAULTS and DECISIONS.md.
     ),
     # There is deliberately NO 'testing' profile: clickthrough loosenings are
     # the DEBUG axis (env-driven), not a study type. For a clickthrough config,
@@ -319,7 +321,14 @@ DASHBOARD_RETURN_GRACE_SECONDS = 90
 # onto that header so the header+copy+button stay centred as a group. base.css
 # and _templates/room_welcome.html both changed; same NOTE as 17 applies — the
 # gate's own <link> carries no `?v=`, so verify it by fetching the rendered page.
-STATIC_VERSION = '18'
+# 18 -> 19 on 2026-08-18: `_static/global/js/device_capture.js` comments renamed
+# the session flags they name (`device_capture` -> `telemetry_device_capture`,
+# `allowed_devices` -> `prolific_allowed_devices`) in the session-config key
+# family rename — a comment-only edit to a file under `_static/`, but the asset
+# manifest hashes file bytes, so the version is bumped and the manifest re-stamped
+# like any other `_static/` change. See DECISIONS.md, 'Session-config keys are
+# named family-first'.
+STATIC_VERSION = '19'
 
 # --- whose study this is ------------------------------------------------------
 # THE ONE PLACE A COPIED STUDY NAMES ITS INSTITUTION IN PROSE (Julian,
@@ -346,6 +355,18 @@ INSTITUTION_NAME = 'the University of Amsterdam'
 
 
 SESSION_CONFIG_DEFAULTS = dict(
+    # THE ORDER OF THIS DICT IS THE ORDER OF THE ADMIN'S SESSION-CONFIG FORM.
+    # oTree renders SESSION_CONFIG_DEFAULTS in INSERTION ORDER and gives that form
+    # no section headings at all, so the ONLY grouping available to us is the
+    # order of the keys plus a shared naming prefix per family. The keys are laid
+    # out here in contiguous, prefix-named families — payment_*, quiz_*,
+    # display_*, collect_outro_*, telemetry_*, build_*, tab_monitor*, prolific_* —
+    # with the handful of genuinely top-level keys unprefixed at the top. Renamed
+    # into these families 2026-08-18 while the template has NO live studies; the
+    # same rename later would be a schema change across running sessions. Keep a
+    # new key inside its family and give it the family prefix, or the form's only
+    # structure silently rots.
+
     # oTree's built-in per-config description (shown on the demo page).
     doc="",
 
@@ -372,36 +393,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     # stimulus/treatment quantities a study adds.
     # NUM_ROUNDS is fixed at import from this value (the MAX). A config may set
     # it LOWER to run fewer rounds, never higher.
-    num_experimental_rounds=10,
-
-    # =========================================================================
-    # PAYMENT AND INCENTIVES
-    # =========================================================================
-    # Everything money: base/show-up pay, bonuses, how many rounds are paid,
-    # currency conversion, and whether we collect bank details to pay out.
-    real_world_currency_per_point=1.00,  # oTree currency conversion rate
-    # ZERO, AND HELD THERE BY A BOOT GUARD (fee_guard.py). oTree adds this ON
-    # TOP of participant.payoff on the admin Payments page
-    # (payoff_plus_participation_fee) — a second payment channel. It does NOT
-    # reach the CSV export, so it is invisible in the data and visible only
-    # where somebody reads off what to pay. This template keeps ONE ledger: the base is `showup` below, which
-    # outro.compute_final_payoff folds into participant.payoff with the bonus, so
-    # the admin figure equals the amount actually owed. A non-zero value here
-    # splits that across two numbers and REFUSES THE BOOT.
-    participation_fee=0.00,      # oTree's built-in participation fee — keep 0
-    showup=2.5,                  # show-up fee quoted on consent and paid at the end
-    expected_duration_minutes=30,  # session length quoted on the consent page
-    quiz_bonus=5,                # bonus for passing the quiz on the first attempt
-    num_rewarded=2,              # how many rounds are randomly selected for payment
-    collect_bank_details=False,  # lab-style IBAN/BIC/SEPA payment collection
-    # Whether the consent page states the study's LENGTH and FEE ("This study
-    # takes about 30 minutes. You will receive a payment of ... plus any
-    # additional earnings"). Shipped OFF (Julian, 2026-08-11): the sentence is
-    # not wanted by default and is the only place `expected_duration_minutes`
-    # and `showup` reach the participant. It stays behind this flag rather than
-    # being deleted because the next study's ethics text may REQUIRE the fee to
-    # be stated, and that must not need a template edit.
-    show_duration_and_fee=False,
+    num_experimental_rounds=5,
 
     # =========================================================================
     # CONSENT
@@ -428,19 +420,48 @@ SESSION_CONFIG_DEFAULTS = dict(
     # names the missing key, and the fix is to recreate the session.
     explicit_consent=True,
 
+    # Session length quoted on the consent page. Left unprefixed: it is a
+    # top-level fact about the study, not a payment or display module — though it
+    # only reaches the participant when display_before_show_duration_and_fee is
+    # on (see the DISPLAY block).
+    expected_duration_minutes=30,
+
     # =========================================================================
-    # COMPREHENSION
+    # PAYMENT AND INCENTIVES  (payment_*)
+    # =========================================================================
+    # Everything money: base/show-up pay, bonuses and how many rounds are paid,
+    # then the two oTree built-ins (currency conversion and participation fee) at
+    # the BOTTOM of the block so they sit visually inside payment while keeping
+    # their built-in names.
+    payment_show_up=2.5,          # show-up fee quoted on consent and paid at the end
+    payment_num_rewarded=2,       # how many rounds are randomly selected for payment
+    payment_quiz_bonus=5,         # bonus for passing the quiz on the first attempt
+    real_world_currency_per_point=1.00,  # oTree currency conversion rate
+    # ZERO, AND HELD THERE BY A BOOT GUARD (fee_guard.py). oTree adds this ON
+    # TOP of participant.payoff on the admin Payments page
+    # (payoff_plus_participation_fee) — a second payment channel. It does NOT
+    # reach the CSV export, so it is invisible in the data and visible only
+    # where somebody reads off what to pay. This template keeps ONE ledger: the
+    # base is `payment_show_up` above, which
+    # outro.compute_final_payoff folds into participant.payoff with the bonus, so
+    # the admin figure equals the amount actually owed. A non-zero value here
+    # splits that across two numbers and REFUSES THE BOOT.
+    participation_fee=0.00,      # oTree's built-in participation fee — keep 0
+
+    # =========================================================================
+    # QUIZ AND COMPREHENSION  (quiz_*)
     # =========================================================================
     # Quiz behaviour: how many wrong attempts count as "failed" (the threshold
-    # the integrity and re-read machinery reacts to). Whether answers are
-    # validated at all is verify_quiz, under TESTING AND DEV — turning it off
-    # is a debug loosening, honoured only under DEBUG.
+    # the integrity and re-read machinery reacts to), the online disqualification
+    # rule and the lab re-read pass that are the two consequences of crossing it,
+    # and whether answers are validated at all (quiz_verify — a DEBUG loosening,
+    # last in this block).
     #
     # THE SAME NUMBER MEANS TWO DIFFERENT THINGS, BY STUDY TYPE. It is one
     # counter (participant.comprehension_failed_attempts, incremented in intro.quiz.
     # error_message) and one threshold, deliberately the same value in both
     # study types — what differs is the CONSEQUENCE of crossing it:
-    #   * ONLINE (prolific): the point of EJECTION. comprehension_dq is on, so
+    #   * ONLINE (prolific): the point of EJECTION. quiz_comprehension_dq is on, so
     #     crossing it flags the participant, records exit code -2 and sends them
     #     to the ending and back to Prolific with prolific_dq_code.
     #   * IN THE LAB: the point at which the study STARTS HELPING. Nobody is
@@ -451,41 +472,90 @@ SESSION_CONFIG_DEFAULTS = dict(
     #     dismissible "raise your hand" notice; at TWICE the threshold that
     #     notice also names how many attempts they have made. Nothing is
     #     recorded beyond the counter, which is the point: at analysis time
-    #     `comprehension_failed_attempts >= comprehension_max_failures` is the SAME predicate
+    #     `comprehension_failed_attempts >= quiz_comprehension_max_failures` is the SAME predicate
     #     the online rule ejects on, so "failed comprehension" means one thing
-    #     across both study types. (Failing already costs quiz_bonus, which is
+    #     across both study types. (Failing already costs payment_quiz_bonus, which is
     #     paid only when comprehension_failed_attempts == 0.)
     # See CODEBOOK.md (and _ai/lab_comprehension_proposal.md, local only:
     # _ai/ is gitignored, so it is not in a copied study).
-    comprehension_max_failures=3,   # wrong attempts that count as failing the quiz
+    quiz_comprehension_max_failures=3,   # wrong attempts that count as failing the quiz
+    # The ONLINE consequence of crossing the threshold: disqualify, record exit
+    # code -2 and route to the ending. Mutually exclusive in practice with
+    # quiz_reread (the lab rule) — and NOT supported in a lab session at all,
+    # for which see the TAB MONITOR / integrity note below; scripts/prelaunch_check.py
+    # fails a lab config that turns it on.
+    #
+    # IT LIVES WITH THE THRESHOLD IT ACTS ON AND THE OTHER HALF OF THE SAME
+    # DECISION (moved 2026-08-13, Julian). It used to sit in the integrity block
+    # BETWEEN `tab_monitor` and tab_monitor's own thresholds, purely by accretion
+    # — which read, in the admin's session-config form, as though it were one of
+    # them. It is not: it is what quiz_comprehension_max_failures does online, and
+    # the choice a study makes here is quiz_reread vs this.
+    quiz_comprehension_dq=False,         # disqualify past quiz_comprehension_max_failures
     # Lab re-read pass: on first crossing the failure threshold, offer ONE
     # return through the instructions (intro round 2). After it is used, further
     # failures show a dismissible "raise your hand" notice — no disqualification.
-    # Mutually exclusive in practice with comprehension_dq (the online rule).
+    # Mutually exclusive in practice with quiz_comprehension_dq (the online rule).
     # Turning it OFF in a lab session is allowed and no longer leaves the
     # participant without help: the experimenter notice is keyed on the
     # threshold and the study type, not on this module.
     quiz_reread=False,              # offer a one-time instructions re-read on failure
-    # The ONLINE consequence of crossing the same threshold: disqualify, record
-    # exit code -2 and route to the ending. Mutually exclusive in practice with
-    # quiz_reread (the lab rule) — and NOT supported in a lab session at all,
-    # for which see the INTEGRITY MODULES note below; scripts/prelaunch_check.py
-    # fails a lab config that turns it on.
-    #
-    # IT LIVES HERE, WITH THE THRESHOLD IT ACTS ON AND THE OTHER HALF OF THE
-    # SAME DECISION (moved 2026-08-13, Julian). It used to sit in the integrity
-    # block BETWEEN `tab_monitor` and tab_monitor's own thresholds, purely by
-    # accretion — which read, in the admin's session-config form, as though it
-    # were one of them. It is not: it is what comprehension_max_failures does
-    # online, and the choice a study makes here is quiz_reread vs this.
-    comprehension_dq=False,         # disqualify past comprehension_max_failures
+    # quiz_verify=False lets you click straight through the quiz without
+    # answering. It is a DEBUG loosening: honoured ONLY while DEBUG is on
+    # (OTREE_PRODUCTION unset) — in production validation always runs, so a
+    # leftover False cannot weaken a real launch (prelaunch flags it too).
+    quiz_verify=True,
 
     # =========================================================================
-    # INTEGRITY MODULES
+    # DISPLAY  (display_*)
+    # =========================================================================
+    # Whether the consent page states the study's LENGTH and FEE ("This study
+    # takes about 30 minutes. You will receive a payment of ... plus any
+    # additional earnings"). Shipped OFF (Julian, 2026-08-11): the sentence is
+    # not wanted by default and is the only place `expected_duration_minutes`
+    # and `payment_show_up` reach the participant. It stays behind this flag
+    # rather than being deleted because the next study's ethics text may REQUIRE
+    # the fee to be stated, and that must not need a template edit.
+    display_before_show_duration_and_fee=False,
+
+    # =========================================================================
+    # COLLECT — OUTRO FORMS  (collect_outro_*)
+    # =========================================================================
+    # Which end-of-study forms are shown to a completer: the demographics
+    # questionnaire and the lab's IBAN/BIC bank-details page. Prefixed
+    # collect_outro_ because both are outro pages, and grouping them keeps the
+    # two payout/data-collection switches together.
+    collect_outro_demographics=False,     # explicit demographics questionnaire (outro)
+    collect_outro_bank_details=False,     # lab-style IBAN/BIC/SEPA payment collection
+
+    # =========================================================================
+    # TELEMETRY — MEASUREMENT  (telemetry_*)
+    # =========================================================================
+    # Data captured about the participant/session beyond the task responses:
+    # passive time-on-page and device/screen capture. (No error capture module
+    # exists yet; it would belong here.)
+    telemetry_passive_capture=False,          # passive hidden-field measurement on the page form
+    telemetry_device_capture=False,           # capture device / screen info at entry
+
+    # =========================================================================
+    # BUILD  (build_*)
+    # =========================================================================
+    # The asset version, MIRRORED here from the module-level STATIC_VERSION so
+    # the admin's config view still shows what a session ran with. Templates do
+    # NOT read this copy — they read C.STATIC_VERSION, which comes from the
+    # deployed CODE. A session config is frozen at creation, so a template
+    # reading `session.config.build_static_version` 500s for every in-flight
+    # participant of a study that adds the parameter later (measured; see
+    # scripts/tests/frozen_config_test.py), and a cache-busting token should follow the
+    # build anyway, not the session.
+    build_static_version=STATIC_VERSION,
+
+    # =========================================================================
+    # INTEGRITY — TAB MONITOR  (tab_monitor*)
     # =========================================================================
     # Enforcement: the tab-switch monitor and its thresholds (which only matter
-    # when the module is on). The other integrity module, `comprehension_dq`,
-    # is declared with the comprehension threshold it acts on, above.
+    # when the module is on). The other integrity module, `quiz_comprehension_dq`,
+    # is declared with the comprehension threshold it acts on, in the QUIZ block.
     #
     # BOTH MODULES ARE NOT SUPPORTED IN A LAB SESSION (Julian, 2026-08-12), and
     # scripts/prelaunch_check.py FAILS on a lab config that turns either on.
@@ -502,16 +572,16 @@ SESSION_CONFIG_DEFAULTS = dict(
     # ending with no redirect (lab has prolific_completion_redirects off). That is a
     # participant stranded at a machine with no record of where to send their
     # fee. The lab's comprehension rule is the re-read pass plus the
-    # experimenter notice; see comprehension_max_failures above.
+    # experimenter notice; see quiz_comprehension_max_failures above.
     #
     # KNOWN ANNOYANCE (candidate future option — documented, deliberately not
     # solved): when TESTING a prolific-configured study these modules, plus
     # device capture, can get in the way — the tab monitor will disqualify YOU
     # for tabbing away to inspect the app, and comprehension disqualification
     # blocks a clickthrough after two wrong quiz submissions. If that bites
-    # often, a later testing switch could relax tab_monitor, device_capture
-    # and comprehension_dq as well — as a DEBUG-gated read-time override like
-    # verify_quiz, NEVER by editing the resolved study values (see the
+    # often, a later testing switch could relax tab_monitor, telemetry_device_capture
+    # and quiz_comprehension_dq as well — as a DEBUG-gated read-time override like
+    # quiz_verify, NEVER by editing the resolved study values (see the
     # guarantee on resolve_recruitment_profile).
     # COVERAGE AND THE PHASE ASYMMETRY (Julian, 2026-08-13): with the module
     # on, EVERY page after the agreement screen is monitored by default
@@ -528,24 +598,58 @@ SESSION_CONFIG_DEFAULTS = dict(
     tab_monitor_overlay_delay_ms=400,  # grace before the warning overlay appears
 
     # =========================================================================
-    # MEASUREMENT
+    # PROLIFIC  —  LAST, AND EVERY KEY HERE IS PREFIXED `prolific_`
     # =========================================================================
-    # Data captured about the participant/session beyond the task responses:
-    # passive time-on-page and device/screen capture. (No error capture module
-    # exists yet; it would belong here.)
-    passive_capture=False,          # passive hidden-field measurement on the page form
-    device_capture=False,           # capture device / screen info at entry
-    collect_demographics=False,     # explicit demographics questionnaire (outro)
+    # Every Prolific-filed parameter, together at the end (Julian, 2026-08-13).
+    # Two things make this block worth keeping contiguous:
+    #
+    #   * THE ORDER OF THIS DICT IS THE ORDER OF THE ADMIN'S SESSION-CONFIG
+    #     FORM. oTree renders SESSION_CONFIG_DEFAULTS in INSERTION ORDER, and it
+    #     gives that form no section headings at all — so a contiguous block plus
+    #     the shared `prolific_` prefix is the ONLY grouping available to us.
+    #     Anything filed here is out of the way of somebody configuring a lab
+    #     session, and anything a lab session does need is above.
+    #   * THE PREFIX IS THE OTHER HALF OF THAT. A key named `cc_code` reads as
+    #     general machinery; `prolific_cc_code` says who it belongs to at the
+    #     point of use, in a template, in an export header and in this form.
+    #     Renamed 2026-08-13 while the template has NO live studies — the same
+    #     rename later would be a schema change across running sessions.
+    #
+    # WHAT IS NOT HERE, deliberately: `recruitment` itself (the axis, not a
+    # Prolific parameter). `prolific_allowed_devices` IS here now — but only for
+    # the naming family, NOT because it is Prolific-specific; read its own note
+    # below, which preserves the older "not a Prolific parameter" argument.
+    #
+    # The study's ENTRY URL is configured on Prolific's side (see
+    # docs/running_on_prolific.md); the completion codes below are created in
+    # the Prolific study UI and pasted per config — the prelaunch banner flags
+    # any REPLACE_* placeholder that survives to launch.
+    prolific_capture_participant_id=False,  # capture the Prolific ID at entry
+    prolific_completion_redirects=False,    # send them back with a completion code
 
     # =========================================================================
-    # ENTRY — THE DEVICE ALLOW-LIST
+    # THE DEVICE ALLOW-LIST  (prolific_allowed_devices)
     # =========================================================================
-    # NOT a Prolific parameter, and no longer filed as one (moved 2026-08-13):
-    # the gate is decided from the entry request in every study type, it is
-    # deliberately absent from both recruitment profiles, and a lab study may
-    # narrow it too. What IS Prolific-specific is where a screened-out
-    # participant is SENT, which is why `prolific_screenout_return_url` sits in
-    # the Prolific block at the end and this does not.
+    # MOVED INTO THE `prolific_` NAMING FAMILY 2026-08-18 (Julian), for
+    # form-navigation reasons ONLY: the admin session-config form has no section
+    # headings, so a key's family is carried entirely by its prefix and its
+    # position, and this key now sits with the other `prolific_` keys at the
+    # bottom of the form. See DECISIONS.md, 'The device allow-list joins the
+    # prolific_ naming family'.
+    #
+    # THE OLD RATIONALE, PRESERVED AS A SUPERSEDED NOTE (do not act on it — the
+    # naming decision above overrode it, deliberately). The key was previously
+    # filed OUTSIDE the Prolific block, in its own ENTRY section, on the argument
+    # that it is "NOT a Prolific parameter": the gate is decided from the entry
+    # request in EVERY study type, it is deliberately absent from both
+    # recruitment profiles, and a lab study may narrow it too. THAT BEHAVIOUR IS
+    # UNCHANGED — the move is a rename and a reposition, nothing else. In
+    # particular the key is STILL not part of any recruitment profile: choosing
+    # the prolific study type must never start screening devices out on its own,
+    # and `prolific_allowed_devices` remains absent from RECRUITMENT_PROFILES so
+    # it falls through to this baseline (all four types = no gate). The `prolific_`
+    # prefix is a form-grouping label here, not a claim that the gate only
+    # applies online.
     #
     # DEVICE ALLOW-LIST — which device types may take part. A study STATES the
     # devices it accepts ('phone', 'tablet', 'computer', 'unknown'); anything
@@ -562,67 +666,11 @@ SESSION_CONFIG_DEFAULTS = dict(
     #
     # THE DEFAULT IS ALL FOUR = THE GATE IS OFF, and that safety property is
     # deliberate: with everything permitted the check has NO participant-visible
-    # effect whatsoever (device_capture still RECORDS the type as measurement;
-    # it never blocks anyone).
-    #
-    # NOT part of any recruitment profile: choosing the prolific study type must
-    # never start screening devices out on its own. A comma-separated string is
-    # accepted as well as a list, e.g. allowed_devices='computer'.
-    allowed_devices=['phone', 'tablet', 'computer', 'unknown'],
+    # effect whatsoever (telemetry_device_capture still RECORDS the type as measurement;
+    # it never blocks anyone). A comma-separated string is accepted as well as a
+    # list, e.g. prolific_allowed_devices='computer'.
+    prolific_allowed_devices=['phone', 'tablet', 'computer', 'unknown'],
 
-    # =========================================================================
-    # TIMING
-    # =========================================================================
-    # View locks and forced-wait values. None exist yet — when a study adds a
-    # timed page or a minimum reading time, its parameter belongs here.
-
-    # =========================================================================
-    # TESTING AND DEV  (the DEBUG axis' config-side values)
-    # =========================================================================
-    # verify_quiz=False lets you click straight through the quiz without
-    # answering. It is a DEBUG loosening: honoured ONLY while DEBUG is on
-    # (OTREE_PRODUCTION unset) — in production validation always runs, so a
-    # leftover False cannot weaken a real launch (prelaunch flags it too).
-    verify_quiz=True,
-    # The asset version, MIRRORED here from the module-level STATIC_VERSION so
-    # the admin's config view still shows what a session ran with. Templates do
-    # NOT read this copy — they read C.STATIC_VERSION, which comes from the
-    # deployed CODE. A session config is frozen at creation, so a template
-    # reading `session.config.static_version` 500s for every in-flight
-    # participant of a study that adds the parameter later (measured; see
-    # scripts/tests/frozen_config_test.py), and a cache-busting token should follow the
-    # build anyway, not the session.
-    static_version=STATIC_VERSION,
-
-    # =========================================================================
-    # PROLIFIC  —  LAST, AND EVERY KEY HERE IS PREFIXED `prolific_`
-    # =========================================================================
-    # Every exclusively-Prolific parameter, together at the end (Julian,
-    # 2026-08-13). Two things make this block worth keeping contiguous:
-    #
-    #   * THE ORDER OF THIS DICT IS THE ORDER OF THE ADMIN'S SESSION-CONFIG
-    #     FORM. oTree renders SESSION_CONFIG_DEFAULTS in INSERTION ORDER, and it
-    #     gives that form no section headings at all — so a contiguous block plus
-    #     the shared `prolific_` prefix is the ONLY grouping available to us.
-    #     Anything filed here is out of the way of somebody configuring a lab
-    #     session, and anything a lab session does need is above.
-    #   * THE PREFIX IS THE OTHER HALF OF THAT. A key named `prolific_cc_code` or
-    #     `prolific_completion_redirects` reads as general machinery; `prolific_cc_code`
-    #     says who it belongs to at the point of use, in a template, in an
-    #     export header and in this form. Renamed 2026-08-13 while the template
-    #     has NO live studies — the same rename later would be a schema change
-    #     across running sessions.
-    #
-    # WHAT IS NOT HERE, deliberately: `allowed_devices` (the entry gate applies
-    # to every study type — see the ENTRY section above) and `recruitment`
-    # itself (the axis, not a Prolific parameter).
-    #
-    # The study's ENTRY URL is configured on Prolific's side (see
-    # docs/running_on_prolific.md); the completion codes below are created in
-    # the Prolific study UI and pasted per config — the prelaunch banner flags
-    # any REPLACE_* placeholder that survives to launch.
-    prolific_capture_participant_id=False,  # capture the Prolific ID at entry
-    prolific_completion_redirects=False,    # send them back with a completion code
     # WHERE A SCREENED-OUT PARTICIPANT IS SENT: a Prolific completion URL
     # carrying `prolific_device_code`, built by
     # common.prolific_screenout_return_url from that ONE key. There is no
@@ -666,9 +714,9 @@ def resolve_recruitment_profile(config):
     resolution writes STUDY-TYPE values only. Debug/testing loosenings are a
     SEPARATE OVERRIDE LAYER that sits on top: they are consulted at the point
     of use (settings.DEBUG from the environment, plus DEBUG-gated keys like
-    verify_quiz) and never rewrite the resolved lab/prolific values here or
+    quiz_verify) and never rewrite the resolved lab/prolific values here or
     anywhere else. Turning the testing switch off — setting OTREE_PRODUCTION=1,
-    or verify_quiz back to True — therefore returns every gate to exactly the
+    or quiz_verify back to True — therefore returns every gate to exactly the
     real study behaviour, with nothing left changed behind it. Keep it that
     way: a future testing switch must also override at read time, never edit
     the resolved config.
@@ -678,7 +726,7 @@ def resolve_recruitment_profile(config):
     if bundle is None:
         hint = (
             " The 'testing' profile was removed: clickthrough loosenings are "
-            "the DEBUG axis (OTREE_PRODUCTION unset + verify_quiz=False), not "
+            "the DEBUG axis (OTREE_PRODUCTION unset + quiz_verify=False), not "
             "a study type." if profile_name == 'testing' else ""
         )
         raise ValueError(
@@ -697,7 +745,7 @@ def resolve_recruitment_profile(config):
 # resolution pass below turns that into a full, visible set of flags.
 SESSION_CONFIGS = [
     # Clickthrough config: a real study type (lab) with the loosenings set
-    # EXPLICITLY per config — there is no 'testing' study type. verify_quiz
+    # EXPLICITLY per config — there is no 'testing' study type. quiz_verify
     # is honoured only under DEBUG, so this config cannot weaken production.
     dict(
         name='test',
@@ -705,9 +753,9 @@ SESSION_CONFIGS = [
         app_sequence=['before', 'intro', 'main', 'outro'],
         num_demo_participants=10,
         recruitment='lab',
-        verify_quiz=False,           # DEBUG-only loosening: click through the quiz
-        collect_bank_details=False,  # skip payment/demographics forms when clicking through
-        collect_demographics=False,
+        quiz_verify=False,           # DEBUG-only loosening: click through the quiz
+        collect_outro_bank_details=False,  # skip payment/demographics forms when clicking through
+        collect_outro_demographics=False,
         pilot_feedback=True,         # exercise the pilot feedback page too
         num_experimental_rounds=3,   # short for quick testing
     ),
@@ -801,8 +849,8 @@ PARTICIPANT_FIELDS = [
 # - comprehension_disqualified: set when a participant fails the quiz too often.
 # - comprehension_reread_used: True once a lab participant enters the second
 #   instructions pass (quiz_reread module). Consumed on entry, not on offer.
-# - device_info: captured device/screen dict when device_capture is on.
-# - screenout_active: True while the entry device gate (allowed_devices) is holding
+# - device_info: captured device/screen dict when telemetry_device_capture is on.
+# - screenout_active: True while the entry device gate (prolific_allowed_devices) is holding
 #   the participant on the consent page's index with exit_code -4, shown
 #   before/screened_out.html instead of consent. Authoritative flag, and NOT
 #   write-once: the wall is soft, so a pre-consent request from an accepted
@@ -931,12 +979,12 @@ def _prelaunch_problems():
         # Check the EFFECTIVE config (defaults + entry), since keys like prolific_cc_code
         # live in SESSION_CONFIG_DEFAULTS and are merged by oTree at runtime.
         eff = {**SESSION_CONFIG_DEFAULTS, **cfg}
-        # verify_quiz=False is a DEBUG loosening; it is IGNORED in production,
+        # quiz_verify=False is a DEBUG loosening; it is IGNORED in production,
         # but a config still carrying it at launch is a testing config that
         # should not ship — flag it.
-        if not DEBUG and not eff.get('verify_quiz', True):
+        if not DEBUG and not eff.get('quiz_verify', True):
             problems.append(
-                (f"config {cfg['name']!r} verify_quiz", False,
+                (f"config {cfg['name']!r} quiz_verify", False,
                  'True (False is a DEBUG-only loosening and is ignored in production)'))
         # Placeholder completion codes only matter when the config actually
         # redirects to Prolific.

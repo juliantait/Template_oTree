@@ -408,9 +408,9 @@ def main():
         row = (s.query(OutroPlayer)
                .filter(OutroPlayer.participant_id == pp.id).one())
         cfg = pp.session.config
-        base = float(common.cfg(cfg, 'showup'))
+        base = float(common.cfg(cfg, 'payment_show_up'))
         decision_bonus = float(row.selected_sum)
-        quiz_bonus = float(row.quiz_bonus_awarded)
+        payment_quiz_bonus = float(row.quiz_bonus_awarded)
         total = float(row.earned)
         admin_total = float(pp.payoff_plus_participation_fee())
         # THE BONUS = everything Prolific would pay through the bonus flow,
@@ -418,7 +418,7 @@ def main():
         # here, and derived from the stored components rather than from the
         # total minus something — a bonus computed as `total - base` would be
         # right by construction and would prove nothing about itemisation.
-        bonus = decision_bonus + quiz_bonus
+        bonus = decision_bonus + payment_quiz_bonus
 
         # --- each component exists as its own recorded figure ---------------
         check(row.field_maybe_none('selected_sum') is not None,
@@ -426,25 +426,25 @@ def main():
               f'(outro.Player.selected_sum = {decision_bonus})')
         check(row.field_maybe_none('quiz_bonus_awarded') is not None,
               f'the quiz bonus is recorded on its own '
-              f'(outro.Player.quiz_bonus_awarded = {quiz_bonus})')
+              f'(outro.Player.quiz_bonus_awarded = {payment_quiz_bonus})')
         check(base > 0,
               f'the base payment is inside oTree, not only on the platform '
-              f'(config showup = {base}) — the reviewer\'s study failed '
+              f'(config payment_show_up = {base}) — the reviewer\'s study failed '
               f'exactly here, with a base oTree never saw')
 
         # --- and they RECONSTRUCT the total exactly ------------------------
         # No residue: if the parts do not add up, an itemised figure is a
         # guess and the payer cannot trust any single one of them.
-        residue = total - (base + decision_bonus + quiz_bonus)
+        residue = total - (base + decision_bonus + payment_quiz_bonus)
         check(abs(residue) < 1e-9,
               f'base + decision bonus + quiz bonus == earned exactly '
-              f'({base} + {decision_bonus} + {quiz_bonus} = {total}, residue '
+              f'({base} + {decision_bonus} + {payment_quiz_bonus} = {total}, residue '
               f'{residue!r}) — nothing is unaccounted for')
 
         # --- THE BONUS IN ISOLATION ----------------------------------------
         check(bonus > 0,
               f'the BONUS figure exists on its own: {bonus} '
-              f'(decision {decision_bonus} + quiz {quiz_bonus})')
+              f'(decision {decision_bonus} + quiz {payment_quiz_bonus})')
         check(abs((total - bonus) - base) < 1e-9,
               f'…and the total EXCEEDS it by exactly the base ({total} − '
               f'{bonus} = {total - bonus}, base {base}) — so a payer who put '
@@ -455,10 +455,10 @@ def main():
               f'({bonus}): one number cannot serve both mechanisms')
         # Each half of the bonus separately, so a study that routes only one
         # of them through a different flow can still read its figure.
-        check(decision_bonus > 0 and quiz_bonus > 0
-              and decision_bonus + quiz_bonus == bonus,
+        check(decision_bonus > 0 and payment_quiz_bonus > 0
+              and decision_bonus + payment_quiz_bonus == bonus,
               f'both halves of the bonus are separately readable '
-              f'({decision_bonus} + {quiz_bonus}), not merged into one field')
+              f'({decision_bonus} + {payment_quiz_bonus}), not merged into one field')
 
         # --- the itemisation reaches the EXPORT, where the payer reads it ---
         buf = io.StringIO()
@@ -469,7 +469,7 @@ def main():
                        'player.earned'):
             check(column in cols,
                   f'the export carries {column} as its own column')
-        check(not any(c.endswith('.showup') for c in cols),
+        check(not any(c.endswith('.payment_show_up') for c in cols),
               'KNOWN GAP, asserted so it cannot change unnoticed: the BASE is '
               'a session-config value, not a per-participant column, so the '
               'app export alone does not carry it — it is in the session '
@@ -526,9 +526,9 @@ def main():
 
     print(f'\n--- §9 concrete numbers, completed PROLIFIC participant '
           f'(for the participation_fee / payoff-composition decision) ---')
-    print(f'    base (config showup, inside earned) : {base}')
+    print(f'    base (config payment_show_up, inside earned) : {base}')
     print(f'    decision bonus (selected_sum)       : {decision_bonus}')
-    print(f'    quiz bonus (quiz_bonus_awarded)     : {quiz_bonus}')
+    print(f'    quiz bonus (quiz_bonus_awarded)     : {payment_quiz_bonus}')
     print(f'    BONUS ALONE (what Prolific bonuses) : {bonus}')
     print(f'    earned / participant.payoff         : {total}')
     print(f'    ADMIN PAYMENTS PAGE SHOWS           : {symbol}{admin_total:.2f}'

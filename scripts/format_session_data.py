@@ -123,7 +123,7 @@ def main():
     # deliberately NOT listed and survives intact.
     json_columns = [
         "participant.participant_extra",     # free JSON bucket: screen-out history, raw UA copies
-        "participant.device_info",           # raw device/screen blob (device_capture)
+        "participant.device_info",           # raw device/screen blob (telemetry_device_capture)
         "participant.tab_monitor_focus_event_ids",       # tab-monitor dedup bookkeeping (tab_monitor_focus_loss_count is the datum)
         "participant.tab_monitor_focus_events",          # per-event {page, region, ts} log (tab_monitor_where is the readable form)
         "before.1.player.device_info_json",  # the same device blob, as submitted

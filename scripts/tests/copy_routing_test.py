@@ -210,7 +210,7 @@ SCREENOUT_ROWS = [
 ]
 
 for row in SCREENOUT_ROWS:
-    modified = dict(row['modified'], allowed_devices=['computer'])
+    modified = dict(row['modified'], prolific_allowed_devices=['computer'])
     r, created = entry(row['config'], PHONE_UA, **modified)
     label = row['label']
     if r.status_code >= 500:
@@ -268,7 +268,7 @@ consent = visible_text(r.text)
 check('contact the researchers through Prolific' in consent,
       'friend-test config: consent names Prolific as the contact route')
 
-r, _ = entry('prolific', PHONE_UA, allowed_devices=['computer'], **DEAD_END)
+r, _ = entry('prolific', PHONE_UA, prolific_allowed_devices=['computer'], **DEAD_END)
 screenout = visible_text(r.text)
 check(SWITCH_HEADING in screenout,
       'friend-test config: ...and the screen-out page is NOT a dead end')

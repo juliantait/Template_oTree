@@ -5,7 +5,7 @@ WHY THIS EXISTS. Every HTTP walker that has to drive a participant PAST the quiz
 needs the right answers. In PRODUCTION mode the page does not carry them — the
 DEBUG-only `quiz-solutions-data` blob is emitted only under `settings.DEBUG`
 (see intro/templates/quiz.html) — so a walker that reads its answers off the
-page fails the quiz. On a Prolific config that is not a dead end: `comprehension_dq`
+page fails the quiz. On a Prolific config that is not a dead end: `quiz_comprehension_dq`
 is on, so the failed walker is routed to the COMPREHENSION-DQ ending instead of
 the ending it meant to reach, and every assertion aimed at the intended ending
 is now being made against the wrong page. (That is exactly what left

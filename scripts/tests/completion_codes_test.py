@@ -125,11 +125,11 @@ def main():
             section('1. DEVICE SCREEN-OUT — the entry gate, on a phone')
             # Its own path: never reaches the outro at all. The way out is the
             # device completion URL, built from prolific_device_code.
-            # allowed_devices=['computer'] is what MAKES a phone a screen-out;
+            # prolific_allowed_devices=['computer'] is what MAKES a phone a screen-out;
             # without it the gate admits every device and case 1 tests nothing.
             s = create_session('prolific', num_participants=4,
                                modified_session_config_fields={
-                                   'allowed_devices': ['computer']})
+                                   'prolific_allowed_devices': ['computer']})
             db.commit()
             codes = [p.code for p in s.get_participants()]
             context, page = fresh_page(

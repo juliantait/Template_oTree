@@ -16,7 +16,7 @@ Intro
 """
 class C(BaseConstants):
     # Asset cache-buster for this BUILD (settings.STATIC_VERSION).
-    # Templates read C.STATIC_VERSION, never session.config.static_version:
+    # Templates read C.STATIC_VERSION, never session.config.build_static_version:
     # a session config is frozen at creation, so the template read 500s
     # for in-flight participants when the parameter post-dates them.
     STATIC_VERSION = STATIC_VERSION
@@ -93,8 +93,8 @@ class Player(BasePlayer):
 
 # FUNCTIONS
 def comprehension_threshold(cfg) -> int:
-    """`comprehension_max_failures` as an int, via the safe accessor."""
-    return int(common.cfg(cfg, 'comprehension_max_failures'))
+    """`quiz_comprehension_max_failures` as an int, via the safe accessor."""
+    return int(common.cfg(cfg, 'quiz_comprehension_max_failures'))
 
 
 def reread_available(player) -> bool:
@@ -197,7 +197,7 @@ def instructions_context(player) -> dict:
     item 4, Julian 2026-08-12). The consent and results pages render currency
     through oTree's cu(), so the instructions must too — a participant who was
     promised "2.5 EUR" and is paid "€2.50" is comparing two spellings of the
-    same money. The templates therefore print `{{ showup }}` with NO
+    same money. The templates therefore print `{{ payment_show_up }}` with NO
     hand-written unit after it: the unit comes from the currency formatting,
     and a study that changes REAL_WORLD_CURRENCY_CODE gets it everywhere.
 
@@ -217,8 +217,8 @@ def instructions_context(player) -> dict:
         # same key bare and crashed at Results — the worst split of one value.
         # One policy now, and it is the payment path's own: failing loudly
         # beats silently promising somebody nothing.
-        'showup': cu(common.cfg(cfg, 'showup')),
-        'quiz_bonus': cu(common.cfg(cfg, 'quiz_bonus')),
+        'payment_show_up': cu(common.cfg(cfg, 'payment_show_up')),
+        'payment_quiz_bonus': cu(common.cfg(cfg, 'payment_quiz_bonus')),
         'num_experimental_rounds': common.cfg(cfg, 'num_experimental_rounds'),
         # Participant fields via .vars.get(), never getattr() (KeyError trap).
         'treatment': player.participant.vars.get('treatment_group', ''),
@@ -246,13 +246,13 @@ def quiz_modal_state(player) -> dict:
     re-read module off got NO help at all: no offer, no at-will dialog
     (suppressed for lab below) and no notice — just the inline error, forever,
     with the experimenter never called. The lab rule is "crossing
-    comprehension_max_failures starts the study helping", so the notice
+    quiz_comprehension_max_failures starts the study helping", so the notice
     appears whenever the threshold has been crossed and no re-read offer is
     currently open. Prolific never shows it: there is no experimenter to raise
     a hand to.
 
     ESCALATION, derived from the SAME threshold — no new setting. At twice
-    comprehension_max_failures the notice also names the number of attempts.
+    quiz_comprehension_max_failures the notice also names the number of attempts.
     experimenter_attempts is 0 for "not escalated"; the template shows the
     extra line only when it is non-zero.
 
@@ -334,10 +334,10 @@ class quiz(participant_tab_monitor.MonitoredPage):
 
     @staticmethod
     def error_message(player, values):
-        # verify_quiz=False is a DEBUG loosening (clickthrough), honoured only
+        # quiz_verify=False is a DEBUG loosening (clickthrough), honoured only
         # while DEBUG is on — in production validation always runs, whatever
         # the config says.
-        if otree_settings.DEBUG and not common.cfg(player.session.config, 'verify_quiz'):
+        if otree_settings.DEBUG and not common.cfg(player.session.config, 'quiz_verify'):
             return
         # A participant taking the re-read offer is not submitting answers, so
         # don't validate them. Honoured ONLY while the offer is actually open
@@ -361,7 +361,7 @@ class quiz(participant_tab_monitor.MonitoredPage):
             # When enabled, a participant who fails too many times is not blocked
             # again — they are flagged and allowed through to the disqualified
             # ending (see app_after_this_page and the outro Disqualified page).
-            if _flag(player, 'comprehension_dq'):
+            if _flag(player, 'quiz_comprehension_dq'):
                 if player.participant.comprehension_failed_attempts >= comprehension_threshold(cfg):
                     player.participant.comprehension_disqualified = True
                     common.set_exit_code(

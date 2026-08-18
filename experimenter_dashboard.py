@@ -507,7 +507,7 @@ def _session_context(session) -> dict:
     except Exception:
         rounds_total = None
     try:
-        quiz_max = int(common.cfg(session.config, 'comprehension_max_failures'))
+        quiz_max = int(common.cfg(session.config, 'quiz_comprehension_max_failures'))
     except Exception:
         quiz_max = None
     # Module flags read raw (.get — common.flag's rule); thresholds through
@@ -1033,7 +1033,7 @@ def _non_sepa_ids(session) -> set:
     Three deliberate narrowings, each Julian's call, none to be widened:
       * `sepa == 0` ONLY. `sepa` is nullable and NULL means the check NEVER
         RAN (every Prolific participant, and any config with
-        collect_bank_details off — see CODEBOOK.md's three-state note). Null
+        collect_outro_bank_details off — see CODEBOOK.md's three-state note). Null
         must read as NO PILL: absence of a check is not a payment problem.
       * NO pill for a non-Dutch but in-SEPA account (`sepa == 1`). There is no
         yellow payment state — the bank form's BIC rule already handled the
@@ -1323,7 +1323,7 @@ def _reached_step(terminal, stamps) -> str:
 
 def _quiz_cell(v, stamps, step, terminal, max_failures, last_attempt_passed) -> dict:
     """The quiz-attempts cell: white before any attempt, filling as wrong
-    attempts rise, RED at comprehension_max_failures, GREEN with the attempt
+    attempts rise, RED at quiz_comprehension_max_failures, GREEN with the attempt
     count once passed (so 1 = passed first try), and VIOLET-BORDERED "forced"
     when the participant left the quiz without ever answering it correctly.
 
@@ -1348,7 +1348,7 @@ def _quiz_cell(v, stamps, step, terminal, max_failures, last_attempt_passed) -> 
     PARTICIPANT — an operator did this on purpose — so the cell says "forced",
     in the same violet the dashboard already uses for "something here is not a
     participant behaviour". `None` (nothing graded, e.g. a DEBUG clickthrough
-    with verify_quiz off) leaves the old behaviour exactly as it was: no
+    with quiz_verify off) leaves the old behaviour exactly as it was: no
     evidence is not evidence of a force-advance.
     """
     import common   # local, like every common/settings import in this

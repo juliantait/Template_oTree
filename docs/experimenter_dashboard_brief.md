@@ -59,7 +59,7 @@ the lab, the Prolific ID online.
 **Per-row cells:**
 
 - **Quiz attempts** — white at the start; fills as attempts rise; **red at
-  `comprehension_max_failures`**; **green with the attempt count once passed**,
+  `quiz_comprehension_max_failures`**; **green with the attempt count once passed**,
   so `1` means passed first time.
 - **Time on instructions** — from the stage timestamps.
 - **Earnings** — once known.

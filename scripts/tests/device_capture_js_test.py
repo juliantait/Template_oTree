@@ -93,10 +93,10 @@ CONFIGURED_RETURN_URL = 'https://app.prolific.com/'
 
 
 def create(**modified):
-    """A prolific session (device_capture on) with the gate wide open, so every
+    """A prolific session (telemetry_device_capture on) with the gate wide open, so every
     User-Agent below reaches the consent page and runs the script."""
     fields = {'prolific_screenout_return_url': CONFIGURED_RETURN_URL,
-              'allowed_devices': ['phone', 'tablet', 'computer', 'unknown']}
+              'prolific_allowed_devices': ['phone', 'tablet', 'computer', 'unknown']}
     fields.update(modified)
     r = requests.post(BASE + '/api/sessions',
                       json={'session_config_name': 'prolific',
