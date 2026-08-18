@@ -8,9 +8,19 @@ must not break.
 **`DECISIONS.md` records why things are the way they are** — each decision with
 its reasoning, the alternative that was rejected, and *where it is enforced* (or
 an admission that nothing enforces it). **Read it before changing anything that
-looks odd, and add to it when you make a decision someone could later mistake
-for an accident.** Most of what looks like redundancy in this codebase is
-load-bearing, and that file is where the evidence lives.
+looks wrong, and add to it in the same change that makes a decision someone could
+later mistake for an accident.** Most of what looks like redundancy in this
+codebase is load-bearing, and that file is where the evidence lives. The failure
+mode it defends against is not ignorance but **helpfulness**: a missing config
+value reads as an unfinished port, inert code reads as dead weight, a constant
+only coherent at one value reads as a tunable knob, and a competent agent
+"corrects" each one. The reason, written down, is what stops that.
+
+**On a study forked from this template, `DECISIONS.md` is fresh.** The fork
+starts its own log from `docs/DECISIONS_stub.md` (see the README's "How to use
+and edit this template", step 0) rather than carrying the template's development
+history, so on a real study this file is your study's decisions and nobody
+else's. Keep reading it and adding to it exactly as above.
 
 ## The three orthogonal controls
 
