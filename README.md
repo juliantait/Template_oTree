@@ -149,10 +149,14 @@ concrete to describe, not a pattern to copy.)
    Prolific) the completion codes; see the parameter scheme below. Then shape
    the entry pages: welcome + consent live in `before/welcome+consent.html`
    and `before/__init__.py` → [`docs/skills_claude/writing_welcome_consent.md`](docs/skills_claude/writing_welcome_consent.md).
-   Treatment assignment: edit `before/treatment_assignment.py` — treatments
-   are assigned when the session is created (via `creating_session` in the
-   `before` app); adjust `assign_treatments` to set the treatment groups you
-   need.
+   Treatment assignment: set your cells in `settings.TREATMENT_CELLS`
+   (shipped as the placeholder `['row', 'column']`) — treatments are assigned
+   **on arrival** at the first instructions page (`intro.instructing`), so a
+   participant who abandons at consent or is turned away by the device gate
+   never takes a cell. The mechanism in `before/treatment_assignment.py`
+   (`assign_on_arrival`) balances the cells as participants arrive
+   (least-filled, random tie-break) and is race-safe per session; change the
+   cells, keep the mechanism.
 2. **Build the game in `main/`** — replace the placeholder task pages,
    subclassing `TaskPage` and keeping the machinery you inherit (round loop,
    progress strip, monitoring, payoff plumbing); update

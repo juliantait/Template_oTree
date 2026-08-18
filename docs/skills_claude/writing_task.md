@@ -135,8 +135,13 @@ update it with the contract — it tolerates unknown names by design.)
   the Stag Hunt).
 
 **`before/treatment_assignment.py`** — if your design has treatments:
-assignment happens at session creation; `intro`'s `{% if treatment %}`
-conditionals and `instructions_context['treatment']` read the result.
+set your cells in `settings.TREATMENT_CELLS` (placeholder `['row', 'column']`);
+assignment happens **on arrival** at `intro.instructing`
+(`assign_on_arrival` — balance-on-arrival, least-filled with a random
+tie-break, race-safe per session), NOT at session creation, so a participant
+who never reaches the study takes no cell. `intro`'s `{% if treatment %}`
+conditionals and `instructions_context['treatment']` read the result (the cell
+is assigned before that page renders).
 
 **`outro/` (step 4):**
 

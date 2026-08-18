@@ -241,6 +241,47 @@ mode degrades to a correct generic sentence instead.
 
 ---
 
+## Treatment assignment (`participant.treatment_group`)
+
+The treatment cell a participant was assigned. A **participant field** (exported
+at participant level), holding one of `settings.TREATMENT_CELLS` — shipped as the
+placeholder cells `row` / `column`, to be replaced wholesale by a real study.
+
+**Assigned ON ARRIVAL, not at session creation (changed 2026-08-18).** The cell
+is assigned the moment the participant first reaches the **instructions page**
+(`intro.instructing`), by `before.treatment_assignment.assign_on_arrival`. Until
+then the field is the empty string `''`, set at session creation
+(`before.creating_session` → `treatment_assignment.init_unassigned`) so the
+column is never blank.
+
+**So `''` is meaningful: it means "never took a cell".** A participant who
+abandoned at consent, declined consent (exit `-1`), or was screened out by the
+device gate (exit `-4`) exports `treatment_group == ''` — they never reached the
+study, so no cell was spent on them. This is the point of the move: randomisation
+is as late as possible, so post-randomisation dropout is limited. Before this
+date the cell was dealt to **every** participant at creation, so an abandoner
+carried a cell that was never used — which biased any balance computed over the
+assigned rows.
+
+**Balance is over ARRIVALS, not completers, and assignments are PERMANENT.** Each
+arrival is given the **least-filled** cell in its session, ties broken at random;
+counting only the cells already taken so far keeps the session balanced at every
+intermediate moment (not just when it fills). An assigned participant **keeps
+their cell even if they then abandon** — the balance is of who *arrived*, and a
+cell is never released or re-dealt. A real multi-cell study that would rather
+balance *completers* (release an abandoned cell) is a deliberately deferred
+decision — see `DECISIONS.md`. The count-and-assign is race-safe per session (a
+DB row lock serialises simultaneous arrivals), so two people arriving at the same
+instant cannot both grab the same least-filled cell.
+
+**At analysis time:** `treatment_group in settings.TREATMENT_CELLS` is "arrived
+and was randomised"; `treatment_group == ''` is "never randomised" (cross-check
+`exit_code`). A per-cell count over a finished session is balanced by arrivals;
+it will **not** in general equal a count over *completers*, because dropout after
+assignment is not rebalanced.
+
+---
+
 ## Stage timestamps (`participant.stage_timestamps`)
 
 A dict `{stage_name: epoch_seconds}` filled as the participant clears each stage
@@ -459,9 +500,14 @@ Spare inventory:
 
 Fill in per-study fields as you build the task. The template ships with:
 
-- `before.Player`: `participant_label`, `treatment_group`, `consent`,
+- `before.Player`: `participant_label`, `consent`,
   `participant_id_url`, `participant_id_external`, `is_mobile`,
   `device_info_json`, `prolific_label_conflict`.
+  - **There is no `treatment_group` column on `before.Player`** (removed
+    2026-08-18 when treatment assignment moved to arrival). Treatment is now
+    assigned in `intro`, AFTER this whole app, so a `before` copy could only ever
+    be empty. The record is the participant field `treatment_group` — see
+    "Treatment assignment" below.
   - **`consent` is populated exactly when the session ran with
     `explicit_consent` on** (before 2026-08-14 this was decided by
     `prolific_completion_redirects` — the flag was split, see DECISIONS.md).
@@ -589,6 +635,14 @@ carries the six columns, blank.
 **Added column (2026-08-13):** `main.Player.round_payoff` — the game's
 per-round result, replacing the use of oTree's `player.payoff` (see "The
 payment record" above).
+
+**Removed column (2026-08-18):** `before.Player.treatment_group`. It was a copy
+of the participant-level cell, written on the consent page — but treatment
+assignment moved to `intro` (arrival), which is after the whole `before` app, so
+the copy could only ever be empty. The record is the participant field
+`treatment_group` (see "Treatment assignment" above). Dropping a column is
+benign for an existing database — the leftover table column is simply unread — so
+this needs no `resetdb`, unlike an ADDED column.
 
 **Deploying this over a study that HAS data needs `otree resetdb`** — the
 build ADDS `before.Player.prolific_label_conflict` and (since 2026-08-13)

@@ -119,7 +119,13 @@ class Group(BaseGroup):
 
 class Player(BasePlayer):
     participant_label = models.StringField(blank=True)
-    treatment_group = models.StringField(blank=True)
+    # NB: there is deliberately NO `treatment_group` COLUMN on this player any
+    # more (removed 2026-08-18 with the assignment move). Treatment is assigned
+    # ON ARRIVAL at intro, which is AFTER this whole app, so a `before.Player`
+    # copy could only ever be written before the cell exists — i.e. always empty,
+    # which is a lie in the export (CODEBOOK.md's "column nothing records"
+    # rule). The authoritative record is the participant field
+    # `treatment_group`, exported at participant level; intro reads it directly.
     # NO `initial=` AND NO `blank=True`, both deliberate and both load-bearing
     # (`docs/skills_claude/writing_welcome_consent.md`: "Consent is an explicit
     # affirmative action … never a pre-checked box"):
@@ -177,8 +183,14 @@ def creating_session(subsession: Subsession):
     # row is ever blank (exit_code starts at 0 = abandoned).
     for player in subsession.get_players():
         common.init_participant(player.participant)
-    # Then assign treatments (see before/treatment_assignment.py).
-    return treatment_assignment.assign_treatments(subsession)
+    # TREATMENT IS NO LONGER DEALT HERE. It is assigned ON ARRIVAL at the intro
+    # instructions page (intro.instructing), so a cell is spent only by someone
+    # who actually reached the study — an abandoner at consent or a device
+    # screen-out takes none. At creation we only mark everyone UNASSIGNED (''),
+    # so the export column exists and '' means "never took a cell". The real
+    # balance-on-arrival mechanism lives in before/treatment_assignment.py; see
+    # DECISIONS.md for why it moved and why assignments are permanent.
+    treatment_assignment.init_unassigned(subsession)
 
 
 # One implementation, in common.flag (raw config.get — see its docstring for
@@ -628,11 +640,10 @@ class welcome(Page):
         # consented or not (common.consent_submitted).
         common.mark_consent_submitted(player.participant)
         player.participant_label = player.participant.label or ''
-        # Copy the pre-assigned treatment onto the player for display/testing.
-        # Read participant vars with .vars.get(), never getattr() (KeyError trap;
-        # the oTree vars descriptor raises KeyError, so a getattr default does not
-        # protect you — see docs/conventions.md).
-        player.treatment_group = player.participant.vars.get('treatment_group', '')
+        # NB: treatment is NOT copied here any more. It is assigned on arrival at
+        # intro (after this app), so at consent time there is nothing to copy —
+        # see the note on the removed `treatment_group` column above and
+        # before/treatment_assignment.py.
 
         # The id arrived in the URL (if at all). Keep it on the player for the
         # audit trail and seed participant.label from it when oTree has not
