@@ -236,17 +236,27 @@ STALL_SECTION_LABELS = {
     UNMAPPED_STEP: 'Unplaced app',
 }
 
-# Terminal states OVERRIDE the timeline marker: the emoji + colour fill the
-# marker wherever it had reached, and the row's state cell names the state.
-# One emoji each, chosen to read across a room and to not look like each
-# other: 📵 device screened out, ✋ declined consent, ❌ failed comprehension,
-# 👀 tab-monitor disqualified.
-TERMINAL_STATES = {
-    'screened_out': dict(emoji='📵', label='Screened out'),
-    'no_consent': dict(emoji='✋', label='Declined consent'),
-    'comprehension': dict(emoji='❌', label='Comprehension DQ'),
-    'tab_monitor': dict(emoji='👀', label='Tab monitor DQ'),
-}
+# =============================================================================
+# ENDINGS ARE GENERATED FROM THE EXIT-CODE TABLE — there is no list to forget
+# =============================================================================
+# THE WHOLE POINT: a study forked from this template will add its own exit codes
+# and its own screening reasons, and the monitor must handle that WITHOUT anyone
+# editing this file. So nothing below enumerates the endings; everything is
+# derived from `settings.EXIT_CODES` (which codes exist) and
+# `settings.EXIT_CODE_META` (what each one means to a human). Adding a case to an
+# if/elif chain is a thing a fork can omit; adding a key to the dict it is
+# already editing is not.
+#
+# WHAT THIS REPLACED, and why it had to go: a hard-coded TERMINAL_STATES map of
+# four reasons with their emoji and labels, plus a four-branch if/elif in
+# _participant_row. A fork adding `data_quality = -5` got NOTHING from it — no
+# pill, no marker, no count — and, because the row had run past the last page
+# index, was silently counted as FINISHED. That inflated the finished total AND
+# both averages' denominators, which is the worst possible failure direction:
+# invisible, and flattering. See DECISIONS.md.
+#
+# EVERY FALLBACK IS PER FIELD, never all-or-nothing: a code that declares a label
+# but no emoji gets its label and an honest blank.
 
 # Exit codes as shipped, used only if settings cannot be read (identity.py's
 # `_finished` uses the same fallback idiom).
@@ -254,6 +264,120 @@ _FALLBACK_EXIT_CODES = dict(
     finished=1, abandoned=0, no_consent=-1, comprehension=-2,
     tab_monitor=-3, screened_out=-4,
 )
+
+# Presentation for those codes, same fallback discipline. Kept in step with
+# settings.EXIT_CODE_META, which is the real source; this exists so the module
+# stays importable and renderable with settings absent.
+_FALLBACK_EXIT_CODE_META = {
+    'finished': dict(label='Finished', emoji='\u2713', kind='finished'),
+    'abandoned': dict(label='In progress', emoji=None, kind='not_an_ending'),
+    'no_consent': dict(label='Declined consent', emoji='\u270b',
+                       kind='premature', when='entry'),
+    'comprehension': dict(label='Comprehension DQ', emoji='\u274c',
+                          kind='premature', when='started'),
+    'tab_monitor': dict(label='Tab monitor DQ', emoji='\U0001f440',
+                        kind='premature', when='started'),
+    'screened_out': dict(label='Screened out', emoji='\U0001f4f5',
+                         kind='premature', when='entry'),
+}
+
+_FALLBACK_ENDING_GROUPS = (
+    ('entry', 'turned away at entry'),
+    ('started', 'ejected after starting'),
+    (None, 'unclassified'),
+)
+
+# THE DEFAULT KIND FOR AN UNDECLARED CODE, and the direction it fails in.
+# PREMATURE, deliberately: defaulting an unknown code to a normal finish would
+# silently inflate FINISHED and the earnings/time denominators, so every figure
+# would read better than reality with nothing on screen looking wrong.
+# Premature errs pessimistically and VISIBLY. A loud failure beats a silent one.
+UNDECLARED_KIND = 'premature'
+
+# The timeline marker for an ending with no emoji declared. U+00D7 MULTIPLICATION
+# SIGN — NOT U+2717 BALLOT X, which is tofu in several Linux system fonts
+# (measured in the render check's Chromium; the quiz cell learnt this the hard
+# way and this inherits it rather than rediscovering it), and NOT U+274C, which
+# is already the comprehension DQ's emoji and would collide.
+UNDECLARED_MARKER = '\u00d7'
+
+
+def _exit_code_meta() -> dict:
+    try:
+        from settings import EXIT_CODE_META
+        return dict(_FALLBACK_EXIT_CODE_META, **EXIT_CODE_META)
+    except Exception:
+        return dict(_FALLBACK_EXIT_CODE_META)
+
+
+def _ending_groups() -> tuple:
+    try:
+        from settings import ENDING_GROUPS
+        return tuple((w, str(lab)) for w, lab in ENDING_GROUPS)
+    except Exception:
+        return _FALLBACK_ENDING_GROUPS
+
+
+def ending_label(name, code, meta=None) -> str:
+    """The human name for an ending.
+
+    Declared label if there is one. Otherwise the EXIT_CODES KEY with underscores
+    as spaces, plus the number — `data quality (-5)`. Deliberately a bit ugly:
+    a slightly awkward label on the monitor is a standing prompt to go and
+    declare a real one, where a prettified guess would remove the prompt without
+    removing the problem. The NUMBER rides along because the number, not the key,
+    is what an analyst sees in the export.
+    """
+    declared = (meta if meta is not None else _exit_code_meta()).get(name) or {}
+    label = declared.get('label')
+    if label:
+        return str(label)
+    # A code that is in NO table at all gets the synthetic name `code_<n>`
+    # (see _participant_row). "code -97 (-97)" says the number twice, so that
+    # one case reads as what it is.
+    if str(name).startswith('code_'):
+        return f'unknown exit code ({code})'
+    pretty = str(name).replace('_', ' ')
+    return f'{pretty} ({code})' if code is not None else pretty
+
+
+def ending_emoji(name, meta=None):
+    """The declared emoji, or None. NEVER a placeholder glyph: inventing one
+    would make an undeclared code look styled, and the gap IS the signal."""
+    declared = (meta if meta is not None else _exit_code_meta()).get(name) or {}
+    return declared.get('emoji') or None
+
+
+def ending_kind(name, meta=None) -> str:
+    """'finished' | 'premature' | 'not_an_ending'. Undeclared -> premature."""
+    declared = (meta if meta is not None else _exit_code_meta()).get(name) or {}
+    kind = declared.get('kind')
+    if kind in ('finished', 'premature', 'not_an_ending'):
+        return kind
+    return UNDECLARED_KIND
+
+
+def ending_when(name, meta=None):
+    """'entry' | 'started' | None. None means UNCLASSIFIED — its own sub-count,
+    never guessed into one of the other two, because nothing has said whether
+    this ending happens before the study begins or after it."""
+    declared = (meta if meta is not None else _exit_code_meta()).get(name) or {}
+    when = declared.get('when')
+    return when if when in ('entry', 'started') else None
+
+
+def codes_of_kind(kind, codes=None, meta=None) -> set:
+    """Every exit-code VALUE whose kind is `kind`.
+
+    This is what makes `kind='finished'` mean something beyond a colour: a
+    study's alternate completion route flows through to the finished tint, the
+    arrival split, the per-treatment FINISHED figure and the earnings/time
+    populations, because they all read this instead of comparing against one
+    hard-coded code.
+    """
+    codes = codes if codes is not None else _exit_codes()
+    meta = meta if meta is not None else _exit_code_meta()
+    return {v for k, v in codes.items() if ending_kind(k, meta) == kind}
 
 
 def _setting(name, default):
@@ -473,20 +597,42 @@ def session_snapshot(session) -> dict:
         stall_legend=stall_legend(),
         poll_seconds=poll_seconds(),
         currency=str(_setting('REAL_WORLD_CURRENCY_CODE', '')),
-        # TOTAL PAYMENTS for the summary strip (below the table): summed
+        # TOTAL PAYMENTS for the EARNINGS pill in the overview: summed
         # server-side from the SAME earnings map the row cells use, so the strip
         # total can never disagree with the per-row figures. Its POPULATION
         # (finished participants — those with a computed `earned`) and count
         # ride along in the dict; see _earnings_total.
         earnings_total=_earnings_total(ctx['earnings']),
-        # TIME for the summary strip: mean intro and mean COMPLETION time, both
-        # over FINISHED participants only (Julian, 2026-08-17), computed
-        # server-side from stage_timestamps like the earnings total — see
-        # _time_summary. Absent (n=0) means nobody has finished, and the pill is
-        # not shown at all.
-        time_summary=_time_summary(session),
+        # THE OVERVIEW BLOCK's two generated groups. Both are tallies over the
+        # rows just built, so they cannot disagree with the table: the same
+        # `finished` boolean, the same `terminal` name, the same `stalled` flag.
+        # Each is wrapped, so a failure blanks its pill and leaves the rest of
+        # the screen alone (the instrumentation rule, at group granularity).
+        treatments=_safe(_treatment_counts, session, rows),
+        endings=_safe(_ending_counts, rows),
+        # TIME for the overview's TIME pill: mean INTRO time and mean
+        # EXPERIMENT time, EACH over its own population (Julian, 2026-08-19),
+        # computed server-side from stage_timestamps like the earnings total —
+        # see _time_summary. A zero count means that figure is not shown.
+        time_summary=_safe(_time_summary, session, ctx),
         now=int(now),
     )
+
+
+def _safe(fn, *args):
+    """Run one overview tally, or return None so its pill simply does not render.
+
+    THE DASHBOARD BREAKS INSTEAD OF THE STUDY, applied one notch finer: a
+    failure in any single group of the overview must not take the table down
+    with it, exactly as a poisoned vars blob renders one error ROW rather than
+    an error PAGE.
+    """
+    try:
+        return fn(*args)
+    except Exception:
+        logger.exception('[dashboard] overview group %s failed',
+                         getattr(fn, '__name__', fn))
+        return None
 
 
 def _session_context(session) -> dict:
@@ -517,11 +663,25 @@ def _session_context(session) -> dict:
                                          'tab_monitor_max_violations'))
     except Exception:
         tab_monitor_max = None
+    _codes = _exit_codes()
+    _meta = _exit_code_meta()
     return dict(
         rounds_total=rounds_total,
         quiz_max_failures=quiz_max,
         stall_seconds=stall_seconds_map(),
-        exit_codes=_exit_codes(),
+        exit_codes=_codes,
+        # THE ENDING TABLE, resolved once per snapshot rather than per row.
+        exit_meta=_meta,
+        # value -> name, so a row can ask "what ending is this code?" without a
+        # linear scan. Built from EXIT_CODES itself, so a fork's new code is in
+        # it by existing.
+        code_names={v: k for k, v in _codes.items()},
+        # Every code that counts as a normal completion (usually just 1).
+        finished_codes=codes_of_kind('finished', _codes, _meta),
+        # participant id -> the string the Participant column renders for them.
+        # THE WAITING-FOR PILL RESOLVES THROUGH THIS (see _waiting_for): it must
+        # name a person the way the rest of the screen names them.
+        names=_participant_names(session),
         earnings=_earnings_map(session),
         quiz_outcomes=_quiz_outcome_map(session),
         non_sepa=_non_sepa_ids(session),
@@ -532,6 +692,81 @@ def _session_context(session) -> dict:
         return_grace=max(0, int(_setting('DASHBOARD_RETURN_GRACE_SECONDS',
                                          90))),
     )
+
+
+def _participant_names(session) -> dict:
+    """participant id -> the string the Participant column shows for them, and
+    whether that string is UNIQUE in this session.
+
+    Returns ``{id: {'name': str, 'unique': bool}}``.
+
+    ONE PASS over rows this snapshot is loading anyway, so it costs nothing
+    measurable — the same shape `quiz_mistakes_snapshot` already builds.
+
+    IT GOES THROUGH `displayed_name`, NOT A FRESH label-or-code EXPRESSION.
+    That rule ("the seat label, else the platform id, else the participant
+    code") already has three implementations in this codebase and its own
+    docstring warns they must not drift; a fourth spelling here is how the
+    waiting-for pill would one day name somebody differently from the row above
+    it.
+
+    UNIQUENESS IS NOT PARANOIA. Two participants can carry the same label, and
+    "waiting for S07" is ambiguous the moment two rows say S07 — so a
+    non-unique name is rendered with its code appended. Compared on the
+    whitespace-collapsed, case-folded form via identity.py, because deciding
+    "same label?" a second way in Python is exactly the drift CLAUDE.md's
+    inverted rule records (it already shipped once, as a Python-vs-SQL split).
+    """
+    try:
+        from identity import normalise_label
+    except Exception:                       # identity not importable yet
+        def normalise_label(x):             # pragma: no cover - fallback only
+            return ' '.join(str(x or '').split()).casefold()
+    out = {}
+    seen = {}
+    for pp in session.pp_set:
+        name = displayed_name(dict(label=str(pp.label or ''),
+                                   code=str(pp.code)))
+        key = normalise_label(name)
+        seen[key] = seen.get(key, 0) + 1
+        out[pp.id] = dict(name=name, code=str(pp.code), _key=key)
+    for entry in out.values():
+        entry['unique'] = seen.get(entry.pop('_key'), 0) <= 1
+    return out
+
+
+def _waiting_for(v, names) -> list:
+    """WHO THIS PARTICIPANT IS WAITING ON, as display names.
+
+    THIS PATH IS INERT ON THE TEMPLATE AND THAT IS DELIBERATE — see DECISIONS.md
+    ("The waiting-for pill ships inert"). This template has no wait pages, so
+    nothing writes ``participant.vars['waiting_for']`` and the pill never renders
+    for anybody. It is implemented, and TESTED against the shape a real wait page
+    would produce, so that a fork adding group matching gets the operator view
+    for free instead of discovering it has to build one. Do not delete it as
+    dead code, and do not read the empty cells as a bug.
+
+    THE CONTRACT a fork writes: a LIST OF PARTICIPANT IDS (``participant.id`` —
+    the same key ``ctx['names']`` and the earnings map are keyed on). Anything
+    else is ignored rather than guessed at.
+
+    AN ID WE CANNOT RESOLVE RENDERS AS '?', never disappears: a wait that names
+    three people and shows two is worse than one that says it lost one.
+    """
+    raw = v.get('waiting_for')
+    if not isinstance(raw, (list, tuple)) or not raw:
+        return []
+    out = []
+    for pid in raw:
+        entry = names.get(pid)
+        if entry is None:
+            out.append('?')
+            continue
+        # A duplicated label is ambiguous, so it is disambiguated rather than
+        # left to mean either of two people.
+        out.append(entry['name'] if entry.get('unique')
+                   else f"{entry['name']} ({entry['code']})")
+    return out
 
 
 def _earnings_map(session) -> dict:
@@ -553,8 +788,107 @@ def _earnings_map(session) -> dict:
     return out
 
 
+def _treatment_counts(session, rows) -> dict:
+    """THE TREATMENT PILL's data: per cell, how many hold it and how many of
+    those have FINISHED, plus the two buckets that make the numbers reconcile.
+
+    ONE TALLY, TWO CALLERS. The assigned counts come from
+    `before.treatment_assignment.cell_tally` — the SAME function the assigner
+    balances on — so the monitor and the algorithm can never disagree about how
+    the cells are distributed. If this counted its own way, an operator would
+    read a perfectly balanced randomiser as broken.
+
+    THE FINISHED FIGURES come from the row dicts already built, so they are the
+    same `finished` boolean the row tint, the header split and the earnings
+    population use. Summing them per cell must equal the ENDINGS pill's FINISHED
+    — that identity is what makes this one section rather than two.
+
+    CELL ORDER is settings.TREATMENT_CELLS, including cells NOBODY holds yet: a
+    cell that vanishes because it is empty is the one an operator most needs to
+    see, and a fixed order stops the strip reshuffling itself between polls.
+    """
+    from before import treatment_assignment
+    tally = treatment_assignment.cell_tally(session)
+    fin_by_cell = {}
+    for r in rows:
+        if r.get('finished') and r.get('treatment'):
+            fin_by_cell[r['treatment']] = fin_by_cell.get(r['treatment'], 0) + 1
+    cells = [dict(cell=str(c), assigned=int(n),
+                  finished=int(fin_by_cell.get(c, 0)))
+             for c, n in tally['cells'].items()]
+    return dict(
+        cells=cells,
+        unassigned=int(tally['unassigned']),
+        # Held values that are not current cells. Shown, never dropped: the
+        # assigner ignores them (correctly), and a panel that did the same would
+        # print numbers that fail to add up with nothing saying why.
+        off_scheme=[dict(value=str(k), n=int(n))
+                    for k, n in sorted(tally['off_scheme'].items())],
+    )
+
+
+def _ending_counts(rows) -> dict:
+    """THE PARTICIPANTS PILL's data: the three buckets that partition everyone
+    who has ARRIVED, plus the ended-early breakdown.
+
+    GENERATED, not enumerated: the reasons come from each row's `terminal` name,
+    which is itself derived from the exit-code table, so a fork's new code
+    appears here by existing (see the ENDINGS header at the top of this file).
+
+    STALLED IS NESTED INSIDE IN_PROGRESS, not beside it. It is a CONDITION on a
+    subset of the people still going, not a fourth outcome, and rendering it as
+    a sibling is precisely the ambiguity this arrangement exists to remove.
+
+    NO `abandoned` COUNT, and there must not be one. Exit code 0 means "never
+    reached an ending" and is the value everyone is INITIALISED to, so live it
+    cannot tell somebody working right now from somebody who closed the tab an
+    hour ago. Those people are inside IN PROGRESS; "abandoned" is a reading only
+    available once a session is over.
+    """
+    in_progress = finished = 0
+    stalled = 0
+    reasons = {}
+    for r in rows:
+        if r.get('error'):
+            continue
+        if r.get('terminal'):
+            name = r['terminal']
+            slot = reasons.setdefault(name, dict(
+                name=name, label=r.get('terminal_label') or name,
+                emoji=r.get('terminal_emoji'), when=r.get('terminal_when'),
+                undeclared=bool(r.get('ending_undeclared')), n=0))
+            slot['n'] += 1
+        elif r.get('finished'):
+            finished += 1
+        elif r.get('arrived'):
+            in_progress += 1
+            if r.get('stalled'):
+                stalled += 1
+    # The ended-early groups, in the declared order, each carrying its reasons.
+    # A group with no members is still listed with its zero, so "nobody declined
+    # consent" is distinguishable from "we do not track that".
+    groups = []
+    for when, label in _ending_groups():
+        members = [r for r in reasons.values() if r['when'] == when]
+        groups.append(dict(when=when, label=label,
+                           n=sum(m['n'] for m in members),
+                           reasons=sorted(members, key=lambda m: m['name'])))
+    return dict(
+        in_progress=in_progress, stalled=stalled, finished=finished,
+        ended_early=sum(r['n'] for r in reasons.values()),
+        groups=groups,
+        # Endings whose code declared no `kind` at all — the loud channel. Its
+        # own alarm row on the page, because a configuration defect must not have
+        # to compete for width with routine counts.
+        undeclared=sorted(
+            (dict(label=r['label'], n=r['n']) for r in reasons.values()
+             if r['undeclared']),
+            key=lambda r: r['label']),
+    )
+
+
 def _earnings_total(earnings_map) -> dict:
-    """TOTAL PAYMENTS for the summary strip: the SUM of the very same `earned`
+    """TOTAL PAYMENTS for the overview's EARNINGS pill: the SUM of the very same `earned`
     figures the rows show, over the participants who HAVE one.
 
     Summed here, server-side, from the SAME dict the row cells are filled from
@@ -587,62 +921,91 @@ def _earnings_total(earnings_map) -> dict:
         return dict(total=None, n=0)
 
 
-def _time_summary(session) -> dict:
-    """TIME for the summary strip: the mean intro time AND the mean COMPLETION
-    time, both over FINISHED participants only — ONE population, stated once,
-    exactly like the earnings pill (Julian, 2026-08-17).
+def _time_summary(session, ctx=None) -> dict:
+    """TIME for the overview: the mean INTRO time and the mean EXPERIMENT time,
+    EACH OVER ITS OWN POPULATION — the people who have completed THAT stage.
 
-    Computed HERE, server-side, from each finished participant's frozen
-    ``stage_timestamps`` (the ``common.STAGE_*`` keys), the same way
-    ``_earnings_total`` sums server-side — never re-derived in the client, so the
-    pill and the rows cannot disagree. INTRO TIME reuses ``_intro_seconds`` (one
-    implementation, not a second stopwatch): the entry-exit stamp to
-    ``quiz_done``. COMPLETION TIME is the whole run, the FIRST stamp to the
-    ``STAGE_FINISHED`` stamp.
+    Returns ``dict(intro_avg=…, intro_n=…, experiment_avg=…, experiment_n=…)``,
+    with a missing figure absent rather than zero.
 
-    THE POPULATION is finished participants, and it is Julian's decision (do not
-    reopen it) that BOTH subsections share it — an at-a-glance operator
-    impression, not an analysis statistic, so there is ONE denominator, carried
-    once, and no per-subsection population wording. A participant is counted only
-    once they carry a ``STAGE_FINISHED`` stamp AND both durations are computable,
-    which is exactly the genuinely-finished set; anyone missing a stamp is
-    excluded from BOTH means together, so the single denominator stays honest.
+    WHY TWO DENOMINATORS (Julian, 2026-08-19 — this REVERSES the single shared
+    population of 2026-08-17, deliberately and by the person who set it).
 
-    Early in a session nobody has finished, so this returns ``n=0`` and the pill
-    is shown as NO PILL AT ALL — never zeros, never an empty shell — matching how
-    the earnings pill degrades. Defensive like ``_earnings_total`` on which it is
-    modelled: any failure degrades to ``n=0`` (no pill), never a raise.
+      INTRO       mean time inside the `intro` app, over everyone whose intro
+                  time is SETTLED. Used to be computed over WHOLE-STUDY
+                  FINISHERS, which is a much smaller set arriving much later: in
+                  a typical session it is a third of the people who actually
+                  have an intro time, and it shows NOTHING until somebody
+                  finishes the entire study. Anyone who cleared the quiz has an
+                  intro time, and that is the population.
+      EXPERIMENT  mean time for the whole run, first stamp to STAGE_FINISHED,
+                  over everyone who FINISHED. This denominator is FORCED, not
+                  chosen: a first-stamp-to-finished duration cannot exist for
+                  anybody else. Same shape as the earnings pill, whose
+                  population is forced by `earned` not existing until Results
+                  computes it.
+
+    "SETTLED" IS NOT A NEW DEFINITION — `_intro_seconds` already computes it:
+    it returns `live=True` while the participant is still in the intro block,
+    `seconds=None` when there is no usable `quiz_done` stamp, and a settled
+    number otherwise. So the intro population is exactly "that function returned
+    a number and it is not live". No second stopwatch, no second definition.
+
+    WHO THAT INCLUDES, and it is the point: everyone now in the task, on a wait
+    page, in the questionnaire, finished — AND anyone ejected AFTER the intro,
+    because they did complete it. WHO IT EXCLUDES: anyone still inside the
+    intro; anyone whose comprehension DQ happened ON the quiz page, so no
+    `quiz_done` exists and the time is blank rather than zero; screen-outs;
+    consent decliners; and rows that never arrived.
+
+    Computed HERE, server-side, from each participant's frozen
+    ``stage_timestamps``, never re-derived in the client — so the pill and the
+    rows cannot disagree. Defensive: any failure degrades to no figures at all,
+    never a raise.
     """
     import common   # local, like every common import in this module — the
     # dashboard must stay importable with oTree absent (the _FALLBACK_EXIT_CODES
     # reasoning); the stage-name constants are only needed at request time.
-    intro_total = 0
-    comp_total = 0
-    n = 0
+    finished_codes = (ctx or {}).get('finished_codes') or codes_of_kind('finished')
+    intro_total = intro_n = 0
+    comp_total = comp_n = 0
     try:
         for pp in session.pp_set:
             v = pp._vars or {}     # _vars, not .vars — the dirty-flag rule
             stamps = dict(v.get('stage_timestamps') or {})
             fin = stamps.get(common.STAGE_FINISHED)
-            if not isinstance(fin, (int, float)):
-                continue                          # not finished yet
-            values = [t for t in stamps.values() if isinstance(t, (int, float))]
+            is_finished = (isinstance(fin, (int, float))
+                           or v.get('exit_code') in finished_codes)
+
+            # --- INTRO: everyone whose intro time is settled ----------------
+            # `now` is only consulted for a LIVE measurement, and a settled one
+            # by definition is not live, so the finished stamp (or 0) is a safe
+            # clock here: it can never be read.
+            intro = _intro_seconds(stamps, 'done', None, True,
+                                   fin if isinstance(fin, (int, float)) else 0)
+            if intro['seconds'] is not None and not intro['live']:
+                intro_total += intro['seconds']
+                intro_n += 1
+
+            # --- EXPERIMENT: whole-study finishers only ---------------------
+            if not isinstance(fin, (int, float)) or not is_finished:
+                continue
+            values = [t for t in stamps.values()
+                      if isinstance(t, (int, float))]
             start_all = min(values) if values else None
             if start_all is None or fin < start_all:
                 continue                          # no first stamp / incoherent
-            intro = _intro_seconds(stamps, 'done', None, True, fin)
-            if intro['seconds'] is None:
-                continue                          # intro not computable — skip,
-                # so both means keep the SAME denominator
-            intro_total += intro['seconds']
             comp_total += int(fin - start_all)
-            n += 1
+            comp_n += 1
     except Exception:
         logger.exception('[dashboard] time summary failed')
-        return dict(n=0)
-    if n == 0:
-        return dict(n=0)
-    return dict(n=n, intro_avg=intro_total / n, completion_avg=comp_total / n)
+        return dict(intro_n=0, experiment_n=0)
+    out = dict(intro_n=intro_n, experiment_n=comp_n)
+    if intro_n:
+        out['intro_avg'] = intro_total / intro_n
+    if comp_n:
+        out['experiment_avg'] = comp_total / comp_n
+    return out
 
 
 def _quiz_outcome_map(session) -> dict:
@@ -1091,6 +1454,20 @@ def _participant_row(pp, ctx, now) -> dict:
     # (A disqualified participant walks on to the Ended page, so their page
     # position alone would read as "questionnaire" — one situation, two
     # meanings. The flags are the authoritative record; position is not.)
+    # TWO SIGNALS, DELIBERATELY BOTH, and neither is redundant.
+    #
+    #   THE FLAGS are authoritative for the four endings this template ships and
+    #   are what has always been read here: they are written by the code path
+    #   that ends the participant, and they are true even in the moment before
+    #   the exit code lands.
+    #   THE EXIT CODE is the ENUMERABLE one. It is the only signal a fork's new
+    #   ending has, because a fork cannot add a branch to a chain in this file —
+    #   that is the whole point of generating endings from the table.
+    #
+    # So the flags run first (unchanged behaviour, nothing regresses), and the
+    # code answers for everything they do not name. Where both speak and
+    # DISAGREE that is real drift, and it is surfaced rather than quietly
+    # resolved — see `ending_mismatch` below.
     terminal = None
     if v.get('screenout_active'):
         terminal = 'screened_out'
@@ -1098,8 +1475,28 @@ def _participant_row(pp, ctx, now) -> dict:
         terminal = 'tab_monitor'
     elif v.get('comprehension_disqualified'):
         terminal = 'comprehension'
-    elif exit_code == codes['no_consent']:
-        terminal = 'no_consent'
+
+    # The code's own verdict: the NAME of any code whose kind is 'premature'.
+    # `_by_code` covers every shipped ending AND every code a fork adds, so
+    # nothing can fall through and be counted as a finisher (which is exactly
+    # what used to happen — see the ENDINGS header at the top of this file).
+    code_terminal = None
+    if exit_code is not None:
+        name = ctx['code_names'].get(exit_code)
+        if name is not None:
+            if ending_kind(name, ctx['exit_meta']) == 'premature':
+                code_terminal = name
+        else:
+            # A code in NOBODY's table: not in EXIT_CODES at all. It cannot be a
+            # normal finish unless something says so, and nothing has, so it is
+            # premature (UNDECLARED_KIND) and it gets a name derived from its
+            # number. It must never vanish into the finished set.
+            code_terminal = f'code_{exit_code}'
+
+    ending_mismatch = bool(terminal and code_terminal
+                           and terminal != code_terminal)
+    if terminal is None:
+        terminal = code_terminal
 
     # --- finished ------------------------------------------------------------
     # Only meaningful with no terminal state: a disqualified participant also
@@ -1109,8 +1506,11 @@ def _participant_row(pp, ctx, now) -> dict:
     finished = False
     if terminal is None:
         idx, last = pp._index_in_pages, pp._max_page_index
+        # `codes['finished']` became a SET of codes (ctx['finished_codes']): a
+        # study declaring kind='finished' on its own code makes that code a real
+        # completion here, not just a colour. See codes_of_kind().
         finished = (
-            exit_code == codes['finished']
+            exit_code in ctx['finished_codes']
             or common.STAGE_FINISHED in stamps
             or (isinstance(idx, int) and isinstance(last, int)
                 and pp.visited and idx > last)
@@ -1209,6 +1609,10 @@ def _participant_row(pp, ctx, now) -> dict:
     entry_only = terminal is None and not finished and not pp.visited
 
     row = dict(
+        # THE TREATMENT CELL this participant holds, '' if none yet. Read from
+        # the raw vars blob like everything else here (the dirty-flag rule at the
+        # top of this function), and used to split the FINISHED figure per cell.
+        treatment=str(v.get('treatment_group') or ''),
         # Row identity: participant.label — the seat number in the lab, the
         # Prolific ID online. code is the fallback the operator can still act
         # on when no label exists yet (bare-link entry before the ID page).
@@ -1218,8 +1622,25 @@ def _participant_row(pp, ctx, now) -> dict:
         step=step,
         task_round=task_round,
         terminal=terminal,
-        terminal_emoji=TERMINAL_STATES[terminal]['emoji'] if terminal else None,
-        terminal_label=TERMINAL_STATES[terminal]['label'] if terminal else None,
+        # FROM THE TABLE, with the per-field fallbacks: a declared emoji, else
+        # NONE (never a placeholder glyph — the gap is the signal), and a
+        # declared label, else the code's own key plus its number.
+        terminal_emoji=(ending_emoji(terminal, ctx['exit_meta'])
+                        if terminal else None),
+        terminal_label=(ending_label(terminal, exit_code, ctx['exit_meta'])
+                        if terminal else None),
+        # Which ENDED-EARLY group this ending belongs to: 'entry', 'started', or
+        # None for UNCLASSIFIED. Never guessed.
+        terminal_when=(ending_when(terminal, ctx['exit_meta'])
+                       if terminal else None),
+        # The flags and the exit code named DIFFERENT endings. A dashboard-map
+        # defect channel, like unmapped_app — not a participant problem.
+        ending_mismatch=ending_mismatch,
+        # NO EXIT_CODE_META ENTRY AT ALL. Not the same as "declared but with no
+        # emoji", which is a legitimate half-declaration; this is the code
+        # nobody has described, running on every fallback at once.
+        ending_undeclared=bool(terminal
+                               and terminal not in ctx['exit_meta']),
         finished=finished,
         quiz=quiz,
         # INTRO TIME (round-2 item 5) — renamed from instructions_*, and a
@@ -1251,6 +1672,13 @@ def _participant_row(pp, ctx, now) -> dict:
         monitor_count=monitor_count,
         monitor_max=ctx['tab_monitor_max'],
         entry_only=entry_only,
+        # WHO THIS PARTICIPANT IS WAITING ON, as display names — [] for
+        # everybody on this template, which ships no wait pages (see
+        # _waiting_for, and DECISIONS.md). Only an ACTIVE row can be waiting:
+        # a finished or terminal participant is not blocked on anybody, and a
+        # stale value must not outlive the wait.
+        waiting_for=(_waiting_for(v, ctx['names'])
+                     if (terminal is None and not finished) else []),
         current_page=str(pp._current_page_name or ''),
         # The app name ONLY when it could not be placed on the timeline, so the
         # operator is told which app to add to APP_STEPS. None on every normal
@@ -2114,19 +2542,198 @@ tr.unmapped-row td.c-label { box-shadow: inset 4px 0 0 var(--dash-unmapped); }
 .c-instr { width: 10%; white-space: nowrap; }
 .c-earn { width: 10%; white-space: nowrap; }
 
-/* --- the summary strip, BELOW the table (round-2 item 7) -------------------
-   NOT a table row, deliberately and by instruction: a row of averages under a
-   column of per-participant numbers reads as one more participant. It is its
-   own strip, outside the table, and each pill is LABELLED "average" in words —
-   the label is the part that makes it unmistakable, not the placement. */
-.dash-summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  margin: 12px 2px 0; font-size: .85rem; color: var(--ink-mute); }
-.dash-summary .sum-item { display: inline-flex; align-items: baseline; gap: 6px;
+/* =========================================================================
+   THE OVERVIEW BLOCK — the header row and the four condensed pills.
+
+   WHAT AN OPERATOR READS, IN ORDER. Supervising a live session is not analysis.
+   Over a two-second poll the questions are: is the room full → how is the
+   DESIGN filling → who has LEFT and how → what is it COSTING → how LONG is it
+   taking. Everything per-participant is already a column, so the block carries
+   only aggregates and pushes every detail to the `title` tooltip this screen
+   already uses everywhere.
+
+   THE COLOUR RULE — state it as a rule, because it is the thing a later hand
+   undoes first:
+
+     THE CONTAINER IS NEUTRAL. COLOUR BELONGS TO VALUES, AND ONLY WHERE IT
+     CARRIES A MEANING THIS SCREEN ALREADY USES ELSEWHERE.
+
+       GREEN   (#1f7a46)      completed, or money — the SAME green as the
+                              finished row tint, .spill-finished and .pill-earn
+       RED     (--danger)     ended early — the SAME red as .terminal-row and
+                              .spill-terminal
+       AMBER   (--dash-amber) stalled — the SAME amber as tr.stalled and
+                              .spill-stall
+       NEUTRAL (--ink)        a plain count with no valence: an assigned total,
+                              a duration, a count of people still going
+
+   A tinted frame and a tinted title spend the colour before the eye reaches the
+   number: by the time you read `4`, red has been used on the border, the fill
+   and the word, so the number's redness adds nothing — and FINISHED people end
+   up sitting inside a red object. Colour that is everywhere signals nothing.
+   COROLLARY: a colour is never spent on a frame, a title, a key or a label.
+   Those are structure. A value with no valence stays neutral; do not colour it
+   to make a pill look livelier.
+
+   THE HEADLINE GETS A SHAPE, THE DECOMPOSITION GETS INK. FINISHED appears
+   twice — the session total in Participants, and split per treatment. The total
+   sits in a green CHIP; the per-treatment numerators are green TEXT. One shape,
+   so the eye lands on the total first. Two would compete and neither would lead.
+
+   ALIGNMENT: ONE MODEL, BASELINE, PLUS ONE FIXED LINE BOX. Mixing
+   `align-items: center` on a pill with `align-items: baseline` inside its value
+   groups put the tiny keys 2.08px below the pill names (measured). Type of
+   different sizes lines up on its BASELINE, not on its box centre — a box
+   centre is a property of the line box, not of the glyphs. And baseline alone
+   is not enough: a line box's HEIGHT scales with font size, so three type sizes
+   gave three box heights and pills 32.5/34.5/38.5px tall. Hence `line-height`
+   in PIXELS on every leaf, and an explicit pill height so no single inner chip
+   can resize its family. Pinned by dashboard_render_check.
+   ========================================================================= */
+.dash-overview {
   background: var(--card-bg); border: 1px solid var(--line);
-  border-radius: 999px; padding: 4px 12px 4px 10px; box-shadow: var(--shadow); }
-.dash-summary .sum-label { text-transform: uppercase; letter-spacing: .04em;
-  font-size: .68rem; font-weight: 650; }
-.dash-summary .sum-n { font-size: .72rem; }
+  border-radius: var(--r-md); box-shadow: var(--shadow);
+  padding: 11px 14px 12px; margin-bottom: 14px;
+}
+.dash-overview .dash-top { margin-bottom: 0; }
+.ov-strip {
+  display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap;
+  margin-top: 9px; padding-top: 10px; border-top: 1px solid var(--line);
+}
+.ov-strip:empty { display: none; }
+
+.ov {
+  display: inline-flex; align-items: baseline; gap: 8px;
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 0 11px 0 10px; height: 32px; background: var(--sunken);
+  font-size: .8rem; color: var(--ink-soft);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+/* THE FIXED LINE BOX — see ALIGNMENT above. One height for every leaf,
+   whatever its font size, so the boxes coincide instead of nesting. */
+.ov, .ov * { line-height: 20px; }
+.ov-label { font-size: .72rem; font-weight: 700; letter-spacing: .015em;
+  color: var(--ink); }
+/* A VALUE GROUP: tiny key, heavy number, optional denominator. The key is what
+   makes a bare number legible without a tooltip. */
+.ov-pair { display: inline-flex; align-items: baseline; gap: 4px; }
+.ov-pair i { font-style: normal; font-size: .66rem; text-transform: uppercase;
+  letter-spacing: .05em; font-weight: 650; color: var(--ink-mute); }
+.ov-pair em { font-style: normal; font-size: .95rem; font-weight: 700;
+  color: var(--ink); }
+.ov-pair s { text-decoration: none; }
+.ov-pair u { text-decoration: none; font-size: .95rem; font-weight: 700;
+  color: var(--ink); }
+.ov-sub, .ov-tail, .ov-unit, .ov-den {
+  font-size: .68rem; letter-spacing: .01em; color: var(--ink-mute); }
+.ov-tail { padding-left: 8px; border-left: 1px solid var(--line-strong); }
+
+/* TREATMENTS. The NUMERATORS are completions, so they take the green; the
+   DENOMINATORS are the balance — a plain count, no valence — so they stay
+   neutral ink and the two side by side read as the comparison they are. */
+.ov-treat .ov-pair em { color: #1f7a46; }
+.ov-treat .ov-pair s { color: var(--ink-mute); opacity: .55; }
+
+/* PARTICIPANTS. Neutral pill; the buckets carry the colour. The wide sibling
+   gap lives HERE, on the one pill with a NESTED item to tell from its siblings
+   — 12px between buckets against 4px inside the nest. */
+.ov-people { gap: 12px; }
+/* IN PROGRESS, WITH STALLED NESTED INSIDE IT. Stalled is a CONDITION on a
+   subset of the people still going, not a fourth outcome; rendering it as a
+   sibling number is exactly the ambiguity this arrangement removes (it used to
+   sit on the header line beside "10 in progress" and read as a third parallel
+   total). THREE CUES carry the containment, cheap and redundant:
+     1. PARENTHESES — the universal "this qualifies the thing before it", and
+        unlike an arrow or a bracket glyph they cannot come out as tofu;
+     2. PROXIMITY — 4px to its parent against 12px between siblings, so the eye
+        groups it before it reads it;
+     3. COLOUR — amber, which on this screen already means STALLED and nothing
+        else, against the neutral ink of the count it sits inside.
+   The tooltip says "of which" in words, so the glance and the reading agree. */
+.ov-nest { display: inline-flex; align-items: baseline; gap: 4px;
+  font-size: .68rem; color: var(--ink-soft); }
+.ov-nest em { font-style: normal; font-size: .95rem; font-weight: 700;
+  color: var(--ink); }
+.ov-stall { color: var(--dash-amber); font-weight: 650; }
+.ov-chip { display: inline-flex; align-items: baseline; gap: 4px;
+  background: #eaf6ef; border: 1px solid #bfe3cd; border-radius: 999px;
+  padding: 0 9px; color: #1f7a46; font-size: .68rem; }
+/* The chip's border adds 2px, so its inner line box is 2px shorter and it lands
+   exactly on the pill's 20px line — otherwise this one element makes the
+   Participants pill taller than its three siblings. */
+.ov-chip, .ov-chip * { line-height: 18px; }
+.ov-chip em { font-style: normal; font-size: .95rem; font-weight: 700;
+  color: #1f7a46; }
+.ov-early { font-size: .68rem; color: var(--danger); }
+.ov-early em { font-style: normal; font-size: .95rem; font-weight: 700;
+  color: var(--danger); }
+
+/* EARNINGS. Money takes the same green .pill-earn already uses. */
+.ov-earn .ov-pair em { color: #1f7a46; }
+/* TIME. Durations have no valence, so they stay neutral. Each figure carries
+   its OWN denominator: the two averages are over DIFFERENT populations. */
+.ov-den { opacity: .85; }
+
+/* THE UNDECLARED-CODE ALARM ROW. Below the strip, full width, hidden when
+   empty. It was a chip inside the Participants pill and cost 95px of a 1366px
+   strip, pushing the fourth pill onto a second line — an alarm should not be
+   what breaks the layout, and it should not compete for width with routine
+   counts. Its own row is both louder and cheaper. */
+.ov-alert {
+  display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap;
+  margin-top: 8px; padding: 7px 11px; font-size: .76rem;
+  color: var(--ink-soft); background: #fdeaec;
+  border: 1px solid #eab5bd; border-left: 4px solid var(--danger);
+  border-radius: var(--r-sm);
+}
+.ov-alert:empty { display: none; }
+.ov-alert code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas,
+  monospace; font-size: .92em; color: var(--danger); }
+.ov-alert b { color: var(--danger); }
+.ov-flag { font-size: .66rem; font-weight: 700; padding: 2px 8px;
+  border-radius: 999px; background: var(--danger); color: #fff;
+  letter-spacing: .01em; }
+
+/* =========================================================================
+   THE HEADER ROW. It read as a run-on line — title, a bare grey code and three
+   counts at one weight with one gap — so nothing said which part was the study,
+   which was the identifier and which was the census. Two clusters now:
+
+     [ title | SESSION <code> · 👤 x of y arrived ]      [ view control · updated ]
+
+   THE SESSION CODE IS AN IDENTIFIER, SO IT IS SET LIKE ONE: a quiet uppercase
+   key, then the code in a monospace chip. Monospace because a session code is
+   read character by character and sometimes typed, and proportional type
+   invites misreading rn/m and 1/l. SYSTEM monospace only — base.css's
+   no-network constraint forbids a webfont and every platform ships one of
+   these.
+   THE SEPARATOR is the same U+00B7 the census already uses between its own
+   segments, so the row has ONE separator vocabulary rather than a mix of dots,
+   pipes and bare spaces.
+   ========================================================================= */
+.dash-top { gap: 10px; }
+.hdr-rule { align-self: stretch; width: 1px; min-height: 1.1em;
+  background: var(--line-strong); margin: 0 2px; }
+.hdr-session { display: inline-flex; align-items: baseline; gap: 6px; }
+.hdr-key { font-size: .68rem; text-transform: uppercase; letter-spacing: .06em;
+  font-weight: 650; color: var(--ink-mute); }
+.hdr-code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+               "Liberation Mono", monospace;
+  font-size: .78rem; font-weight: 650; color: var(--ink);
+  background: var(--sunken); border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm); padding: 2px 7px; letter-spacing: .02em;
+}
+.hdr-dot { color: var(--ink-mute); margin: 0 -3px; }
+.dash-counts b { color: var(--ink); font-weight: 700;
+  font-variant-numeric: tabular-nums; }
+/* THE TWO CLUSTERS, actually separated. The view control is a VIEW control, not
+   part of the census — glued to the arrival count it made the left half read as
+   one run-on line again. `margin-left: auto` on the control opens the gap; the
+   status must then give up its own auto margin, or the two would split the free
+   space between them and strand the control mid-row. */
+.dash-top .dash-controls { margin-left: auto; }
+.dash-top .dash-status { margin-left: 0; }
 
 /* The header's threshold affordance (item 17): quiet, but obviously hoverable,
    and focusable so it is reachable without a mouse. */
@@ -2168,6 +2775,9 @@ tr.unmapped-row td.c-label { box-shadow: inset 4px 0 0 var(--dash-unmapped); }
   color: var(--dash-amber); }
 .spill-unmapped { background: #f5f1fd; border-color: var(--dash-unmapped);
   color: var(--dash-unmapped); }
+/* WAITING FOR: outlined ACCENT BLUE — informational, not wrong. See stateHTML. */
+.spill-waiting { background: var(--card-bg); border-color: var(--accent);
+  color: var(--accent); }
 
 /* The two colours base.css has no token for: an operator-screen amber and the
    unrecognised-app violet. Declared as tokens rather than inlined so the row
@@ -2326,22 +2936,27 @@ tr.qm-unreadable td { color: var(--dash-amber); background: #fffceb; }
   .pass + .pass { border-left: none; border-top: 1px solid var(--line); } }
 </style></head>
 <body>
-<div class="dash-top">
-  <h1>__SESSION_TITLE__</h1>
-  <span class="session-code">session __SESSION_CODE__</span>
-  <span class="dash-counts" id="counts"></span>
-  <label class="dash-controls"><input type="checkbox" id="hide-entry">
-    hide not-arrived rows</label>
-  <span class="dash-status" id="status">connecting…</span>
+<!-- THE OVERVIEW BLOCK: the header row, then the four condensed pills, then
+     the alarm row. One section about who is here and how it is going. -->
+<div class="dash-overview" id="overview">
+  <div class="dash-top">
+    <h1>__SESSION_TITLE__</h1>
+    <span class="hdr-rule"></span>
+    <span class="hdr-session"><span class="hdr-key">Session</span>
+      <code class="hdr-code">__SESSION_CODE__</code></span>
+    <span class="hdr-dot">&middot;</span>
+    <span class="dash-counts" id="counts"></span>
+    <label class="dash-controls"><input type="checkbox" id="hide-entry">
+      hide not-arrived rows</label>
+    <span class="dash-status" id="status">connecting…</span>
+  </div>
+  <div class="ov-strip" id="ov-strip"></div>
+  <div class="ov-alert" id="ov-alert"></div>
 </div>
 <table class="dash">
   <thead><tr>__COLGROUP__</tr></thead>
   <tbody id="rows"><tr><td colspan="6">Waiting for first data…</td></tr></tbody>
 </table>
-<!-- THE AVERAGES, as pills under the table rather than as a final row: see
-     .dash-summary. Filled by the poll; empty until there is something to
-     average, so it never shows "average: 0:00" over an empty session. -->
-<div class="dash-summary" id="summary"></div>
 <!-- THE QUIZ-MISTAKES OVERLAY. Empty until the Quiz header's ⓘ is clicked; the
      panel JS fills it from one /quiz_mistakes fetch. Outside the table, so a
      broken panel cannot touch a single row. -->
@@ -2431,9 +3046,16 @@ function quizHTML(q) {
 function stateHTML(row) {
   var pills = [];
   if (row.terminal)
-    pills.push('<span class="spill spill-terminal"><span class="emoji">' +
-               row.terminal_emoji + '</span>' + esc(row.terminal_label) +
-               '</span>');
+    /* THE EMOJI IS OPTIONAL. An exit code with no EXIT_CODE_META entry has
+       none, and it renders with none — never a placeholder glyph, because an
+       invented one would make an undeclared code look styled. The pill is red
+       because an undeclared code defaults to PREMATURE, not because it is
+       unrecognised: a code declaring kind='finished' comes out green above. */
+    pills.push('<span class="spill spill-terminal">' +
+               (row.terminal_emoji
+                  ? '<span class="emoji">' + esc(row.terminal_emoji) + '</span>'
+                  : '') +
+               esc(row.terminal_label) + '</span>');
   else if (row.finished)
     pills.push('<span class="spill spill-finished">✓ finished</span>');
   /* UNRECOGNISED APP: the timeline shows no marker for this row, so this cell
@@ -2444,6 +3066,30 @@ function stateHTML(row) {
     pills.push('<span class="spill spill-unmapped" title="add this app to ' +
                'APP_STEPS in experimenter_dashboard.py">⁉️ app “' +
                esc(row.unmapped_app) + '” not on the timeline</span>');
+  /* WAITING FOR — WHO this participant is blocked on, by their PARTICIPANT
+     LABEL, never an in-session number. Rendered ONLY while they are actually
+     waiting: nothing at all, no dash and no placeholder, for everybody else.
+     That is why it is a pill in this cell rather than a column — a column would
+     be empty for almost every row on almost every screen.
+     INERT ON THIS TEMPLATE, DELIBERATELY: nothing ships a wait page, so
+     `waiting_for` is [] for everyone (see _waiting_for and DECISIONS.md). It is
+     implemented and tested against the shape a real wait page produces so a fork
+     adding group matching gets the operator view for free. Do not delete it as
+     dead code.
+     Outlined ACCENT BLUE: an outlined pill is what this cell already uses for a
+     condition that is DEVELOPING rather than settled (monitor outlined red,
+     return outlined amber), and blue reads as informational rather than wrong —
+     nobody is in trouble for waiting.
+     TRUNCATED EXPLICITLY at two names: a silent cap would be a claim that the
+     list is complete, so the remainder is stated as +N and the full list is in
+     the tooltip. */
+  if (row.waiting_for && row.waiting_for.length) {
+    var who = row.waiting_for.map(esc),
+        shown = who.slice(0, 2).join(', ') +
+                (who.length > 2 ? ' +' + (who.length - 2) : '');
+    pills.push('<span class="spill spill-waiting" title="Waiting for: ' +
+               who.join(', ') + '">⏳ waiting for ' + shown + '</span>');
+  }
   /* THE TIMING PILL names WHICH phase is slow and by how much: the section,
      and the elapsed IN that section — which is exactly the number the
      per-phase threshold judged (row.stall_elapsed, see _stall_elapsed), never
@@ -2537,109 +3183,155 @@ function renderRow(row, meta) {
     '</tr>';
 }
 
-/* THE SUMMARY STRIP — TWO merged pills, each ONE population stated ONCE.
+/* ============================ THE OVERVIEW ================================
+   FOUR CONDENSED PILLS, one per KIND of question, generated from the snapshot.
+   Nothing here repeats a number the header census already carries: `finished`
+   and `ended early` moved OFF that line into the Participants pill, and
+   `in progress` and `stalled` moved with them, because each was a subset of a
+   count it sat beside (arrived ⊇ in progress ⊇ stalled) and nothing said so.
+   The header keeps ONE count — a ratio, which explains its own relationship —
+   and the pills carry the split: in progress + finished + ended early = arrived.
 
-   BOTH PILLS NOW RUN OVER THE SAME POPULATION: FINISHED participants (Julian,
-   2026-08-17). This is a deliberate simplification of the earlier design, in
-   which the intro-time average ran over everyone PAST INTRO and sat beside an
-   earnings pill over the FINISHED — two denominators side by side, which read
-   as one unless each was labelled. Julian's call: the strip is an at-a-glance
-   operator impression, not an analysis statistic, so both pills state a single
-   finished population and there is nothing to disambiguate.
+   Every value is escaped with esc() before it reaches the DOM, including
+   treatment names and exit-code labels. The rule here is not conditional on
+   where text came from (these templates do not auto-escape; a reflected XSS
+   happened once already), and one of these values — the waiting-for pill's
+   participant labels — is genuinely participant-supplied.
+   ========================================================================= */
+function ovPair(key, value, den) {
+  return '<span class="ov-pair"><i>' + esc(key) + '</i><em>' + esc(value) +
+         '</em>' + (den ? '<s class="ov-den">' + esc(den) + '</s>' : '') +
+         '</span>';
+}
 
-     * TIME — mean intro time AND mean COMPLETION time, both over FINISHED
-       participants. Intro time reuses _intro_seconds (the entry-exit stamp to
-       quiz_done); completion time is the whole run, the first stamp to the
-       finished stamp. Because the population is the finished set, every value
-       is a COMPLETED measurement — nothing live is averaged in, so the mean
-       never drifts on its own between polls.
-     * EARNINGS — avg and total, over FINISHED participants: `earned` does not
-       exist until the Results page computes it, so this population is forced by
-       the data and the time pill is matched to it.
-
-   THE CONSEQUENCE IS HANDLED HONESTLY, NOT HIDDEN: early in a session nobody
-   has finished, so BOTH pills are absent — no pill at all, never a "0:00" or an
-   empty shell — exactly as the earnings pill already degraded. Each pill
-   appears only once its finished population is non-empty.
-
-   ALWAYS OVER THE WHOLE SESSION, never the filtered view: the "hide
-   not-arrived" toggle changes what is on screen and must not change what an
-   average means. Both pills are computed server-side over every participant,
-   independent of the client filter.
-
-   The count and its POPULATION are shown once per pill, because "avg intro
-   4:12" over two of twenty is a different fact from the same number over
-   twenty. Both pills say "of N finished"; there is one population and one
-   denominator per pill, and the two pills share the same finished set.
-
-   EACH PILL IS ONE ITEM, its subsections together. TIME carries avg intro and
-   avg completion; EARNINGS carries avg and total. Merging is honest precisely
-   because each pill's subsections share one population — two separate items
-   would have read as two populations.
-
-   THE TOTAL is still data.earnings_total.total, summed SERVER-SIDE from the
-   same earnings map the rows are filled from (see _earnings_total), never
-   re-added in the client — a total that display and detection could disagree on
-   is the trap the timing pill exists to avoid. THE AVERAGE is that one server
-   total divided by its count, NOT a second client-side sum of the row cells: one
-   source for both figures, so avg and total cannot disagree with each other or
-   with the rows. The whole item is gated on that server total being present, so
-   it degrades to nothing — no raise, no half-pill — when no earnings exist yet.
-   avg and total are labelled in words inside the pill so a reader tells them
-   apart at a glance, without a tooltip. */
-function summaryHTML(data) {
-  var out = '';
-  /* TIME — ONE pill, avg intro and avg completion as two subsections, BOTH
-     over the SAME finished population (Julian, 2026-08-17). The two figures are
-     summed on the SERVER from each finished participant's stage_timestamps
-     (data.time_summary), never re-derived here — the one-number-in-one-place
-     discipline the timing pill and the earnings pill both follow. Gated on that
-     server number, so the whole pill is present or ABSENT: early in a session
-     nobody has finished, and it shows as no pill at all rather than zeros. The
-     population (FINISHED) is stated ONCE, its count carried once — the same
-     shape as the earnings pill it sits beside. */
-  var ts = data.time_summary;
-  if (ts && ts.n > 0) {
-    out += '<span class="sum-item" title="Intro and completion time over ' +
-           'FINISHED participants only — the mean time in the intro app and ' +
-           'the mean time for the whole run (first stamp to finished), both ' +
-           'summed on the server from the same stage timestamps, so neither ' +
-           'can disagree with the rows. Both are over the same finished ' +
-           'population; nobody who has not finished is counted.">' +
-           '<span class="sum-label">time</span>' +
-           '<span class="sum-n">avg intro</span>' +
-           '<span class="pill">' + fmtSecs(Math.round(ts.intro_avg)) +
-           '</span>' +
-           '<span class="sum-n">avg completion</span>' +
-           '<span class="pill">' + fmtSecs(Math.round(ts.completion_avg)) +
-           '</span><span class="sum-n">of ' + ts.n + ' finished</span></span>';
+function treatmentsHTML(data) {
+  var t = data.treatments;
+  /* FEWER THAN TWO CELLS -> NOTHING. With one cell the numbers would restate
+     what the Participants pill already says (its assigned count is everyone who
+     reached the instructions, its finished count IS the session finished), and
+     a one-cell study has no distribution to show. The honest display of no
+     distribution is nothing. An OFF-SCHEME value still forces the pill: there
+     is genuinely something to see then. */
+  if (!t || !t.cells) return '';
+  if (t.cells.length < 2 && !(t.off_scheme && t.off_scheme.length)) return '';
+  var parts = t.cells.map(function (c) {
+    /* finished / assigned. The DENOMINATORS side by side are the balance the
+       assigner maintains; the numerators are completion. */
+    return '<span class="ov-pair"><i>' + esc(c.cell) + '</i><em>' +
+           c.finished + '</em><s>/</s><u>' + c.assigned + '</u></span>';
+  });
+  (t.off_scheme || []).forEach(function (o) {
+    parts.push('<span class="ov-tail">' + o.n + ' ' + esc(o.value) +
+               ' (not a current cell)</span>');
+  });
+  if (t.unassigned) {
+    parts.push('<span class="ov-tail">' + t.unassigned + ' unassigned</span>');
   }
-  /* EARNINGS — ONE pill, avg and total as two subsections. So this one
-     dashboard tab carries the payment picture and nobody opens oTree's own
-     Payments page. Both figures come from the ONE server-summed number
-     (data.earnings_total): total is it, avg is it over its count — so neither
-     can disagree with the per-row cells, the one-number-in-one-place discipline
-     the timing pill follows. Gated on that number, so the pill is present in
-     full or not at all. FINISHED is a different population from the intro-time
-     item's "past intro"; the two are stated distinctly. */
+  return '<span class="ov ov-treat" title="Treatment cells. Each pair is ' +
+    'FINISHED of ASSIGNED, so the denominators side by side are the balance ' +
+    'the assigner maintains (least-filled cell on arrival, random tie-break) ' +
+    'and the numerators are completion. Assigned minus finished is NOT still ' +
+    'going: it also holds anyone who abandoned or was ejected after the ' +
+    'instructions. Names come from settings.TREATMENT_CELLS, so this can ' +
+    'never show a treatment the code does not have.">' +
+    '<b class="ov-label">Treatments</b>' + parts.join('') + '</span>';
+}
+
+function endingsHTML(data) {
+  var e = data.endings;
+  if (!e) return '';
+  var NL = '\\n';
+  /* The tooltip enumerates EVERY reason, including the zeros, so "nobody
+     declined consent" is distinguishable from "we do not track that". */
+  var lines = e.groups.map(function (g) {
+    var head = '   ' + g.label + ' — ' + g.n;
+    var kids = g.reasons.map(function (r) {
+      return '      ' + r.label + ': ' + r.n;
+    });
+    return [head].concat(kids).join(NL);
+  }).join(NL);
+  var tip = 'THE STATE OF PEOPLE — the three buckets that partition everyone ' +
+    'who has ARRIVED (the x of y above).' + NL +
+    'IN PROGRESS ' + e.in_progress +
+    (e.stalled ? ', OF WHICH STALLED ' + e.stalled +
+      ' — too long in one phase against that phase threshold. A CONDITION ' +
+      'on people who are still going, NOT a fourth outcome, which is why it ' +
+      'is nested inside the in-progress number rather than set beside it.' : '') +
+    NL + 'FINISHED ' + e.finished + NL + 'ENDED EARLY ' + e.ended_early + NL +
+    lines + NL +
+    'NOT SHOWN, deliberately: an "abandoned" count. Exit code 0 means "never ' +
+    'reached an ending" and is what everyone is initialised to, so live it ' +
+    'cannot tell somebody working right now from somebody who closed the tab ' +
+    '— they are inside IN PROGRESS.';
+  var nest = '<span class="ov-nest"><em>' + e.in_progress + '</em> in progress' +
+    (e.stalled ? '<span class="ov-stall">(' + e.stalled + ' stalled)</span>'
+               : '') + '</span>';
+  return '<span class="ov ov-people" title="' + esc(tip) + '">' +
+    '<b class="ov-label">Participants</b>' + nest +
+    '<span class="ov-chip"><em>' + e.finished + '</em> finished</span>' +
+    '<span class="ov-early"><em>' + e.ended_early + '</em> ended early</span>' +
+    '</span>';
+}
+
+function earningsHTML(data) {
   var et = data.earnings_total;
-  if (et && et.total != null && et.n > 0) {
-    var cur = data.currency ? ' ' + esc(data.currency) : '';
-    out += '<span class="sum-item" title="Earnings over FINISHED participants ' +
-           'only — the average and the total payments, both read off the ONE ' +
-           'figure summed on the server from the same earnings the rows show, ' +
-           'so neither can disagree with the per-row cells. Earnings do not ' +
-           'exist until the results page computes them: a different population ' +
-           'from the intro-time pill.">' +
-           '<span class="sum-label">earnings</span>' +
-           '<span class="sum-n">avg</span>' +
-           '<span class="pill pill-earn">' +
-           (et.total / et.n).toFixed(2) + cur + '</span>' +
-           '<span class="sum-n">total</span>' +
-           '<span class="pill pill-earn">' + et.total.toFixed(2) + cur +
-           '</span><span class="sum-n">of ' + et.n + ' finished</span></span>';
+  if (!et || et.total == null || !et.n) return '';
+  var cur = data.currency ? esc(data.currency) : '';
+  return '<span class="ov ov-earn" title="Earnings over the FINISHED ' +
+    'participants — the average and the total, both read off the ONE figure ' +
+    'summed on the server from the same earnings the rows show, so neither ' +
+    'can disagree with the per-row cells. Earnings do not exist until the ' +
+    'results page computes them, so this population is forced by the data.">' +
+    '<b class="ov-label">Earnings</b>' +
+    ovPair('avg', (et.total / et.n).toFixed(2)) +
+    ovPair('total', et.total.toFixed(2)) +
+    (cur ? '<span class="ov-unit">' + cur + '</span>' : '') +
+    '<span class="ov-tail">of ' + et.n + '</span></span>';
+}
+
+function timeHTML(data) {
+  var ts = data.time_summary;
+  if (!ts || (!ts.intro_n && !ts.experiment_n)) return '';
+  /* TWO AVERAGES, TWO POPULATIONS, each with its own denominator on the face.
+     That is the whole point of the pill: intro time is available from the first
+     person who clears the quiz, completion time only once somebody finishes the
+     entire study, and reporting both over the finished set (as this did until
+     2026-08-19) hid a much larger, much earlier intro population. */
+  var out = '<span class="ov ov-time" title="TWO AVERAGES, TWO DIFFERENT ' +
+    'POPULATIONS — each over the participants who completed THAT stage. ' +
+    'INTRO: mean time inside the intro app, over everyone whose intro time is ' +
+    'settled (they have a quiz_done stamp and are out of the intro) — it ' +
+    'includes people now in the task, the questionnaire, finished, or ejected ' +
+    'after the intro. EXPERIMENT: mean time for the whole run, first stamp to ' +
+    'the finished stamp, over those who FINISHED the study; nothing else can ' +
+    'have it. Both summed on the server from the same stage timestamps the ' +
+    'rows use.">' + '<b class="ov-label">Time (avg)</b>';
+  if (ts.intro_n) {
+    out += ovPair('intro', fmtSecs(Math.round(ts.intro_avg)),
+                  'of ' + ts.intro_n);
   }
-  return out;
+  if (ts.experiment_n) {
+    out += ovPair('experiment', fmtSecs(Math.round(ts.experiment_avg)),
+                  'of ' + ts.experiment_n);
+  }
+  return out + '</span>';
+}
+
+function alertHTML(data) {
+  /* THE UNDECLARED-CODE ALARM. Its own row, not a chip crammed into a pill: it
+     is a CONFIGURATION defect, it appears only when one exists, and an alarm
+     that has to compete for width with routine counts is an alarm nobody sees.
+     Empty -> the row collapses (:empty). */
+  var e = data.endings;
+  if (!e || !e.undeclared || !e.undeclared.length) return '';
+  var chips = e.undeclared.map(function (u) {
+    return '<span class="ov-flag">' + esc(u.label) +
+           (u.n > 1 ? ' \u00d7' + u.n : '') + '</span>';
+  }).join('');
+  return chips + '<span>an exit code with no <code>EXIT_CODE_META</code> ' +
+    'entry — counted as <b>unclassified</b> under ended early, and rendered ' +
+    'from its own key because nothing has declared a label, an emoji or a ' +
+    'kind for it.</span>';
 }
 
 /* The STATE header's threshold legend (item 17), written from the JSON so the
@@ -2670,34 +3362,39 @@ function repaint(data) {
   var html = rows.map(function (r) { return renderRow(r, data); }).join('');
   document.getElementById('rows').innerHTML =
     html || '<tr><td colspan="6">No rows to show.</td></tr>';
-  document.getElementById('summary').innerHTML = summaryHTML(data);
+  document.getElementById('ov-strip').innerHTML =
+    treatmentsHTML(data) + endingsHTML(data) + earningsHTML(data) +
+    timeHTML(data);
+  document.getElementById('ov-alert').innerHTML = alertHTML(data);
   paintStallLegend(data);
   var n = data.rows.length,
       /* ARRIVAL COUNT (Julian, 2026-08-13): how full the room is, at a
          glance. 👤 (bust-in-silhouette) rather than a person emoji: it
          renders as a solid neutral glyph with no face and no skin tone, so
          it stays legible at header size — with the standing caveat that
-         emoji rendering depends on the operator machine's fonts
-         (_ai/dashboard_notes.md, local only: _ai/ is gitignored). */
+         emoji rendering depends on the operator machine's fonts. */
       arrived = data.rows.filter(function (r) { return r.arrived; }).length,
-      fin = data.rows.filter(function (r) { return r.finished; }).length,
-      term = data.rows.filter(function (r) { return r.terminal; }).length,
-      stalled = data.rows.filter(function (r) { return r.stalled; }).length,
       /* Counted in the header too, not only per row: an unplaced app is a
          DASHBOARD defect, and it must be visible even when the affected row
-         has scrolled out of sight. */
+         has scrolled out of sight. Same for a row whose flags and exit code
+         name different endings. */
       unmapped = data.rows.filter(function (r) {
-        return r.step === 'unmapped'; }).length;
-  /* NO leading "N participants ·" here any more (Julian, 2026-08-17): the
-     "👤 X of Y arrived" segment already carries the total as its Y (n =
-     data.rows.length = every participant row), so a separate count said the
-     same number twice. The arrival segment is the ONE place the total lives
-     now — do not reintroduce a bare "N participants" alongside it. */
-  document.getElementById('counts').textContent =
-    '👤 ' + arrived + ' of ' + n + ' arrived · ' +
-    fin + ' finished · ' + term + ' ended early' +
-    (stalled ? ' · ' + stalled + ' stalled' : '') +
-    (unmapped ? ' · ⁉️ ' + unmapped + ' in an app not on the timeline' : '');
+        return r.step === 'unmapped'; }).length,
+      mismatched = data.rows.filter(function (r) {
+        return r.ending_mismatch; }).length;
+  /* THE HEADER CARRIES ONE COUNT, AND IT IS A RATIO (Julian, 2026-08-19).
+     `finished`, `ended early`, `in progress` and `stalled` all moved into the
+     Participants pill, because every one of them was a SUBSET of a count it sat
+     beside — arrived ⊇ in progress ⊇ stalled — and a comma-separated list at one
+     weight is the visual grammar of SIBLINGS. A ratio explains its own
+     relationship; the pill explains the split. Do not reintroduce a bare
+     "N participants" alongside the Y either (Julian, 2026-08-17): the arrival
+     segment is the one place the total lives. */
+  document.getElementById('counts').innerHTML =
+    '👤 <b>' + arrived + '</b> of <b>' + n + '</b> arrived' +
+    (unmapped ? ' · ⁉️ ' + unmapped + ' in an app not on the timeline' : '') +
+    (mismatched ? ' · ⁉️ ' + mismatched +
+       ' with a flag/exit-code mismatch' : '');
 }
 
 function tick() {

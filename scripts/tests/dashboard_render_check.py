@@ -501,50 +501,61 @@ def check_overview(base, sess):
                 check(pills > 0,
                       f'intro time and earnings render as PILLS, not bare '
                       f'cells ({pills} found)')
-                sums = pg.eval_on_selector_all(
-                    '#summary .sum-item',
-                    'els => els.map(e => e.textContent.replace(/\\s+/g," ")'
-                    '.trim())')
-                # TWO items now (Julian, 2026-08-17): the MERGED TIME pill (avg
-                # intro AND avg completion) and the MERGED EARNINGS pill (avg AND
-                # total). Both run over the SAME FINISHED population — the
-                # intro-time average is now finished-only and merged in, no
-                # longer its own "past intro" item. Each pill names its
-                # subsections in words, so none is misread as another.
-                time_items = [s for s in sums if 'avg completion' in s]
-                earn_items = [s for s in sums if 'total' in s]
-                check(len(sums) == 2 and len(time_items) == 1
-                      and len(earn_items) == 1,
-                      f'the summary strip shows the merged TIME pill and the '
-                      f'merged earnings pill — two items, not three ({sums})')
-                # THE MERGED TIME PILL names BOTH subsections in words — avg
-                # intro and avg completion — both over the finished population.
-                check(all('avg intro' in s and 'avg completion' in s
-                          for s in time_items),
-                      f'…the time pill labels BOTH subsections, avg intro and '
-                      f'avg completion, in words ({time_items})')
-                # THE MERGED EARNINGS PILL names BOTH its avg and its total.
-                check(all('avg' in s and 'total' in s for s in earn_items),
-                      f'…the earnings pill labels BOTH subsections, avg and '
-                      f'total, in words ({earn_items})')
-                # ONE population per pill, stated EXACTLY ONCE, and it is the
-                # SAME finished population on both — the point of Julian's change.
-                # The old "past intro" wording is gone entirely.
-                check(all(s.count('finished') == 1 for s in sums)
-                      and not any('past intro' in s for s in sums),
-                      f'…each pill states its FINISHED population exactly once, '
-                      f'and the old "past intro" item is gone ({sums})')
-                # The staged overview has exactly TWO finished participants, so
-                # BOTH pills are over the same denominator of 2 — the
-                # finished-only population, no longer the wider "past intro" set.
-                check('of 2 finished' in time_items[0]
-                      and 'of 2 finished' in earn_items[0],
-                      f'both pills are over the two finished participants — one '
-                      f'shared finished population ({sums})')
-                # Not a row of the table (Julian was explicit).
+                # THE OVERVIEW PILLS, on their rendered TEXT. Note what the old
+                # assertions here did when the strip moved: they queried
+                # '#summary .sum-item', got [], and three of the four PASSED —
+                # `all(... for s in [])` is True. An absence-only check is
+                # indistinguishable from a test of nothing (CLAUDE.md), so every
+                # check below asserts a value that must be PRESENT.
+                pill_txt = pg.evaluate(
+                    "() => { const out = {};"
+                    " document.querySelectorAll('.ov').forEach(e => {"
+                    "   const m = e.className.match(/ov-(\\w+)/);"
+                    "   out[m ? m[1] : '?'] ="
+                    "     e.textContent.replace(/\\s+/g, ' ').trim(); });"
+                    " return out; }")
+                check(set(pill_txt) == {'treat', 'people', 'earn', 'time'},
+                      f'all four pills render, and only those four '
+                      f'({sorted(pill_txt)})')
+                # TIME: two averages with SEPARATE denominators. The overview
+                # session has 2 finishers but MORE people past the intro, so if
+                # the two ever print the same denominator the populations have
+                # been collapsed back together.
+                t_txt = pill_txt.get('time', '')
+                check('INTRO' in t_txt.upper() and 'EXPERIMENT' in t_txt.upper(),
+                      f'the TIME pill names INTRO and EXPERIMENT ({t_txt!r})')
+                dens = re.findall(r'of (\d+)', t_txt)
+                check(len(dens) == 2 and dens[0] != dens[1],
+                      f'…each with its OWN denominator, and they DIFFER — the '
+                      f'intro population is bigger than the finished one '
+                      f'({t_txt!r})')
+                e_txt = pill_txt.get('earn', '')
+                check('avg' in e_txt.lower() and 'total' in e_txt.lower()
+                      and 'of 2' in e_txt,
+                      f'the EARNINGS pill carries avg, total and its finished '
+                      f'population ({e_txt!r})')
+                p_txt = pill_txt.get('people', '')
+                check('in progress' in p_txt and 'finished' in p_txt
+                      and 'ended early' in p_txt,
+                      f'the PARTICIPANTS pill carries all three buckets '
+                      f'({p_txt!r})')
+                tr_txt = pill_txt.get('treat', '')
+                check('/' in tr_txt and 'unassigned' in tr_txt,
+                      f'the TREATMENTS pill carries finished/assigned pairs and '
+                      f'the unassigned tail ({tr_txt!r})')
+                # NOT INSIDE THE TABLE — and PAIRED with a presence check,
+                # because `#summary` no longer exists at all and the old
+                # assertion would now pass against a page with no overview
+                # whatsoever (the vacuous-absence trap, again).
                 check(pg.eval_on_selector_all(
-                        'table.dash #summary', 'els => els.length') == 0,
-                      'the summary is NOT a row inside the table')
+                        'table.dash .ov', 'els => els.length') == 0,
+                      'the overview is NOT inside the table')
+                ov_bot = pg.eval_on_selector(
+                    '#overview', 'e => e.getBoundingClientRect().bottom')
+                tbl_top = pg.eval_on_selector(
+                    'table.dash', 'e => e.getBoundingClientRect().top')
+                check(ov_bot <= tbl_top,
+                      f'…it sits ABOVE the table ({ov_bot:.0f} <= {tbl_top:.0f})')
                 legend = pg.eval_on_selector(
                     '#stall-info', 'e => e.title')
                 for phase in ('Entry', 'Intro', 'Task', 'Questionnaire'):
@@ -582,6 +593,91 @@ def check_overview(base, sess):
                 check('👤 12 of 13 arrived' in counts_txt,
                       f'the top line carries the arrival count '
                       f'("👤 12 of 13 arrived" in {counts_txt!r})')
+                # THE HEADER CARRIES ONE COUNT, AND IT IS A RATIO. `finished`,
+                # `ended early`, `in progress` and `stalled` all moved into the
+                # Participants pill because each was a SUBSET of a count it sat
+                # beside, and a comma-separated list at one weight is the visual
+                # grammar of siblings. Absence paired with the presence above.
+                check('finished' not in counts_txt
+                      and 'stalled' not in counts_txt,
+                      f'…and NOTHING else — the subset counts moved into the '
+                      f'Participants pill ({counts_txt!r})')
+                # THE SESSION CHIP: the code set as an identifier, in monospace.
+                chip_font = pg.eval_on_selector(
+                    '.hdr-code', 'e => getComputedStyle(e).fontFamily')
+                check('mono' in chip_font.lower(),
+                      f'the session code is set in monospace, as an identifier '
+                      f'({chip_font!r})')
+                check(pg.text_content('.hdr-code').strip() == sess.code,
+                      'the chip carries this session\'s code')
+
+                # ---- THE OVERVIEW PILLS, MEASURED --------------------------
+                ovs = pg.evaluate('''() =>
+                    [...document.querySelectorAll('.ov')].map(e => {
+                      const r = e.getBoundingClientRect();
+                      return {cls: e.className,
+                              top: Math.round(r.top),
+                              h: Math.round(r.height)};
+                    })''')
+                check(len(ovs) == 4,
+                      f'FOUR pills render: treatments, participants, earnings, '
+                      f'time ({[o["cls"] for o in ovs]})')
+                check(len({o['top'] for o in ovs}) == 1,
+                      f'the four pills sit on ONE row at {width}px '
+                      f'(tops {[o["top"] for o in ovs]})')
+                check(len({o['h'] for o in ovs}) == 1,
+                      f'…at EQUAL height, so they read as one family '
+                      f'(heights {[o["h"] for o in ovs]})')
+                # BASELINES, measured with a zero-size inline-block probe (an
+                # empty inline-block's baseline is its bottom margin edge). A
+                # box-centre check is the WRONG metric here and fails on correct
+                # output: text of different sizes sharing a baseline must have
+                # different box centres.
+                worst = pg.evaluate('''() => {
+                  let worst = 0;
+                  document.querySelectorAll('.ov').forEach(pill => {
+                    const bs = [];
+                    pill.querySelectorAll('*').forEach(el => {
+                      if (el.children.length) return;
+                      if (!(el.textContent || '').trim()) return;
+                      const probe = document.createElement('span');
+                      probe.style.cssText =
+                        'display:inline-block;width:0;height:0';
+                      el.appendChild(probe);
+                      bs.push(probe.getBoundingClientRect().bottom);
+                      probe.remove();
+                    });
+                    if (!bs.length) return;
+                    bs.sort((a, b) => a - b);
+                    const med = bs[Math.floor(bs.length / 2)];
+                    bs.forEach(b => { worst = Math.max(worst, Math.abs(b - med)); });
+                  });
+                  return worst;
+                }''')
+                check(worst <= 0.5,
+                      f'every value in every pill sits on ONE baseline '
+                      f'(worst offset {worst:.2f}px)')
+                # STALLED IS NESTED INSIDE IN PROGRESS, not a sibling number.
+                nest = pg.eval_on_selector_all(
+                    '.ov-people .ov-nest', 'els => els.map(e => e.textContent)')
+                check(len(nest) == 1 and 'in progress' in nest[0],
+                      f'in-progress renders as one nested group ({nest})')
+                stall_in_nest = pg.eval_on_selector_all(
+                    '.ov-people .ov-nest .ov-stall', 'els => els.length')
+                sib_stall = pg.eval_on_selector_all(
+                    '.ov-people > .ov-stall', 'els => els.length')
+                check(stall_in_nest == 1 and sib_stall == 0,
+                      f'STALLED sits INSIDE the in-progress group, never beside '
+                      f'it (nested {stall_in_nest}, sibling {sib_stall})')
+                # THE COLOUR RULE: containers neutral, colour on values only.
+                frames = pg.evaluate('''() =>
+                    [...document.querySelectorAll('.ov')].map(e => {
+                      const cs = getComputedStyle(e);
+                      return cs.backgroundColor + '|' + cs.borderTopColor;
+                    })''')
+                check(len(set(frames)) == 1,
+                      f'every pill FRAME is the same neutral — no pill spends '
+                      f'colour on its container ({set(frames)})')
 
             pg.screenshot(path=os.path.join(OVERVIEW_DIR, name),
                           full_page=True)
@@ -711,7 +807,15 @@ def check_browser(base, lab, pro):
         pg.wait_for_selector('tbody tr td.c-label', timeout=15000)
         n_rows = pg.eval_on_selector_all('tbody tr', 'els => els.length')
         check(n_rows == 6, f'poll painted 6 rows (got {n_rows})')
+        # THE POLL IS ALIVE, not merely painted once. A JavaScript error inside
+        # repaint() leaves the table showing the FIRST tick forever while the
+        # status line quietly says "update failed" — a screen that looks correct
+        # and is frozen. (Measured: a helper deleted during a refactor did
+        # exactly this, and every geometry assertion below still passed.)
         first_status = pg.text_content('#status')
+        check('update failed' not in (first_status or ''),
+              f'the poll SUCCEEDS — no silent "update failed" behind a painted '
+              f'table ({first_status!r})')
         pg.wait_for_function(
             'document.getElementById("status").textContent !== ' +
             repr(first_status), timeout=10000)

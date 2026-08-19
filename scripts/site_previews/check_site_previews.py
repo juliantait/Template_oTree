@@ -111,7 +111,17 @@ MONITOR_MARKS = {
     '.pill-earn': 'earnings pills',
     '.pill-live': 'a live intro timer',
     '.code-fallback': 'the unlabelled row falling back to its code',
-    '.dash-summary .sum-item': 'the averages strip under the table',
+    # THE OVERVIEW BLOCK, which replaced the averages strip under the table
+    # (2026-08-19). All four pills are required: the whole block is gated on
+    # server-supplied keys, so a preview builder that forgets one degrades to a
+    # MISSING PILL rather than an error — which is exactly how the site goes on
+    # showing an older study. Naming each one means the check says WHICH.
+    '.ov-treat': 'the overview TREATMENTS pill',
+    '.ov-people': 'the overview PARTICIPANTS pill',
+    '.ov-earn': 'the overview EARNINGS pill',
+    '.ov-time': 'the overview TIME pill',
+    '.ov-nest .ov-stall': 'stalled NESTED inside in-progress (not a sibling)',
+    '.hdr-code': 'the header session-code chip',
 }
 
 
@@ -137,7 +147,9 @@ MEASURE = """() => {
   // the table itself and "cut off" means the DOCUMENT outgrew the canvas,
   // which the shell cannot show because a fixed canvas has nothing to scroll.
   // That case is caught by pageScroll below, and it is not hypothetical: at
-  // twenty rows the averages strip fell 2px past the bottom edge.
+  // twenty rows the strip below the table fell 2px past the bottom edge (the
+  // same class of failure the OVERVIEW BLOCK caused in 2026-08-19, from the
+  // top instead — see monitor_session.py's row-count note).
   const card = q('.screen-card') || q('table.dash');
   // the instructions page scrolls its slide body, every other page scrolls
   // .experimental-content (see the scroll-chain note in instructions.css)
