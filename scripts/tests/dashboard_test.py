@@ -516,7 +516,7 @@ def main():
           f"finished participant: step=done (got {r3['step']})")
     check(isinstance(r3['earnings'], float) and r3['earnings'] > 0,
           f"earnings shown once known (got {r3['earnings']})")
-    # TOTAL PAYMENTS (summary strip): summed SERVER-SIDE from the same place the
+    # TOTAL PAYMENTS (the overview's EARNINGS pill): summed SERVER-SIDE from the same place the
     # row earnings come from (ctx['earnings']), so the strip total can never
     # disagree with the per-row cells — the discipline the timing pill follows.
     # Population = the participants who HAVE an earnings figure (finished), and
@@ -531,30 +531,47 @@ def main():
           and abs(et['total'] - sum(row_earnings)) < 1e-6,
           f"earnings_total.total is the SUM of the row earnings, computed "
           f"server-side (got {et['total']}, sum of rows {sum(row_earnings)})")
-    # THE TIME PILL (summary strip): mean intro time AND mean COMPLETION time,
-    # BOTH over the SAME finished population — one denominator, computed
-    # server-side from stage_timestamps (never re-derived in the client), the
-    # same discipline earnings_total follows (Julian, 2026-08-17).
+    # THE TIME PILL: mean INTRO time and mean EXPERIMENT time, EACH OVER ITS
+    # OWN POPULATION (Julian, 2026-08-19 — this REVERSES the single shared
+    # population of 2026-08-17, deliberately). Intro is over everyone whose
+    # intro time is SETTLED; experiment is over whole-study finishers, a
+    # denominator forced by the data. Both summed server-side from
+    # stage_timestamps, never re-derived in the client.
     ts = data['time_summary']
     fin_rows = [r for r in data['rows'] if r.get('finished')]
-    check(ts['n'] == len(fin_rows) and ts['n'] >= 1,
-          f"time_summary covers exactly the FINISHED participants — one "
-          f"population (n={ts['n']}, finished rows={len(fin_rows)})")
-    # PAIRED PRESENCE: both subsections carry a value, and completion (the whole
-    # run) is at least the intro block it contains — never a subsection missing.
-    check(ts.get('intro_avg') is not None and ts.get('completion_avg') is not None
-          and ts['completion_avg'] >= ts['intro_avg'] - 1,
-          f"both means are present and completion >= intro (the whole run is at "
+    settled_intro = [r for r in data['rows']
+                     if r.get('intro_seconds') is not None
+                     and not r.get('intro_live')]
+    check(ts['experiment_n'] == len(fin_rows) and ts['experiment_n'] >= 1,
+          f"EXPERIMENT time is over the FINISHED participants "
+          f"(n={ts['experiment_n']}, finished rows={len(fin_rows)})")
+    check(ts['intro_n'] == len(settled_intro) and ts['intro_n'] >= 1,
+          f"INTRO time is over everyone whose intro time is SETTLED, not only "
+          f"finishers (n={ts['intro_n']}, settled rows={len(settled_intro)})")
+    # THE POINT OF THE SPLIT: the intro population is a SUPERSET of the finished
+    # one — bigger, and available earlier in a session. If these are ever equal
+    # by construction the two denominators have been collapsed again.
+    check(ts['intro_n'] >= ts['experiment_n'],
+          f"the intro population contains the finished one "
+          f"(intro n={ts['intro_n']} >= experiment n={ts['experiment_n']})")
+    # PAIRED PRESENCE: both subsections carry a value, and the whole run is at
+    # least the intro block it contains — never a subsection silently missing.
+    check(ts.get('intro_avg') is not None
+          and ts.get('experiment_avg') is not None
+          and ts['experiment_avg'] >= ts['intro_avg'] - 1,
+          f"both means are present and experiment >= intro (the whole run is at "
           f"least the intro block): intro={ts.get('intro_avg')}, "
-          f"completion={ts.get('completion_avg')}")
-    # DEGRADES TO NO PILL: a session nobody has finished has n=0 (no pill at
-    # all), exactly as earnings_total does — the honest early-session state.
+          f"experiment={ts.get('experiment_avg')}")
+    # DEGRADES TO NO PILL: a session nobody has reached the study in has both
+    # counts at 0 (no pill at all), exactly as earnings_total does.
     empty = ot.create_session('lab', num_participants=2)
     de = admin.get(f'{URL}/{empty.code}/data').json()
-    check(de['time_summary']['n'] == 0 and de['earnings_total']['n'] == 0,
-          f"early in a session nobody has finished: the TIME pill and the "
-          f"earnings pill both degrade to n=0 — no pill (time n="
-          f"{de['time_summary']['n']}, earnings n={de['earnings_total']['n']})")
+    check(de['time_summary']['intro_n'] == 0
+          and de['time_summary']['experiment_n'] == 0
+          and de['earnings_total']['n'] == 0,
+          f"early in a session nobody has finished anything: TIME and EARNINGS "
+          f"both degrade to zero counts — no pill (time "
+          f"{de['time_summary']}, earnings n={de['earnings_total']['n']})")
     r4 = rows[codes[4]]
     check(r4['quiz']['state'] == 'progress'
           and r4['quiz']['attempts_wrong'] == 1,
@@ -1021,31 +1038,42 @@ def main():
     check('state-pills' in page and 'spill-nonsepa' in page
           and 'spill-stall' in page and 'spill-finished' in page,
           'the served page ships the pill renderer and all pill classes')
-    # THE MERGED EARNINGS PILL — asserted on its actual STRUCTURE, not on a
-    # phrase. 'total payments' used to appear in the rendered pill, but since
-    # avg and total were merged into one pill (Julian, 2026-08-17) that phrase
-    # survives ONLY in the pill's tooltip — so testing for it no longer proves
-    # the pill renders; it would pass against any page carrying the tooltip
-    # text. The subsection markup is what the pill is made of: the label
-    # "earnings", an "avg" subsection and a "total" subsection, with the total
-    # still read from the SERVER-side earnings_total (not re-summed in the
-    # client — the one-number-in-one-place discipline).
-    check('sum-label">earnings' in page
-          and 'sum-n">avg' in page and 'sum-n">total' in page
-          and 'data.earnings_total' in page,
-          'the served page ships the MERGED earnings pill — label "earnings" '
-          'with both an avg AND a total subsection — computed from the '
-          'server-side earnings_total (not re-summed in the client)')
-    # THE MERGED TIME PILL — same structural check: the label "time" with an
-    # "avg intro" and an "avg completion" subsection, both read from the
-    # SERVER-side time_summary (never re-derived in the client). Asserting the
-    # markup, not a tooltip phrase, so it proves the pill renders.
-    check('sum-label">time' in page
-          and 'sum-n">avg intro' in page and 'sum-n">avg completion' in page
-          and 'data.time_summary' in page,
-          'the served page ships the MERGED time pill — label "time" with both '
-          'an avg-intro AND an avg-completion subsection — computed from the '
-          'server-side time_summary (not re-derived in the client)')
+    # THE OVERVIEW PILLS — asserted on their actual STRUCTURE, not on a phrase
+    # that might survive only in a tooltip and would then pass against a page
+    # where the pill does not render at all. The pills moved out of the strip
+    # under the table and into the overview block at the top (Julian,
+    # 2026-08-19), so what is checked is the renderer each one is made of and
+    # the SERVER-side figure it reads.
+    check('ov-label">Earnings' in page and "ovPair('avg'" in page
+          and "ovPair('total'" in page and 'data.earnings_total' in page,
+          'the served page ships the EARNINGS pill — label "Earnings" with an '
+          'avg AND a total subsection — computed from the server-side '
+          'earnings_total (not re-summed in the client)')
+    # THE TIME PILL: two averages with SEPARATE denominators, so the renderer
+    # must emit both keys and read intro_n / experiment_n. If it ever emits one
+    # denominator for both, the populations have been collapsed again.
+    check('ov-label">Time (avg)' in page and "ovPair('intro'" in page
+          and "ovPair('experiment'" in page
+          and 'ts.intro_n' in page and 'ts.experiment_n' in page,
+          'the served page ships the TIME pill — INTRO and EXPERIMENT, each '
+          'with its OWN denominator, from the server-side time_summary')
+    # THE PARTICIPANTS PILL, with STALLED NESTED inside the in-progress count
+    # rather than beside it, and the TREATMENTS pill.
+    check('ov-label">Participants' in page and 'ov-nest' in page
+          and 'ov-stall' in page and 'ov-chip' in page,
+          'the served page ships the PARTICIPANTS pill with stalled NESTED '
+          'inside in-progress (ov-nest/ov-stall), not as a sibling count')
+    check('ov-label">Treatments' in page and 'ov-treat' in page
+          and 'data.treatments' in page,
+          'the served page ships the TREATMENTS pill from server-side counts')
+    # THE HEADER: the session code set as an IDENTIFIER, and the census reduced
+    # to the arrival ratio — every other count moved into the pills because each
+    # was a subset of one it sat beside.
+    check('hdr-code' in page and 'hdr-key' in page and 'hdr-dot' in page,
+          'the served page ships the header session chip and its separator dot')
+    check('arrived' in page and 'finished ·' not in page,
+          'the header census carries the arrival ratio, not the old '
+          'finished/ended-early/stalled sibling list')
 
     section('D8. the no-return-click pill, the monitor count, the arrival '
             'count')
@@ -1504,6 +1532,167 @@ def main():
           '/quiz_mistakes fetch')
 
     # ------------------------------------------------------------------ E
+    section('G. THE OVERVIEW BLOCK — the four pills, generated and reconciling')
+    # A session with a spread of states, so the buckets are all non-empty and
+    # the arithmetic has something to reconcile.
+    ov = ot.create_session('lab', num_participants=8)
+    ovc = ot.participant_codes(ov)
+    walk(ot.client(), ovc[0], correct, headers=DESKTOP)          # finishes
+    walk(ot.client(), ovc[1], correct, headers=DESKTOP)          # finishes
+    walk(ot.client(), ovc[2], correct, stop_after='quiz', headers=DESKTOP)
+    walk(ot.client(), ovc[3], correct, stop_after='instructing', headers=DESKTOP)
+    # An ending AFTER the intro (so it completed the intro), planted like the
+    # other terminal states in this file.
+    walk(ot.client(), ovc[4], correct, stop_after='quiz', headers=DESKTOP)
+    set_participant(ovc[4], **{'vars.tab_monitor_disqualified': True,
+                               'vars.exit_code': -3})
+    # ovc[5..7] never arrive.
+    data, rows = rows_by_code(admin, ov)
+    e = data['endings']
+    t = data['treatments']
+
+    live = [r for r in data['rows'] if not r.get('error')]
+    arrived = [r for r in live if r['arrived']]
+    check(e['in_progress'] + e['finished'] + e['ended_early'] == len(arrived),
+          f"THE PARTITION: in_progress + finished + ended_early == arrived "
+          f"({e['in_progress']} + {e['finished']} + {e['ended_early']} == "
+          f"{len(arrived)})")
+    check(e['finished'] == len([r for r in live if r['finished']]),
+          f"the pill's FINISHED is the rows' finished "
+          f"({e['finished']} vs {len([r for r in live if r['finished']])})")
+    check(e['ended_early'] == len([r for r in live if r['terminal']]),
+          f"the pill's ENDED EARLY is the rows' terminal states "
+          f"({e['ended_early']} vs {len([r for r in live if r['terminal']])})")
+    # STALLED IS A SUBSET, never a fourth bucket. Nobody waits five minutes in a
+    # test, so this pins the RELATIONSHIP rather than a non-zero count.
+    check(e['stalled'] <= e['in_progress'],
+          f"STALLED is a subset of IN PROGRESS, never a sibling total "
+          f"(stalled={e['stalled']}, in_progress={e['in_progress']})")
+    # THE TREATMENT SPLIT SUMS TO THE ENDINGS PILL'S FINISHED — the identity
+    # that makes this ONE section rather than two.
+    check(sum(c['finished'] for c in t['cells']) == e['finished'],
+          f"per-treatment FINISHED sums to the pill's FINISHED "
+          f"({sum(c['finished'] for c in t['cells'])} vs {e['finished']})")
+    check(sum(c['assigned'] for c in t['cells']) + t['unassigned']
+          + sum(o['n'] for o in t['off_scheme']) == len(live),
+          f"assigned + unassigned + off-scheme == every participant row "
+          f"({sum(c['assigned'] for c in t['cells'])} + {t['unassigned']} + "
+          f"{sum(o['n'] for o in t['off_scheme'])} vs {len(live)})")
+    # AND IT IS THE ASSIGNER'S OWN TALLY — one implementation, called by both.
+    from before import treatment_assignment as ta
+    from otree.database import DBSession
+    from otree.models import Session as _S
+    _sess = DBSession().query(_S).filter_by(code=ov.code).one()
+    check({c['cell']: c['assigned'] for c in t['cells']}
+          == ta.cell_tally(_sess)['cells'],
+          'the pill counts the cells with the ASSIGNER\'s cell_tally, not a '
+          'second counter that could drift from it')
+    # EVERY CELL IS LISTED, including one nobody holds — an empty cell is the
+    # one an operator most needs to see.
+    import settings as _st
+    check([c['cell'] for c in t['cells']] == list(_st.TREATMENT_CELLS),
+          f"every treatment cell is listed, in TREATMENT_CELLS order "
+          f"(got {[c['cell'] for c in t['cells']]})")
+
+    section('G2. an UNKNOWN exit code — the fallback, end to end')
+    # A code no table has ever seen, exactly as a fork would add it. Nothing in
+    # the dashboard is edited for this.
+    walk(ot.client(), ovc[5], correct, stop_after='quiz', headers=DESKTOP)
+    set_participant(ovc[5], **{'vars.exit_code': -97})
+    data2, rows2 = rows_by_code(admin, ov)
+    u = rows2[ovc[5]]
+    check(u['terminal'] == 'code_-97',
+          f"an unknown code becomes a terminal ending, not a finisher "
+          f"(terminal={u['terminal']!r}, finished={u['finished']})")
+    check(u['finished'] is False,
+          'THE FAILURE DIRECTION: an undeclared code is NEVER counted as a '
+          'normal finish (which would inflate FINISHED and both averages)')
+    check(u['terminal_emoji'] is None,
+          f"no emoji is invented for it (got {u['terminal_emoji']!r})")
+    check('-97' in (u['terminal_label'] or '')
+          and 'unknown' in (u['terminal_label'] or '').lower(),
+          f"its label falls back to a self-describing one carrying the number "
+          f"(got {u['terminal_label']!r})")
+    check(u['terminal_when'] is None and u['ending_undeclared'] is True,
+          'it is UNCLASSIFIED — never guessed into turned-away or ejected')
+    e2 = data2['endings']
+    check(any(x['label'] == u['terminal_label'] for x in e2['undeclared']),
+          f"it surfaces in the alarm channel (got {e2['undeclared']})")
+    unc = [g for g in e2['groups'] if g['when'] is None][0]
+    check(unc['n'] >= 1,
+          f"and it is counted in the UNCLASSIFIED group, so it cannot vanish "
+          f"out of the totals (n={unc['n']})")
+    live2 = [r for r in data2['rows'] if not r.get('error')]
+    arrived2 = [r for r in live2 if r['arrived']]
+    check(e2['in_progress'] + e2['finished'] + e2['ended_early']
+          == len(arrived2),
+          'the partition still holds with an unknown code present — nothing '
+          'silently disappears out of the totals')
+    # THE TIMELINE MARKER falls back to U+00D7, which is NOT the ballot X (tofu
+    # in several Linux fonts) and NOT U+274C (already the comprehension emoji).
+    page_u = admin.get(f'{URL}/{ov.code}').text
+    check(ed.UNDECLARED_MARKER == '\u00d7'
+          and ed.UNDECLARED_MARKER != '\u2717'   # ballot X: tofu in some fonts
+          and ed.UNDECLARED_MARKER != '\u274c'   # already the comprehension emoji
+          and '\u00d7' in page_u,
+          'the undeclared timeline marker is U+00D7 (not the tofu-prone ballot '
+          'X, not the comprehension emoji) and reaches the client')
+
+    section('G3. THE WAITING-FOR PILL — inert here, but PROVEN to render')
+    # THIS TEMPLATE SHIPS NO WAIT PAGE, so `waiting_for` is [] for everybody and
+    # the pill never renders in a real run (see DECISIONS.md). Wiring that is
+    # never exercised is wiring nobody knows works — the ai_safety_monitor.js
+    # failure in CLAUDE.md was exactly a feature that looked configured and
+    # silently refused to run. So: feed one participant the SHAPE a real wait
+    # page would write, and assert the pill actually renders with the LABEL in
+    # it — paired, as the rule requires, with the absence check.
+    waiters = [r for r in data2['rows'] if r.get('waiting_for')]
+    check(waiters == [],
+          'ABSENCE: with no wait page in this template, no row carries a '
+          'waiting-for value')
+    # …and the PRESENCE half, which is what makes that absence mean anything.
+    from otree.database import DBSession as _DB
+    from otree.models import Participant as _P
+    _s2 = _DB()
+    _blocked = _s2.query(_P).filter_by(code=ovc[2]).one()
+    _on = _s2.query(_P).filter_by(code=ovc[3]).one()
+    _s2.query(_P).filter_by(code=ovc[2]).one().label = 'SEAT-07'
+    _s2.query(_P).filter_by(code=ovc[3]).one().label = 'SEAT-11'
+    _blocked.vars['waiting_for'] = [_on.id]
+    _s2.commit()
+    data3, rows3 = rows_by_code(admin, ov)
+    w = rows3[ovc[2]]
+    check(w['waiting_for'] == ['SEAT-11'],
+          f"PRESENCE: the row resolves the id to the waited-for participant's "
+          f"LABEL, not a number (got {w['waiting_for']!r})")
+    check('spill-waiting' in page_u and 'waiting for' in page_u,
+          'the served page ships the waiting pill renderer and its class')
+    # An id nothing resolves must render as '?', never vanish: a wait naming
+    # three people and showing two is worse than one that admits it lost one.
+    _blocked.vars['waiting_for'] = [_on.id, 987654321]
+    _s2.commit()
+    _, rows4 = rows_by_code(admin, ov)
+    check(rows4[ovc[2]]['waiting_for'] == ['SEAT-11', '?'],
+          f"an unresolvable id renders as '?' rather than disappearing "
+          f"(got {rows4[ovc[2]]['waiting_for']!r})")
+    # A DUPLICATED label is ambiguous, so it is disambiguated with the code.
+    _s2.query(_P).filter_by(code=ovc[3]).one().label = 'SEAT-07'
+    _s2.commit()
+    _, rows5 = rows_by_code(admin, ov)
+    got = rows5[ovc[2]]['waiting_for'][0]
+    check(got.startswith('SEAT-07') and ovc[3] in got,
+          f"a DUPLICATED label is disambiguated with the participant code, "
+          f"never left meaning either of two people (got {got!r})")
+    # A finished or terminal participant is not blocked on anybody: a stale
+    # value must not outlive the wait.
+    _fin = _s2.query(_P).filter_by(code=ovc[0]).one()
+    _fin.vars['waiting_for'] = [_on.id]
+    _s2.commit()
+    _, rows6 = rows_by_code(admin, ov)
+    check(rows6[ovc[0]]['waiting_for'] == [],
+          'a FINISHED participant shows no waiting pill even with a stale '
+          'value — they are not blocked on anybody')
+
     section('E. strictly read-only')
     before = participant_dump()
     admin.get(f'{URL}/{lab.code}/data')

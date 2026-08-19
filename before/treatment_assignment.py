@@ -105,22 +105,58 @@ def _lock_session_row(session):
     db.query(Session).filter_by(id=session.id).with_for_update().one()
 
 
-def _cell_counts(session) -> dict:
-    """How many participants in this session currently hold each cell.
+def cell_tally(session) -> dict:
+    """THE ONE TALLY of how this session's treatment cells are filled.
+
+    Returns::
+
+        {'cells': {cell: n, ...},      # every current cell, zeros included
+         'unassigned': n,              # reached creation, holds '' (or nothing)
+         'off_scheme': {value: n, ...}}  # holds a value that is NOT a current cell
+
+    CALLED BY TWO THINGS, WHICH IS THE POINT (CLAUDE.md's inverted rule). The
+    ASSIGNER uses `cells` to pick the least-filled cell on arrival; the
+    EXPERIMENTER DASHBOARD renders all three keys. "How are the cells distributed
+    right now?" is one question, so it has one implementation — otherwise an
+    operator could read a perfectly balanced randomiser as broken because the
+    monitor counted a different population from the algorithm.
+
+    OFF_SCHEME IS NOT A CURIOSITY. `_cell_counts` used to drop those rows on the
+    floor, which is CORRECT for the assigner (it must not balance against a cell
+    that no longer exists) and WRONG for a panel, whose numbers would then fail
+    to add up to the room with nothing on screen saying why. It is reachable:
+    edit settings.TREATMENT_CELLS while sessions exist and older participants
+    hold values that are no longer cells.
 
     Reads each row's raw vars blob (`_vars`) rather than `.vars`, deliberately:
     the `.vars` property calls `.changed()` on every access, which would mark
     every participant row dirty and rewrite every blob at commit — O(n) needless
-    writes per arrival. This is a read-only tally, so it must not touch the dirty
-    flag. Unassigned rows ('') and any stale/foreign value simply do not count
-    toward a cell — only the current CELLS are tallied.
+    writes per arrival, and per dashboard poll. This is a read-only tally, so it
+    must not touch the dirty flag.
     """
     counts = {cell: 0 for cell in CELLS}
+    unassigned = 0
+    off_scheme = {}
     for row in session.pp_set:
         cell = (row._vars or {}).get('treatment_group')
         if cell in counts:
             counts[cell] += 1
-    return counts
+        elif not cell:
+            # '' (the value init_unassigned writes) and a missing key are the
+            # same situation: created, never took a cell.
+            unassigned += 1
+        else:
+            off_scheme[str(cell)] = off_scheme.get(str(cell), 0) + 1
+    return dict(cells=counts, unassigned=unassigned, off_scheme=off_scheme)
+
+
+def _cell_counts(session) -> dict:
+    """The assigner's view of the tally: current cells only.
+
+    A one-line adapter over `cell_tally`, NOT a second implementation — see its
+    docstring for why that matters.
+    """
+    return cell_tally(session)['cells']
 
 
 def assign_on_arrival(player) -> str:

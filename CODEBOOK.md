@@ -263,6 +263,16 @@ participant leaves early. Defined in `settings.EXIT_CODES`.
 | `-3` | tab_monitor | Disqualified: tab-switch monitor. **Prolific only** — the tab monitor is not supported in the lab. **Only the ejecting phases (intro + main) can set it** — outro violations never do; see "Tab-monitor violation counts" below. | `common.focus_live_method` |
 | `-4` | screened_out | **General** "removed at entry, before the consent page" bucket. Set by the **device allow-list** (`prolific_allowed_devices`) and by any future entry gate. WHICH DEVICE was detected is in `participant_extra['screenout_cause']` — see below. The code is deliberately NOT device-specific: one bucket, split by cause. **NOT write-once** — see the note directly below. | `common.set_screened_out`, called by `before._apply_device_gate` |
 
+> **ADDING A CODE IN A FORKED STUDY.** Add it to `settings.EXIT_CODES` and
+> describe it in `settings.EXIT_CODE_META` (label, emoji, `kind`, `when`) in the
+> same edit. The experimenter monitor GENERATES its endings summary from those
+> two tables, so a described code gets its own pill, timeline marker and count
+> with no dashboard change. **A code with no META entry still works** — it falls
+> back to its own key plus its number, no emoji, and counts as an early exit —
+> so an undeclared code can never be mistaken for a completion. Declaring
+> `kind='finished'` makes a code a real completion everywhere, including the
+> populations the monitor's earnings and time averages are computed over.
+
 > **`-4` IS THE ONE CODE THAT CAN CHANGE BACK.** The device screen-out is a soft
 > wall: a participant who returns on an accepted device **before consent** is
 > cleared, and their code reverts to `0` (`common.clear_screened_out`) so

@@ -96,6 +96,75 @@ EXIT_CODES = dict(
     screened_out=-4,     # device screened out at entry (prolific_allowed_devices gate)
 )
 
+# --- exit-code PRESENTATION (the experimenter dashboard reads this) ----------
+# WHAT THIS IS FOR. EXIT_CODES above says which codes EXIST; this says what each
+# one MEANS to a human. They are two tables rather than one because EXIT_CODES is
+# read as `EXIT_CODES['finished']` -> int in `before`, `intro`, `outro`,
+# `common`, `identity.py` and the tests, and giving its values a richer shape
+# would break every one of those call sites.
+#
+# THE POINT OF IT: the monitor's endings summary is GENERATED from EXIT_CODES, so
+# a fork that adds a code gets a pill, a timeline marker and a count with NO
+# dashboard edit. This table is how that fork also gets a decent LABEL and an
+# emoji. Everything here is OPTIONAL — a code with no entry still renders, on the
+# fallbacks described below.
+#
+# THE FIELDS
+#   label  human text for the pill and the row. Missing -> the EXIT_CODES key
+#          with underscores as spaces, plus the number: `data quality (-5)`.
+#          Deliberately a bit ugly, so it reads as a prompt to come and name it.
+#   emoji  one glyph for the timeline marker and the pill. Missing -> NO emoji at
+#          all and a plain U+00D7 in the marker. Never a placeholder glyph: an
+#          invented one would make an undeclared code look styled.
+#   kind   'finished'      counts as a NORMAL completion. See the warning below.
+#          'premature'     counts as ended early. THE DEFAULT for anything not
+#                          declared here — see WHICH WAY AN UNKNOWN CODE FAILS.
+#          'not_an_ending' neither; the participant is still going.
+#   when   'entry'    stopped BEFORE the study began (they took no treatment cell)
+#          'started'  ejected after starting (they hold a cell)
+#          Missing -> the ending is counted as UNCLASSIFIED, its own sub-count.
+#          It is never guessed into one of the other two.
+#
+# WHICH WAY AN UNKNOWN CODE FAILS, AND WHY THAT WAY. An undeclared code counts as
+# PREMATURE. The two error directions are not symmetric: defaulting to a normal
+# finish would silently inflate FINISHED *and* the earnings and time denominators
+# (both are computed over finished participants), so every number would read
+# better than reality with nothing on screen looking wrong. Defaulting to
+# premature errs pessimistically and visibly — a red, emoji-less pill that points
+# at exactly the code somebody forgot to declare. A loud failure beats a silent
+# one (CLAUDE.md).
+#
+# DECLARING kind='finished' DOES MORE THAN CHANGE A COLOUR. It makes that code a
+# completion everywhere: the green row tint, the header's arrival split, the
+# per-treatment FINISHED figure, and — the one to think about — the population
+# the EARNINGS and TIME averages are computed over. That is correct (an alternate
+# completion route IS a completion) but it is a real consequence of a one-word
+# edit.
+EXIT_CODE_META = {
+    'finished':      dict(label='Finished',          emoji='\u2713', kind='finished'),
+    # 0 is the value everyone is INITIALISED to, so live it cannot tell somebody
+    # working right now from somebody who closed the tab an hour ago. It is not
+    # an ending; the monitor counts these people as IN PROGRESS and never as
+    # "abandoned", which is a reading only available once a session is over.
+    'abandoned':     dict(label='In progress',       emoji=None,      kind='not_an_ending'),
+    'no_consent':    dict(label='Declined consent',  emoji='\u270b', kind='premature', when='entry'),
+    'comprehension': dict(label='Comprehension DQ',  emoji='\u274c', kind='premature', when='started'),
+    'tab_monitor':   dict(label='Tab monitor DQ',    emoji='\U0001f440', kind='premature', when='started'),
+    'screened_out':  dict(label='Screened out',      emoji='\U0001f4f5', kind='premature', when='entry'),
+}
+
+# The two ENDED-EARLY groups, in display order, with the wording the monitor
+# shows. Keyed on the `when` field above. Journey-based rather than
+# assignment-based on purpose: "before assignment" would be true today and FALSE
+# for a study still assigning at session creation, where every ending holds a
+# cell.
+ENDING_GROUPS = (
+    ('entry', 'turned away at entry'),
+    ('started', 'ejected after starting'),
+    (None, 'unclassified'),
+)
+
+
 # --- recruitment profiles (STUDY TYPE axis) ----------------------------------
 # Each profile is a bundle of explicit values resolved into the config at import
 # (see resolve_recruitment_profile). Add keys here to have a profile govern
@@ -1017,6 +1086,33 @@ def _prelaunch_problems():
     problems = []
     if DEBUG:
         problems.append(('DEBUG (set OTREE_PRODUCTION=1)', True, False))
+
+    # EXIT_CODE_META parity, and the ASYMMETRY is the point (see the table).
+    # A CODE WITH NO META IS FINE — it renders on the documented fallbacks, and
+    # that is exactly the promise made to a fork that adds a code without
+    # touching the dashboard. Failing here would break that promise.
+    # A META ENTRY WITH NO CODE IS A TYPO, and can only be one: it means the code
+    # somebody meant to describe is still running on fallbacks while a dead entry
+    # sits next to it, looking like it did the job.
+    for _name in sorted(set(EXIT_CODE_META) - set(EXIT_CODES)):
+        problems.append(
+            (f"EXIT_CODE_META[{_name!r}] describes no code in EXIT_CODES",
+             'present', 'removed, or the matching EXIT_CODES entry added'))
+    # A `kind` outside the three the dashboard knows would be silently treated as
+    # premature, which is the right default for an UNKNOWN code but the wrong
+    # thing to do with a declared-but-misspelt one.
+    for _name, _meta in sorted(EXIT_CODE_META.items()):
+        _kind = _meta.get('kind')
+        if _kind is not None and _kind not in ('finished', 'premature',
+                                               'not_an_ending'):
+            problems.append(
+                (f"EXIT_CODE_META[{_name!r}]['kind']", _kind,
+                 "one of 'finished', 'premature', 'not_an_ending'"))
+        _when = _meta.get('when')
+        if _when is not None and _when not in ('entry', 'started'):
+            problems.append(
+                (f"EXIT_CODE_META[{_name!r}]['when']", _when,
+                 "'entry', 'started', or absent (absent = unclassified)"))
 
     for cfg in SESSION_CONFIGS:
         # Check the EFFECTIVE config (defaults + entry), since keys like prolific_cc_code

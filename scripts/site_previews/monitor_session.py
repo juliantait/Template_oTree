@@ -116,6 +116,15 @@ def _row(label, step, **kw):
         monitor_count=None,      # tab monitor is off in the lab profile
         monitor_max=None,
         entry_only=False,
+        # THE OVERVIEW's inputs, in _participant_row's shape. `treatment` feeds
+        # the per-cell FINISHED split; `waiting_for` is [] for everybody because
+        # this template ships no wait page (see DECISIONS.md); the three ending
+        # fields are None on an ordinary row.
+        treatment='',
+        waiting_for=[],
+        terminal_when=None,
+        ending_undeclared=False,
+        ending_mismatch=False,
         current_page='',
         unmapped_app=None,
     )
@@ -192,8 +201,12 @@ ROWS = [
          stalled=True, stall_elapsed=312, stall_limit=180,
          stall_section='Task round'),
 
-    _row('Seat 13', 'task', current_page='GameStart', task_round=7,
-         quiz=_quiz('green', 0, 1), intro_seconds=161),
+    # NB one plain mid-task row was removed here when the OVERVIEW BLOCK landed
+    # (2026-08-19): the block is ~106px tall against the old header's ~32px, and
+    # the site tile is a FIXED 1920x1080 canvas, so the table overflowed it by
+    # 16px. A duplicate state was the honest thing to drop — every state this
+    # screen can show is still in the picture, and the alternative (shrinking
+    # the real screen to fit a preview) would make the preview lie.
     _row('Seat 14', 'instructions', current_page='Instructions',
          quiz=_quiz('idle'), intro_seconds=72, intro_live=True),
     _row('Seat 15', 'task', current_page='GameStart', task_round=4,
@@ -207,12 +220,13 @@ ROWS = [
     # treatment means "nobody is here" and nothing else.
     #
     # ONE such row, not two, and the reason is the canvas rather than the
-    # design: nineteen rows is what fits 1920x1080 with the summary strip
-    # still on screen. At twenty the strip fell 2px past the bottom edge and
-    # the page scrolled — which the preview shell cannot show, because the
-    # canvas is a fixed frame with nothing to scroll it. MEASURED 2026-08-16:
-    # 49px per row, table top at y=53, strip ends at y=1033 with nineteen.
-    # ADDING A ROW HERE MEANS MEASURING AGAIN.
+    # design: EIGHTEEN rows is what fits 1920x1080 now that the OVERVIEW BLOCK
+    # sits above the table. The preview shell cannot show a scroll — the canvas
+    # is a fixed frame with nothing to scroll it — so a row too many is a row
+    # silently cut off. MEASURED 2026-08-19: 49px per row, the overview block
+    # 106px tall against the old header's ~32px, and the table overflowed by
+    # 16px at nineteen rows until one plain mid-task row came out.
+    # ADDING A ROW HERE MEANS MEASURING AGAIN (check_site_previews.py does).
     #
     # It carries an idle quiz cell like every other row: `_participant_row`
     # always builds one, so a row WITHOUT it would be a shape the server never
@@ -228,6 +242,26 @@ ROWS = [
 ]
 
 
+# --- fill the derived per-row fields, so the overview has something to tally ---
+# Done here rather than on each _row(...) call above so the row definitions stay
+# readable: each states what is TRUE of that participant, and the mechanical
+# consequences are applied once. TREATMENT alternates across the ARRIVED rows —
+# an invented but balanced assignment, matching what balance-on-arrival produces.
+# TERMINAL_WHEN comes from the shipped EXIT_CODE_META, so the preview groups the
+# endings the way the real screen does rather than by a second hand-written map.
+_WHEN = {'screened_out': 'entry', 'no_consent': 'entry',
+         'comprehension': 'started', 'tab_monitor': 'started'}
+_n = 0
+for _r in ROWS:
+    if _r.get('terminal'):
+        _r['terminal_when'] = _WHEN.get(_r['terminal'])
+    # A cell is spent only by somebody who reached the instructions — so not by
+    # a never-arrived row, and not by one still at ENTRY or turned away there.
+    if _r.get('arrived') and _r.get('step') not in ('entry',):
+        _r['treatment'] = ('row', 'column')[_n % 2]
+        _n += 1
+
+
 def payload():
     """The `/data` JSON, in `session_snapshot()`'s shape."""
     # TOTAL PAYMENTS, summed here from the SAME row earnings the preview
@@ -239,7 +273,54 @@ def payload():
     _earned = [r['earnings'] for r in ROWS if r.get('earnings') is not None]
     earnings_total = (dict(total=float(sum(_earned)), n=len(_earned))
                       if _earned else dict(total=None, n=0))
+    # THE FOUR OVERVIEW PILLS, tallied here from the SAME rows the preview
+    # renders — the same discipline as earnings_total above, and for the same
+    # reason: a pill gated on a key this file forgets degrades to NOTHING, and
+    # the website's monitor preview then silently shows a dashboard without its
+    # overview. That happened once already (this comment is the fix).
+    _live = [r for r in ROWS if not r.get('error')]
+    _fin = [r for r in _live if r.get('finished')]
+    _term = [r for r in _live if r.get('terminal')]
+    endings = dict(
+        in_progress=len([r for r in _live if r.get('arrived')
+                         and not r.get('finished') and not r.get('terminal')]),
+        stalled=len([r for r in _live if r.get('stalled')]),
+        finished=len(_fin),
+        ended_early=len(_term),
+        groups=[dict(when=w, label=lab,
+                     n=len([r for r in _term if r.get('terminal_when') == w]),
+                     reasons=[])
+                for w, lab in (('entry', 'turned away at entry'),
+                               ('started', 'ejected after starting'),
+                               (None, 'unclassified'))],
+        undeclared=[],
+    )
+    # The treatment split. Invented cells matching settings.TREATMENT_CELLS, so
+    # the preview shows the shipped placeholder study rather than inventing a
+    # design the template does not have.
+    _cells = ['row', 'column']
+    treatments = dict(
+        cells=[dict(cell=c,
+                    assigned=len([r for r in _live if r.get('treatment') == c]),
+                    finished=len([r for r in _fin if r.get('treatment') == c]))
+               for c in _cells],
+        unassigned=len([r for r in _live if not r.get('treatment')]),
+        off_scheme=[],
+    )
+    # TIME: two averages over two DIFFERENT populations (intro over everyone
+    # whose intro time is settled, experiment over finishers) — the split is the
+    # point, so the preview must not print one denominator for both.
+    _intro = [r['intro_seconds'] for r in _live
+              if r.get('intro_seconds') is not None and not r.get('intro_live')]
+    time_summary = dict(intro_n=len(_intro), experiment_n=len(_fin))
+    if _intro:
+        time_summary['intro_avg'] = sum(_intro) / len(_intro)
+    if _fin:
+        time_summary['experiment_avg'] = 1338.0
     return dict(
+        treatments=treatments,
+        endings=endings,
+        time_summary=time_summary,
         ok=True,
         session=dict(code=SESSION_CODE, config_name='lab',
                      display_name=SESSION_TITLE, num_participants=len(ROWS)),

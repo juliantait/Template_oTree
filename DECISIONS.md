@@ -11,6 +11,119 @@ working.
 
 ---
 
+## The monitor's endings are GENERATED from the exit-code table, and an unknown code fails PREMATURE — 2026-08-19
+
+The dashboard used to enumerate the four terminal states in a hard-coded map
+(`TERMINAL_STATES`) plus a four-branch `if/elif` in `_participant_row`. A study
+adding its own exit code got **nothing** from it: no pill, no timeline marker, no
+count — and because the row had run past the last page index it was counted as
+**FINISHED**, inflating the finished total and the earnings and time denominators
+with it. Invisible, and flattering.
+
+Now `settings.EXIT_CODES` (which codes exist) and `settings.EXIT_CODE_META`
+(label / emoji / kind / when, all optional) drive everything, so a fork gets the
+operator view by editing the dict it is already editing. **Two tables rather than
+one** because `EXIT_CODES` is read as `EXIT_CODES['finished'] -> int` in four
+apps, `common`, `identity.py` and the tests; giving its values a richer shape
+would break every call site.
+
+**An undeclared code counts as PREMATURE, and the direction is the decision.**
+Defaulting to a normal finish would silently inflate FINISHED and both averages'
+denominators — every number reading better than reality with nothing on screen
+looking wrong. Premature errs pessimistically and *visibly*: a red, emoji-less
+pill naming the code somebody forgot to declare. Rejected: defaulting to
+finished; inventing a placeholder emoji (it would make an undeclared code look
+styled — the gap is the signal); and guessing which ended-early group it belongs
+to (it gets its own *unclassified* count instead).
+**Enforced:** `experimenter_dashboard.ending_label/emoji/kind/when` and
+`codes_of_kind`; `settings._prelaunch_problems` fails on a meta entry with no
+matching code (a typo) but **never** on a code with no meta (that is the promise);
+`scripts/tests/dashboard_test.py` section G2 drives an unknown `-97` end to end
+and asserts it is not finished, keeps no emoji, lands in *unclassified* and does
+not break the partition.
+
+## The overview block: one header ratio, four condensed pills, colour on values only — 2026-08-19
+
+The top of the monitor is now one section: a header row (study, session chip,
+`x of y arrived`) and four pills — Treatments, Participants, Earnings, Time.
+The averages strip under the table is **deleted**, not emptied.
+
+**The header carries exactly one count, and it is a ratio.** `finished`,
+`ended early`, `in progress` and `stalled` all moved into the Participants pill,
+because every one of them was a **subset** of a count it sat beside
+(arrived ⊇ in progress ⊇ stalled) while a comma-separated list at one weight is
+the visual grammar of *siblings*. A ratio explains its own relationship; the pill
+explains the split, and its three buckets sum to the arrival count.
+
+**Stalled renders nested inside in-progress**, in parentheses, in amber, at 4px
+against 12px between siblings — three redundant cues, none of them a glyph that
+could come out as tofu. It is a condition on a subset, not a fourth outcome.
+
+**THE COLOUR RULE: the container is neutral; colour belongs to values, and only
+where it carries a meaning this screen already uses** (green = completed or
+money, red = ended early, amber = stalled, neutral = a count with no valence).
+A tinted frame spends the colour before the eye reaches the number, and put
+*finished* participants inside a red object. Corollary: never a colour on a
+frame, title, key or label. Rejected: the earlier one-hue-per-pill scheme.
+**Enforced:** `scripts/tests/dashboard_render_check.py` measures four pills on one
+row at equal height, every pill frame the same neutral, stalled nested and not a
+sibling, and the header census carrying the ratio and nothing else;
+`scripts/site_previews/check_site_previews.py` requires all four pills by name.
+
+## Pill alignment is BASELINE with a fixed pixel line box — 2026-08-19
+
+Mixing `align-items: center` on a pill with `align-items: baseline` inside its
+value groups put the tiny keys **2.08px** below the pill names (measured). Type
+of different sizes lines up on its **baseline**, not on its box centre — a box
+centre is a property of the line box, not of the glyphs, so a centre-alignment
+check is the wrong metric and *fails on correct output*. Baseline alone was not
+enough either: line-box height scales with font size, so three type sizes gave
+pills 32.5 / 34.5 / 38.5px tall. Hence `line-height` in **pixels** on every leaf
+and an explicit pill height, so no single inner chip can resize its family.
+**Enforced:** `dashboard_render_check` measures the true text baseline with a
+zero-size inline-block probe and requires ≤0.5px across every leaf of all four
+pills, plus equal pill heights.
+
+## The two time averages have DIFFERENT denominators — 2026-08-19
+
+INTRO time is over everyone whose intro time is **settled** (a `quiz_done` stamp,
+out of the intro block); EXPERIMENT time is over whole-study **finishers**. This
+**reverses** the single shared population settled on 2026-08-17, deliberately and
+by the person who set it. Intro-over-finishers was a much smaller set arriving
+much later — roughly a third of the people who actually have an intro time, and
+nothing at all until somebody completed the entire study. The experiment
+denominator is *forced*, not chosen: a first-stamp-to-finished duration cannot
+exist for anybody else. "Settled" is not a new definition — `_intro_seconds`
+already computes it, so there is no second stopwatch.
+**Enforced:** `_time_summary` returns `intro_n` / `experiment_n` separately;
+`dashboard_test.py` asserts the intro population contains the finished one and
+that the two differ; `dashboard_render_check` asserts the rendered pill prints
+two different denominators.
+
+## The waiting-for pill ships INERT, and is tested anyway — 2026-08-19
+
+The monitor renders a "waiting for <label>" pill in the State cell, shown only
+while a participant is actually blocked on somebody. **This template has no wait
+pages**, so nothing writes `participant.vars['waiting_for']` and the pill never
+appears in a real run here. That is deliberate, not an oversight, and it is
+recorded so nobody deletes it as dead code or reads the empty cells as a bug: a
+fork adding group matching gets the operator view without building one.
+
+Wiring that is never exercised is wiring nobody knows works — the
+`ai_safety_monitor.js` case in CLAUDE.md was exactly a feature that looked
+configured and silently refused to run. So the path is **tested against the shape
+a real wait page would produce**: a planted `waiting_for` renders the pill with
+the participant's LABEL, an unresolvable id renders `?` rather than vanishing, a
+duplicated label is disambiguated with the code, and a finished participant shows
+nothing even with a stale value — each paired with the absence check, per the
+rule that an absence alone tests nothing. Names resolve through
+`displayed_name`, the one implementation, and uniqueness through
+`identity.normalise_label`, so the pill cannot name somebody differently from the
+row above it.
+**Enforced:** `dashboard_test.py` section G3; `_waiting_for`'s docstring.
+
+---
+
 ## The placeholder task is now a single-slider payoff elicitation, and the slider is a reusable component — 2026-08-18
 
 Replaced the placeholder payoff-matrix stub (`main.GameStart` drew
