@@ -3028,6 +3028,307 @@ def check_dq_ending(server, browser):
     context.close()
 
 
+def _wrong_quiz_answers():
+    """Answers guaranteed to fail every shipped quiz item (for a DQ walk)."""
+    wrong = {}
+    for item in QUIZ_ITEMS:
+        alternatives = [c for c in item['choices'] if c != item['answer']]
+        wrong[item['field']] = alternatives[0] if alternatives else item['answer']
+    return wrong
+
+
+def _walk_to_dq_ending(server):
+    """A REAL comprehension disqualification, so `outro/Ended.html` is rendered
+    for a participant who genuinely got there (same mechanics as leg Y)."""
+    session = create_session('prolific', num_participants=2)
+    code, _ = walk_to(server.base, session, 'quiz')
+    s = requests.Session()
+    r = s.get(f'{server.base}/InitializeParticipant/{code}', allow_redirects=True)
+    wrong = _wrong_quiz_answers()
+    for _ in range(6):
+        if page_of(r.url) != 'quiz':
+            break
+        fp = FormParser()
+        fp.feed(r.text)
+        r = s.post(r.url, data=build_payload(fp.inputs, {}, wrong),
+                   allow_redirects=True)
+    return code, page_of(r.url)
+
+
+# The rendered geometry of the closing instruction: every LINE BOX of the real
+# text (a Range over the text nodes, not the element box), plus the element's
+# own content-box centre and the neighbours it must sit between.
+CLOSING_JS = """() => {
+    const el = document.querySelector('.closing-instruction');
+    if (!el) return null;
+    const cs = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    // The CONTENT box: text is centred inside the padding box, so the padding
+    // has to come off before the centre means anything.
+    const cl = r.left + parseFloat(cs.paddingLeft);
+    const cr = r.right - parseFloat(cs.paddingRight);
+    // Line boxes of the actual glyphs. A LEFT-aligned wrapped paragraph has a
+    // short final line hugging the left edge; a centred one does not. This is
+    // the measurement that distinguishes them — reading text-align alone would
+    // pass on any page whose CSS says one thing and renders another.
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const lines = Array.from(range.getClientRects())
+        .filter(b => b.width > 1 && b.height > 1)
+        .map(b => ({left: b.left, right: b.right, width: b.width,
+                    centre: (b.left + b.right) / 2}));
+    const card = document.querySelector('.screen-card');
+    const ccs = getComputedStyle(card);
+    const cb = card.getBoundingClientRect();
+    const receipt = document.querySelector('.payment-summary');
+    const row = document.querySelector('.button-row');
+    return {
+        textAlign: cs.textAlign,
+        elLeft: r.left, elRight: r.right, elTop: r.top, elBottom: r.bottom,
+        contentCentre: (cl + cr) / 2,
+        contentWidth: cr - cl,
+        lines: lines,
+        cardCentre: (cb.left + parseFloat(ccs.paddingLeft)
+                     + cb.right - parseFloat(ccs.paddingRight)) / 2,
+        receiptBottom: receipt ? receipt.getBoundingClientRect().bottom : null,
+        buttonTop: row ? row.getBoundingClientRect().top : null,
+    };
+}"""
+
+
+def check_closing_instruction_centred(server, browser):
+    """AH. The closing instruction is CENTRED — measured, on BOTH endings.
+
+    THE BUG THIS PINS (2026-08-21). "Please click the button below to complete
+    the study and return to Prolific" rendered FLUSH LEFT on the results page
+    under a centred receipt. The cause was not a broken rule: `.section-text`
+    deliberately sets only the reading measure and centres the BLOCK
+    (base.css), leaving alignment to the card FAMILY — and the results card is
+    a plain `.screen-card`, so it inherited the card's flush-left while the
+    receipt above it was centred by `.payment-summary` and the notes below it
+    by `.results-notes`. The same sentence on `outro/Ended.html` WAS centred,
+    for an unrelated reason (`.narrative-card .section-text`). One concept, two
+    implementations, already disagreeing — CLAUDE.md's inverted
+    collapsed-distinction rule. Both pages now compose `.closing-instruction`.
+
+    WHY IT IS MEASURED OFF THE LINE BOXES, not off `text-align`. A computed
+    style says what the cascade decided, not what the participant sees: an
+    ancestor `direction`, a stray `margin-inline`, a float or a flex context can
+    all leave `text-align: center` reading correctly on an element whose glyphs
+    sit at the left edge. The Range's client rects ARE the glyphs. Layout
+    failures produce no error and no failing test (CLAUDE.md) — this is the leg
+    that makes this one fail.
+
+    Also asserted here, because it is the other half of the same change: the
+    sentence sits BELOW the receipt and ABOVE the completion button. The
+    document order is pinned server-side in
+    `scripts/tests/ending_copy_test.py`; what is checked here is that the
+    rendered geometry agrees with it.
+    """
+    section('AH. The closing instruction is centred (measured, both endings)')
+    TOL = 2.0        # px; sub-pixel text metrics, not a layout allowance
+
+    # --- the RESULTS ending, at every viewport ----------------------------
+    session = create_session('prolific', num_participants=2)
+    code, _ = walk_to(server.base, session, 'Results')
+    for vp_name in VIEWPORTS:
+        context = browser.new_context(viewport=VIEWPORTS[vp_name])
+        page = context.new_page()
+        page.goto(f'{server.base}/InitializeParticipant/{code}',
+                  wait_until='load')
+        page.wait_for_timeout(150)
+        m = page.evaluate(CLOSING_JS)
+        if not check(m is not None,
+                     f'results @ {vp_name}: the closing instruction is ON the '
+                     f'page (the Prolific config renders it)'):
+            context.close()
+            continue
+        check(m['textAlign'] == 'center',
+              f'results @ {vp_name}: computed text-align is '
+              f'{m["textAlign"]!r} (the component, not the family)')
+        check(len(m['lines']) >= 1,
+              f'results @ {vp_name}: the sentence rendered '
+              f'{len(m["lines"])} line box(es)')
+        worst = max((abs(l['centre'] - m['contentCentre']) for l in m['lines']),
+                    default=999)
+        check(worst <= TOL,
+              f'results @ {vp_name}: every LINE of glyphs is centred in the '
+              f'{m["contentWidth"]:.0f}px measure — worst line is {worst:.1f}px '
+              f'off centre (tolerance {TOL}px)')
+        # The block itself is centred in the card, so "centred" is true of the
+        # sentence AND of the column it sits in.
+        check(abs(m['contentCentre'] - m['cardCentre']) <= TOL,
+              f'results @ {vp_name}: …and the block is centred in the card '
+              f'({m["contentCentre"]:.0f} vs {m["cardCentre"]:.0f})')
+        # THE PLACEMENT, measured: under the receipt, over the button.
+        check(m['receiptBottom'] is not None and m['elTop'] >= m['receiptBottom'] - 1,
+              f'results @ {vp_name}: it sits BELOW the receipt '
+              f'(line top {m["elTop"]:.0f} >= receipt bottom '
+              f'{m["receiptBottom"]:.0f})')
+        check(m['buttonTop'] is not None and m['elBottom'] <= m['buttonTop'] + 1,
+              f'results @ {vp_name}: …and ABOVE the completion button '
+              f'(line bottom {m["elBottom"]:.0f} <= button top '
+              f'{m["buttonTop"]:.0f})')
+        geometry.setdefault('closing_instruction', {})[f'results_{vp_name}'] = {
+            'textAlign': m['textAlign'], 'lines': len(m['lines']),
+            'worstOffCentre': round(worst, 1),
+            'blockOffCardCentre': round(m['contentCentre'] - m['cardCentre'], 1),
+        }
+        if vp_name == 'laptop_1280x720':
+            screenshot(page, 'closing_instruction_results', vp_name)
+        context.close()
+
+    # --- the EARLY ending, same component, different card family -----------
+    # The point of the shared class is that this page and the one above no
+    # longer decide the alignment separately, so BOTH are measured.
+    dq_code, landed = _walk_to_dq_ending(server)
+    check(landed == 'Ended',
+          f'the DQ walk reached the early ending (now at {landed})')
+    context = browser.new_context(viewport=VIEWPORTS['laptop_1280x720'])
+    page = context.new_page()
+    page.goto(f'{server.base}/InitializeParticipant/{dq_code}', wait_until='load')
+    page.wait_for_timeout(150)
+    m = page.evaluate(CLOSING_JS)
+    if check(m is not None,
+             'ended: the closing instruction is ON the page too'):
+        check(m['textAlign'] == 'center',
+              f'ended: computed text-align is {m["textAlign"]!r}')
+        worst = max((abs(l['centre'] - m['contentCentre']) for l in m['lines']),
+                    default=999)
+        check(worst <= TOL,
+              f'ended: every LINE of glyphs is centred — worst line '
+              f'{worst:.1f}px off centre (tolerance {TOL}px)')
+        check(abs(m['contentCentre'] - m['cardCentre']) <= TOL,
+              f'ended: …and the block is centred in the card '
+              f'({m["contentCentre"]:.0f} vs {m["cardCentre"]:.0f})')
+        check(m['buttonTop'] is not None and m['elBottom'] <= m['buttonTop'] + 1,
+              f'ended: it sits ABOVE the completion button '
+              f'({m["elBottom"]:.0f} <= {m["buttonTop"]:.0f})')
+        geometry.setdefault('closing_instruction', {})['ended_laptop_1280x720'] = {
+            'textAlign': m['textAlign'], 'lines': len(m['lines']),
+            'worstOffCentre': round(worst, 1),
+            'blockOffCardCentre': round(m['contentCentre'] - m['cardCentre'], 1),
+        }
+        screenshot(page, 'closing_instruction_ended', 'laptop_1280x720')
+    context.close()
+
+
+BUTTON_ROW_JS = """() => {
+    const row = document.querySelector('.button-row');
+    if (!row) return null;
+    const kids = Array.from(row.children).filter(el => {
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;      // rendered, not just present
+    }).map(el => {
+        const r = el.getBoundingClientRect();
+        return {tag: el.tagName.toLowerCase(),
+                cls: el.className,
+                label: (el.value || el.textContent || '').trim(),
+                left: r.left, right: r.right, width: r.width,
+                top: r.top, bottom: r.bottom,
+                order: getComputedStyle(el).order};
+    });
+    return {kids: kids, rowLeft: row.getBoundingClientRect().left,
+            rowRight: row.getBoundingClientRect().right};
+}"""
+
+
+def check_button_row_order(server, browser):
+    """AI. THE PRIMARY ACTION IS THE RIGHTMOST CONTROL IN A BUTTON ROW.
+
+    Measured off the rendered boxes, at three viewports, on the one page in the
+    template that has more than one control in its row: the ONLINE quiz, whose
+    secondary "Re-read the instructions" used to sit to the RIGHT of "Next".
+    Julian read that as an offer to leave the quiz rather than the way on
+    (2026-08-21) — which is what the right-hand end of a button row promises,
+    so the layout was making a promise the control could not keep.
+
+    WHY GEOMETRY AND NOT MARKUP. The order is settled by the SHARED component
+    (`.button-row > .next-button:not(.ghost) { order: 1 }`, base.css), and
+    `order` is a layout property: it moves boxes without touching the DOM, so
+    a source-order assertion cannot see it working OR failing. The document
+    order is asserted separately in `scripts/tests/reread_controls_test.py`,
+    because it is also the TAB order and the two must agree — this leg is what
+    proves the pixels do.
+
+    THE LAB HALF IS THE PAIRED PRESENCE. Its row has exactly one control, so
+    "Next is rightmost" is trivially true there and proves nothing on its own;
+    what it proves is that the walker reached a real quiz page with a real
+    button row, which is what makes the prolific measurement mean something.
+    """
+    section('AI. The primary action is the RIGHTMOST control in a button row')
+    for config in ('prolific', 'lab'):
+        session = create_session(config, num_participants=2)
+        code, _ = walk_to(server.base, session, 'quiz')
+        for vp_name in VIEWPORTS:
+            context = browser.new_context(viewport=VIEWPORTS[vp_name])
+            page = context.new_page()
+            page.goto(f'{server.base}/InitializeParticipant/{code}',
+                      wait_until='load')
+            page.wait_for_timeout(150)
+            m = page.evaluate(BUTTON_ROW_JS)
+            label = f'{config} quiz @ {vp_name}'
+            if not check(m and m['kids'],
+                         f'{label}: the button row rendered at least one '
+                         f'control'):
+                context.close()
+                continue
+            primary = [k for k in m['kids']
+                       if 'next-button' in k['cls'] and 'ghost' not in k['cls']]
+            others = [k for k in m['kids'] if k not in primary]
+            check(len(primary) == 1,
+                  f'{label}: exactly one PRIMARY control '
+                  f'({[k["label"] for k in primary]})')
+            if len(primary) != 1:
+                context.close()
+                continue
+            p = primary[0]
+            rightmost = max(m['kids'], key=lambda k: k['right'])
+            check(rightmost is p or rightmost['right'] <= p['right'] + 0.5,
+                  f'{label}: the PRIMARY ({p["label"]!r}) is the rightmost '
+                  f'control — right edge {p["right"]:.0f}px vs '
+                  f'{rightmost["right"]:.0f}px for {rightmost["label"]!r}')
+            # LAST IN READING ORDER, WHICH IS NOT ALWAYS "to the left of".
+            # `.button-row` is `flex-wrap: wrap`, and at 375px this row DOES
+            # wrap: the two controls stack, and the primary becomes the BOTTOM
+            # one. Asserting "left of" there would fail a layout that is
+            # correct (measured 2026-08-21: 'Next' at y=708 under the re-read
+            # at y=649), and relaxing it to "left of OR anywhere" would assert
+            # nothing. So the rule is stated as it actually is — the primary is
+            # the LAST control a participant reaches — and each case says which
+            # one it measured.
+            for o in others:
+                same_line = abs(o['top'] - p['top']) <= 1
+                if same_line:
+                    check(o['right'] <= p['left'] + 0.5,
+                          f'{label}: same line — the secondary {o["label"]!r} '
+                          f'sits entirely to the LEFT of the primary '
+                          f'({o["right"]:.0f} <= {p["left"]:.0f})')
+                else:
+                    check(o['bottom'] <= p['top'] + 1,
+                          f'{label}: the row WRAPPED — the secondary '
+                          f'{o["label"]!r} is on an earlier line, so the '
+                          f'primary is still the last control reached '
+                          f'({o["bottom"]:.0f} <= {p["top"]:.0f})')
+            if config == 'prolific':
+                # The paired PRESENCE for the lab row's single control: online
+                # there really are two, so the ordering above is a measurement
+                # and not a tautology.
+                check(len(m['kids']) == 2
+                      and any('quiz-reread-btn' in k['cls'] for k in m['kids']),
+                      f'{label}: the row really holds TWO controls, the '
+                      f'secondary being the re-read '
+                      f'({[k["label"] for k in m["kids"]]})')
+            else:
+                check(len(m['kids']) == 1,
+                      f'{label}: the lab row holds only the primary '
+                      f'({[k["label"] for k in m["kids"]]})')
+            geometry.setdefault('button_row_order', {})[label] = m['kids']
+            if vp_name == 'laptop_1280x720':
+                screenshot(page, f'button_row_{config}', vp_name)
+            context.close()
+
+
 def check_constant_card(facts):
     """Suggestion 1, now implemented: ONE card width for EVERY page."""
     section('N. The card frame is the same width on every page')
@@ -4357,6 +4658,8 @@ def main():
                     check_narrow_desktop_window(server, browser)
                     check_phone_page_flow(server, browser)
                     check_dq_ending(server, browser)
+                    check_closing_instruction_centred(server, browser)
+                    check_button_row_order(server, browser)
                     check_scroll_really_moves(server, browser)
                     check_scroll_affordance(server, browser)
                     check_no_phantom_affordance(server, browser)

@@ -50,17 +50,47 @@
                 </div>
             </div>
 
+            {# THE CLOSING INSTRUCTION, directly under the receipt and above
+               everything else on the page (Julian, 2026-08-21). It is about the
+               "Back to Prolific" control pinned at the foot of the card, so it
+               belongs with the thank-you and the total, not buried under the
+               payment notes and the payoff table where it used to sit.
+               `.closing-instruction` is the SHARED centring component — the
+               same class outro/Ended.html uses for the same sentence; see its
+               INTENTION note in base.css for why the alignment is no longer
+               decided per page. #}
+            {% if prolific_completion_redirects %}
+            <p class="section-text closing-instruction">
+                Please click the button below to complete the study and return
+                to Prolific.
+            </p>
+            {% endif %}
+
             <div class="section-text results-notes">
-                <p>Please leave up to 2 weeks for the payment to be processed.</p>
-                {# LAB ONLY (Julian, 2026-08-12). A lab session ends when the
-                   experimenter dismisses the room, not when one participant
-                   finishes, so the last thing this page must say is "wait".
-                   Gated on `is_lab` — a Prolific participant is at home and
-                   must never be told to stay seated. The early-exit page says
-                   something DIFFERENT for the same situation (raise your hand),
-                   because someone leaving early is not waiting for a general
-                   dismissal; see outro/Ended.html. #}
+                {# LAB ONLY (Julian, 2026-08-21) — BOTH sentences below, and the
+                   payment line is the one that moved under this gate.
+
+                   "Please leave up to 2 weeks for the payment to be processed"
+                   describes the LAB's bank transfer: the experimenter collects
+                   an IBAN (see the Demographics page) and the institution pays
+                   it out weeks later. A Prolific participant is paid THROUGH
+                   PROLIFIC, on Prolific's own timetable, so the sentence is not
+                   merely redundant for them — it is false, and it invites a
+                   support message about a payment we do not make. Gated on the
+                   STUDY TYPE axis (`is_lab`, one implementation in
+                   common.is_lab), never on a payment module flag: which
+                   platform pays is a property of where the study runs, and
+                   `collect_outro_bank_details` can legally be off in a lab
+                   clickthrough config that still pays by transfer.
+
+                   The "stay seated" line is the older lab-only sentence (Julian,
+                   2026-08-12): a lab session ends when the experimenter
+                   dismisses the room, not when one participant finishes. The
+                   early-exit page says something DIFFERENT for the same
+                   situation (raise your hand), because someone leaving early is
+                   not waiting for a general dismissal; see outro/Ended.html. #}
                 {% if is_lab %}
+                <p>Please leave up to 2 weeks for the payment to be processed.</p>
                 <p>
                     Please <strong>stay seated</strong> until the experimenter
                     tells you that you can leave.
@@ -77,12 +107,6 @@
                     </div>
                 {% endif %}
             </div>
-
-            {% if prolific_completion_redirects %}
-            <div class="section-text">
-                Please click the button below to complete the study and return to Prolific.
-            </div>
-            {% endif %}
 
             <div class="results-section">
                 {# The sentence that explains the table, immediately above it —

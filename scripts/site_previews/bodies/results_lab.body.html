@@ -9,11 +9,19 @@
      The per-round table is the real .results-table component, paid rounds
      carrying the row wash, the inset bar and the "paid" pill.
 
-     TWO DEPARTURES FROM THE PAGE AS SHIPPED, both to fit a 16:9 canvas with
+     THREE DEPARTURES FROM THE PAGE AS SHIPPED, all to fit a 16:9 canvas with
      the payoff table OPEN, which the real page does not do (it is the longest
      page in the study and scrolls inside the card on any ordinary display):
        * the "Thank you, you're all done." greeting line above the total is
          dropped — it is unconditional in outro/Results.html;
+       * the OTHER lab-only note — "Please leave up to 2 weeks for the payment
+         to be processed" — is dropped too. It was missing here silently until
+         2026-08-21 and is now recorded rather than quietly absent: putting it
+         back overflows the canvas by a MEASURED 37px at every tile size
+         (check_site_previews.py, all four sizes, JS on and off), so the screen
+         shows one of the two lab notes and says which. NB it is a LAB line:
+         since 2026-08-21 a Prolific participant is shown nothing here at all,
+         because Prolific pays through Prolific.
        * a short 3-round session is shown.
      Everything else — the receipt, the lab note, the accordion, the table —
      is the page as a lab participant sees it. -->

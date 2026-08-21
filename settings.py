@@ -404,7 +404,17 @@ DASHBOARD_RETURN_GRACE_SECONDS = 90
 # monitor), plus its conditional include in main/game.html. Adding a file under
 # `_static/` bumps the version and re-stamps the manifest like any other change.
 # See DECISIONS.md, 'Passive focus trace ported alongside the tab monitor'.
-STATIC_VERSION = '20'
+# 20 -> 21 on 2026-08-21: TWO participant-visible CSS changes in the same day.
+# (a) the new `.closing-instruction` component in base.css, which centres the
+# "click the button below" sentence on BOTH endings (it rendered flush left on
+# the results page); (b) the button-row ORDER RULE in base.css, which puts the
+# primary action in the rightmost slot — the online quiz rendered
+# `[Next] [Re-read the instructions]` and read as an offer to leave the quiz.
+# `_static/global/html/template.html` gained the specimen for (a). Both are
+# pure-CSS fixes served from a `?v=`-stamped URL, so WITHOUT this bump a
+# returning participant's cached base.css keeps the broken layout and nothing
+# anywhere reports it. See DECISIONS.md for both entries.
+STATIC_VERSION = '21'
 
 # --- whose study this is ------------------------------------------------------
 # THE ONE PLACE A COPIED STUDY NAMES ITS INSTITUTION IN PROSE (Julian,

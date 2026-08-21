@@ -24,14 +24,26 @@
             </div>
         </div>
 
+        <!-- SECONDARY ACTIONS FIRST, THE PRIMARY LAST — the button-row order
+             rule in base.css. This row used to read `[Next] [Re-read the
+             instructions]`, which put a secondary control in the rightmost
+             slot and made the way OUT of the quiz look like the way ON
+             (Julian, 2026-08-21). The markup order is the tab order, so it is
+             written correctly here rather than left to the component's
+             `order` backstop. -->
         <div class="button-row">
-            <input type="submit" value="Next" class="next-button" onclick="setValue('redoinstructions',0)">
             {{ if show_reread_dialog }}
-            <!-- ONLINE ONLY (see quiz.vars_for_template): always available,
-                 before or after any failure. Deliberately NOT .next-button —
-                 global.js's Enter handler targets the first .next-button, and
-                 Enter must keep submitting the quiz rather than opening a
-                 dialog. type="button" so it never submits the form. -->
+            <!-- THE AT-WILL RE-READ, ONLINE ONLY, AND IT IS NOT A SKIP.
+                 It opens a DIALOG containing the instructions; it submits
+                 nothing, consumes no round, and cannot advance the
+                 participant — `type="button"`, and the dialog it opens holds
+                 no form control of any kind. The lab's one-time re-read PASS
+                 is a DIFFERENT mechanism with a different gate; see
+                 `quiz_modal_state` in intro/__init__.py, which is where the two
+                 are kept apart and why.
+                 Deliberately NOT .next-button — global.js's Enter handler
+                 targets the first .next-button, and Enter must keep submitting
+                 the quiz rather than opening a dialog. -->
             <button type="button" id="rereadOpen" class="quiz-reread-btn">
                 Re-read the instructions
             </button>
@@ -42,6 +54,7 @@
                  and submits. -->
             <input type="submit" value="Skip quiz (testing)" class="skip-button" onclick="skipQuiz()">
             {{ endif }}
+            <input type="submit" value="Next" class="next-button" onclick="setValue('redoinstructions',0)">
         </div>
     </div>
 </div>
