@@ -97,8 +97,57 @@ def comprehension_threshold(cfg) -> int:
     return int(common.cfg(cfg, 'quiz_comprehension_max_failures'))
 
 
+def at_will_reread_available(player) -> bool:
+    """True where the instructions are ALWAYS one click away, in a dialog on
+    the quiz page — the ONLINE re-read.
+
+    ======================================================================
+    THERE ARE TWO RE-READ MECHANISMS IN THIS APP AND THEY ARE NOT ONE
+    CONCEPT DECIDED TWICE. DO NOT MERGE THEM.
+    ======================================================================
+    They look mergeable — same words, adjacent code, and two different
+    predicates (`quiz_reread` here, `recruitment` there) — which is exactly the
+    shape CLAUDE.md's inverted rule tells you to go looking at. It was looked
+    at, on 2026-08-21, and the answer is that these are two mechanisms:
+
+      * `reread_available` — THE LAB'S ONE-TIME RE-READ **PASS**. Gated by the
+        `quiz_reread` MODULE FLAG, opened only by crossing the comprehension
+        threshold, consumed once, and it costs a ROUND: the participant is sent
+        back through `instructing` and takes the quiz again (round 2), which is
+        why `comprehension_reread_used` exists and why the attempt log separates
+        the passes. A study can switch it off.
+
+      * this one — THE ONLINE AT-WILL **DIALOG**. A modal on the quiz page
+        holding `intro/instructions_text.html`. It submits nothing, consumes no
+        round, needs no failure, and cannot advance anybody: the button is
+        `type="button"` and the dialog contains no form control at all.
+
+    So the flags DISAGREEING (`quiz_reread` True for lab, False for prolific,
+    while this is False for lab and True for prolific) is not drift — it is the
+    design, and it is Julian's (2026-08-11, recorded in `quiz_modal_state` and
+    in DECISIONS.md's "The lab comprehension rule is help, not ejection"). Each
+    modality gets exactly ONE way to see the instructions again: in the lab the
+    supervised second pass, plus a human to raise a hand to; online, where there
+    is no such human, an always-available dialog. Two on one page would read as
+    a contradiction.
+
+    KEYED ON THE STUDY TYPE, AND ON `not is_lab` RATHER THAN `is_prolific`. The
+    question this asks is "is there an experimenter in the room to ask?", and
+    the answer is no for every modality except the lab — a session running under
+    some future third `recruitment` value must get the dialog, not silently lose
+    the only way it has to re-read. `is_prolific` would answer a narrower
+    question than the one being asked.
+    """
+    return not common.is_lab(player.session.config)
+
+
 def reread_available(player) -> bool:
     """True while the one-time lab re-read offer is open to this participant.
+
+    THE LAB'S MECHANISM. Its online counterpart is the at-will DIALOG
+    (`at_will_reread_available`, just above), which is a different thing keyed
+    on a different axis on purpose — read that docstring before concluding the
+    two disagree by accident.
 
     Open means: the quiz_reread module is on, the participant has crossed the
     comprehension failure threshold, there is still a re-read round left, and
@@ -290,7 +339,11 @@ def quiz_modal_state(player) -> dict:
         'show_experimenter': show_experimenter,
         'experimenter_attempts':
             failed_total if failed_total >= 2 * threshold else 0,
-        'show_reread_dialog': not common.is_lab(cfg),
+        # THE ONLINE AT-WILL DIALOG — a DIFFERENT mechanism from the lab's
+        # one-time re-read PASS above (`offer_reread`), not a second decision
+        # about the same thing. The whole argument, and the instruction not to
+        # merge the two, is on `at_will_reread_available`.
+        'show_reread_dialog': at_will_reread_available(player),
     }
 
 

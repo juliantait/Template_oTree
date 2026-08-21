@@ -84,8 +84,14 @@
             </p>
             {% endif %}
 
+            {# The closing instruction, on the SHARED centring component
+               (`.closing-instruction`, base.css) — the same class
+               outro/Results.html gives the same sentence. Its centring used to
+               come free from `.narrative-card .section-text` here and from
+               NOTHING there: one concept, two implementations, already drifted
+               (fixed 2026-08-21; the reasoning is on the component). #}
             {% if prolific_completion_redirects %}
-            <p class="section-text">
+            <p class="section-text closing-instruction">
                 Please click the button below to return to Prolific.
             </p>
             {% endif %}

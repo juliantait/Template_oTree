@@ -97,6 +97,21 @@ def check(cond, msg):
     return bool(cond)
 
 
+def reveal_not_arrived(pg):
+    """Tick the dashboard's "show not-arrived rows" box (2026-08-21).
+
+    The dashboard HIDES not-arrived rows by default, so any leg whose fixture
+    stages participants that never opened a page must ask for them or it is
+    measuring a table they are legitimately absent from. The checkbox lives in
+    the static shell, so it can be ticked before the first poll lands.
+
+    DELIBERATELY NOT USED BY `check_browser`, which is the leg that owns this
+    control and asserts BOTH of its states from scratch.
+    """
+    pg.wait_for_selector('#show-not-arrived', timeout=15000)
+    pg.check('#show-not-arrived')
+
+
 def section(title):
     print(f'\n=== {title} ===')
 
@@ -421,10 +436,19 @@ def check_overview(base, sess):
                                     (1152, 864, 'dashboard_overview_1152.png')):
             pg.set_viewport_size(dict(width=width, height=height))
             pg.goto(url)
+            # THE OVERVIEW SHOWS EVERY STATE, so it asks for the not-arrived
+            # row the dashboard now hides by default — row 13 is the dimmed
+            # never-arrived one this session exists to demonstrate, and the
+            # screenshots are the picture a human is pointed at.
+            reveal_not_arrived(pg)
             pg.wait_for_selector('tbody tr td.c-label', timeout=15000)
+            pg.wait_for_function(
+                '() => document.querySelectorAll("tbody tr").length === 13',
+                timeout=15000)
             n_rows = pg.eval_on_selector_all('tbody tr', 'els => els.length')
             check(n_rows == 13,
-                  f'{width}px: all 13 rows painted (got {n_rows})')
+                  f'{width}px: all 13 rows painted with not-arrived revealed '
+                  f'(got {n_rows})')
 
             # equal spacing, measured, at THIS width
             widths = pg.eval_on_selector_all(
@@ -804,9 +828,17 @@ def check_browser(base, lab, pro):
         check(ed.URL_BASE in pg.url, 'after login the dashboard URL serves')
 
         # The poll paints without a reload.
+        #
+        # FIVE, NOT SIX, AND THAT IS THE DEFAULT VIEW (2026-08-21): the session
+        # has six participants and the sixth never arrived, so the dashboard
+        # opens with it hidden. The full six are asserted below, with the box
+        # ticked — and the header still says "of 6", which is what stops the
+        # hiding from making the room look smaller than it is.
         pg.wait_for_selector('tbody tr td.c-label', timeout=15000)
         n_rows = pg.eval_on_selector_all('tbody tr', 'els => els.length')
-        check(n_rows == 6, f'poll painted 6 rows (got {n_rows})')
+        check(n_rows == 5,
+              f'poll painted 5 of 6 rows — the never-arrived one is hidden by '
+              f'default (got {n_rows})')
         # THE POLL IS ALIVE, not merely painted once. A JavaScript error inside
         # repaint() leaves the table showing the FIRST tick forever while the
         # status line quietly says "update failed" — a screen that looks correct
@@ -845,18 +877,64 @@ def check_browser(base, lab, pro):
         check(len(set(bg)) >= 2, f'stalled row is a visibly different colour '
                                  f'({len(set(bg))} distinct row backgrounds)')
 
-        # Entry-only rows are dimmed, and the toggle hides them.
+        # ---- THE NOT-ARRIVED VIEW CONTROL, BOTH DIRECTIONS, BY NAME --------
+        # The rows are identified by the text an operator actually reads, and
+        # BOTH a present row and an absent row are asserted in EACH state. An
+        # absence on its own is worthless here: "Seat 06 is not in the table"
+        # is equally true of a table that failed to paint, a broken filter that
+        # dropped everybody, and a JavaScript error two lines earlier
+        # (CLAUDE.md, Testing standard).
+        never_code = ot.participant_codes(lab)[5]     # the one that never arrives
+        labels_js = ('els => els.map(e => e.textContent.trim())')
+
+        def label_cells():
+            return pg.eval_on_selector_all('tbody td.c-label', labels_js)
+
+        default_labels = label_cells()
+        check(not any(never_code in t for t in default_labels),
+              f'UNTICKED: the never-arrived participant ({never_code}) is '
+              f'ABSENT from the table')
+        check(any(t.startswith('Seat 01') for t in default_labels),
+              f'UNTICKED: …and an ARRIVED participant (Seat 01) is PRESENT — '
+              f'the table painted, the filter did not eat everybody '
+              f'({len(default_labels)} rows)')
+        # The hiding is SAID, not merely done: the operator must be able to see
+        # that rows are missing without counting seats.
+        counts_text = pg.text_content('#counts') or ''
+        check('of 6 arrived' in ' '.join(counts_text.split()),
+              f'UNTICKED: the header still counts the WHOLE session, so the '
+              f'room never looks smaller than it is ({counts_text!r})')
+        check('1 not arrived, hidden' in ' '.join(counts_text.split()),
+              f'UNTICKED: …and it names how many are hidden ({counts_text!r})')
+
+        pg.check('#show-not-arrived')
+        pg.wait_for_function(
+            'document.querySelectorAll("tbody tr").length === 6',
+            timeout=10000)
+        ticked_labels = label_cells()
+        check(any(never_code in t for t in ticked_labels),
+              f'TICKED: the never-arrived participant ({never_code}) APPEARS')
+        check(any(t.startswith('Seat 01') for t in ticked_labels),
+              'TICKED: …and the arrived participant is still there '
+              '(revealing is additive, not a different table)')
+        check('not arrived, hidden' not in ' '.join(
+                  (pg.text_content('#counts') or '').split()),
+              'TICKED: the header no longer claims anything is hidden')
+
+        # Revealed, the not-arrived row is DIMMED — hidden by default and
+        # de-emphasised when shown are two different treatments of one state,
+        # and the dim is only measurable while the row is on screen.
         dimmed = pg.eval_on_selector_all(
             'tbody tr.entry-only td',
             'els => els.map(e => getComputedStyle(e).opacity)')
         check(dimmed and all(float(o) < 1 for o in dimmed),
-              'entry-only row is de-emphasised (opacity < 1)')
-        pg.check('#hide-entry')
+              f'TICKED: the revealed never-arrived row is de-emphasised '
+              f'(opacity {sorted(set(dimmed))})')
+        pg.uncheck('#show-not-arrived')
         pg.wait_for_function(
-            f'document.querySelectorAll("tbody tr").length < {n_rows}',
+            'document.querySelectorAll("tbody tr").length === 5',
             timeout=10000)
-        check(True, 'hide-entry toggle removes entry-only rows')
-        pg.uncheck('#hide-entry')
+        check(True, 'unticking hides it again (the control is reversible)')
 
         # No horizontal page scroll at 1280.
         overflow = pg.evaluate(
@@ -943,6 +1021,10 @@ def check_row_order(base):
         pg.fill('input[name=password]', 'admin')
         pg.click('button[type=submit], input[type=submit]')
         pg.goto(f'{base}{ed.URL_BASE}/{sess.code}', wait_until='load')
+        # THE SORT IS OVER THE WHOLE ROOM, arrived or not — and the row this
+        # leg's last assertion is about (the unlabelled one) never arrives, so
+        # the not-arrived rows are revealed before the column is read.
+        reveal_not_arrived(pg)
         pg.wait_for_selector('tbody tr td.c-label', timeout=15000)
         pg.wait_for_timeout(400)
         shown = [t.strip() for t in pg.eval_on_selector_all(
@@ -1161,6 +1243,9 @@ def check_quiz_mistakes(base):
         pg.fill('input[name=password]', 'admin')
         pg.click('button[type=submit], input[type=submit]')
         pg.goto(f'{base}{ed.URL_BASE}/{sess.code}')
+        # This fixture PLANTS attempt logs without walking anybody, so every
+        # row is a not-arrived row and the default view is empty by design.
+        reveal_not_arrived(pg)
         pg.wait_for_selector('tbody tr td.c-label', timeout=15000)
         # INERT UNTIL CLICKED: the only footprint on the live table is the ⓘ.
         check(pg.eval_on_selector_all('.qm-overlay.open',

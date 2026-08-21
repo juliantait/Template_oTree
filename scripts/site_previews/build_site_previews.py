@@ -424,6 +424,20 @@ Date.prototype.toLocaleTimeString = function () { return '10:42:18 AM'; };
         # and freezing that would produce a preview of an empty dashboard that
         # looks, at thumbnail size, exactly like a working one.
         page.wait_for_function(
+            '() => document.querySelectorAll("#rows tr").length > 0')
+        # THE VIEW CONTROL IS TICKED BEFORE THE FREEZE (2026-08-21). The
+        # dashboard now HIDES not-arrived rows by default, and this preview's
+        # whole job is to show every state the monitor can display — including
+        # the dimmed never-arrived row, which check_site_previews.py asserts is
+        # present (MONITOR_MARKS['tr.entry-only']). The ATTRIBUTE is set as well
+        # as the property, because every script is stripped below: without it
+        # the frozen page would show a full table beside an UNTICKED box, which
+        # is a picture of a state the live dashboard never produces.
+        page.evaluate(
+            "() => { const b = document.getElementById('show-not-arrived');"
+            "        b.checked = true; b.setAttribute('checked', '');"
+            "        b.dispatchEvent(new Event('change')); }")
+        page.wait_for_function(
             '() => document.querySelectorAll("#rows tr").length === %d'
             % len(monitor_session.ROWS))
         frozen = page.evaluate('() => document.documentElement.outerHTML')

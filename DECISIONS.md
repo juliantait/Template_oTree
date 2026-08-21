@@ -11,6 +11,183 @@ working.
 
 ---
 
+## The primary action is the RIGHTMOST control in a button row; the two re-read mechanisms stay apart — 2026-08-21
+
+Julian reported being "offered an option to skip the instructions and the quiz"
+in a PROLIFIC session and not in a LAB one. Investigated before changing
+anything, and the report turned out to be about a real defect but not the one it
+described.
+
+**There is no skip.** Driven over real HTTP in production mode, neither study
+type is offered any skip: `DEBUG` is off, so the "Skip quiz (testing)" and "Skip
+instructions (testing)" buttons are not rendered at all. The prolific quiz page
+does carry one control the lab's does not — the at-will **"Re-read the
+instructions"** button — and it is a DIALOG opener: `type="button"`, and the
+dialog it opens contains no form control of any kind. It submits nothing and
+consumes no round. A hand-crafted `redoinstructions=1` POST from a prolific
+participant is refused server-side (`reread_available` gates both
+`error_message` and `before_next_page`), while the same POST from a lab
+participant with the offer open is granted — so the refusal is about the study
+type and not about luck.
+
+**The defect was the BUTTON ORDER, which is what made it read as a skip.** The
+row rendered `[Next] [Re-read the instructions]`, putting a secondary control in
+the rightmost slot — the slot a participant's eye and thumb go to, and the one
+the rest of the template reserves for the primary action. It is now a RULE OF
+THE COMPONENT rather than a page's decision: `.button-row > .next-button:not(.ghost)
+{ order: 1 }` in base.css, with the markup written secondary-then-primary too so
+the visual, DOM and TAB orders agree and the `order` declaration is an inert
+backstop. **`:not(.ghost)` is load-bearing** — the ghost variant IS the secondary
+shape of the same button (the instructions pager's "Back"), so keying on
+`.next-button` alone would put Back and Next in the same slot and settle nothing.
+Every other page in the template has a one-control row, so nothing else moved.
+**Rejected:** patching the quiz page, and extending the rule to `.modal-actions`
+— a different component whose own primary-first convention is currently
+consistent with itself, and which is not what was reported.
+
+**The two re-read mechanisms are NOT one concept decided twice, and were kept
+apart.** It looks like the classic drift: `reread_available` keyed on the
+`quiz_reread` MODULE FLAG (True for lab, False for prolific) and
+`show_reread_dialog` keyed on the STUDY TYPE (the mirror image). They are two
+mechanisms. The lab's is a one-time re-read **PASS** that costs a round and sends
+the participant back through `instructing`; the online one is an at-will
+**DIALOG** that costs nothing and cannot advance anybody. Each modality gets
+exactly one way to see the instructions again — supervised second pass plus a
+human to ask in the lab, an always-available dialog online where there is no
+such human — and two on one page would read as a contradiction. That is Julian's
+own decision (2026-08-11). Merging them would leave one modality with no re-read
+at all. The split is now stated at the split point, as a named predicate
+(`intro.at_will_reread_available`) whose docstring says why it must not be
+merged, with `reread_available` pointing back at it. It reads `not is_lab`
+rather than `is_prolific` deliberately: the question is "is there an experimenter
+in the room?", and a future third `recruitment` value must get the dialog, not
+silently lose its only way to re-read.
+
+**A reported third defect was not one.** `explicit_consent` is absent from the
+PROLIFIC entry of `RECRUITMENT_PROFILES`, which looks like a key the profile
+forgets to set. It is deliberate and already commented there: the key falls
+through to `SESSION_CONFIG_DEFAULTS`, which oTree merges into every session
+config at creation. Checked against a real created session — a prolific
+session's STORED config carries `explicit_consent=True`, a lab session's carries
+`False`. Nothing is missing and no lookup can fail; adding it to the profile
+would only duplicate the baseline.
+
+**Where it is enforced.** `scripts/tests/reread_controls_test.py` — both study
+types walked to the quiz over real HTTP in production mode: no skip anywhere
+(paired with DEBUG asserted off, without which that absence is a statement about
+the server); the at-will control present online and absent in the lab; the
+dialog proven inert (no form control in it, and its only exit goes back to the
+quiz); the hand-crafted POST refused for prolific AND granted for lab; and the
+document order. `scripts/tests/render_check.py` leg AI measures the RENDERED
+boxes at three viewports — `order` is a layout property, so a source-order
+assertion can see neither its success nor its failure.
+
+---
+
+## The monitor HIDES not-arrived rows by default, and says how many it is hiding — 2026-08-21
+
+The dashboard shipped with a `hide not-arrived rows` checkbox, unticked, so an
+operator opening a 24-seat lab session before anyone walked in got 24 grey rows
+with nobody in any of them, and had to find a control to make the screen say
+what the room said. The control is now inverted: **`show not-arrived rows`,
+unticked on load**, so the default view is the room as it actually is and the
+box REVEALS rather than hides.
+
+**One arrival predicate, and it is the server's.** The filter reads
+`row.entry_only` — the value `_participant_row` already computes from
+`participant.visited`, the same source as the `arrived` field and the row-dim
+class. It is deliberately NOT re-derived client-side as `!row.arrived`, which
+would put a second implementation of "has this participant arrived" in the
+browser, free to drift from the server's (CLAUDE.md's inverted rule). Reusing
+it also inherits a guard `!arrived` does not have: a TERMINAL row is never
+`entry_only`, so a screen-out or a declined consent can never be hidden by this
+control even though nobody ever "arrived".
+
+**Hiding rows must never make the room look smaller.** The header ratio is over
+`data.rows.length`, the UNFILTERED total, so it still reads "5 of 6 arrived";
+beside it, whenever anything is hidden, sits `1 not arrived, hidden`. That count
+is a SUBTRACTION of what the filter removed, not a second count of the same
+thing, so the number and the table cannot disagree. And the empty table — the
+legitimate state before the first arrival — now says *why* it is empty and how
+to see the rest, because "No rows to show." on a full session reads as a broken
+dashboard.
+
+**Where it is enforced.** `scripts/tests/dashboard_render_check.py` asserts BOTH
+directions in a real browser on NAMED rows: unticked, the never-arrived
+participant is absent AND an arrived one is present (an absence alone is equally
+true of a table that failed to paint); ticked, the never-arrived one appears and
+the arrived one is still there; plus the header's two claims in each state.
+`scripts/tests/dashboard_test.py` D asserts the shipped default server-side —
+the box exists AND carries no `checked`. Three other browser legs (the 13-row
+overview, the row-order sort, the quiz-mistakes panel) stage participants who
+never arrive, so they now tick the box through one shared helper.
+
+**The website preview had to be told too.** `build_site_previews.build_monitor`
+ticks the box before freezing the page, because that screen exists to show every
+state the monitor can display and `check_site_previews.py` asserts the dimmed
+never-arrived row is in it. Without that the build fails loudly on its row-count
+wait rather than shipping a preview quietly missing a state — which is the
+behaviour we want from it.
+
+---
+
+## The "up to 2 weeks" payment line is LAB-ONLY, and the closing instruction is a shared CENTRED component — 2026-08-21
+
+Two fixes to `outro/Results.html`, one participant-facing and one structural.
+
+**The payment line.** "Please leave up to 2 weeks for the payment to be
+processed" was unconditional. It describes the LAB's payment: the experimenter
+collects an IBAN and the institution transfers weeks later. A Prolific
+participant is paid **through Prolific**, on Prolific's timetable, so the
+sentence is not merely redundant for them — it is **false**, and it invites a
+support message about a payment we never make. It is now gated on the STUDY TYPE
+axis (`is_lab`, one implementation in `common.is_lab`), joining the "stay
+seated" sentence already under that gate.
+
+**Gated on the axis, NOT on a payment module flag.** `collect_outro_bank_details`
+was the tempting read — it is literally the bank-details switch — and it is
+wrong twice: the `test` config turns it OFF on a `lab` session that still pays by
+transfer, and "which platform pays" is a property of *where the study runs*, not
+of which form we happened to show. Flags decide mechanics, `recruitment` decides
+copy (`docs/conventions.md`).
+
+**The closing instruction, and the collapsed distinction under it.** "Please
+click the button below to complete the study and return to Prolific" rendered
+**flush left** under a centred receipt. The cause was not a broken rule.
+`.section-text` deliberately sets only the reading measure and centres the
+*block*, leaving text alignment to the card FAMILY; the results card is a plain
+`.screen-card`, so the sentence inherited the card's flush-left while the receipt
+above it was centred by `.payment-summary` and the notes below it by
+`.results-notes`. **The same sentence on `outro/Ended.html` was centred all
+along**, for an unrelated reason — `.narrative-card .section-text`. One concept,
+two implementations, already disagreeing: CLAUDE.md's inverted rule, wearing a
+stylesheet. Rejected: adding `text-align: center` to the results page, which
+would have made it three implementations. Both endings now compose the shared
+`.closing-instruction` component (base.css, with a specimen in
+`_static/global/html/template.html`), so the alignment is decided once.
+
+**It also MOVED**: directly under the receipt, above the payment notes and the
+payoff table, so it sits with the thank-you and the total rather than buried
+between the SEPA warning and the table. Julian chose this over placing it
+immediately after the greeting *inside* the 340px receipt, which would have told
+participants to leave before showing what they earned and pushed the Total row
+into the fold that `results.css`'s short-viewport block exists to keep it out of.
+
+**Where it is enforced.** `scripts/tests/ending_copy_test.py` — four
+configurations walked to Results over real HTTP in **production mode** (it boots
+its own server, so the mode cannot be inherited), asserting the payment line
+present for lab and absent for prolific, the closing instruction's document
+order, and, for every absence, the matching presence plus `exit_code == finished`
+so a walk that never reached the ending cannot pass. Rows 3 and 4 of its table
+are the ones that matter: prolific with the redirects OFF must still not be
+promised a transfer, and lab with them ON must still get its payment line — a
+sentence gated on the nearest module flag passes a two-row version and fails
+those. The centring is MEASURED in `scripts/tests/render_check.py` leg AH, off
+the **line boxes of the real glyphs** (a Range's client rects) rather than off
+`text-align`, on both endings at three viewports.
+
+---
+
 ## The monitor's endings are GENERATED from the exit-code table, and an unknown code fails PREMATURE — 2026-08-19
 
 The dashboard used to enumerate the four terminal states in a hard-coded map

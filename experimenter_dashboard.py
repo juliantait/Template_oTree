@@ -2413,7 +2413,14 @@ body { padding: 18px 22px; font-size: 15px; line-height: 1.35; }
 .dash-counts { color: var(--ink-soft); font-size: .9rem; }
 .dash-status { margin-left: auto; font-size: .85rem; color: var(--ink-mute); }
 .dash-status.err { color: var(--danger); font-weight: 650; }
-.dash-controls { font-size: .85rem; color: var(--ink-soft); user-select: none; }
+.dash-controls { font-size: .85rem; color: var(--ink-soft); user-select: none;
+  display: inline-flex; align-items: baseline; gap: 5px; cursor: pointer; }
+/* THE HIDING, SAID OUT LOUD. Muted, because it is a note about the VIEW and
+   not an alarm about the session — but never absent while rows are missing:
+   a table quietly shorter than the session is how an operator concludes the
+   room is emptier than it is. Paired with the control that lifts it. */
+.count-hidden { color: var(--ink-mute); }
+.count-hidden b { color: var(--ink-soft); }
 
 table.dash { width: 100%; border-collapse: collapse; background: var(--card-bg);
   border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden;
@@ -2946,8 +2953,9 @@ tr.qm-unreadable td { color: var(--dash-amber); background: #fffceb; }
       <code class="hdr-code">__SESSION_CODE__</code></span>
     <span class="hdr-dot">&middot;</span>
     <span class="dash-counts" id="counts"></span>
-    <label class="dash-controls"><input type="checkbox" id="hide-entry">
-      hide not-arrived rows</label>
+    <label class="dash-controls" title="Not arrived = has not opened a page yet (participant.visited). Terminal rows — a screen-out, a declined consent — are never hidden, however they got there.">
+      <input type="checkbox" id="show-not-arrived">
+      show not-arrived rows</label>
     <span class="dash-status" id="status">connecting…</span>
   </div>
   <div class="ov-strip" id="ov-strip"></div>
@@ -3355,13 +3363,40 @@ function paintStallLegend(data) {
 }
 
 function repaint(data) {
-  var hideEntry = document.getElementById('hide-entry').checked;
+  /* NOT-ARRIVED ROWS ARE HIDDEN BY DEFAULT (Julian, 2026-08-21), and the box
+     REVEALS them rather than hiding them — so an unticked control, which is
+     what an operator gets on load, is the quiet view of the room as it
+     actually is. Before this the default was every seat in the session, and a
+     lab session of 24 opened as 24 grey rows with nobody in any of them.
+
+     THE PREDICATE IS `entry_only`, WHICH IS THE ONE THE SERVER ALREADY
+     COMPUTES (_participant_row) FROM `participant.visited` — the same value
+     the `arrived` field and the row-dimming class come from. It is NOT
+     re-derived as `!r.arrived` here, which would be a second implementation of
+     "has this participant arrived" living in the client, free to drift from
+     the server's the day either changes (CLAUDE.md's inverted
+     collapsed-distinction rule). It also carries a guard `!r.arrived` does
+     not: a TERMINAL row is never entry_only, so a screen-out or a declined
+     consent can never be hidden by this control even though nobody "arrived". */
+  var showNotArrived = document.getElementById('show-not-arrived').checked;
   var rows = data.rows.filter(function (r) {
-    return !(hideEntry && r.entry_only);
+    return showNotArrived || !r.entry_only;
   });
+  /* THE HIDDEN COUNT IS A SUBTRACTION, not a second count of the same thing:
+     whatever the filter above removed is what is hidden, by construction, so
+     the number under the header can never disagree with the table. */
+  var hidden = data.rows.length - rows.length;
   var html = rows.map(function (r) { return renderRow(r, data); }).join('');
-  document.getElementById('rows').innerHTML =
-    html || '<tr><td colspan="6">No rows to show.</td></tr>';
+  /* AN EMPTY TABLE MUST SAY WHY. Before the first arrival every row is
+     entry_only, so the default view is legitimately empty — and "No rows to
+     show." on a session of 24 reads as a broken dashboard or an empty
+     session. Neither is true, and an operator who believes either does the
+     wrong thing. */
+  document.getElementById('rows').innerHTML = html || (hidden
+    ? '<tr><td colspan="6">Nobody has arrived yet — <b>' + hidden +
+      '</b> not-arrived row' + (hidden === 1 ? '' : 's') + ' hidden. ' +
+      'Tick <b>show not-arrived rows</b> above to see them.</td></tr>'
+    : '<tr><td colspan="6">No rows to show.</td></tr>');
   document.getElementById('ov-strip').innerHTML =
     treatmentsHTML(data) + endingsHTML(data) + earningsHTML(data) +
     timeHTML(data);
@@ -3390,8 +3425,15 @@ function repaint(data) {
      relationship; the pill explains the split. Do not reintroduce a bare
      "N participants" alongside the Y either (Julian, 2026-08-17): the arrival
      segment is the one place the total lives. */
+  /* THE RATIO IS ALWAYS OF THE WHOLE SESSION — `n` is data.rows.length, the
+     UNFILTERED total, so hiding rows can never make the room look smaller than
+     it is. What the view is doing is then said out loud beside it: an operator
+     must never have to infer that rows are missing from a table that simply
+     has fewer lines in it than the session has seats. */
   document.getElementById('counts').innerHTML =
     '👤 <b>' + arrived + '</b> of <b>' + n + '</b> arrived' +
+    (hidden ? ' · <span class="count-hidden">👁️‍🗨️ <b>' +
+       hidden + '</b> not arrived, hidden</span>' : '') +
     (unmapped ? ' · ⁉️ ' + unmapped + ' in an app not on the timeline' : '') +
     (mismatched ? ' · ⁉️ ' + mismatched +
        ' with a flag/exit-code mismatch' : '');
@@ -3419,7 +3461,7 @@ function tick() {
     .then(function () { inFlight = false; });
 }
 
-document.getElementById('hide-entry').addEventListener('change', function () {
+document.getElementById('show-not-arrived').addEventListener('change', function () {
   if (lastGood) repaint(lastGood);
 });
 

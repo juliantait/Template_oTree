@@ -491,6 +491,24 @@ def main():
     check(r6['arrived'] is True and r6['step'] == 'entry'
           and r6['entry_only'] is False,
           'arrived participant still at entry is NOT entry_only (not dimmed)')
+    # THE SHIPPED DEFAULT OF THE VIEW CONTROL (2026-08-21), asserted where it
+    # is decided: in the page the server sends. The FILTERING is client-side
+    # and is measured in a real browser (dashboard_render_check.py's
+    # both-directions leg) — what is checked here is the one thing HTML can
+    # settle, namely that the box arrives UNTICKED, so not-arrived rows are
+    # hidden on load. Absence paired with presence: the control must BE there,
+    # and it must not carry `checked`; "no checked attribute" alone is equally
+    # true of a page with no checkbox at all.
+    shell = admin.get(f'{URL}/{lab.code}').text
+    box = re.search(r'<input[^>]*id="show-not-arrived"[^>]*>', shell)
+    check(box is not None,
+          'the dashboard ships the "show not-arrived rows" checkbox')
+    check(box is not None and 'checked' not in box.group(0),
+          f'…and it ships UNTICKED, so not-arrived rows are hidden on load '
+          f'({box.group(0) if box else None!r})')
+    check('show not-arrived rows' in shell,
+          'the control is LABELLED in words an operator can act on')
+
     r1 = rows[codes[1]]
     check(r1['step'] == 'instructions' and r1['entry_only'] is False,
           f"participant on instructions shows step=instructions "

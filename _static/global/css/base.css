@@ -748,6 +748,28 @@ a { color: var(--accent); }
     font-style: italic;
 }
 
+/* COMPONENT — closing instruction. INTENTION: the ONE sentence that points a
+   participant at the control that ends the study ("click the button below…").
+   It is CENTRED on every ending page, in every card family, because it belongs
+   to the control below it rather than to the running copy above it.
+
+   WHY IT IS A COMPONENT AND NOT A PAGE RULE (2026-08-21). The sentence is
+   written on BOTH endings — outro/Results.html and outro/Ended.html — and its
+   centring used to be decided in two different places, which is the inverted
+   collapsed-distinction fault in CLAUDE.md: on Ended it came free from
+   `.narrative-card .section-text`, while Results (a plain `.screen-card`, no
+   narrative family) had nothing centring it at all and the line simply sat
+   flush-left under a centred receipt. Nothing errored and no test went red —
+   one concept, two implementations, and they had already drifted. Now both
+   pages compose the SAME class and the alignment is decided once.
+
+   Compose it with `.section-text`, which supplies the reading measure and
+   centres the BLOCK; this class only sets the TEXT alignment inside it. Pinned
+   by scripts/tests/render_check.py leg AH (measured, both endings) and by
+   scripts/tests/ending_copy_test.py (document order). Specimen in
+   _static/global/html/template.html. */
+.closing-instruction { text-align: center; }
+
 /* FAMILY — narrative card. INTENTION: narrative screens (welcome, consent, the
    agreement and part/block-start screens) CENTRE their script — the page title,
    the sentences and the panels are centred and held to the reading band — while
@@ -804,6 +826,39 @@ a { color: var(--accent); }
     flex-wrap: wrap;
     padding-top: 4px;
 }
+
+/* THE BUTTON-ROW ORDER RULE (Julian, 2026-08-21) — THE PRIMARY ACTION IS THE
+   RIGHTMOST CONTROL IN THE ROW, and every secondary action sits to its left.
+
+   It is A RULE OF THE COMPONENT, not a decision each page makes, and it is
+   enforced here rather than by everyone remembering. Nearly every page in this
+   template has a one-button row, so the convention was invisible and the one
+   page that has two got it backwards: the online quiz rendered
+   `[Next] [Re-read the instructions]`, putting a SECONDARY control in the slot
+   a participant's eye and thumb both go to first. Julian read it as an offer to
+   leave the quiz rather than as the way on — which is exactly what the right
+   edge of a button row promises.
+
+   THE PRIMARY IS `.next-button` WITHOUT `.ghost`. The ghost variant IS the
+   secondary shape of the same button (the instructions pager's "Back"), so
+   keying on `.next-button` alone would put "Back" and "Next" in the same slot
+   and settle nothing. `.quiz-reread-btn`, `.skip-button` and `.exit-button` are
+   not `.next-button` at all, so they order before the primary for free — a new
+   secondary control therefore obeys the rule without being added to a list here.
+
+   DOM ORDER STILL MATTERS AND IS STILL WRITTEN CORRECTLY. `order` is a backstop,
+   not the plan: where the markup already reads secondary-then-primary (the
+   instructions pager, the quiz row since this change) this rule changes nothing
+   and the visual order, the DOM order and the TAB order agree. It is here so a
+   page that gets the markup wrong renders right anyway, which is the lesser of
+   the two faults.
+
+   NOT `.modal-actions`. That is a different component with its own settled
+   convention (primary first — see the specimen in template.html and the quiz
+   failure modals), and every modal in the template already agrees with itself.
+   Left alone deliberately; do not "unify" them without deciding that question
+   on its own merits. */
+.button-row > .next-button:not(.ghost) { order: 1; }
 
 .screen-card > .button-row { margin-top: auto; padding-top: 24px; }
 
