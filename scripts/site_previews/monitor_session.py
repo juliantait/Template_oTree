@@ -105,6 +105,11 @@ def _row(label, step, **kw):
         quiz=None,
         intro_seconds=None,
         intro_live=False,
+        # TOTAL TIME (pill 2 of the per-participant timer, 2026-08-23). Defaults
+        # None like intro_seconds; the derivation loop below fills it for rows
+        # that have an intro time, holding total >= intro (see _total_seconds).
+        total_seconds=None,
+        total_live=False,
         earnings=None,
         seconds_on_page=0,
         stalled=False,
@@ -260,6 +265,21 @@ for _r in ROWS:
     if _r.get('arrived') and _r.get('step') not in ('entry',):
         _r['treatment'] = ('row', 'column')[_n % 2]
         _n += 1
+    # TOTAL TIME (pill 2): derived from the intro time so the invariant total >=
+    # intro is visibly held rather than typed row by row (see _total_seconds).
+    # A live row's total keeps counting in the browser; a finished row's is
+    # frozen at the whole-run duration; a row with no intro time yet gets none.
+    _it = _r.get('intro_seconds')
+    if _it is not None:
+        if _r.get('finished'):
+            _r['total_seconds'] = _it + 1130   # + the whole task and outro
+            _r['total_live'] = False
+        elif _r.get('intro_live'):
+            _r['total_seconds'] = _it + 40      # + the entry block before intro
+            _r['total_live'] = True
+        else:
+            _r['total_seconds'] = _it + (_r.get('stall_elapsed') or 260)
+            _r['total_live'] = True
 
 
 def payload():

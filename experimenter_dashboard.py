@@ -1542,6 +1542,13 @@ def _participant_row(pp, ctx, now) -> dict:
     # --- INTRO TIME: the whole intro app, both rounds -------------------------
     intro = _intro_seconds(stamps, step, terminal, finished, now)
 
+    # --- TOTAL TIME: first stamp -> now (live) / to the study's end (frozen) --
+    # The companion timer to intro (Julian, 2026-08-23): pill 1 is intro (freezes
+    # at the intro boundary), pill 2 is this — the whole time since they started,
+    # intro INCLUDED, still counting for an active row. See _total_seconds for
+    # exactly which moment starts it and which stops it per outcome.
+    total = _total_seconds(stamps, terminal, finished, now)
+
     # --- amber: too long IN THIS PHASE, against the phase's threshold --------
     # _last_page_timestamp is stamped by oTree when the participant lands on a
     # page, so (now - it) is time on the CURRENT page. Only an ACTIVE row can
@@ -1650,6 +1657,12 @@ def _participant_row(pp, ctx, now) -> dict:
         # different measurement, not just a different label: see _intro_seconds.
         intro_seconds=intro['seconds'],
         intro_live=intro['live'],
+        # TOTAL TIME (2026-08-23) — pill 2 of the per-participant timer. Always
+        # >= intro_seconds (see _total_seconds); live=True keeps counting in the
+        # client, so the operator can watch how long the study is taking in real
+        # time. Frozen (live=False) once the participant has finished or ended.
+        total_seconds=total['seconds'],
+        total_live=total['live'],
         earnings=ctx['earnings'].get(pp.id),
         seconds_on_page=seconds_on_page,
         stalled=stalled,
@@ -1872,6 +1885,69 @@ def _intro_seconds(stamps, step, terminal, finished, now) -> dict:
     # consent never got there, and reporting 0 would be a claim about time they
     # never spent.
     return dict(seconds=None, live=False)
+
+
+def _total_seconds(stamps, terminal, finished, now) -> dict:
+    """TOTAL TIME: from the participant's FIRST recorded stage stamp until now
+    (live) or until they left the study (frozen). Companion to _intro_seconds,
+    and the same shape: ``dict(seconds=…|None, live=bool)``.
+
+    IT INCLUDES THE INTRO TIME, BY CONSTRUCTION, AND ALWAYS EXCEEDS IT (Julian's
+    "not time since intro ended"). The intro clock's START is `left_before_app`
+    (or, as a fallback, one of the entry stamps), and EVERY one of those is a
+    key in `stamps`; total's start is the MINIMUM stamp, so it is at or before
+    the intro start on every row and total >= intro always. Pill 2 can never
+    read shorter than pill 1.
+
+    THE MOMENT THE CLOCK STARTS — the earliest stage timestamp
+    (``min(stamps.values())``). That is the first moment we have evidence the
+    participant advanced a page, i.e. began the study, and it is the SAME anchor
+    the overview's EXPERIMENT figure uses (`_time_summary`, min stamp -> finished
+    stamp), so a finished row's total pill equals that participant's contribution
+    to the experiment average. Arrival itself is deliberately NOT the start:
+    nothing writes an arrival timestamp into `stage_timestamps`, and the brief is
+    to start from what is already recorded rather than invent state. So a
+    participant who has arrived but not yet submitted a single page has no total
+    yet (no pill) — exactly as they have no intro time yet.
+
+    THE MOMENT THE CLOCK STOPS — decided HERE, explicitly, per outcome:
+      * ACTIVE (no terminal state, not finished) -> LIVE. Counts to `now` and
+        keeps counting; the client ticks it every second between polls.
+      * FINISHED -> frozen at the `finished` stamp (STAGE_FINISHED). Chosen over
+        "the last stamp" so this equals the overview's EXPERIMENT duration to the
+        second — Results computes `earned` and stamps `finished` together, and a
+        later `prolific_return_clicked` stamp (receipt-reading time) must NOT be
+        billed to the study.
+      * TERMINAL (screened out / comprehension DQ / tab-monitor DQ) -> frozen at
+        the LAST recorded stamp (``max(stamps.values())``). A terminal
+        participant has no `finished` stamp, and there is no dedicated
+        ejection-moment stamp, so the last thing they completed is the closest
+        evidence of when they left. KNOWN LIMITATION, stated because it is a
+        deliberate choice not an oversight: a tab-monitor DQ can fire on a page
+        whose stage was never stamped, so this can UNDER-count that final page by
+        the time spent on it. It never OVER-counts, and it never claims time we
+        cannot see — the honest failure direction (see the ENDINGS header).
+
+    Defensive like _intro_seconds: no usable stamps, or an incoherent end before
+    the start, degrade to no pill (seconds=None), never a raise — the
+    instrumentation-must-never-break-a-page rule, applied at cell granularity.
+    """
+    import common   # local, like every common/settings import in this
+    # module — the dashboard must stay importable with oTree absent
+    # (the _FALLBACK_EXIT_CODES reasoning); the stage-name constants
+    # (common.STAGE_*) are only needed at request time.
+    values = [t for t in stamps.values() if isinstance(t, (int, float))]
+    if not values:
+        return dict(seconds=None, live=False)
+    start = min(values)
+    if terminal is None and not finished:
+        return dict(seconds=max(0, int(now - start)), live=True)
+    end = stamps.get(common.STAGE_FINISHED)
+    if not isinstance(end, (int, float)):
+        end = max(values)
+    if end < start:                          # incoherent stamps -> no claim
+        return dict(seconds=None, live=False)
+    return dict(seconds=int(end - start), live=False)
 
 
 def _stall_elapsed(step, stamps, intro, seconds_on_page, now):
@@ -2354,8 +2430,10 @@ _COLGROUP_HTML = f"""
     <span class="th-info" id="quiz-mistakes-info" tabindex="0" role="button"
           title="What people got wrong on the quiz — click to open">&#9432;</span>
   </th>
-  <th class="c-instr" title="Whole time in the intro app, both rounds: from
-leaving the entry pages until the quiz is finished with">Intro time</th>
+  <th class="c-instr" title="Two timers per participant. INTRO: the whole time
+in the intro app, both rounds, from leaving the entry pages until the quiz is
+finished with — it FREEZES at that boundary. TOTAL: time since they started (the
+first recorded page), the intro included, still counting while they are live.">Time</th>
   <th class="c-earn">Earnings</th>
   <th class="c-state">State
     <!-- THE THRESHOLD LEGEND (item 17). A `title` tooltip, which is the pattern
@@ -2452,12 +2530,16 @@ tr.unmapped-row td.c-label { box-shadow: inset 4px 0 0 var(--dash-unmapped); }
    line starts and ends at the centre of the first and last markers. Hard-coding
    them was two more copies of "how many steps are there" — add a seventh step
    and a fixed 6-track grid would silently drop it off the end of the row. */
-/* 46%, NOT LESS: narrowing this (44% was tried when the state column became
-   pills) squeezes the header grid until the long step labels hit their
-   min-content floor and the six tracks stop being equal — measured as a 3.8px
-   spread by dashboard_render_check. The pills wrap inside their own cell
-   instead (.state-pills is flex-wrap), so they need no width ceded to them. */
-.c-timeline { width: 46%; }
+/* 48%, AND NOT LESS: narrowing this squeezes the header grid until the long
+   step labels ("Questionnaire") hit their min-content floor and the six tracks
+   stop being equal — measured as a 3.8px spread by dashboard_render_check when
+   it was 44%, and again at 1280px when the SECOND time pill (2026-08-23) landed
+   and this still said 46%. Widened from 46% to 48% then, to give the header back
+   the room the extra pill took from it, verified at 1152/1280/1512/1728px. The
+   number may go UP (more slack for the labels) but never down. The state pills
+   wrap inside their own cell (.state-pills is flex-wrap) and the two time pills
+   are kept compact and on one line, so neither needs width ceded to it. */
+.c-timeline { width: 48%; }
 .tl-header, .tl { display: grid;
   grid-template-columns: repeat(__STEP_COUNT__, 1fr); }
 .tl-header span { font-size: .68rem; text-align: center; }
@@ -2520,6 +2602,21 @@ tr.unmapped-row td.c-label { box-shadow: inset 4px 0 0 var(--dash-unmapped); }
 .pill.pill-live { background: var(--accent-soft); border-color: var(--accent);
   color: var(--accent); }
 .pill.pill-earn { background: #eaf6ef; border-color: #bfe3cd; color: #1f7a46; }
+/* THE TWO TIME PILLS share the Time column (Julian, 2026-08-23). Each carries a
+   tiny key so INTRO and TOTAL are told apart across the room, not only by
+   colour: INTRO freezes at the intro boundary (neutral once settled, accent
+   while still live), TOTAL keeps counting (accent while live). The key rides on
+   the pill's OWN baseline (align-items:baseline) so the little label and the
+   time do not stagger. Kept on ONE line — `.c-instr` is `nowrap` and the two
+   pills sit side by side — so a second timer never grows the row height (the
+   site preview canvas is a fixed frame; a taller row would clip it). */
+.time-pill { display: inline-flex; align-items: baseline; gap: 3px;
+  padding: 2px 6px; }
+.time-pill i { font-style: normal; font-size: .55rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .02em; color: var(--ink-mute); }
+.time-pill.pill-live i { color: var(--accent); opacity: .8; }
+.time-pill em { font-style: normal; }
+.time-pill + .time-pill { margin-left: 4px; }
 .c-instr { width: 10%; white-space: nowrap; }
 .c-earn { width: 10%; white-space: nowrap; }
 
@@ -2952,6 +3049,22 @@ var POLL_MS = Math.max(2000, parseInt('__POLL_MS__', 10) || 2000);
 var STEPS = __STEPS_JSON__;
 var inFlight = false;      // skip a tick while the previous one is running
 var lastGood = null;
+/* THE STALE-DATA BANNER's state (Julian, 2026-08-23). When a refresh fails the
+   banner must say WHEN the last good data is from AND how long ago that was,
+   with the age counting up while the server stays down — so a blip and a dead
+   server look different at a glance. All three are needed:
+     lastGoodAtMs   client clock at the last SUCCESSFUL load. The age is
+                    measured from HERE, on the client's own clock, so it is
+                    immune to any skew between the operator's browser and the
+                    server — and it is also the base clock the live timer pills
+                    tick from, so the two features share one notion of "when did
+                    the good data arrive".
+     lastGoodWall   the wall-clock time of that load, formatted once.
+     failing        whether the LAST tick failed — drives the banner's text and
+                    whether the 1s ticker keeps re-timestamping the age. */
+var lastGoodAtMs = null;
+var lastGoodWall = '';
+var failing = false;
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -2962,6 +3075,30 @@ function fmtSecs(s) {
   if (s == null) return '';
   var m = Math.floor(s / 60), r = s % 60;
   return m + ':' + (r < 10 ? '0' : '') + r;
+}
+/* AGE FOR THE STALE-DATA BANNER — how long ago the last good load was. Its own
+   format, not fmtSecs: a stale banner reading "245:12" is unreadable at the
+   glance it exists for (a blip vs a dead server), so this steps up units —
+   "8s", "3m 20s", "1h 05m" — and stays legible however long the server stays
+   down. */
+function fmtAge(s) {
+  if (s == null || s < 0) return '';
+  if (s < 60) return s + 's';
+  var m = Math.floor(s / 60), r = s % 60;
+  if (m < 60) return m + 'm ' + (r < 10 ? '0' : '') + r + 's';
+  var h = Math.floor(m / 60); m = m % 60;
+  return h + 'h ' + (m < 10 ? '0' : '') + m + 'm';
+}
+/* ONE TIME PILL — a tiny key (`intro`/`total`) and the time. A LIVE pill gets
+   `data-live` = its current seconds, which tickLivePills() reads and advances
+   every second (the base is re-set on each successful poll). No value -> no
+   pill, so a row with no usable stamp shows an empty cell, never `0:00`. */
+function timePill(key, seconds, live, title) {
+  if (seconds == null) return '';
+  return '<span class="pill time-pill' + (live ? ' pill-live' : '') + '"' +
+    (live ? ' data-live="' + seconds + '"' : '') +
+    (title ? ' title="' + esc(title) + '"' : '') +
+    '><i>' + esc(key) + '</i><em>' + fmtSecs(seconds) + '</em></span>';
 }
 
 function timelineHTML(row, meta) {
@@ -3144,20 +3281,26 @@ function renderRow(row, meta) {
     ? '<span class="pill pill-earn">' + row.earnings.toFixed(2) +
       (meta.currency ? ' ' + esc(meta.currency) : '') + '</span>'
     : '';
-  /* The live timer is marked by COLOUR (+ tooltip), never by a suffix: an
-     appended "…" read as a truncated value on review (2026-08-12), on the
-     amber row where the number matters most. The value must always read as
-     a clean time. */
-  var intro = row.intro_seconds != null
-    ? '<span class="pill' + (row.intro_live ? ' pill-live' : '') + '"' +
-      (row.intro_live ? ' title="still in the intro app"' : '') +
-      '>' + fmtSecs(row.intro_seconds) + '</span>'
-    : '';
+  /* THE TWO TIME PILLS (Julian, 2026-08-23). INTRO freezes at the intro
+     boundary; TOTAL counts from their first page and keeps going, intro
+     included. A live pill carries `data-live` = its base seconds and is ticked
+     up client-side every second by tickLivePills() — so it advances between the
+     2s polls AND keeps advancing when a poll is FAILING (the same last-good
+     mechanism as the stale banner). A live pill is marked by COLOUR (+ tooltip),
+     never a suffix: an appended "…" read as a truncated value on review
+     (2026-08-12). The value must always read as a clean time. */
+  var intro = timePill('intro', row.intro_seconds, row.intro_live,
+    row.intro_live ? 'time in the intro app so far — still going'
+                   : 'time spent in the intro app (frozen once they left it)');
+  var total = timePill('total', row.total_seconds, row.total_live,
+    'total time since they started — the intro included' +
+    (row.total_live ? ', still counting' : ''));
+  var intro_cell = intro + total;
   return '<tr class="' + cls.join(' ') + '">' +
     '<td class="c-label">' + label + pageHint + '</td>' +
     '<td class="c-timeline">' + timelineHTML(row, meta) + '</td>' +
     '<td class="c-quiz">' + quizHTML(row.quiz) + '</td>' +
-    '<td class="c-instr">' + intro + '</td>' +
+    '<td class="c-instr">' + intro_cell + '</td>' +
     '<td class="c-earn">' + earn + '</td>' +
     '<td class="c-state">' + stateHTML(row) + '</td>' +
     /* ADD A COLUMN HERE (render): one more td, matching the <th> you added
@@ -3411,6 +3554,54 @@ function repaint(data) {
     (unmapped ? ' · ⁉️ ' + unmapped + ' in an app not on the timeline' : '') +
     (mismatched ? ' · ⁉️ ' + mismatched +
        ' with a flag/exit-code mismatch' : '');
+  /* Sync the freshly-rendered live pills to the exact current second, so a
+     repaint (a poll, or the not-arrived toggle) never briefly shows the server
+     base before the next 1s uiTick catches up. */
+  tickLivePills();
+}
+
+/* THE STATUS / STALE-DATA BANNER. Rebuilt from the three globals above on every
+   success, every failure, AND every 1s UI tick while failing — so the age keeps
+   climbing on its own even though no new data is arriving. `lastErr` is kept
+   only for the tooltip; the visible line is the operator-facing summary. */
+var lastErr = '';
+function paintStatus() {
+  var st = document.getElementById('status');
+  if (!st) return;
+  if (!failing) {
+    st.textContent = lastGoodWall ? 'updated ' + lastGoodWall : 'connecting…';
+    st.className = 'dash-status';
+    st.removeAttribute('title');
+    return;
+  }
+  st.className = 'dash-status err';
+  st.title = lastErr ? 'refresh error: ' + lastErr : '';
+  if (lastGoodAtMs == null) {
+    /* Never got a single good load — there is no "last good data" to age. */
+    st.textContent = '⚠ not connecting — no data yet';
+    return;
+  }
+  var age = Math.floor((Date.now() - lastGoodAtMs) / 1000);
+  /* WHEN it is from AND how long ago, the age ticking up second by second. */
+  st.textContent = '⚠ refresh failing — last good data ' + lastGoodWall +
+    ' (' + fmtAge(age) + ' ago)';
+}
+
+/* Advance every LIVE timer pill (intro while in intro, total while active) from
+   its server base by the seconds elapsed on the client since the last good
+   load. Runs every second, so the pills move smoothly between the 2s polls and
+   KEEP moving while a poll is failing — the same last-good clock the banner
+   ages from. */
+function tickLivePills() {
+  if (lastGoodAtMs == null) return;
+  var delta = Math.floor((Date.now() - lastGoodAtMs) / 1000);
+  var els = document.querySelectorAll('.pill[data-live]');
+  for (var i = 0; i < els.length; i++) {
+    var base = parseInt(els[i].getAttribute('data-live'), 10);
+    if (isNaN(base)) continue;
+    var v = els[i].querySelector('em') || els[i];
+    v.textContent = fmtSecs(base + delta);
+  }
 }
 
 function tick() {
@@ -3421,19 +3612,31 @@ function tick() {
     .then(function (data) {
       if (!data.ok) throw new Error(data.error || 'server error');
       lastGood = data;
+      lastGoodAtMs = Date.now();
+      lastGoodWall = new Date().toLocaleTimeString();
+      failing = false;
       repaint(data);
-      var st = document.getElementById('status');
-      st.textContent = 'updated ' + new Date().toLocaleTimeString();
-      st.className = 'dash-status';
+      paintStatus();
     })
     .catch(function (err) {
-      var st = document.getElementById('status');
-      st.textContent = 'update failed (' + err.message +
-        ') — showing last good data';
-      st.className = 'dash-status err';
+      failing = true;
+      lastErr = err.message;
+      /* Do NOT repaint — the last good table stays on screen. paintStatus()
+         switches the banner to the stale-data message, and uiTick() keeps its
+         age counting up from here. */
+      paintStatus();
     })
     .then(function () { inFlight = false; });
 }
+
+/* THE 1-SECOND UI TICK, separate from the data poll. It never touches the
+   network: it advances the live timer pills and, while a refresh is failing,
+   re-ages the stale-data banner. */
+function uiTick() {
+  tickLivePills();
+  if (failing) paintStatus();
+}
+setInterval(uiTick, 1000);
 
 document.getElementById('show-not-arrived').addEventListener('change', function () {
   if (lastGood) repaint(lastGood);

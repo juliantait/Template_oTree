@@ -11,6 +11,53 @@ working.
 
 ---
 
+## The dashboard timer's TOTAL pill and the stale-data banner's age — 2026-08-23
+
+Two operator-facing improvements to the experimenter dashboard, each with a
+choice that reads as arbitrary unless the reasoning is written down.
+### The TOTAL-time pill: where the clock starts and stops
+
+Pill 2 of the per-participant timer (`_total_seconds`) is "time since they
+started", intro included and still counting — the companion to the INTRO pill,
+which freezes at the intro boundary. The choices that are not free:
+
+- **Starts at the FIRST stage stamp (`min`), not at arrival.** Nothing writes an
+  arrival timestamp into `stage_timestamps`, and the brief was to start from what
+  is already recorded, not invent state. `min` is also the anchor the overview
+  EXPERIMENT figure already uses, and it is always <= the intro start (the intro
+  start is itself one of the stamps), so **total >= intro on every row** — pill 2
+  can never read shorter than pill 1.
+- **Stops at the FINISHED stamp for a finisher, not the last stamp.** So the
+  frozen total equals that participant's contribution to the overview EXPERIMENT
+  average to the second, and a later `prolific_return_clicked` (receipt-reading
+  time) is not billed to the study.
+- **Stops at the LAST stamp (`max`) for a terminal row.** A screen-out /
+  comprehension DQ / tab-monitor DQ has no `finished` stamp and there is no
+  dedicated ejection-moment stamp, so the last completed stage is the closest
+  evidence of when they left. **Known, deliberate limitation:** a tab-monitor DQ
+  can fire on a page whose stage was never stamped, so this can UNDER-count that
+  final page. It never over-counts and never claims time we cannot see — the
+  honest failure direction. **Rejected:** `pp._last_page_timestamp` for the
+  terminal stop, which points at the ENDING page (after ejection) and would
+  over-count. *Enforced:* `scripts/tests/dashboard_total_time_test.py` (each
+  start/stop case, the invariant, and the receipt-click exclusion), proven red by
+  a negative control that starts the clock at `max`.
+
+### The stale-data banner counts the age up on the client
+
+A failing refresh now names WHEN the last good data is from and HOW LONG AGO,
+with the age climbing second by second, so a blip and a dead server look
+different at a glance. The age is measured from the CLIENT clock at the last good
+load (`lastGoodAtMs`) — the same base clock the live timer pills tick from — so
+both are immune to server/browser skew, and a 1-second UI tick, separate from the
+2-second data poll, keeps the age (and the live pills) moving while no data is
+arriving. *Enforced:* `scripts/tests/dashboard_timer_banner_test.py` measures the
+age and a live pill at two times and asserts they moved (never an absence-only
+check), proven red by controls that drop the time/age and that drop `data-live`.
+
+
+---
+
 ## `/health` is a verdict a machine can act on, `verify_deploy.py` is the only thing that fails on a stamp, and appending a route to oTree has ONE implementation — 2026-08-23
 
 The second half of the build-provenance work. Its first half asked *"what code
