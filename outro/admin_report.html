@@ -33,7 +33,28 @@
 
 {# EXCEPTION (styling rule): inline size on the iframe — this renders inside
    oTree's OWN admin page, where the template's stylesheets are deliberately
-   not loaded, so there is no shared component to compose. #}
+   not loaded, so there is no shared component to compose.
+
+   HEIGHT: 100dvh, not the old 78vh (Julian, 2026-08-23). oTree includes this
+   file (see the header note) BELOW its own chrome — the navbar, the session tab
+   bar and the app_name / round_number form row (AdminReport.html's
+   `{ % formfield %}` table). At 78vh the whole Report page fit inside one
+   viewport, so nothing scrolled: that chrome was stuck at the top and the
+   dashboard could never own the screen, with a strip of empty page left below.
+   A FULL viewport-height iframe makes the page taller than the window, so the
+   operator can scroll the chrome out of the top and the dashboard fills the
+   screen; the dashboard's own table then scrolls INSIDE the iframe as before.
+   `dvh` (dynamic viewport height) is the unit base.css already uses, so it
+   tracks whatever screen is viewing it rather than a stale fixed vh.
+
+   display:block: an iframe is a REPLACED INLINE element by default, so it sits
+   on the text baseline and leaves a few px of descender space beneath it — the
+   thin "leftover row" under the embed. block removes it.
+
+   box-sizing:border-box: so the 1px border is counted INSIDE the 100dvh rather
+   than added to it — otherwise the iframe is viewport+2px tall and overshoots
+   the screen it is meant to fill exactly. Verified at three viewport heights by
+   scripts/tests/dashboard_embed_height_test.py. #}
 <iframe src="{{ dashboard_url|escape }}" title="Experimenter dashboard"
-        style="width: 100%; height: 78vh; border: 1px solid #ccc;
-               border-radius: 6px; background: #fff;"></iframe>
+        style="display: block; box-sizing: border-box; width: 100%; height: 100dvh;
+               border: 1px solid #ccc; border-radius: 6px; background: #fff;"></iframe>
