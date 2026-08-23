@@ -77,6 +77,15 @@ Drop these rows before computing anything:
 Nothing in the shipped template changes meaning mid-study, so there is nothing
 to list yet. This is where such a break would otherwise hide.
 
+**Start by looking at `participant.build_sha`.** It records which deployed build
+each participant actually ran (see "Build provenance" below), so a `group by
+build_sha` is the fastest way to find out whether a code change landed in the
+middle of your collection at all — and, if it did, exactly which rows are on
+each side of it. More than one value is normal and is not a fault: a session
+outlives redeploys by design. It tells you where to *look* for a break in
+meaning; it cannot tell you whether the change mattered, which is what this
+section is for.
+
 > **PROMPT FOR A FORKED STUDY.** List any column that was renamed or changed
 > meaning between data-collection waves, with the date and both spellings, so an
 > analyst does not silently pool two different things across the boundary. The
@@ -395,6 +404,52 @@ already mid-flow when `left_before_app` was deployed and will never have it.
 `experimenter_dashboard._intro_seconds` does exactly this (and measures to
 `quiz_done`, i.e. the whole intro block including a re-read, not to
 `instructions_done`).
+
+### Build provenance (`participant.build_sha`, `participant.build_number`)
+
+Which deployed build of the study this participant actually ran. Two
+**participant fields** (exported at participant level).
+
+**What they are for:** answering "what code produced this row?" from the data
+alone, months later, without a running container. `build_sha` is the full 40-character
+commit SHA — the unambiguous half; `build_number` is `git rev-list --count HEAD`
+at that commit — the half a human says out loud. They are a matched pair from
+one stamp, so they never disagree.
+
+**Stamped ON ARRIVAL, at the first instructions page** (`intro.instructing`),
+by the same call that takes the treatment cell
+(`before.treatment_assignment.assign_on_arrival`), and **write-once**: a
+participant who comes back after a redeploy keeps the build they FIRST arrived
+on. Not stamped at session creation, for the same reason `treatment_group` is
+not: a session can outlive several deploys, so a creation-time stamp would claim
+every participant ran the creation-time build.
+
+**The three values a `build_sha` can hold, and they are three different facts:**
+
+| Value | Means |
+| --- | --- |
+| a 40-char SHA | They arrived, on a stamped deploy. This is the evidence. |
+| `unstamped` | They arrived, on a build carrying no `BUILD_INFO.json` — a local run, a hand-built image, or a deploy that did not run `scripts/write_build_info.py`. A real answer, **not a failure**, and the normal one in development. |
+| *(empty)* | They **never arrived**: created at session creation and never reached the instructions. Cross-check `exit_code` — an abandoner (`0`), a decliner (`-1`) or a device screen-out (`-4`). |
+
+`build_number` is blank for the last two.
+
+**Two other places record a build, and neither is authoritative about a
+participant.** `session.config['build_at_creation']` says what was running when
+the *session* was made (frozen at creation, so it goes stale the moment you
+redeploy — and is **absent** for a session created before build stamping
+existed, which is a different fact from "created on an unstamped build"); the
+session config's `doc` string names the running build on the admin's
+create-session screen and is inert prose once frozen. **Their disagreement is
+the signal, and disagreement is information, not an error** — a session created
+on one build and serving another is exactly what a mid-study redeploy looks
+like. Only `build_sha` says what a given participant was served.
+
+**At analysis time:** group by `build_sha` before pooling across dates (see the
+Analyst quick start), and resolve a SHA to a commit with `git show <sha>`. Note
+that **provenance never gates anything** — nothing in the study behaves
+differently on an unstamped build, so a blank or `unstamped` column is never a
+reason to exclude a row on its own.
 
 ---
 
@@ -844,6 +899,14 @@ the copy could only ever be empty. The record is the participant field
 `treatment_group` (see "Treatment assignment" above). Dropping a column is
 benign for an existing database — the leftover table column is simply unread — so
 this needs no `resetdb`, unlike an ADDED column.
+
+**Added participant fields (2026-08-23):** `participant.build_sha` and
+`participant.build_number` — build provenance (see "Build provenance" in the
+design-and-flow tier above). **NOT a schema change**: participant fields live in
+oTree's `_vars` blob, so they add no table column, need no migration and need no
+`resetdb`. A participant created before they existed simply has no key, which
+reads the same as "never arrived" — the one case where the two are genuinely
+indistinguishable, and it applies only to rows that predate 2026-08-23.
 
 **Deploying this over a study that HAS data needs `otree resetdb`** — the
 build ADDS `before.Player.prolific_label_conflict`, (since 2026-08-13)

@@ -1,5 +1,6 @@
 import os
 
+import buildinfo
 import identity
 
 # THE EARLY INSTALL of the duplicate-label guard (identity.py, defence 2). It is
@@ -666,6 +667,26 @@ SESSION_CONFIG_DEFAULTS = dict(
     # build anyway, not the session.
     build_static_version=STATIC_VERSION,
 
+    # WHICH BUILD THIS SESSION WAS CREATED ON — frozen at creation like every
+    # config value, and NOT truth: it answers exactly one question, "what was
+    # current when this session was made". Its name carries that; it is
+    # deliberately not called `build`. What a PARTICIPANT actually ran is
+    # stamped on the participant, on arrival (`participant.build_sha`), because
+    # a session can outlive several deploys.
+    #
+    # A DICT, NOT A STRING, DELIBERATELY. oTree turns every bool/int/float/str
+    # config value into an EDITABLE TEXT BOX on the create-session screen
+    # (otree/session.py: custom_editable_fields), and provenance an operator can
+    # retype is not provenance. Do not "simplify" this to the SHA string.
+    #
+    # READ IT WITH `common.build_at_creation`, NEVER `common.cfg` — the safe
+    # accessor would fall back to the value on this line, i.e. the build running
+    # right now, and so INVENT a creation build for a session created before the
+    # key existed. That trap is the whole reason the raw reader exists; see its
+    # docstring, and scripts/tests/frozen_config_test.py, which fails if anyone
+    # routes this key through cfg.
+    build_at_creation=buildinfo.config_stamp(),
+
     # =========================================================================
     # INTEGRITY — TAB MONITOR  (tab_monitor*)
     # =========================================================================
@@ -899,6 +920,20 @@ SESSION_CONFIGS = [
 for _config in SESSION_CONFIGS:
     resolve_recruitment_profile(_config)
 
+# NAME THE RUNNING BUILD ON THE CREATE-SESSION SCREEN, also at import. oTree
+# renders a config's `doc` read-only there (and rejects REST attempts to modify
+# it — it is in oTree's NON_EDITABLE_FIELDS), so this is where an operator can
+# see which build they are about to create a session ON, before clicking.
+#
+# APPENDS to whatever the config already said, so a study's own description
+# survives. `doc` renders through `|safe`, i.e. UNESCAPED — every value
+# interpolated into it is escaped at the construction site in
+# `buildinfo.doc_html`, which is where the reasoning and the test pointer live.
+# Set on each CONFIG rather than on SESSION_CONFIG_DEFAULTS so a forked study
+# that gives one config its own `doc` keeps both halves.
+for _config in SESSION_CONFIGS:
+    _config['doc'] = buildinfo.doc_html(_config.get('doc', ''))
+
 
 # --- participant fields ------------------------------------------------------
 PARTICIPANT_FIELDS = [
@@ -924,6 +959,8 @@ PARTICIPANT_FIELDS = [
     'screenout_active',     # entry device gate removed them before consent
     'screenout_cleared',    # a screen-out was LIFTED (they switched device)
     'consent_submitted',    # the consent page was submitted (the gate's boundary)
+    'build_sha',            # build provenance: the commit this participant ARRIVED on ('' = never arrived)
+    'build_number',         # build provenance: that build's number (None = never arrived)
 ]
 # Description of PARTICIPANT_FIELDS:
 # - temp_data: Temporary storage for any participant-specific data during the session.
@@ -981,6 +1018,17 @@ PARTICIPANT_FIELDS = [
 #   participant, and it stays True even if they are later screened again. This
 #   is the column that makes device switching findable in the export without
 #   parsing the audit history in participant_extra['screenout_history'].
+# - build_sha / build_number: BUILD PROVENANCE — which deployed code this
+#   participant actually ran. Stamped ON ARRIVAL from the RUNTIME build, at the
+#   same call that takes the treatment cell
+#   (before/treatment_assignment.assign_on_arrival), NOT at session creation: a
+#   session can outlive several deploys, so a creation-time stamp would claim
+#   every participant ran the creation-time build. Initialised BLANK at creation
+#   ('' / None) so the columns are never missing, and blank therefore means
+#   "created but never arrived" — the same convention as treatment_group's ''.
+#   'unstamped' (buildinfo.UNSTAMPED_SHA) means they DID arrive, on a build
+#   carrying no BUILD_INFO.json: a real answer, not a failure, and the normal
+#   one in local development. See buildinfo.py and CODEBOOK.md.
 # - consent_submitted: True once the consent page has been SUBMITTED (consenting
 #   or not). The device gate's boundary: past it the check never applies again.
 #   A durable fact rather than a page index, because indices move when the page
@@ -1182,6 +1230,14 @@ def _check_prelaunch():
         return f"{c['name']}={c.get('recruitment')}{'+feedback' if eff.get('pilot_feedback') else ''}"
     profile_line = ', '.join(_axes(c) for c in SESSION_CONFIGS)
     print(f"[prelaunch] DEBUG={DEBUG}  study type/feedback: {profile_line}")
+    # THE RUNNING BUILD, AS INFORMATION AND NOTHING ELSE. It is printed next to
+    # DEBUG because that is where somebody looks when they ask "what is this
+    # server?", and it is deliberately NOT part of `_prelaunch_problems`:
+    # provenance is documentation, never a gate (DECISIONS.md, 2026-08-23), so
+    # an unstamped build is not a problem here and must never become one. That
+    # is also how provenance is turned "off" — a build with no BUILD_INFO.json
+    # simply reports unstamped, and nothing anywhere behaves differently.
+    print(f"[prelaunch] build: {buildinfo.label()}")
     problems = _prelaunch_problems()
     if not problems:
         print("[prelaunch] CLEAN — no testing/placeholder values detected.")

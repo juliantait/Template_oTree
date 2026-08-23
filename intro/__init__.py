@@ -359,7 +359,8 @@ class instructing(participant_tab_monitor.MonitoredPage):
     is_displayed = staticmethod(intro_page_visible)
 
     def get(self):
-        """Assign the treatment cell HERE, at the first instructions page.
+        """Assign the treatment cell — and stamp the build — HERE, at the first
+        instructions page.
 
         This is the very start of intro and the LATEST point before anything
         reads treatment_group — this page's own vars_for_template reads it (via
@@ -370,6 +371,14 @@ class instructing(participant_tab_monitor.MonitoredPage):
         arrival, is permanent, and is race-safe per session — the whole argument
         lives in before/treatment_assignment.py.
 
+        THE SAME CALL STAMPS BUILD PROVENANCE (`participant.build_sha` /
+        `build_number`) for the same reason: this is the first moment the
+        participant is really in the study, so it is the moment that says which
+        deployed code they were actually served. A session outlives redeploys,
+        so stamping at creation would claim every participant ran the
+        creation-time build. The two jobs FAIL DIFFERENTLY on purpose — see the
+        next paragraph, and `assign_on_arrival`.
+
         NOT WRAPPED in a swallowing try/except, deliberately. This is core
         experimental assignment, not instrumentation: a silent failure here would
         leave every participant unassigned ('') while the page still rendered —
@@ -378,6 +387,12 @@ class instructing(participant_tab_monitor.MonitoredPage):
         asserts arrivals actually receive balanced cells. It is called only on a
         real page GET (never during oTree's request-less skip-chain walk), and it
         is idempotent, so the re-read pass (round 2) simply re-confirms the cell.
+
+        The BUILD STAMP inside that call is the opposite policy and swallows its
+        own exceptions, because it is instrumentation rather than experimental
+        assignment: an unstamped participant is a documentation gap, an
+        unassigned one is a broken experiment. Both are write-once, so a refresh
+        or the re-read pass changes neither.
         """
         from before import treatment_assignment
         treatment_assignment.assign_on_arrival(self.player)

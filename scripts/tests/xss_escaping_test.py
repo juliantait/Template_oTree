@@ -12,11 +12,19 @@ launch. In this template the escaping is one `|escape` filter in
 `before/confirm_prolific_id.html`; deleting it breaks nothing, fails no other
 test, and silently reintroduces the hole. That is what this file is for.
 
-Two attacker-controlled sources are covered, because both reach a page:
+Three untrusted sources are covered, because all three reach a page:
   * URL-SUPPLIED — the entry link carries `?participant_label=…`, which oTree
     stores as `participant.label` and the ID page pre-fills into an input value;
   * PARTICIPANT-SUPPLIED — whatever they then type into that field, which is
-    stored and can be re-rendered later.
+    stored and can be re-rendered later;
+  * DEPLOY-SUPPLIED — the COMMIT SUBJECT in the build stamp, free text somebody
+    typed into a commit message, which travels from a file written OUTSIDE this
+    repo into the session config's `doc` and is rendered by oTree as
+    `{{ config.doc|safe }}`, i.e. UNESCAPED, on the create-session screen. It
+    reaches an ADMIN page rather than a participant page, which changes who is
+    attacked, not whether the escaping is needed: the operator creating a
+    session is exactly the account worth stealing. Escaped at the construction
+    site in `buildinfo.doc_html`; this file is the test that keeps it there.
 
 It runs in PRODUCTION mode (DEBUG off) on purpose: oTree's DEBUG-only var dump
 would otherwise echo the payload at the foot of every page and make a
@@ -202,6 +210,57 @@ def main():
           'the ID page does not reflect the raw URL label')
     check(f'value="{html.escape(payload, quote=True)}"' in resp.text,
           'it pre-fills the escaped URL label')
+
+    section('The BUILD STAMP\'s commit subject, rendered UNESCAPED into the '
+            'session-config doc')
+    # `doc` is printed by otree/templates/otree/includes/SessionInfo.html as
+    # {{ config.doc|safe }}. The commit subject is the one value in it that
+    # comes from outside this repo, so it is the one that makes escaping
+    # mandatory rather than tidy. Driven through the real reader with a real
+    # stamp file, because the escaping has to survive load() as well as
+    # doc_html().
+    import json as _json
+    import tempfile as _tempfile
+    import buildinfo
+    tmpdir = _tempfile.mkdtemp(prefix='xss_build_stamp_')
+    for i, payload in enumerate(PAYLOADS):
+        stamp_path = os.path.join(tmpdir, f'stamp{i}.json')
+        with open(stamp_path, 'w', encoding='utf-8') as fh:
+            _json.dump({'commit': 'b' * 40, 'commit_short': 'bbbbbbb',
+                        'commit_date': payload, 'subject': payload,
+                        'build_number': 7, 'built_at': payload,
+                        'tree_clean': True}, fh)
+        doc = buildinfo.doc_html('', info=buildinfo.load(stamp_path))
+        label = f'stamp payload {i} ({payload[:22]!r})'
+        check(payload not in doc,
+              f'{label}: the raw payload appears nowhere in the doc string')
+        for marker in INJECTION_MARKERS:
+            check(marker not in doc,
+                  f'{label}: no injected {marker[:24]!r} in the doc string')
+        # PAIRED PRESENCE (CLAUDE.md): an absence-only check passes against a
+        # doc_html that dropped the subject entirely, or returned ''.
+        # quote=True, matching buildinfo.doc_html's own escape() default: the
+        # double quote MUST become &quot; here, because `doc` is interpolated
+        # into HTML where a bare quote can still close an attribute.
+        check(html.escape(payload, quote=True) in doc,
+              f'{label}: the value IS there, as escaped text — escaped, not '
+              f'silently discarded')
+        check('<b>Running build:</b>' in doc,
+              f'{label}: and the deliberate markup is still live HTML')
+
+    section('The same payload through the SHIPPED configs\' doc, as an '
+            'operator would see it')
+    # settings.py builds each config's doc at import from the RUNNING build, so
+    # this asserts on what actually ships rather than on a function call.
+    import settings as _settings_doc
+    for cfg in _settings_doc.SESSION_CONFIGS:
+        doc = cfg.get('doc') or ''
+        check(doc.strip() != '',
+              f'config {cfg["name"]!r} has a non-empty doc (oTree renders '
+              f'nothing at all for an empty one)')
+        for marker in INJECTION_MARKERS:
+            check(marker not in doc,
+                  f'config {cfg["name"]!r}: no injected {marker[:24]!r}')
 
     section('SUMMARY')
     if _failures:
