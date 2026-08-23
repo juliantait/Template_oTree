@@ -4,8 +4,24 @@
 # too; the two lists overlap but are not the same (this one also drops the .git
 # directory itself and the host-side launchers).
 #
+# ONE FILE MUST NEVER BE COPIED ACROSS FROM .gitignore, AND IT IS THE ONE THAT
+# LOOKS MOST LIKE AN OVERSIGHT: `BUILD_INFO.json`. It is gitignored because a
+# commit cannot contain its own SHA, and it is written into this build context
+# at DEPLOY TIME precisely so the image carries it. Excluding it here would not
+# fail anything — the build would succeed, the container would boot, every page
+# would render, and every deployed build would silently report itself unstamped
+# forever. Asserted in scripts/tests/build_context_test.py section A.
+#
 # NB: a line here is a pattern, not a pattern plus a comment — `#` only starts a
 # comment at the beginning of a line.
+#
+# NB2: PATTERNS ARE ANCHORED AT THE CONTEXT ROOT, so a pattern with NO slash
+# matches only at the top level — `__pycache__/` does NOT exclude
+# `intro/__pycache__/`, and `*.pyc` does not exclude `intro/x.pyc`. That reads
+# like a bug if you expect .gitignore's semantics. The `**/` spellings below are
+# there for exactly that reason; `**/` also matches ZERO segments, so
+# `**/db.sqlite3` covers the root copy too. Asserted, not assumed:
+# scripts/tests/build_context_test.py section B.
 
 # --- never bake a database into the image ------------------------------------
 # The container creates its own at /app/data/db.sqlite3 on first boot.
@@ -16,6 +32,13 @@ db.sqlite3-shm
 **/db.sqlite3-wal
 **/db.sqlite3-shm
 data/
+# scripts/export_data.py writes the participant CSVs here by default (--out
+# defaults to the RELATIVE `exports`, so run from the repo root it lands inside
+# it). Those hold every consented participant's answers, timings and platform
+# id — the single worst thing to bake into an image that gets pushed to a
+# registry and keeps every layer forever.
+exports/
+**/exports/
 
 # --- virtualenvs and byte-code caches (host-built, wrong platform, huge) -----
 .venv/
@@ -38,6 +61,20 @@ previews/
 # --- private / host-specific / never needed at run time -----------------------
 MACMINI_HOSTING.md
 .env
+
+# Curl cookie jars. BY PATTERN, not by filename: they only ever arrive from
+# ad-hoc curl debugging against a running server, and the one that shipped in
+# the study this template came from held a LIVE ADMIN SESSION COOKIE — and was
+# tracked in git as well. The next one will not be called cookies.txt, so this
+# is deliberately WIDE rather than a list of the names we have seen. The cost of
+# wide is that a study adding a real `cookie_notice.html` would have it silently
+# dropped from the image — which is the other direction of the same defect, and
+# is exactly what build_context_test.py section D asserts against, so the
+# collateral damage is caught rather than shipped.
+*cookie*
+**/*cookie*
+cookiejar*
+**/cookiejar*
 *.command
 *.log
 *.bak

@@ -76,6 +76,19 @@ of. The two rules worth knowing before you start:
 - **Bot tests passing is not evidence that a browser works.** Drive form pages
   over real HTTP, including a submit with the JavaScript-filled hidden fields
   left empty — that is what a participant with a blocked script sends.
+- **A change to what is in the repo needs a build-context check.**
+  `python3 scripts/tests/build_context_test.py` computes the build context Docker
+  would receive from `.dockerignore` and asserts **both directions**: that
+  nothing local leaks in — no database, no curl cookie jar, no participant CSV
+  export, judged by CONTENT so a renamed one is caught too — and that everything
+  the app renders from is still there. Both failures are silent. An image
+  carrying your participants' answers fails nothing and gets pushed to a registry
+  that keeps every layer forever; a `.dockerignore` line that also excludes a
+  template directory 500s a live page while every other test stays green (that
+  happened, on a real study, to `_templates`). Run it whenever you add a
+  directory to the repo or a line to `.dockerignore`. One thing to know before
+  you export data: `scripts/export_data.py` writes to `exports/` by default, and
+  that directory is excluded from both git and the image for exactly this reason.
 - **A layout or copy change needs a measured render check, not a look.**
   `scripts/tests/render_check.py` drives real headless Chromium at three viewports and
   asserts on element geometry and rendered pixels. Layout failures produce no
@@ -122,7 +135,19 @@ difference, so it shows up as `participation_fee: frozen 3.00 vs current 0.0`.
 
 **A lab study needs none of the hosting material.** Run it on the lab machine or
 a local server, bind a session to the room, and you are done — `scripts/start.sh`
-binds the room without stranding anyone mid-experiment.
+binds the room without stranding anyone mid-experiment: it only creates a session
+when the room has none, because binding a second session over a live one breaks
+the links of everyone already mid-experiment.
+
+Two things about that script worth knowing on a study day, both about a server
+that is slow rather than broken. Creating a big session is genuinely slow (oTree
+builds every participant x round row inside the one request), so the creation
+call has its own generous timeout — `OTREE_START_CREATE_TIMEOUT`, 600s —
+separate from the short one on the room read, `OTREE_START_READ_TIMEOUT`, 20s.
+And if the creation call does time out, the script **re-reads the room before
+reporting a failure**, because a client giving up is not proof the server did
+nothing: the request may well have completed and bound the room. **Re-running
+`start.sh` is always safe** — it reuses whatever is bound by then.
 
 **An online Prolific study needs a host.** This repo deliberately contains no
 deployment configuration; `hosting_a_prolific_study.md` is a written record of

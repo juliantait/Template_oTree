@@ -162,8 +162,11 @@ DATABASE_URL=${{Postgres.DATABASE_URL}}   # reference variable, never paste cred
 OTREE_PRODUCTION=1               # debug off; omit during smoke tests to keep skip buttons
 ```
 Never set `RESET_DB` as a standing variable. `PORT` is injected by Railway and
-`start.sh` honours it. `FORWARDED_ALLOW_IPS=*` is already in the template
-Dockerfile (needed behind any TLS proxy).
+**the Dockerfile `CMD` honours it** — in THIS template `start.sh` is a host-side
+room-binding script that never sees `PORT` (see the scope note at the top of this
+file; the sentence that used to say otherwise described `exp_pilots`).
+`FORWARDED_ALLOW_IPS=*` is already in the template Dockerfile (needed behind any
+TLS proxy).
 
 ## Deploy ORDER for a schema-changing build (order is load-bearing)
 
@@ -189,6 +192,110 @@ deliberate wipe (the boot guard leaves a populated database alone otherwise), an
 be deployed over a live session at all.** A schema-changing deploy is for a study
 between sessions, never one mid-flight.
 
+## The deploy uploads what GIT would — and the build stamp is gitignored
+
+**`railway up` honours `.gitignore`.** This is the single nastiest interaction in
+the deploy, because the property that makes a file safe for git is exactly what
+makes it invisible to the deploy:
+
+- `BUILD_INFO.json` is the deploy build stamp. It is gitignored **correctly** — a
+  commit cannot contain its own SHA, so a committed stamp would describe the
+  previous commit.
+- `railway up` therefore never uploads it. The image builds, the container boots,
+  every page renders, `/health` answers 200, and **every deployed build reports
+  itself `unstamped` forever.** Nothing fails. This happened.
+
+The fix is to deploy from a **throwaway staging tree** that has no `.gitignore` in
+it, and to give Railway a `.railwayignore` instead. The template's `.dockerignore`
+is already the answer to "what must not go into this build", so copy it rather
+than writing a second list that will drift from it:
+
+```sh
+STAGE="$(mktemp -d)"
+git -C <deploy-repo> archive --format=tar HEAD | tar -x -C "$STAGE"
+
+# The stamp, written INTO the staging tree. Values are passed explicitly so the
+# writer never shells out to git (it also runs where there is no repo at all).
+python3 "$STAGE/scripts/write_build_info.py" \
+    --commit       "$(git -C <deploy-repo> rev-parse HEAD)" \
+    --commit-date  "$(git -C <deploy-repo> log -1 --format=%cI)" \
+    --subject      "$(git -C <deploy-repo> log -1 --format=%s)" \
+    --build-number "$(git -C <deploy-repo> rev-list --count HEAD)" \
+    --tree-clean   true \
+    --out          "$STAGE/BUILD_INFO.json"
+
+rm -f "$STAGE/.gitignore"                      # <- THE STEP THIS IS ALL ABOUT
+cp "$STAGE/.dockerignore" "$STAGE/.railwayignore"
+
+(cd "$STAGE" && railway up --service <name> --detach)
+```
+
+`git archive` gives a tree of tracked files only, so the staging copy starts
+clean; deleting `.gitignore` from it changes nothing about the repo you develop
+in. **Never delete `.gitignore` from your working checkout to make this work** —
+the stamp would then be committable, which is the recursion the whole design
+exists to avoid.
+
+Two related notes:
+
+- **Do not "sync" `.dockerignore` with `.gitignore`.** They overlap and are not
+  the same list, and `BUILD_INFO.json` is the file where copying a line across
+  does real damage: gitignored on purpose, and it MUST reach the build context.
+  `scripts/tests/build_context_test.py` asserts it is not excluded.
+- **Cookie jars belong in `.gitignore` by PATTERN, not by name.** They arrive
+  only from ad-hoc curl debugging against a running server, and the one in
+  `exp_pilots` was committed holding a live admin session cookie. The next one
+  will not be called `cookies.txt`, so match the shape. The template ships those
+  patterns in both `.gitignore` and `.dockerignore`.
+
+## SUCCESS is a claim about the BUILD, not about the APP
+
+**A Railway deploy reporting `SUCCESS` is not evidence the application is
+alive.** Ours reported SUCCESS with the container already exited, and the study
+502'd. `SUCCESS` means the image built and was promoted; it says nothing about
+whether the process is still running, whether the database was reachable, or
+whether a session is bound to the room.
+
+Two independent things to do about it, and they are not substitutes:
+
+1. **Set the service's `healthcheckPath`** — it is `null` on a default service.
+   With it set, Railway itself refuses to promote a build that never becomes
+   healthy, so a broken deploy leaves the PREVIOUS version serving instead of
+   taking the study down. It is a service setting, not a file: this repo
+   deliberately ships no `railway.json` (see `docs/README.md`), so set it in the
+   dashboard, or with the GraphQL mutation:
+
+   ```graphql
+   mutation SetHealthcheck($id: String!, $env: String!, $input: ServiceInstanceUpdateInput!) {
+     serviceInstanceUpdate(serviceId: $id, environmentId: $env, input: $input)
+   }
+   ```
+   ```json
+   {"id": "<serviceId>", "env": "<environmentId>",
+    "input": {"healthcheckPath": "/health", "healthcheckTimeout": 300}}
+   ```
+   Then **attempt, then verify** as always: re-query the service instance and
+   confirm the path came back as `/health`.
+
+2. **Run the post-deploy check by hand** (`scripts/verify_deploy.py`). It is the
+   only thing that compares the build you just deployed against the build that is
+   actually answering — which is the assertion that catches the gitignored-stamp
+   trap above, and the one a health check can never make, because a perfectly
+   healthy container can be serving last week's code.
+
+   ```sh
+   OTREE_REST_KEY=<your key> python3 scripts/verify_deploy.py \
+       --base-url https://<your-service>.up.railway.app \
+       --build-info "$STAGE/BUILD_INFO.json"      # the stamp you just deployed
+   ```
+
+   It is read-only, issues only GETs, and never requests a URL that would hand
+   it a participant slot, so it is safe against a live study. Exit 0 means the
+   deployment IS that build and is serving; exit 1 names the assertion that
+   failed and what it saw. Because a container may still be booting it retries
+   against a deadline (`--deadline`, default 300s). `docs/README.md` §7 has the
+   rest.
+
 ## Hard-won gotchas
 
 - **The resetdb wipe trap.** start.sh's old guard reset the DB when the sqlite
@@ -210,9 +317,20 @@ between sessions, never one mid-flight.
   FAILED with no build attached). Just retry after ~45s; it clears.
 - **Variable changes trigger their own redeploy** — set vars, then confirm the
   new deployment reaches SUCCESS before judging anything.
-- **Session binding**: start.sh binds the configured session to the room at boot
-  (fail-loud). Verify with the REST API:
+- **Session binding**: start.sh binds the configured session to the room when
+  you run it against the live server (fail-loud), reusing an existing binding
+  rather than replacing it. Verify with the REST API:
   `curl -H "otree-rest-key: <key>" https://<domain>/api/rooms`.
+- **A big session creation is slow, and that is not a failure.** `POST
+  /api/sessions` builds every participant x round row inside the request, so a
+  large room legitimately runs for minutes. `start.sh` gives the creation its own
+  generous timeout (`OTREE_START_CREATE_TIMEOUT`, default 600s) separate from the
+  short one on the room read (`OTREE_START_READ_TIMEOUT`, default 20s) — sharing
+  one timeout between the two classes is what killed the `exp_pilots` boot script,
+  which read a slow SUCCESS as a failure and exited. If a creation does time out
+  client-side, **the script re-reads the room before calling it fatal**: the POST
+  may have completed after curl stopped listening, and a blind retry would bind a
+  second session over a live one. Re-running the script is always safe.
 
 ## The crash rehearsal (do this before any paid run)
 

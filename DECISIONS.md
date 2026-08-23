@@ -119,6 +119,131 @@ from outside the repo, rendered UNESCAPED by `{{ config.doc|safe }}`.
 
 ---
 
+## The build context is checked in BOTH directions, and the must-survive list is derived from the source tree — 2026-08-23
+
+`.dockerignore` in this template was already clean — `data/`, `db.sqlite3`,
+`_ai/`, `.venv/`, `previews/`, `*.log`, `.env` and the `*.command` launchers were
+all excluded, with the nested cases spelled `**/`. So the deliverable was never a
+fix; it was `scripts/tests/build_context_test.py`, which keeps it that way. **A
+clean `.dockerignore` is a state, not a property**: the Dockerfile is `COPY . .`,
+so every directory anybody adds ships by default, and both ways of getting this
+wrong are silent. A hazard that arrives (an `exports/` of participant CSVs, a
+curl cookie jar, a database snapshot) fails nothing and is baked into an image
+that keeps every layer forever; a line added to stop that, which also excludes
+something the app renders from, produces a container that boots perfectly and
+500s a live page — which is how `_templates` shipped EMPTY in the study this
+template feeds while every source-tree test stayed green.
+
+**The must-survive half is DERIVED FROM THE SOURCE TREE, not parsed from the
+Dockerfile and not declared as a list of paths.** The brief offered those two
+options; both are wrong here for concrete reasons. The Dockerfile is `COPY . .`
+and names no template, asset or module at all, so parsing it for the app's
+runtime material would produce an EMPTY requirement that passes against
+anything — the vacuous-test failure this repo treats as worse than no test. A
+declared list is the retyping problem: it is correct the day it is written and
+silently wrong the first time somebody adds a template. So the requirement is
+four derivations that update themselves — every `.html` in the tree, every
+served file under `_static/` (with "served" taken from
+`prelaunch_check.IGNORED_NAMES`/`IGNORED_DIRS`, the asset guard's own definition,
+and cross-checked against the file count `hash_static()` itself reports), every
+`.py` outside `scripts/`, and the `/app/...` paths the Dockerfile DOES name (the
+boot path: `scripts/db_state.py`, `requirements.txt`). This template has no image
+verifier to defer the list to, which is what `exp_pilots` parsed its from.
+
+**The one thing that must NOT be derived is the prune list.** `SOURCE_PRUNE` is
+declared in the test and must never be read from `.dockerignore`, because a
+requirement derived from the ignore rules deletes itself: exclude `_templates/`
+and the requirement that `_templates/` survive disappears with it, and every
+widening approves itself. The cost is that excluding a new directory needs a
+second edit, in the test, where a reviewer sees it. **That friction is the
+mechanism, not an oversight.**
+
+Three smaller decisions inside the same change:
+
+- **Hazards are judged by CONTENT, not by filename.** `data_backup/`,
+  `db.sqlite3.old` and a cookie jar saved as `jar` carry exactly the same
+  participant answers, Prolific IDs and admin session cookie, and a name check
+  misses all three. The detectors key on the SQLite magic bytes, the Netscape
+  cookie-jar header, and an oTree export's header row — the last as a whole
+  comma-separated FIELD, because a substring test flagged this repo's own prose
+  on the first run.
+- **`exports/` is newly excluded, and it was a real gap.**
+  `scripts/export_data.py --out` defaults to the RELATIVE `exports`, so the
+  documented way to export data during a run drops every participant's answers
+  into the repo root, where nothing was excluding them from git or the image.
+- **`BUILD_INFO.json` is the one gitignored file that must NOT be
+  dockerignored**, and the `.dockerignore` header's own advice ("when you add a
+  line to `.gitignore`, add it here too") is what would break it. Excluding it
+  fails nothing: the build succeeds, the container boots, every page renders, and
+  every deployed build reports itself unstamped forever.
+
+**Rejected:** running `docker build` in the test (no daemon here, and it would
+make the check un-runnable on the machine most likely to need it); and asserting
+only that the hazards are gone, which is an absence-only test and passes against
+a `.dockerignore` that excluded the whole application.
+
+*Where enforced:* `scripts/tests/build_context_test.py`. Section B self-tests the
+Docker pattern matcher against the semantics that bite (a pattern with no `/`
+matches at the context root ONLY; `*` does not cross `/`; `**/` matches zero or
+more segments), and section E proves every absence can go red — with no rules the
+content scan finds the real databases, each detector is run against a synthetic
+hazard AND a lookalike that must not flag, and five over-broad rule sets are each
+required to break the must-survive half. `docs/README.md` §4 tells a researcher
+when to run it.
+
+---
+
+## `start.sh` states a timeout class at every call site, and re-reads the room before calling a creation failed — 2026-08-23
+
+Two changes to the host-side room binder, both ported from a crash in
+`exp_pilots` on 2026-08-21, and deliberately NOT the rewrite that study's spec
+describes. Its boot script is a different thing — a Python entrypoint run inside
+the container. This one is bash and curl, run by a human or a launcher against an
+already-running server, so it never had that script's bug and does not need its
+structure.
+
+**1. Two timeout classes, with no default to inherit.** `exp_pilots` ran its
+220-seat session creation through the same 15-second timeout as its millisecond
+health checks; creation legitimately takes minutes (oTree builds every
+participant x round row inside the one request), the script read a slow SUCCESS
+as a failure, and the container exited. This script had the mirror-image risk —
+**no timeouts at all**, so a server that accepts a connection and never answers
+hangs the lab launcher silently, with no message and nothing to look at. Both are
+now impossible: `api()` takes its `--max-time` as its FIRST ARGUMENT, so there is
+no shared default for a future call site to inherit, and each site names its class
+(`READ_MAX_TIME`, 20s; `CREATE_MAX_TIME`, 600s). The structural half matters more
+than the numbers — a generous creation timeout costs nothing when creation is
+quick, and the only thing a tight one buys is an outage.
+
+**2. A client timeout is not proof the POST failed server-side.** The same
+`exp_pilots` crash left an ORPHAN SESSION behind, created by a request that
+completed after its client had stopped listening. So a failed creation — a curl
+timeout, or a reply that parses to no session code — now RE-READS the room before
+reporting anything fatal, and reports the binding it finds instead of failing.
+This is the reuse rule the whole script exists for, applied to its own failure
+path: a retry that does not re-check binds a second session over a good one, and
+every participant already holding a link to the first is stranded. **Rejected:**
+a retry loop (the spec's shape). One re-read answers the question that was
+actually asked, and re-running the script is already the safe recovery, because
+step 1 reuses whatever is bound by then — which the FATAL message now says.
+
+The limitation is stated rather than papered over, and it was MEASURED rather
+than assumed: against a real oTree 6.0.15 server, the room binding appears only
+when `POST /api/sessions` returns (creation is one transaction — a 1200-seat
+`lab` session bound the room at t+3.75s and returned at t+3.74s). So one re-read
+detects a creation that COMPLETED unheard; a creation genuinely still in flight
+is honestly reported as unbound, and re-running the script is the recovery. In
+practice the re-read is often served AFTER the creation anyway, because it queues
+behind it — a 400-seat creation cut off at a 1s client timeout was found bound by
+the very next read, with exactly one session in the database.
+
+*Where enforced:* `scripts/tests/start_sh_room_bind_test.py` drives the real
+script as a subprocess against a stub oTree REST server that can be slow on
+demand — the only way to stage "bind the room, then withhold the reply". It
+asserts on the server's POST COUNT rather than on what the script printed, since
+"reusing it" printed while a POST went out anyway is exactly the bug the message
+would hide. Section 8 asserts the structural half: no bare `curl` call site, and
+every `api()` call naming a declared class.
 
 ---
 
