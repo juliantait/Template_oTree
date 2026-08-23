@@ -11,10 +11,11 @@ working.
 
 ---
 
-## The dashboard timer's TOTAL pill and the stale-data banner's age — 2026-08-23
+## The dashboard timer's TOTAL pill, the stale-data banner's age, and the tab embed's height — 2026-08-23
 
-Two operator-facing improvements to the experimenter dashboard, each with a
+Three operator-facing improvements to the experimenter dashboard, each with a
 choice that reads as arbitrary unless the reasoning is written down.
+
 ### The TOTAL-time pill: where the clock starts and stops
 
 Pill 2 of the per-participant timer (`_total_seconds`) is "time since they
@@ -55,6 +56,22 @@ arriving. *Enforced:* `scripts/tests/dashboard_timer_banner_test.py` measures th
 age and a live pill at two times and asserts they moved (never an absence-only
 check), proven red by controls that drop the time/age and that drop `data-live`.
 
+### The tab embed fills the viewport (100dvh), block, border-box
+
+`outro/admin_report.html`'s iframe went from `78vh` to `100dvh`, `display: block`,
+`box-sizing: border-box`. At 78vh the whole Report page fit one viewport, so
+nothing scrolled: oTree's chrome (navbar, tab bar, the app_name/round_number
+form) was stuck at the top and a strip sat below the embed. A full-viewport iframe
+makes the page taller than the window, so the chrome scrolls away and the
+dashboard owns the screen; `display: block` removes the inline-descender
+"leftover row"; `border-box` keeps the 1px border inside the 100dvh so it fills
+exactly rather than overshooting by 2px. **The dashboard's own timeline column
+widened 46% -> 48%** at the same time, because the second time pill took width the
+header's long step labels needed to stay equally spaced (it fails
+`dashboard_render_check` at 1280px otherwise). *Enforced:*
+`scripts/tests/dashboard_embed_height_test.py` at three viewport heights and the
+existing `dashboard_render_check` header-spacing assertion; the height test is
+proven red by a control reverting to `78vh`/inline.
 
 ---
 
