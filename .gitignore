@@ -26,3 +26,19 @@ _ai/
 # .gitignore from its throwaway staging tree and write a .railwayignore instead
 # — see docs/skills_claude/hosting_railway.md.
 BUILD_INFO.json
+
+# EXPORTED PARTICIPANT DATA. `scripts/export_data.py` defaults `--out` to the
+# RELATIVE path `exports`, so the documented way to pull data during a run
+# writes participant CSVs — answers, timings, Prolific IDs — into the repo root.
+# Consented research data does not belong in a git history, or in a build
+# context (`.dockerignore` excludes it too).
+exports/
+
+# Curl cookie jars, BY PATTERN and not by name. They only ever arrive from
+# ad-hoc curl debugging, and one of them (in the study this template feeds) was
+# committed holding a LIVE ADMIN SESSION COOKIE. The next one will not be
+# called cookies.txt — it may well be admin_cookies.txt, which is why the
+# pattern wraps the word rather than anchoring to the start of the name.
+*cookie*.txt
+*.cookies
+*cookiejar*
