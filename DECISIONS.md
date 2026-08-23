@@ -8,6 +8,219 @@ test, guard or CSS rule that holds it in place, or a plain admission that
 nothing does and it relies on people remembering. Newest first. Entries are
 deliberately short; code comments and the linked working documents hold the full
 working.
+
+---
+
+## `/health` is a verdict a machine can act on, `verify_deploy.py` is the only thing that fails on a stamp, and appending a route to oTree has ONE implementation — 2026-08-23
+
+The second half of the build-provenance work. Its first half asked *"what code
+did this participant run?"*; this half asks *"did that deploy actually work?"* —
+the question that was unanswerable when a Railway deploy reported SUCCESS with
+the container already exited, and when a build went out with its stamp silently
+missing and looked perfectly healthy.
+
+### One route installer, because there are now two callers
+
+Appending a route to oTree's own app existed once, in
+`experimenter_dashboard.install_dashboard_route`. `/health` needs the same
+thing, and a second copy is the inverted collapsed-distinction defect CLAUDE.md
+devotes a section to: one concept, two implementations, drifting invisibly until
+an oTree upgrade moves the route table and only one copy is updated. So the
+route-table half moved to **`otree_routes.py`** — importing `otree.urls`, the
+mid-import-versus-drift split, the `routes` shape check, idempotency by route
+name, extending both the table and a live `otree.asgi` router, and the
+`INSTALLED`/`ALREADY`/`NOT_IMPORTABLE` vocabulary. **Rejected:** importing the
+dashboard from `health.py`, which would make a deploy gate depend on an operator
+convenience.
+
+**The `AdminView` auth shape check STAYED in the dashboard**, and the split is
+the point: it is about WHO MAY LOOK AT THE PAGE, which is that module's
+commitment. `/health` deliberately has no auth at all, because a platform
+healthcheck can present no cookie. Those are different commitments, not one
+commitment two callers share. It now runs inside the route-builder callback the
+shared installer invokes, so it still fires only when an install is really about
+to happen — never on the idempotent path.
+
+**The NOT_IMPORTABLE-versus-drift distinction was preserved exactly**, because
+CLAUDE.md names collapsing those two as a worked example of the class.
+
+Two guards are NEW, and both close silent failures the single-caller version
+could afford not to have: a route built under a name outside the caller's
+declared tuple is REFUSED (that tuple is what idempotency and the
+installed-check are decided on, so such a route installs twice and reads as
+absent), and a path already served under another name is REFUSED (Starlette
+matches the first route that matches, so two handlers on one path means a deploy
+gate reads whichever was registered first).
+
+**Both install from the tail of `outro/__init__.py`, not early.** The brief
+argued `/health` "wants to install early, since its job is answering while
+things are still coming up". Measured, that is not available here: importing
+`otree.urls` builds the whole route table, which walks every app's
+`page_sequence`, so it cannot happen before every app module is imported, and
+`otree.urls` is not importable at `settings.py` time at all. There is also no
+window to close — the routes only need to exist before `otree.asgi` builds the
+app, which is after every app import on every supported boot path.
+
+**The global-lock exemption is per-endpoint, not per-installer.**
+`/health` registers itself in oTree's `VIEWS_WITHOUT_LOCK`; the dashboard
+deliberately does not. oTree serialises every request behind one lock, so a
+health poll queueing behind a participant page turns a 20ms check into a
+timeout, a platform reads the timeout as UNHEALTHY, and a container gets
+restarted for being BUSY — an outage manufactured by its own monitoring. The
+dashboard reads a whole session's rows and already accepts the lock's cost;
+running it unlocked would buy an operator screen showing half-committed state.
+
+### `/health`: the verdict, and everything it must NOT depend on
+
+200 when the database answers AND a session is bound to the room; 503 otherwise.
+Those two are what a participant's first click depends on, and the two 503
+reasons are kept apart deliberately — "nothing has bound a session yet" is
+normal and self-healing, "the database is unreachable" is the dead-application
+case. One indexed query answers both, which also makes it cheap enough to poll.
+
+**The build stamp and the pre-launch checklist ride in the body and touch the
+verdict nowhere.** A build running testing values is a perfectly healthy
+deployment — it is how every pilot runs and it is the state this template ships
+in. If a testing value made this 503, a platform would refuse to promote every
+rehearsal build, and the check meant to protect the real launch would be the
+check everybody disables.
+
+**Unauthenticated, so it publishes problem NAMES and never VALUES.** The
+checklist's values include Prolific completion codes, and a code is money to
+whoever finds it. The test asserts the names are present AND that no placeholder
+value appears anywhere in the body — an absence-only assertion would pass
+against a 404.
+
+**A method check written into the handler was DELETED, not kept.** Measured
+against starlette 0.14.1, `Route.handle` answers 405 before the endpoint is
+called, so that branch was unreachable. Inert code that looks like a guard is
+worse than none: the next reader believes it. The `methods=` argument is both
+the declaration and the enforcement, and a comment at the Route says so.
+
+**A fork with no room** gets a permanent 503, correctly for this template (the
+room IS the entry point) and wrongly for a study handing out links directly.
+That is stated at `health._readiness_reasons`, which is the one function such a
+fork changes. **Rejected:** a settings knob, which would be a second axis for
+something one predicate already answers.
+
+### `verify_deploy.py`: the one sanctioned failure, kept thin by delegating
+
+It compares the RUNNING build's stamp against the one just deployed and exits
+non-zero on a mismatch. That is the whole reason it exists, and it is safe to
+make provenance fatal here for reasons that hold nowhere else: a human runs it
+by hand after a deploy, it is not in the application path, and it cannot take a
+study down.
+
+**The room binding is read from `/api/rooms`, not from `/health`**, even though
+`/health` also knows — two independent witnesses, so a bug in `health.py` cannot
+certify itself. The test stages exactly that: a `/health` claiming the room is
+bound while the REST API says it is not, and the gate still fails.
+
+**Frozen-config drift is DELEGATED to `predeploy_check.audit_frozen_session_configs`**,
+not reimplemented. That function is already the one implementation, and it
+already carries the two-severity rule and the named exemption; a second copy
+here is the same defect class the installer extraction just removed. Both inputs
+are asked of the DEPLOYMENT (`/api/session_configs` and the bound session's
+config) rather than computed from the local tree — comparing a deployment
+against our belief about it is the error the script exists to remove. Two limits
+are stated rather than papered over: liveness cannot be computed over REST (the
+audit's own rule is that unsure counts as live, which is also the truth for the
+bound session), and only the BOUND session is audited, because auditing every
+session is `predeploy_check.sh` against a database copy, before the deploy.
+
+**It does NOT fail on the pre-launch checklist**, which spec §4(a) asked for.
+`/health` carries only the boot banner's subset of it — the full
+`prelaunch_check.py` hashes every file under `_static/` and imports the app,
+which is absurd on a polled route — so failing a deploy on it would be a check
+lying about its own coverage. The names are printed as information; the complete
+guard is `prelaunch_check.py`, run in the launch environment.
+
+**FROZEN_CONFIG is the one assertion that is NOT retried.** It is a pure function
+of the bound session and the running build, and neither changes on its own;
+waiting out the deadline to be told the same thing again is how a gate teaches
+people to stop running it.
+
+### The pre-launch check prints the stamp, and that is all it does with it
+
+`prelaunch_check.build_line()` names the build being cleared for launch, next to
+the PASS/FAIL verdict, and is deliberately not in the `problems` list. It is a
+different claim from `settings.py`'s boot banner (which says what the SERVER is),
+and it is the line a CI capture needs to answer "which build did we clear?" three
+months later.
+
+**Enforced:** `scripts/tests/health_test.py` (49 checks — the shared installer's
+five outcomes including both new guards, the verdict flipping 503→200→503 in one
+process, an unstamped build and a dirty checklist both riding a 200, the body's
+key set asserted CLOSED so no participant field can arrive on an open route
+unnoticed, and every block broken in turn to prove the route cannot 500);
+`scripts/tests/verify_deploy_test.py` (34 checks — the real script as a
+subprocess against a programmable stub, green path first and re-asserted last,
+with every red case one field different from it);
+`scripts/tests/dashboard_test.py` §A, whose patch target moved to
+`otree_routes.import_urls` with the seam.
+
+---
+
+## Check 2b exempts `build_at_creation` from MISSING — by name, reported, and on the audit's own argument — 2026-08-23
+
+Closes the item Phase 1 left open. `scripts/predeploy_check.py` check 2b treats
+a key MISSING from a live session's frozen config as a FAILURE, so a study that
+adopts build stamping while sessions are running would see it fail on
+`build_at_creation` for ever — which contradicts "provenance is documentation,
+never a gate".
+
+**The exemption is granted ON the audit's own argument, not despite it.** 2b
+fails MISSING because of a stated consequence: participants run WITHOUT the key
+while `settings.py` looks correct, because `common.cfg` quietly substitutes the
+shipped default. For `build_at_creation` that consequence cannot occur. Its only
+reader, `common.build_at_creation`, is deliberately RAW and never routes through
+`cfg` — precisely so that absent keeps meaning *"this session was created before
+build stamping existed"* rather than being back-filled with the build running
+right now. So there is no silent default, nothing for a participant to run
+without, and nothing a recreation would repair. Absent is not a defect; it is
+the designed meaning, and saying so is the record working.
+
+**Reported, never skipped.** The finding moves to the informational `diffs`
+channel and reads like the plain value differences beside it — what the session
+has (`absent (MISSING)`), what the current setting is, and the named reason. A
+silent skip would be indistinguishable from the audit not looking, which is the
+failure mode that whole file exists to avoid, and it would hide the day somebody
+adds a key that does not deserve the exemption.
+
+**A NAMED DICT, `MISSING_IS_THE_DESIGNED_MEANING`, with the bar written next to
+it:** the key must have exactly one reader, that reader must be raw, and absence
+must be a meaning that reader acts on. If a key can fall back to a shipped
+default, it does not belong. Adding an entry is an edit a reviewer sees — the
+same friction `SOURCE_PRUNE` in `build_context_test.py` exists for. **The
+exemption covers MISSING only**; a PLACEHOLDER still fails, because that is a
+different finding and only one of the two has this argument behind it.
+
+**Rejected:** exempting the key silently (indistinguishable from a blind spot);
+dropping MISSING to a warning generally (that would disarm the check for every
+key, including the completion codes it was written for); and doing nothing,
+which was Phase 1's honest position but leaves a study unable to deploy while it
+adopts the feature.
+
+**Also settled, unchanged:** `scripts/write_build_info.py` still REFUSES a
+commit that is not a real 40-character SHA, exit 2. Phase 1 flagged it as
+arguably a third thing that "fails" and offered to drop it. Julian's ruling: it
+stays. It is a deploy-time tool validating its own arguments before anything
+ships, the worst case is an unstamped deploy (which runs perfectly), and a stamp
+that is not a real SHA is worse than no stamp because no later reader could tell
+it from a real one.
+
+**Enforced:** `scripts/tests/predeploy_frozen_audit_test.py` — the exempted key
+reported as information rather than a problem AND carrying its reason; a SECOND
+key missing from the same session still failing, so the exemption is one key
+rather than a weakening of the rule; and the dict emptied to prove the same
+session then DOES fail, so the pass is the exemption working and not the audit
+looking away. Measured end to end against the real
+`_ai/live_data/db_generated_2026-08-18.sqlite3` as well
+(`_ai/build_provenance/phase2_test_output/exemption_against_live_data.txt`),
+which is the database Phase 1 measured the failure on.
+
+---
+
 ## Build provenance is DOCUMENTATION, NEVER A GATE — and it is recorded in three places so their disagreement is the signal — 2026-08-23
 
 Decided by Julian, from a spec written by the `exp_pilots` study after it shipped

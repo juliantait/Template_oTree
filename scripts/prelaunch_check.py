@@ -310,10 +310,38 @@ def dashboard_problems():
     return problems
 
 
+def build_line():
+    """The running build, as INFORMATION and nothing else.
+
+    NOT a check, and deliberately not in `main`'s `problems` list: **provenance
+    is documentation, never a gate** (Julian, 2026-08-23; DECISIONS.md). An
+    unstamped build is a perfectly valid build — it is the state of every local
+    run, every test run and this template as shipped — so a missing stamp must
+    never fail this script, and turning it into a problem here is the one edit
+    that would break the rule.
+
+    It is printed anyway because this script's output is what a launcher or a CI
+    job captures, and "which build did we clear for launch?" is exactly the
+    question this line exists to answer three months later. `settings.py` prints
+    the same fact at import, about the SERVER; this line attaches it to the
+    LAUNCH VERDICT below, which is a different claim and worth having next to
+    the PASS/FAIL. Never raises: `buildinfo.label()` degrades to a plain phrase.
+    """
+    try:
+        import buildinfo
+        return (f'build cleared for launch: {buildinfo.label()} '
+                f'(information only — provenance never fails this check)')
+    except Exception as exc:                                   # noqa: BLE001
+        return (f'build cleared for launch: unknown '
+                f'({type(exc).__name__}: {exc}) — information only, and still '
+                f'not a failure')
+
+
 def main(argv):
     if '--stamp-assets' in argv:
         return stamp_assets()
 
+    print(build_line())
     problems = (settings._prelaunch_problems() + lab_module_problems()
                 + asset_problems() + auth_level_problems()
                 + dashboard_problems())

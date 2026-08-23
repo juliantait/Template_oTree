@@ -124,10 +124,13 @@ CHECKS (each independent; any FAIL -> exit non-zero)
       CONFIGS  current settings. FAILS only on a key MISSING from the frozen
                config or a value still holding a REPLACE_* placeholder; every
                other difference is REPORTED as information, never failed (see
-               the two-severity note in check_frozen_session_configs). The
-               remedy for a failing session is to RECREATE it — a frozen config
-               cannot be repaired by editing settings.py. NOT TESTED in
-               degraded mode: a fresh DB has no pre-existing sessions to audit.
+               the two-severity note in check_frozen_session_configs), as is
+               each key in MISSING_IS_THE_DESIGNED_MEANING, the one NAMED
+               exemption list — where absence is the record rather than a
+               defect. The remedy for a failing session is to RECREATE it — a
+               frozen config cannot be repaired by editing settings.py. NOT
+               TESTED in degraded mode: a fresh DB has no pre-existing sessions
+               to audit.
   3. RESUME    an EXISTING mid-flow participant from the live data (e.g.
                sitting on the quiz or a task round) is driven several more
                pages over real HTTP. THIS is the upgrade path that broke: their
@@ -1043,6 +1046,53 @@ def _is_placeholder(value) -> bool:
         return 'REPLACE' in str(value)
 
 
+# =============================================================================
+# THE ONE NAMED EXEMPTION FROM THE `MISSING` FAILURE — never a silent skip
+# =============================================================================
+# Added 2026-08-23 with build provenance. `MISSING` fails because of a specific
+# consequence, stated in audit_frozen_session_configs below: participants run
+# WITHOUT the key while settings.py looks correct, because `common.cfg` quietly
+# substitutes the shipped default. THE EXEMPTION IS GRANTED ON THAT ARGUMENT,
+# NOT DESPITE IT — for a key in this dict the consequence does not exist,
+# because absent is not an accident, it is the DESIGNED MEANING.
+#
+# `build_at_creation` is the whole (and, so far, only) case. It is read by
+# `common.build_at_creation`, which is DELIBERATELY RAW and never routes through
+# `cfg`, precisely so that absent keeps meaning "this session was created before
+# build stamping existed" rather than being back-filled with the build running
+# right now. Reading it through `cfg` would FABRICATE provenance, and
+# `scripts/tests/frozen_config_test.py` has a section that goes red if anyone
+# ever does. So for this key there is no silent default, nothing for a
+# participant to run without, and nothing a recreation would repair: the session
+# genuinely does predate the key, and saying so is the record working.
+#
+# WHY A NAMED DICT AND NOT A SKIP. An exempted key is still REPORTED, in the
+# informational `diffs` channel, worded so a reader sees the exemption and its
+# reason rather than an absence. A silent skip would be indistinguishable from
+# the audit not looking, which is the failure mode this whole file exists to
+# avoid — and it would hide the day somebody adds a key here that does NOT
+# deserve it. Adding an entry is an edit a reviewer sees, in the same spirit as
+# `SOURCE_PRUNE` in scripts/tests/build_context_test.py.
+#
+# THE BAR FOR ADDING ONE: the key must have exactly one reader, that reader must
+# be raw (never `cfg`), and absence must be a meaning that reader acts on. If a
+# key can fall back to a shipped default, it does not belong here.
+#
+# NB THIS EXEMPTS `MISSING` ONLY. A PLACEHOLDER value in one of these keys still
+# fails, and so does any other kind — the two are different findings and only
+# one of them has this argument behind it.
+MISSING_IS_THE_DESIGNED_MEANING = {
+    'build_at_creation': (
+        'absent is not a defect: it is the designed meaning, namely that this '
+        'session was created before build stamping existed. The only reader '
+        '(common.build_at_creation) is deliberately RAW, so nothing falls back '
+        'to a shipped default and no participant runs without anything — and '
+        'recreating the session would not repair it, because there is nothing '
+        'broken. Provenance is documentation, never a gate (DECISIONS.md, '
+        '2026-08-23)'),
+}
+
+
 def audit_frozen_session_configs(stored, current_configs, defaults):
     """The pure analysis behind check 2b, separable so a test can drive it.
 
@@ -1061,6 +1111,12 @@ def audit_frozen_session_configs(stored, current_configs, defaults):
                     a raw config.get reads None/off — while settings.py looks
                     perfectly correct. This is CLAUDE.md's frozen-config rule
                     surfacing operationally.
+                    ONE NAMED EXEMPTION, and it is granted on this same
+                    argument rather than despite it: for a key in
+                    MISSING_IS_THE_DESIGNED_MEANING (above) absence IS the
+                    record, there is no silent default to run without, and the
+                    finding moves to `diffs` carrying its reason. Never a
+                    silent skip.
       * PLACEHOLDER the frozen value still holds a REPLACE_* placeholder
                     (settings ships COMP-XXXXXX_REPLACE / NOCONS-XXXXXX_REPLACE
                     / DQ-XXXXXX_REPLACE / REPLACE_SCREENOUT_RETURN_URL; matched
@@ -1108,6 +1164,15 @@ def audit_frozen_session_configs(stored, current_configs, defaults):
 
         for key in sorted(current):
             if key not in frozen:
+                exemption = MISSING_IS_THE_DESIGNED_MEANING.get(key)
+                if exemption is not None:
+                    # REPORTED, NOT SKIPPED — in the same informational channel
+                    # as a plain value difference, and reading like one: what
+                    # the session has ("absent"), what the current setting is,
+                    # and the named reason absence is correct here.
+                    diffs.append((code, key, 'absent (MISSING)',
+                                  f'{current[key]!r} — EXEMPT: {exemption}'))
+                    continue
                 flag('MISSING', key, f'current setting {current[key]!r}')
                 continue
             frozen_value = frozen[key]

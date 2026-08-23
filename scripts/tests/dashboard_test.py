@@ -276,18 +276,29 @@ def main():
     check(ed.assert_dashboard_route() == ed.ALREADY,
           'assert_dashboard_route passes when installed')
 
-    real_import = ed._import_urls
-    ed._import_urls = lambda: (_ for _ in ()).throw(ImportError('simulated'))
+    # THE SEAM MOVED ON 2026-08-23 and this patch target moved with it. The
+    # route-table half of the install now lives in `otree_routes.py`, the ONE
+    # implementation shared with health.py, so `otree_routes.import_urls` is
+    # what has to be broken to stage these two cases — patching a
+    # `_import_urls` on this module would leave the real installer untouched and
+    # every check below would pass against nothing. What is asserted is
+    # unchanged: this is still the DASHBOARD's install behaviour, reached the
+    # way a boot reaches it. `scripts/tests/health_test.py` covers the shared
+    # installer itself, including that /health gets the same treatment.
+    import otree_routes
+    real_import = otree_routes.import_urls
+    otree_routes.import_urls = lambda: (_ for _ in ()).throw(
+        ImportError('simulated'))
     try:
         outcome = ed.install_dashboard_route()   # must not raise
         check(outcome == ed.NOT_IMPORTABLE,
               'not-importable-yet is QUIET (returned, not raised)')
     finally:
-        ed._import_urls = real_import
+        otree_routes.import_urls = real_import
 
     class _Drifted:                     # imported fine, wrong shape
         routes = None
-    ed._import_urls = lambda: _Drifted
+    otree_routes.import_urls = lambda: _Drifted
     try:
         try:
             ed.install_dashboard_route()
@@ -299,7 +310,7 @@ def main():
         check(ed.install_dashboard_route_or_note() == 'drift',
               'boot-time wrapper swallows the drift raise (boot survives)')
     finally:
-        ed._import_urls = real_import
+        otree_routes.import_urls = real_import
 
     # ------------------------------------------------------------------ B
     section('B. PROOF 1: no login, no dashboard — ever')

@@ -53,10 +53,13 @@ the admin.
 
 INSTALLING — the identity.py discipline, with ONE deliberate difference
 -----------------------------------------------------------------------
-``install_dashboard_route()`` is quiet when ``otree.urls`` is legitimately
-not importable yet (or is mid-import), and LOUD — a raise — when the module
-loaded but ``routes`` / ``AdminView`` are not the shapes this file was
-written against, which is version drift. THE DIFFERENCE FROM IDENTITY: the
+The ROUTE-TABLE half of the install lives in ``otree_routes.py``, which is the
+one implementation this module and ``health.py`` both call; only the AdminView
+auth shape check is this module's own. ``install_dashboard_route()`` is quiet
+when ``otree.urls`` is legitimately not importable yet (or is mid-import), and
+LOUD — a raise — when the module loaded but ``routes`` / ``AdminView`` are not
+the shapes this file was written against, which is version drift. THE
+DIFFERENCE FROM IDENTITY: the
 call site (end of ``outro/__init__.py``) catches even the drift raise and
 logs it instead of failing the boot. identity's guard protects participants
 from a 500, so a boot-time failure is the right trade there; this module is
@@ -1919,9 +1922,24 @@ def _stall_elapsed(step, stamps, intro, seconds_on_page, now):
 # deliberate difference: the call site survives even the drift raise)
 # =============================================================================
 
-INSTALLED = 'installed'            # newly appended
-ALREADY = 'already'                # idempotent no-op
-NOT_IMPORTABLE = 'not_importable'  # otree.urls not importable / mid-import
+# THE ROUTE-TABLE HALF LIVES IN `otree_routes.py`, NOT HERE (2026-08-23).
+#
+# Appending a route to oTree is ONE concept, and since /health arrived it has
+# TWO callers. The vocabulary below is re-exported rather than redefined so this
+# module's existing readers, tests and messages keep their names, but there is
+# exactly one implementation of "import otree.urls, tell mid-import apart from
+# version drift, check the table's shape, stay idempotent, extend both the table
+# and a live router". See otree_routes.py for the reasoning and the oTree
+# internals it was verified against.
+#
+# WHAT STAYED HERE, AND WHY IT MUST: the AdminView shape check below. It is
+# about WHO MAY LOOK AT THIS PAGE, which is this module's commitment and not a
+# property of extra routes in general — /health deliberately has no auth at all.
+import otree_routes
+
+INSTALLED = otree_routes.INSTALLED            # newly appended
+ALREADY = otree_routes.ALREADY                # idempotent no-op
+NOT_IMPORTABLE = otree_routes.NOT_IMPORTABLE  # otree.urls not importable yet
 
 # Route names, used for idempotency and by tests. Starlette exposes them for
 # url_for, so they must not collide with oTree's own view names.
@@ -1931,57 +1949,19 @@ ROUTE_NAMES = ('ExperimenterDashboardIndex', 'ExperimenterDashboard',
 _install_log = []
 
 
-def _import_urls():
-    """Import oTree's routing module. Separated so the IMPORT failure and the
-    SYMBOL checks can be told apart (identity._import_views is the model).
+def _checked_admin_view():
+    """THE AUTH SHAPE CHECK, and the reason it is not in `otree_routes`.
 
-    THE MID-IMPORT CASE IS 'NOT IMPORTABLE': if something imports the app
-    modules from INSIDE otree.urls' own get_urlpatterns() (no supported boot
-    path does — setup()'s init_orm imports the apps first — but a bare
-    `uvicorn otree.asgi:app` would), this module is in sys.modules WITHOUT its
-    `routes` attribute yet. That is an ordering fact, not drift: fail quiet.
+    The endpoints subclass ``otree.views.cbv.AdminView`` and reuse its login
+    cookie check. If AdminView no longer has that machinery, "reuse oTree's
+    login" is silently reusing NOTHING — an unauthenticated dashboard showing
+    every participant's earnings and conduct. That is the loud-drift case, so
+    it raises rather than degrading.
+
+    Called from inside the route builder handed to `otree_routes.install`, so it
+    runs only when an install is really about to happen — never on the
+    idempotent ALREADY path, exactly as before.
     """
-    from otree import urls
-    if not hasattr(urls, 'routes'):
-        raise ImportError('otree.urls is mid-import (no routes attribute yet)')
-    return urls
-
-
-def install_dashboard_route():
-    """Append the dashboard routes to otree.urls.routes (and to the live app
-    router, if otree.asgi has somehow already built the app — Starlette's
-    Router matches against that list per request, so a late append still
-    serves). Returns INSTALLED / ALREADY / NOT_IMPORTABLE.
-
-    RAISES only on VERSION DRIFT: otree.urls loaded but `routes` is not the
-    list this file was written against, or AdminView no longer carries the
-    login machinery the endpoints reuse. A caller at boot must catch that
-    raise and log it — the dashboard must break, never the boot (module
-    docstring).
-    """
-    try:
-        urls = _import_urls()
-    except Exception as exc:
-        _install_log.append((NOT_IMPORTABLE, f'{type(exc).__name__}: {exc}'))
-        return NOT_IMPORTABLE
-
-    routes = getattr(urls, 'routes', None)
-    if not isinstance(routes, list):
-        raise RuntimeError(
-            'experimenter_dashboard.install_dashboard_route: otree.urls.routes '
-            f'is {type(routes).__name__}, not the plain module-level list that '
-            'otree.asgi passes to Starlette (verified against oTree 6.0.15). '
-            'The installed oTree has drifted: find where the route table is '
-            'built now and re-point this install at it.')
-
-    if any(getattr(r, 'name', None) in ROUTE_NAMES for r in routes):
-        _install_log.append((ALREADY, ''))
-        return ALREADY
-
-    # SHAPE CHECK on the auth machinery the endpoints reuse. If AdminView no
-    # longer has the login-cookie check, "reuse oTree's login" is silently
-    # reusing nothing — an unauthenticated dashboard, which is exactly the
-    # loud-drift case.
     from otree.views import cbv
     AdminView = getattr(cbv, 'AdminView', None)
     if AdminView is None or not callable(
@@ -1995,43 +1975,37 @@ def install_dashboard_route():
             'been installed, because installing it without a login check '
             'would expose it to participants. Re-check the admin auth flow '
             'against the installed oTree and update experimenter_dashboard.py.')
+    return AdminView
 
-    new_routes = _build_routes(AdminView)
-    routes.extend(new_routes)
 
-    # If the Starlette app was ALREADY built, otree.asgi copied the list
-    # before our append (Starlette's Router does list(routes)) — so append to
-    # the live router's own list too. Router.__call__ iterates it per
-    # request, so this works after construction.
-    import sys
-    asgi = sys.modules.get('otree.asgi')
-    if asgi is not None:
-        try:
-            live = asgi.app.router.routes
-            if not any(getattr(r, 'name', None) in ROUTE_NAMES for r in live):
-                live.extend(new_routes)
-        except Exception as exc:
-            raise RuntimeError(
-                'experimenter_dashboard.install_dashboard_route: otree.asgi '
-                'is already imported but its app.router.routes could not be '
-                f'extended ({type(exc).__name__}: {exc}). The dashboard '
-                'would silently 404. Starlette/oTree has drifted; re-check '
-                'otree/asgi.py against this install.') from exc
+def install_dashboard_route():
+    """Append the dashboard routes to otree.urls.routes (and to the live app
+    router, if otree.asgi has somehow already built the app — Starlette's
+    Router matches against that list per request, so a late append still
+    serves). Returns INSTALLED / ALREADY / NOT_IMPORTABLE.
 
-    _install_log.append((INSTALLED, ''))
-    return INSTALLED
+    RAISES only on VERSION DRIFT: otree.urls loaded but `routes` is not the
+    list this file was written against, or AdminView no longer carries the
+    login machinery the endpoints reuse. A caller at boot must catch that
+    raise and log it — the dashboard must break, never the boot (module
+    docstring).
+
+    THE DASHBOARD DOES NOT ASK FOR THE GLOBAL-LOCK EXEMPTION that /health takes
+    (`otree_routes.exempt_from_global_lock`). It reads a whole session's rows,
+    and the module docstring above already accepts the lock's cost as this
+    feature's one real price; running unlocked would trade that for an operator
+    screen reading half-committed state.
+    """
+    return otree_routes.install(
+        ROUTE_NAMES,
+        lambda: _build_routes(_checked_admin_view()),
+        'experimenter_dashboard.install_dashboard_route',
+        _install_log)
 
 
 def dashboard_is_installed() -> bool:
     """Are the routes actually in the table right now? Never raises."""
-    try:
-        urls = _import_urls()
-    except Exception:
-        return False
-    routes = getattr(urls, 'routes', None)
-    if not isinstance(routes, list):
-        return False
-    return any(getattr(r, 'name', None) in ROUTE_NAMES for r in routes)
+    return otree_routes.is_installed(ROUTE_NAMES)
 
 
 def install_dashboard_route_or_note():

@@ -153,6 +153,71 @@ def main():
     check(not any(code == fresh.code for code, *_ in problems),
           'the fully-current session is still clean')
 
+    section('`build_at_creation` MISSING is INFORMATION, not a failure — '
+            'the one NAMED exemption')
+    # THE CASE: a study that adopts build stamping while sessions are already
+    # running. Those sessions predate the key, so check 2b would fail on them
+    # for ever — which contradicts "provenance is documentation, never a gate"
+    # (DECISIONS.md, 2026-08-23). Simulated exactly as the stale case above is.
+    adopting = ot.create_session('prolific', num_participants=1,
+                                 modified_session_config_fields=REAL_CODES)
+    removed = ot.strip_config_keys(adopting, ['build_at_creation'])
+    check(removed == ['build_at_creation'],
+          f'the session had build_at_creation deleted from its stored config '
+          f'(removed={removed}) — a session created before stamping existed')
+
+    problems, diffs = run_audit()
+    check(not any(code == adopting.code and key == 'build_at_creation'
+                  for code, key, *_ in problems),
+          'its absence is NOT a problem: it blocks no deploy')
+    mine = [(key, frozen, current) for code, key, frozen, current in diffs
+            if code == adopting.code and key == 'build_at_creation']
+    check(len(mine) == 1,
+          f'it IS reported, in the informational channel — never a silent skip '
+          f'(got {len(mine)} entries)')
+    if mine:
+        _key, frozen_value, current_value = mine[0]
+        check('MISSING' in str(frozen_value),
+              f'the line still says the key is absent ({frozen_value!r}), so a '
+              f'reader is not told a value exists that does not')
+        check('EXEMPT' in str(current_value)
+              and 'designed meaning' in str(current_value),
+              'and it carries the NAMED reason, so the exemption is visible '
+              'rather than inferred from silence')
+
+    # THE PAIRED NEGATIVE — the exemption must be NARROW. Same session, a second
+    # key removed: that one must still fail, or the exemption has quietly become
+    # "MISSING no longer fails", which is a different and much worse change.
+    removed = ot.strip_config_keys(adopting, ['num_experimental_rounds'])
+    check(removed == ['num_experimental_rounds'],
+          'a SECOND key is now missing from the same session')
+    problems, _diffs = run_audit()
+    check(any(code == adopting.code and key == 'num_experimental_rounds'
+              and kind == 'MISSING' for code, key, kind, _ in problems),
+          'and THAT one still FAILS as MISSING — the exemption is one named '
+          'key, not a weakening of the MISSING rule')
+
+    section('the exemption can go red — with the dict emptied, the same '
+            'session fails')
+    # PROOF THE CHECK IS DOING SOMETHING. Without this, "build_at_creation did
+    # not fail" is equally true of an audit that stopped looking at that
+    # session at all.
+    real_exempt = dict(pdc.MISSING_IS_THE_DESIGNED_MEANING)
+    pdc.MISSING_IS_THE_DESIGNED_MEANING.clear()
+    try:
+        problems, _diffs = run_audit()
+        check(any(code == adopting.code and key == 'build_at_creation'
+                  and kind == 'MISSING' for code, key, kind, _ in problems),
+              'with MISSING_IS_THE_DESIGNED_MEANING emptied, the very same '
+              'session DOES fail on build_at_creation — so the pass above is '
+              'the exemption working, not the audit looking away')
+    finally:
+        pdc.MISSING_IS_THE_DESIGNED_MEANING.update(real_exempt)
+    problems, _diffs = run_audit()
+    check(not any(code == adopting.code and key == 'build_at_creation'
+                  for code, key, *_ in problems),
+          'and restoring it makes the session pass again')
+
     section('the check records NOT TESTED in degraded mode (fresh database, '
             'no live sessions to audit)')
     before = len(pdc.RESULTS)

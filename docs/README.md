@@ -43,7 +43,8 @@ Run **`python3 scripts/prelaunch_check.py`**. It is the static config guard, it
 takes a second, and it fails on the things that actually go wrong: completion
 codes still set to `REPLACE_*`, `DEBUG` still on, testing loosenings left in
 (`quiz_verify=False`). It also prints on every server start, so you cannot miss
-it.
+it. Its first line names the build it is clearing for launch — information
+only; a missing build stamp never fails it (§7).
 
 If your study already has participants in its database, also run
 **`scripts/predeploy_check.sh <copy-of-live-db.sqlite3>`** before deploying new
@@ -153,3 +154,74 @@ nothing: the request may well have completed and bound the room. **Re-running
 deployment configuration; `hosting_a_prolific_study.md` is a written record of
 what such a deploy needs and what to watch for, so it can be implemented when
 somebody decides to. Read `postgres_assumptions.md` alongside it.
+
+**`GET /health` answers "is this thing actually ready?"** — 200 only when the
+database answers *and* a session is bound to the room, 503 otherwise, with no
+login needed. It is not just for hosted studies: on a lab machine it is what a
+launcher can poll before you open the door, and `curl -s localhost:8000/health`
+is the quickest way to find out whether `start.sh` got a session bound. On a
+hosted study, pointing the platform's health check at it is what makes the
+platform refuse to promote a broken build — the snippet is in
+`skills_claude/hosting_railway.md`.
+
+## 7. Which build is running, and which build your data came from
+
+Every study collects data across days and redeploys, and "what code did this
+participant actually run?" has to be answerable from the data months later. So
+the build is recorded in **three places**, and their **disagreement is the
+point** — a session created on Monday and still serving on Thursday is normal,
+not an error.
+
+| where | what it means | authoritative for |
+|---|---|---|
+| `participant.build_sha` / `participant.build_number` | stamped **on arrival**, from the build that was actually running when that person started | **this is the evidence.** The only one of the three that is authoritative about a participant, and the one your analysis uses |
+| `session.config['build_at_creation']` | what was current **when the session was made** | one half of a comparison, nothing more — a room session outlives redeploys, so this does not say what anybody ran |
+| the build line on the **create session** screen | what the **server** is running right now, read-only | reassurance before you click, not evidence afterwards |
+
+Blank, `unstamped` and a SHA are three different facts and stay apart: blank
+means the participant **never arrived**, `unstamped` means they **did arrive**,
+on a build carrying no stamp, and a SHA means what it says. `CODEBOOK.md` has
+the analyst's version of this table.
+
+**It is on by default, and nothing anywhere fails because of it.** A missing
+stamp reads `unstamped` everywhere, on the create-session screen, in `/health`
+and in the export. The pre-launch check prints the build next to its verdict and
+never counts it as a problem; `/health` reports it and never lets it change the
+200/503. That is deliberate: an unstamped build is a perfectly valid build — it
+is the state of every local run and every test run in this repo.
+
+**To turn it off, do nothing.** There is no setting, because there is nothing to
+switch: skip the deploy step below, and with no `BUILD_INFO.json` the whole
+feature is inert. Do not delete code to disable it.
+
+**The deploy step that writes the stamp.** This is the part a study deploying by
+hand will otherwise miss, and the symptom is that everything reads `unstamped`
+for ever with nothing looking wrong. A commit cannot contain its own SHA, so the
+stamp is **written at deploy time**, never committed (`BUILD_INFO.json` is
+gitignored on purpose). Add one command to whatever puts your code on the
+server:
+
+```sh
+python3 scripts/write_build_info.py \
+    --commit       "$(git rev-parse HEAD)" \
+    --commit-date  "$(git log -1 --format=%cI)" \
+    --subject      "$(git log -1 --format=%s)" \
+    --build-number "$(git rev-list --count HEAD)" \
+    --tree-clean   true \
+    --out          BUILD_INFO.json
+```
+
+It takes the values as arguments and never shells out to git, so it also runs
+where there is no repository. **If you deploy with `railway up`, read
+`skills_claude/hosting_railway.md` first** — `railway up` honours `.gitignore`,
+so the very line that makes the stamp safe for git stops it ever reaching the
+server. That file has the trap and the fix; it is not repeated here.
+
+**After a deploy, run `python3 scripts/verify_deploy.py`** with the base URL and
+the `BUILD_INFO.json` you just deployed. It asks the running server which commit
+it is and fails if that is not the one you sent — the one assertion a health
+check can never make, because a perfectly healthy container can be serving last
+week's code. It is read-only, safe against production, and never requests a URL
+that would consume a participant slot. This is the **only** place a build stamp
+is allowed to fail anything, and it is a command you run by hand, not something
+in the application's path.

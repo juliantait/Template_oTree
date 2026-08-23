@@ -771,10 +771,10 @@ page_sequence = [Ended, Demographics, Feedback, Results]
 # BOOT here, never a participant (see participant_tab_monitor.py).
 participant_tab_monitor.assert_monitored_page_sequence(__name__, page_sequence)
 
-# EXPERIMENTER DASHBOARD INSTALL — deliberately the LAST lines of the LAST app
-# module, and deliberately in `outro` rather than `before` or `settings.py`:
+# EXTRA-ROUTE INSTALLS — deliberately the LAST lines of the LAST app module,
+# and deliberately in `outro` rather than `before` or `settings.py`:
 #
-#   * it must run AFTER this module's own `page_sequence` exists, because
+#   * they must run AFTER this module's own `page_sequence` exists, because
 #     importing `otree.urls` builds the whole route table, and that walks every
 #     app's page_sequence — including this one, mid-import;
 #   * an early install from settings.py (identity.py's other install point)
@@ -783,16 +783,26 @@ participant_tab_monitor.assert_monitored_page_sequence(__name__, page_sequence)
 #     the routes only need to exist before `otree.asgi` builds the app, which
 #     is after every app import on every supported boot path.
 #
-# `install_dashboard_route_or_note` NEVER raises — not even on version drift,
-# which it logs loudly instead. That is the one deliberate difference from
-# identity's asserting install point, and it is the dashboard's own first rule
-# applied to its install: a dashboard that cannot install harms nobody, but a
-# boot that dies over an operator page fails every participant. See the
-# docstrings in experimenter_dashboard.py.
+# THE ROUTE-TABLE WORK ITSELF IS ONE IMPLEMENTATION, in `otree_routes.py`, which
+# both installs below call. Two copies of "append a route to oTree" would drift
+# and the drift would only show on an oTree upgrade (CLAUDE.md's inverted rule).
+#
+# NEITHER `*_or_note` EVER RAISES — not even on version drift, which they log
+# loudly instead. That is the one deliberate difference from identity's
+# asserting install point: the dashboard is an operator convenience and /health
+# is a deploy gate, and a boot that dies over either one fails every
+# participant. See the docstrings in experimenter_dashboard.py and health.py.
 import experimenter_dashboard
+import health
 
 experimenter_dashboard.install_dashboard_route_or_note()
 # The admin "Report" tab's drift check (loud when the machinery it rides has
 # moved, quiet when oTree is legitimately absent, never a raise) — see
 # note_admin_tab_problems and outro/admin_report.html.
 experimenter_dashboard.note_admin_tab_problems()
+
+# `GET /health` — unauthenticated, read-only, 200 only when the database answers
+# AND a session is bound to the room. It is what a platform healthcheck and
+# `scripts/verify_deploy.py` read; the build stamp rides in its body and never
+# affects its verdict.
+health.install_health_route_or_note()
