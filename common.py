@@ -10,6 +10,7 @@ a subfolder (e.g. scripts/) would break that import for every app.
 import re
 import time
 
+import buildinfo
 from settings import EXIT_CODES  # re-exported for convenience
 
 # =============================================================================
@@ -255,6 +256,41 @@ def flag(player, name) -> bool:
     return bool(player.session.config.get(name))
 
 
+def build_at_creation(config):
+    """Which build this SESSION WAS CREATED ON, or None if it predates stamping.
+
+    THE SECOND DELIBERATELY-RAW READ, next to `flag` and for a closely related
+    reason — but read the difference, because it is not the same reason.
+    `flag` is raw so a module a session was created without reads as OFF. This
+    is raw because `cfg` would FABRICATE PROVENANCE: `cfg` falls back to the
+    value SHIPPED in `settings.SESSION_CONFIG_DEFAULTS`, and the shipped value
+    of `build_at_creation` is the build running RIGHT NOW
+    (`buildinfo.config_stamp()` is evaluated at import). So a session created
+    before this key existed would read back as having been created on the
+    CURRENT build — a provenance record invented by the very helper that
+    protects every other parameter, and indistinguishable from a true one.
+
+    ABSENT MUST STAY ABSENT. `None` means "this session was created before build
+    stamping existed", which is a different fact from "created on an unstamped
+    build" — the latter is a VALUE (`{...,'stamped': False}`), written by
+    `buildinfo.config_stamp()` on every unstamped deploy. Collapsing the two
+    would lose the only thing that tells an adopting study which of its sessions
+    can be dated at all.
+
+    NEVER raises: a session whose config cannot be read is simply unknown, not
+    an exception on somebody's page or a dashboard poll. Provenance is
+    documentation, never a gate (DECISIONS.md).
+
+    `config` may be a session config mapping or anything dict-like
+    (`player.session.config`).
+    """
+    try:
+        raw = (config or {}).get('build_at_creation')
+    except Exception:                                          # noqa: BLE001
+        return None
+    return buildinfo.normalise_config_stamp(raw)
+
+
 # =============================================================================
 # STUDY TYPE — **FLAGS DECIDE MECHANICS, `recruitment` DECIDES COPY**
 # =============================================================================
@@ -366,6 +402,14 @@ def init_participant(participant):
     # every index; not anything id-related, because the gate must be able to
     # answer the question on a request for any page.
     participant.consent_submitted = False
+    # BUILD PROVENANCE — seeded BLANK, never with the current build. A row that
+    # was created and never arrived did not run any build, and writing today's
+    # SHA here is exactly the lie the on-arrival stamp exists to avoid: a
+    # session can outlive several deploys before somebody walks in. The stamp
+    # itself is taken on arrival, at the same call as the treatment cell
+    # (`before.treatment_assignment.assign_on_arrival`). One implementation,
+    # in buildinfo.
+    buildinfo.init_participant_fields(participant)
 
 
 def stamp_stage(participant, stage):

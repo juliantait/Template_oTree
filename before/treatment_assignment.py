@@ -1,4 +1,4 @@
-"""PLACEHOLDER treatment assignment — balance-on-arrival.
+"""PLACEHOLDER treatment assignment — balance-on-arrival (and the build stamp).
 
 WHAT A COPIER CHANGES vs WHAT IS REAL. The cells themselves are a PLACEHOLDER and
 live in `settings.TREATMENT_CELLS` (shipped `['row', 'column']`); swap them for
@@ -52,9 +52,13 @@ state that already includes it.
 Belt and braces, and the DB lock does not depend on the process lock being
 present — which is the point, because the process lock is the kind of "one
 implementation decided by the environment" this codebase distrusts (CLAUDE.md).
+
+THE BUILD STAMP RIDES THE SAME ARRIVAL, for the same reason and with a
+deliberately different failure policy. See `assign_on_arrival`.
 """
 import random
 
+import buildinfo
 import settings
 
 # The PLACEHOLDER cells, from the one place they are defined (settings.py). A
@@ -161,13 +165,39 @@ def _cell_counts(session) -> dict:
 
 def assign_on_arrival(player) -> str:
     """Give this participant a treatment cell if they do not have one, balancing
-    the session's cells on arrival. Returns the cell held (existing or new).
+    the session's cells on arrival, and stamp the BUILD they arrived on.
+    Returns the cell held (existing or new).
 
     Call at the very START of intro, before anything reads treatment_group
     (intro.instructing.get). Idempotent and PERMANENT: an already-assigned
     participant keeps their cell and is never re-drawn.
+
+    TWO THINGS ARE TAKEN AT THIS ONE MOMENT, AND ON PURPOSE — this is the first
+    instant a participant is really in the study, which is the same argument
+    for both. The cell must be spent only by somebody who ACTUALLY REACHED the
+    study (the whole reason assignment moved here from session creation), and
+    the build stamp must record the code that was serving WHEN THEY ARRIVED, not
+    the code that was serving when their row was created: a session outlives
+    redeploys, so a creation-time stamp would claim every participant ran the
+    creation-time build. Same moment, same reasoning, one call.
+
+    THEY FAIL DIFFERENTLY, THOUGH, AND THAT ASYMMETRY IS DELIBERATE — do not
+    "tidy" it into one policy. Treatment assignment is CORE EXPERIMENTAL
+    ASSIGNMENT: it is not wrapped in a swallowing try/except anywhere in this
+    path, because a silent failure would leave every participant unassigned ('')
+    while pages still rendered. Build provenance is INSTRUMENTATION: it must
+    never cost a participant a page, so `buildinfo.stamp_participant` swallows
+    its own exceptions and returns '' (CLAUDE.md: instrumentation must never
+    break a page; DECISIONS.md: provenance is documentation, never a gate).
+
+    The stamp is taken FIRST, and before the early return, so that a participant
+    who already holds a cell — one who was mid-flow when provenance was
+    deployed, or who simply refreshes — still gets stamped with the build they
+    are on now. `stamp_participant` is itself write-once, so a refresh never
+    rewrites an existing stamp.
     """
     participant = player.participant
+    buildinfo.stamp_participant(participant)
     existing = assigned_cell(participant)
     if existing:
         return existing

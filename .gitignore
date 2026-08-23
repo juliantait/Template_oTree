@@ -14,3 +14,15 @@ __pycache__/
 # Agent working notes: briefs, review dumps, intermediate reasoning. Not
 # deliverables, so they stay local rather than shipping to a copied study.
 _ai/
+
+# THE DEPLOY BUILD STAMP — written at deploy by scripts/write_build_info.py,
+# never committed. A commit cannot contain its own SHA, so a committed stamp
+# would describe the PREVIOUS commit in the tree of the next one: a stale
+# provenance record, which is worse than none.
+#
+# TRAP, AND IT HAS BITTEN: `railway up` HONOURS .gitignore, so this very line
+# makes the stamp invisible to that deploy and the build ships inert, reporting
+# unstamped while looking perfectly healthy. The deploy step must delete
+# .gitignore from its throwaway staging tree and write a .railwayignore instead
+# — see docs/skills_claude/hosting_railway.md.
+BUILD_INFO.json

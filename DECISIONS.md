@@ -8,6 +8,117 @@ test, guard or CSS rule that holds it in place, or a plain admission that
 nothing does and it relies on people remembering. Newest first. Entries are
 deliberately short; code comments and the linked working documents hold the full
 working.
+## Build provenance is DOCUMENTATION, NEVER A GATE — and it is recorded in three places so their disagreement is the signal — 2026-08-23
+
+Decided by Julian, from a spec written by the `exp_pilots` study after it shipped
+the same feature. Two questions kept being unanswerable for anyone running a real
+study: *"what code did this participant actually run?"* (a study collects data
+across days and redeploys; without a stamp in the data the honest answer is git
+archaeology) and *"did that deploy actually work?"* (Railway reported a deploy as
+SUCCESS with the container already dead). The first is what this entry is about.
+
+**A commit cannot contain its own SHA** — the SHA is computed over the commit's
+content — so the stamp is written at DEPLOY, by `scripts/write_build_info.py`,
+into `BUILD_INFO.json` at the app root, carried into the image by the
+Dockerfile's `COPY . .`, and **never committed** (it is gitignored: a committed
+stamp would describe the previous commit in the tree of the next one).
+`buildinfo.py` reads it once at boot. The writer takes the values as **explicit
+arguments and never shells out to git**, so it is testable in a container that
+has neither. `build_number` is `git rev-list --count HEAD`: monotonic, derived
+rather than stored, and the half a human can say out loud.
+
+**THE OVERRIDING CONSTRAINT, and it overrides the incoming spec.** Nothing in
+`settings.py`, the boot banner, the pre-launch check or any participant path may
+fail, refuse, warn-as-error or change behaviour because a stamp is missing,
+absent or wrong. An unstamped build is a perfectly valid build — it is the state
+of every local run and every test run in this repo. The spec asked for a
+launch-time gate that FAILS on a missing stamp; Julian rejected that for the
+template. Consequences, deliberately: a missing `BUILD_INFO.json` reads
+`unstamped` everywhere and is not a problem; the pre-launch banner prints the
+stamp as information next to its `DEBUG=` line and never counts it as a problem;
+**there is no on/off setting, because there is nothing to switch** — "off" is
+simply not running `write_build_info.py` at deploy, at which point the whole
+feature is inert.
+
+**Two sanctioned exceptions, both outside the application path.**
+`scripts/verify_deploy.py` compares the running stamp against what was just
+deployed and exits non-zero on a mismatch — a command a human runs by hand after
+a deploy, and the whole reason that script exists. And
+`scripts/write_build_info.py` REFUSES to write a stamp whose commit is not a real
+40-character SHA: that is a deploy-time writer rejecting its own malformed
+arguments before anything is deployed, and the study that results is simply an
+unstamped one. A stamp that is not a real SHA would be worse than none, because
+no later reader could tell it from a real one.
+
+### Three places, and the disagreement is the point
+
+1. **`participant.build_sha` / `build_number` — the evidence**, stamped ON
+   ARRIVAL from the RUNTIME build, at the same call that takes the treatment cell
+   (`before.treatment_assignment.assign_on_arrival`, reached from
+   `intro.instructing.get`). **Not at session creation**: a session outlives
+   redeploys, so a creation-time stamp would claim every participant ran the
+   creation-time build. That is the identical argument this template already made
+   when treatment assignment moved to arrival (2026-08-18), which is why the two
+   are taken at one call. Seeded blank at creation, so blank means "never
+   arrived", `unstamped` means "arrived on a build with no stamp", and a SHA
+   means what it says — three different facts, kept apart.
+2. **`session.config['build_at_creation']` — one half of a comparison, not
+   truth.** Frozen at creation; its name carries that.
+3. **The session config's `doc` string**, built at import, which oTree renders
+   read-only on the create-session screen (it is in oTree's `NON_EDITABLE_FIELDS`
+   and the REST API rejects attempts to modify it), so an operator sees which
+   build they are about to create a session ON.
+
+None is trusted alone. **Divergence is INFORMATION, not an error** — a session
+created on one build and serving another is what a mid-study redeploy looks like
+from the data — and nothing anywhere styles it as an alarm.
+
+### `build_at_creation` is a DICT, and it is read RAW
+
+**A dict, not a string:** oTree turns every bool/int/float/str config value into
+an editable text box on the create-session screen, and provenance an operator can
+retype is not provenance.
+
+**Read raw** (`common.build_at_creation`), never through `common.cfg`. `cfg`
+falls back to the value shipped in `SESSION_CONFIG_DEFAULTS`, and the shipped
+value of this key is *the build running right now* — so reading it through `cfg`
+would report a session created before the key existed as having been created on
+the CURRENT build: provenance invented by the very helper that protects every
+other parameter, and indistinguishable from a true record. Absent must keep
+meaning "created before build stamping existed". This is the second deliberately
+raw read in `common.py`, next to `flag`, and for a *related but different*
+reason — the comment at each says which.
+
+### The `.gitignore` / `railway up` interaction, written down because it bites
+
+`railway up` **honours `.gitignore`**, so the very line that makes the stamp safe
+for git makes it invisible to that deploy: the build ships completely inert,
+reports unstamped, and looks perfectly healthy. The fix (delete `.gitignore` from
+the throwaway staging tree, write a `.railwayignore` instead) is documented in
+`docs/skills_claude/hosting_railway.md` and pointed at from `.gitignore` itself.
+The same `.gitignore` also excludes curl COOKIE JARS by pattern rather than by
+name: they only ever arrive from ad-hoc debugging, one was committed in
+`exp_pilots` holding a live admin session cookie, and the next one will not be
+called `cookies.txt`.
+
+**A known consequence, CLOSED the same day — see the check-2b entry above.**
+`scripts/predeploy_check.py` check 2b reports a config key MISSING from a live
+session's frozen config as a FAILURE, so a study adopting build stamping while
+it has running sessions would see 2b fail on `build_at_creation` for those
+sessions, at odds with "provenance never fails anything". It is now a NAMED,
+REPORTED exemption (`MISSING_IS_THE_DESIGNED_MEANING`) rather than the silent
+skip that was rightly refused here.
+
+**Enforced:** `scripts/tests/build_provenance_test.py` (three legs: the pure
+reader/writer, plus a STAMPED and an UNSTAMPED in-process run each walking a real
+arrival, because the running build is fixed at import and no monkeypatch can
+honestly simulate the other case); `scripts/tests/frozen_config_test.py`'s final
+section, which goes red if anyone ever routes `build_at_creation` through `cfg`;
+`scripts/tests/xss_escaping_test.py`, which covers the commit subject — free text
+from outside the repo, rendered UNESCAPED by `{{ config.doc|safe }}`.
+
+---
+
 
 ---
 

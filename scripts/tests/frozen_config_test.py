@@ -28,6 +28,10 @@ WHAT IT COVERS
 4. `common.cfg` itself: falls back to the SHIPPED default for a known key, and
    raises a clearly NAMED error for a key nobody ever shipped (so a typo is a
    loud, greppable failure and not a silent None).
+5. THE ONE KEY THAT MUST NOT GO THROUGH `cfg` AT ALL: `build_at_creation`. The
+   fallback that saves every other parameter would FABRICATE provenance for
+   this one — see the final section, which fails if anybody ever routes it
+   through the safe accessor.
 
 Run:  python scripts/tests/frozen_config_test.py      (oTree must be importable)
 Exit 0 = all checks passed. Boots no server and never touches the real database.
@@ -84,6 +88,11 @@ STRIPPED = [
     'prolific_dq_tab_code', 'prolific_device_code',
     # misc
     'pilot_feedback', 'build_static_version',
+    # build provenance — stripped because a session created before build
+    # stamping existed genuinely lacks it, and because NOTHING in the
+    # request path may care (see the raw-read section at the foot of this
+    # file for the part that does).
+    'build_at_creation',
 ]
 
 TERMINAL = {'Results', 'Ended'}
@@ -252,6 +261,68 @@ def main():
         except KeyError as exc:
             check('a_totally_unknown_param' in str(exc),
                   f'an unknown key raises an error that NAMES it ({exc})')
+
+    section('build_at_creation is read RAW — the safe accessor would INVENT '
+            'provenance')
+    # THE TRAP, AND WHY THIS SECTION EXISTS (Julian, 2026-08-23). `cfg` falls
+    # back to the value shipped in SESSION_CONFIG_DEFAULTS, and the shipped
+    # value of `build_at_creation` is the build running RIGHT NOW
+    # (buildinfo.config_stamp() is evaluated at import). So reading this key
+    # through `cfg` would report a session created BEFORE the key existed as
+    # having been created on the CURRENT build: a provenance record invented by
+    # the very helper that protects every other parameter, and indistinguishable
+    # from a true one. `common.build_at_creation` is the raw reader that keeps
+    # "absent" meaning absent. THIS CHECK FAILS IF ANYONE EVER ROUTES THE KEY
+    # THROUGH cfg — that is its whole job.
+    import buildinfo
+    shipped = settings.SESSION_CONFIG_DEFAULTS['build_at_creation']
+    check(isinstance(shipped, dict),
+          f'the shipped value is a DICT, so oTree cannot render it as an '
+          f'editable text box on the create-session screen (got '
+          f'{type(shipped).__name__})')
+    check(common.build_at_creation({}) is None,
+          'a config MISSING the key reads back None — "created before build '
+          'stamping existed", not "created on the current build"')
+    # The paired PRESENCE (CLAUDE.md: never assert an absence alone). If the raw
+    # read simply returned None for everything, the check above would pass
+    # against a reader that does nothing at all.
+    present = common.build_at_creation({'build_at_creation': shipped})
+    check(present is not None and set(present) == set(shipped),
+          f'a config that HAS the key reads back the full stamp '
+          f'(got {present!r})')
+    check(common.cfg({}, 'build_at_creation') == shipped,
+          'meanwhile cfg DOES fall back to the shipped value for that same '
+          'missing key — which is exactly what must never happen to this key')
+    check(common.cfg({}, 'build_at_creation')
+          != common.build_at_creation({}),
+          'so the two accessors DISAGREE here by design; if this check ever '
+          'goes red, somebody routed build_at_creation through cfg and every '
+          'old session now claims to have been created on the current build')
+
+    # And on a REAL frozen session, not just a bare dict.
+    session = ot.create_session('lab', num_participants=1)
+    fresh_stamp = common.build_at_creation(dict(session.config))
+    check(fresh_stamp is not None,
+          'a session created NOW carries a readable creation stamp')
+    removed = ot.strip_config_keys(session, ['build_at_creation'])
+    check(removed == ['build_at_creation'],
+          f'the key was deleted from the stored config (removed={removed}) — '
+          f'the state of a session created before stamping existed')
+    from otree.database import DBSession
+    from otree.models import Session as _Session
+    _s = DBSession()
+    try:
+        stale_config = dict(
+            _s.query(_Session).filter_by(code=session.code).one().config)
+    finally:
+        _s.close()
+    check(common.build_at_creation(stale_config) is None,
+          'and that session reads back None, never the running build')
+    check(buildinfo.normalise_config_stamp(
+        common.cfg(stale_config, 'build_at_creation')) is not None,
+        'while the same session read through cfg would have produced a stamp '
+        'out of thin air (this check DOCUMENTS the trap; it is why the reader '
+        'above is raw)')
 
     section('SUMMARY')
     if _failures:
