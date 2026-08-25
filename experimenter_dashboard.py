@@ -2415,27 +2415,45 @@ def _step_header_html() -> str:
                    for label in STEP_LABELS.values())
 
 
+# SORTABLE COLUMNS (2026-08-25). A column an operator can order by carries the
+# `sortable` class and a `data-sort` KEY; the client's click handler and its
+# comparators (makeSortable / cmpRows in the page JS) read that key, and the
+# `.sort-ind` span is where the ▲/▼ direction marker is written. THE TIMELINE
+# COLUMN IS DELIBERATELY NOT SORTABLE — it stays a single per-row action button
+# (complete/advance), never a sort key (Julian, 2026-08-25). Add a `data-sort`
+# key here AND a matching branch in cmpRows to make a new column sortable.
 _COLGROUP_HTML = f"""
-  <th class="c-label">Participant</th>
+  <th class="c-label sortable" data-sort="label"
+      title="Click to sort by participant (natural order)">Participant<span
+      class="sort-ind" aria-hidden="true"></span></th>
   <th class="c-timeline">
     <div class="tl-header">{_step_header_html()}</div>
   </th>
-  <th class="c-quiz" title="Quiz attempts">Quiz
+  <th class="c-quiz sortable" data-sort="quiz" title="Quiz attempts — click to
+sort by how many attempts were wrong">Quiz<span class="sort-ind"
+      aria-hidden="true"></span>
     <!-- THE QUIZ-MISTAKES AFFORDANCE. Reuses the SAME `.th-info` styling the
          State header uses for its threshold legend (quiet, hoverable,
          focusable) — no new affordance. Inert until clicked: it issues ONE
          fetch to /quiz_mistakes into an overlay (see the panel JS) and never
          rides the 2-second poll. This is the only footprint on the live
-         table. -->
+         table. Clicking THIS icon opens the panel and does NOT sort — the sort
+         handler ignores clicks that land on a `.th-info`. -->
     <span class="th-info" id="quiz-mistakes-info" tabindex="0" role="button"
           title="What people got wrong on the quiz — click to open">&#9432;</span>
   </th>
-  <th class="c-instr" title="Two timers per participant. INTRO: the whole time
-in the intro app, both rounds, from leaving the entry pages until the quiz is
-finished with — it FREEZES at that boundary. TOTAL: time since they started (the
-first recorded page), the intro included, still counting while they are live.">Time</th>
-  <th class="c-earn">Earnings</th>
-  <th class="c-state">State
+  <th class="c-instr sortable" data-sort="time" title="Two timers per
+participant. INTRO: the whole time in the intro app, both rounds, from leaving
+the entry pages until the quiz is finished with — it FREEZES at that boundary.
+TOTAL: time since they started (the first recorded page), the intro included,
+still counting while they are live. Click to sort by TOTAL time.">Time<span
+      class="sort-ind" aria-hidden="true"></span></th>
+  <th class="c-earn sortable" data-sort="earnings"
+      title="Click to sort by earnings">Earnings<span class="sort-ind"
+      aria-hidden="true"></span></th>
+  <th class="c-state sortable" data-sort="state" title="Click to sort by status
+— active/live first, then finished, then disqualified">State<span
+      class="sort-ind" aria-hidden="true"></span>
     <!-- THE THRESHOLD LEGEND (item 17). A `title` tooltip, which is the pattern
          the other headers on this table already use — no second mechanism.
          The text is written by the poll from `stall_legend` in the JSON, so the
@@ -2457,7 +2475,29 @@ _PAGE_HTML = ("""<!DOCTYPE html>
 /* OPERATOR SCREEN. base.css supplies the tokens (colours, radii, shadow) so
    this looks like the study's control room, not a debug page — but density
    and across-the-room legibility outrank the participant pages' whitespace. */
-body { padding: 18px 22px; font-size: 15px; line-height: 1.35; }
+
+/* THE PAGE IS A FIXED-HEIGHT COLUMN, NOT A SCROLLING DOCUMENT (2026-08-25).
+   The summary block (#overview) and the table's COLUMN-HEADER ROW must stay put
+   while only the participant ROWS scroll under them. So the body fills its
+   viewport EXACTLY and never scrolls itself: the overview is a fixed-size flex
+   item at the top, and the table lives inside .dash-scroll — the one element on
+   the page that scrolls — with a sticky <thead>.
+
+   WHY THIS SURVIVES BOTH EMBEDDINGS (the whole brief). Standalone, the body's
+   viewport is the browser window. In the oTree Report tab the page is inside a
+   100dvh iframe (outro/admin_report.html), so the body's viewport is the
+   iframe. In BOTH the body has a definite height to divide between the pinned
+   overview and the scroll area, and the sticky header sticks to the top of
+   .dash-scroll — NOT to the window — so it does not matter which of the two is
+   scrolling around us, nor how tall the (variable-height) overview is. A
+   viewport-relative sticky header would need a hard-coded top offset equal to
+   the overview's height and would break the moment the pills wrapped to a new
+   line; pinning inside our own scroll container sidesteps that entirely.
+   100dvh (not 100vh) is the unit the iframe itself uses and base.css standard. */
+html { height: 100%; }
+body { padding: 18px 22px; font-size: 15px; line-height: 1.35;
+  margin: 0; box-sizing: border-box; height: 100dvh;
+  display: flex; flex-direction: column; overflow: hidden; }
 .dash-top { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
   margin-bottom: 10px; }
 .dash-top h1 { font-size: 1.15rem; margin: 0; }
@@ -2474,12 +2514,45 @@ body { padding: 18px 22px; font-size: 15px; line-height: 1.35; }
 .count-hidden { color: var(--ink-mute); }
 .count-hidden b { color: var(--ink-soft); }
 
-table.dash { width: 100%; border-collapse: collapse; background: var(--card-bg);
-  border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden;
-  box-shadow: var(--shadow); }
+/* THE SCROLL CONTAINER — the ONLY thing on the page that scrolls (2026-08-25).
+   The card frame (border, radius, shadow) lives HERE rather than on the table
+   so the sticky header below pins against a clean top edge and the table's own
+   top border can never scroll up out from under it. `overflow: auto` scrolls
+   BOTH ways: vertically for the rows (the point), and horizontally so a wide
+   table scrolls inside this box instead of the page — which is what keeps the
+   body's own `overflow: hidden` from ever clipping a column.
+   `min-height: 0` is LOAD-BEARING, not decoration: a flex child will not shrink
+   below its content's height without it, so the full table would push the body
+   past 100dvh and the whole page would scroll again — defeating the sticky. */
+.dash-scroll { flex: 1 1 auto; min-height: 0; overflow: auto;
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  box-shadow: var(--shadow); background: var(--card-bg); }
+table.dash { width: 100%; border-collapse: collapse; background: var(--card-bg); }
+/* THE COLUMN-HEADER ROW PINS to the top of .dash-scroll while rows scroll
+   underneath it (2026-08-25). The separating line is a BOX-SHADOW, not
+   border-bottom: with border-collapse the cell's bottom border belongs to the
+   table's own collapsed border box, which scrolls away from a sticky <th> in
+   several engines, so a border-bottom underline would vanish on scroll. A
+   box-shadow is painted as part of the th and rides pinned with it. The sunken
+   background is what stops the scrolling rows showing THROUGH the header; the
+   z-index keeps it above any positioned cell content (timeline markers etc.). */
+table.dash thead th { position: sticky; top: 0; z-index: 5;
+  box-shadow: inset 0 -1px 0 var(--line-strong); }
 table.dash th { text-align: left; font-size: .78rem; text-transform: uppercase;
   letter-spacing: .04em; color: var(--ink-mute); background: var(--sunken);
-  padding: 7px 10px; border-bottom: 1px solid var(--line-strong); }
+  padding: 7px 10px; }
+/* SORTABLE HEADERS (2026-08-25). A clickable column header darkens on hover and
+   suppresses text selection so a repeated click toggles the direction without
+   selecting the label. The timeline header carries none of this — it is not a
+   sort key. The ▲/▼ marker is written into `.sort-ind` by updateSortIndicators
+   only on the ACTIVE column, so exactly one column ever shows a direction. */
+table.dash th.sortable { cursor: pointer; user-select: none;
+  -webkit-user-select: none; }
+table.dash th.sortable:hover { color: var(--ink); }
+.sort-ind { font-size: .72em; color: var(--accent); font-weight: 700;
+  /* reserve nothing when empty: an inactive column shows no glyph and no gap */
+  margin-left: 3px; letter-spacing: 0; }
+.sort-ind:empty { margin-left: 0; }
 table.dash td { padding: 6px 10px; border-bottom: 1px solid var(--line);
   vertical-align: middle; }
 table.dash tr:last-child td { border-bottom: none; }
@@ -2672,6 +2745,11 @@ tr.unmapped-row td.c-label { box-shadow: inset 4px 0 0 var(--dash-unmapped); }
   background: var(--card-bg); border: 1px solid var(--line);
   border-radius: var(--r-md); box-shadow: var(--shadow);
   padding: 11px 14px 12px; margin-bottom: 14px;
+  /* PINNED, by being the non-scrolling flex item at the top of the column: it
+     keeps its natural (variable) height and the scroll area below takes the
+     rest. flex-shrink 0 so a tall overview is never squeezed — the table gives
+     up height instead, which is exactly the row area we want scrollable. */
+  flex: 0 0 auto;
 }
 .dash-overview .dash-top { margin-bottom: 0; }
 .ov-strip {
@@ -3032,10 +3110,14 @@ tr.qm-unreadable td { color: var(--dash-amber); background: #fffceb; }
   <div class="ov-strip" id="ov-strip"></div>
   <div class="ov-alert" id="ov-alert"></div>
 </div>
+<!-- THE SCROLL CONTAINER: the summary above stays put, the <thead> below pins,
+     and ONLY these rows scroll. See .dash-scroll / thead sticky in the CSS. -->
+<div class="dash-scroll">
 <table class="dash">
   <thead><tr>__COLGROUP__</tr></thead>
   <tbody id="rows"><tr><td colspan="6">Waiting for first data…</td></tr></tbody>
 </table>
+</div>
 <!-- THE QUIZ-MISTAKES OVERLAY. Empty until the Quiz header's ⓘ is clicked; the
      panel JS fills it from one /quiz_mistakes fetch. Outside the table, so a
      broken panel cannot touch a single row. -->
@@ -3256,6 +3338,131 @@ function stateHTML(row) {
     return row.arrived ? ''
          : '<span style="color:var(--ink-mute)">not arrived</span>';
   return '<div class="state-pills">' + pills.join('') + '</div>';
+}
+
+/* ======================= CLIENT-SIDE COLUMN SORTING ======================
+   The rows already live in the page (the poll ships them as JSON and renderRow
+   paints them), so sorting is done HERE, in the browser — it therefore works
+   identically embedded in the oTree tab and standalone online, and needs no
+   round-trip. `sortKey`/`sortDir` are module state, and repaint() re-applies
+   them after EVERY 2s refresh, so a chosen sort survives the auto-refresh
+   instead of snapping back to the server's default order on the next tick.
+
+   sortKey === null means "leave the server's order untouched" — which is the
+   natural-name, unlabelled-last order sort_rows_by_displayed_name already
+   produced (DECISIONS: row order). A column's click sets its key and resets to
+   ascending; clicking the SAME column again flips the direction.
+
+   THE TIMELINE COLUMN HAS NO KEY and is never made sortable (Julian,
+   2026-08-25): it stays the per-row complete/advance action, not a sort. */
+var sortKey = null;
+var sortDir = 1;   // +1 ascending, -1 descending
+
+/* Natural order, the CLIENT twin of natural_label_key / displayed_name on the
+   server: digit runs compare AS NUMBERS and before text, text compares
+   case-folded. One concept, and the two implementations must agree — a study
+   whose seats are `a2 … a10` is the case that exposes a plain-string sort (the
+   same trap the server comment records). */
+function dispName(r) { return String(r.label || r.code || ''); }
+function naturalKey(s) {
+  /* \\d / \\D so Python emits a single backslash into the JS (this template
+     string is NOT raw — same doubling as QM_URL's regex below). */
+  return (String(s == null ? '' : s).match(/\\d+|\\D+/g) || []).map(function (run) {
+    return /^\\d+$/.test(run)
+      ? {num: true, v: parseInt(run, 10)}
+      : {num: false, v: run.toLowerCase()};
+  });
+}
+function naturalCompare(a, b) {
+  var ka = naturalKey(a), kb = naturalKey(b), n = Math.min(ka.length, kb.length);
+  for (var i = 0; i < n; i++) {
+    var x = ka[i], y = kb[i];
+    if (x.num && y.num) { if (x.v !== y.v) return x.v - y.v; }
+    else if (!x.num && !y.num) { if (x.v < y.v) return -1; if (x.v > y.v) return 1; }
+    else return x.num ? -1 : 1;   // a numeric run sorts before a text run
+  }
+  return ka.length - kb.length;
+}
+
+/* Numeric sort values. A MISSING value is -1 so a not-yet-reached row (no quiz,
+   no earnings, no clock) sorts as the smallest — bottom in descending, which is
+   where "hasn't got there yet" belongs when you are ranking by most-of-X. */
+function quizNum(r) { return r.quiz ? (r.quiz.attempts_wrong || 0) : -1; }
+function timeNum(r) {
+  var t = (r.total_seconds != null) ? r.total_seconds : r.intro_seconds;
+  return (t == null) ? -1 : t;
+}
+function earnNum(r) { return (r.earnings == null) ? -1 : r.earnings; }
+
+/* STATUS RANK for the State column (Julian, 2026-08-25): ACTIVE/LIVE first,
+   then DONE, then DQ, then not-yet-arrived — so ascending puts the people who
+   need watching at the top and the settled rows (finished + disqualified)
+   below, exactly as asked. Order of tests matters: a terminal row can also be
+   `finished`-shaped or never have `arrived`, so DQ is decided FIRST.
+     0 active   — arrived, still going (in progress; stalled is still active)
+     1 done     — finished normally
+     2 dq       — any terminal/ended-early state (screen-out, DQ, declined)
+     3 waiting  — not arrived yet (usually hidden anyway)
+   The row tint uses the same three outcome flags, so the grouping the eye sees
+   (amber/green/red) and the sort order cannot disagree. */
+function statusRank(r) {
+  if (r.error) return 4;
+  if (r.terminal) return 2;
+  if (r.finished) return 1;
+  if (r.arrived) return 0;
+  return 3;
+}
+
+/* One comparator, switched on the active key. The PRIMARY comparison carries
+   the direction; the tiebreak is ALWAYS ascending natural name, so equal rows
+   read down the room the same way whichever direction the primary is in. */
+function cmpRows(a, b) {
+  var d = 0;
+  switch (sortKey) {
+    case 'label':    d = naturalCompare(dispName(a), dispName(b)); break;
+    case 'quiz':     d = quizNum(a) - quizNum(b); break;
+    case 'time':     d = timeNum(a) - timeNum(b); break;
+    case 'earnings': d = earnNum(a) - earnNum(b); break;
+    case 'state':    d = statusRank(a) - statusRank(b); break;
+    default: return 0;
+  }
+  if (d !== 0) return d * sortDir;
+  return naturalCompare(dispName(a), dispName(b));   // stable, always ascending
+}
+
+/* Write the ▲/▼ marker onto the active column only, and set aria-sort for
+   assistive tech. Called from repaint(), so it re-asserts after every refresh
+   (the header markup is static and never repainted, but the state it reflects
+   changes on click). */
+function updateSortIndicators() {
+  var ths = document.querySelectorAll('table.dash thead th.sortable');
+  Array.prototype.forEach.call(ths, function (th) {
+    var ind = th.querySelector('.sort-ind');
+    if (th.getAttribute('data-sort') === sortKey) {
+      if (ind) ind.textContent = sortDir > 0 ? '▲' : '▼';
+      th.setAttribute('aria-sort', sortDir > 0 ? 'ascending' : 'descending');
+    } else {
+      if (ind) ind.textContent = '';
+      th.removeAttribute('aria-sort');
+    }
+  });
+}
+
+/* Wire the click-to-sort once. A click on a `.th-info` icon (the quiz-mistakes
+   opener, the stall legend) is NOT a sort — those keep their own behaviour, so
+   the handler bails when the click landed on one. */
+function makeSortable() {
+  var ths = document.querySelectorAll('table.dash thead th.sortable');
+  Array.prototype.forEach.call(ths, function (th) {
+    th.addEventListener('click', function (ev) {
+      if (ev.target.closest && ev.target.closest('.th-info')) return;
+      var key = th.getAttribute('data-sort');
+      if (sortKey === key) sortDir = -sortDir;
+      else { sortKey = key; sortDir = 1; }
+      if (lastGood) repaint(lastGood);   // re-render in the new order at once
+      else updateSortIndicators();       // no data yet: at least show the arrow
+    });
+  });
 }
 
 function renderRow(row, meta) {
@@ -3503,6 +3710,13 @@ function repaint(data) {
      whatever the filter above removed is what is hidden, by construction, so
      the number under the header can never disagree with the table. */
   var hidden = data.rows.length - rows.length;
+  /* RE-APPLY THE CHOSEN SORT AFTER EVERY REFRESH (2026-08-25). `rows` is a
+     fresh array from .filter above, so sorting it in place is safe. With no
+     column chosen (sortKey null) the server's natural-name order is left as-is;
+     `rows` is never reordered then. The indicators are refreshed here too so
+     the ▲/▼ stays on the active column across polls. */
+  if (sortKey) rows.sort(cmpRows);
+  updateSortIndicators();
   var html = rows.map(function (r) { return renderRow(r, data); }).join('');
   /* AN EMPTY TABLE MUST SAY WHY. Before the first arrival every row is
      entry_only, so the default view is legitimately empty — and "No rows to
@@ -3641,6 +3855,11 @@ setInterval(uiTick, 1000);
 document.getElementById('show-not-arrived').addEventListener('change', function () {
   if (lastGood) repaint(lastGood);
 });
+
+/* Arm click-to-sort on the header cells (the timeline column is not among
+   them). The <thead> is static markup present at parse time, so this binds
+   once and survives every repaint — repaint only rewrites <tbody>. */
+makeSortable();
 
 /* ============================ QUIZ-MISTAKES PANEL ==========================
    ON DEMAND, never on the poll (spec §3b): the Quiz header's ⓘ issues ONE

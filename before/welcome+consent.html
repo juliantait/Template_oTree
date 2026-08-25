@@ -74,6 +74,34 @@
                 {% endif %}
             </div>
 
+            {# QUIZ-ATTEMPTS CONDITION — PROLIFIC ONLY. Gated on `names_prolific`
+               (= common.is_prolific), never on participant-label presence: a lab
+               session can carry a seat-ID label too, and returning a submission
+               is meaningless in the room. This is copy that names the platform,
+               so it branches on the study type — the rule written out above
+               common.is_lab. `max_quiz_attempts` is the count the intro app's
+               quiz actually ejects on, from the one shared helper (see
+               welcome.vars_for_template), so this promise and the ejection agree.
+               The reassurance is bold and deliberate: a return request is not a
+               rejection and Prolific participants must be told so up front. #}
+            {% if names_prolific %}
+            {# KEPT COMPACT (two lines at 1280x720) ON PURPOSE. This page is a
+               Mode 2 single-page-fit card with only ~8px of spare height at the
+               font floor, and the consent control must stay above the fold at
+               1280x720 (this file's logo-footer note, measured by
+               render_check.py). The disclosure earns its place without pushing
+               consent off-screen, so it is one tight sentence plus the bold
+               "not a rejection" reassurance; the fuller "does not affect your
+               standing" wording was dropped to keep it to two lines. NAMES no
+               platform (the "named exactly once" rule — Prolific appears only in
+               the contact route below). #}
+            <p class="section-text">
+                Fail a short comprehension check within {{ max_quiz_attempts }}
+                attempts and you must return your submission.
+                <strong>This is a return request, not a rejection.</strong>
+            </p>
+            {% endif %}
+
             {% if explicit_consent %}
             {# Explicit consent + no-consent routing (the explicit_consent
                flag — an ethics decision, not platform plumbing). #}

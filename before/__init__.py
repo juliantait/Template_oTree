@@ -624,6 +624,13 @@ class welcome(Page):
             # and offer no way out there — see scripts/tests/copy_routing_test.py.
             is_lab=common.is_lab(cfg),
             names_prolific=common.is_prolific(cfg),
+            # The quiz-attempts disclosure (Prolific only — rendered under
+            # `names_prolific`). The count is the number of graded submissions a
+            # participant gets before the comprehension DQ ejects them, read from
+            # the ONE helper the intro app's quiz uses too, so the consent
+            # promise and the ejection cannot disagree. Safe accessor: a frozen
+            # session config falls back to the shipped default rather than 500.
+            max_quiz_attempts=common.max_quiz_attempts(cfg),
         )
 
     # NB: there is deliberately no error_message here blocking `is_mobile`.

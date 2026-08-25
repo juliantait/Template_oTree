@@ -97,6 +97,37 @@ def comprehension_threshold(cfg) -> int:
     return int(common.cfg(cfg, 'quiz_comprehension_max_failures'))
 
 
+def _quiz_failure_message(cfg, participant) -> str:
+    """The wrong-answer message on the online (DQ) path, AFTER the failure has
+    been counted but BEFORE it reaches the ejection threshold.
+
+    Called only from quiz.error_message, only when quiz_comprehension_dq is on
+    and the participant is NOT yet at the threshold. It states how many graded
+    attempts remain, and — on the last tolerated failure (one attempt left) —
+    warns that the next wrong submission ends the study, naming the Prolific
+    return request when is_prolific. The count is `common.max_quiz_attempts`, the
+    same value the caller ejects on, so the countdown and the ejection agree by
+    construction. Kept as a plain function of (config, participant) so a test can
+    assert the exact wording per attempt without driving a page.
+    """
+    total = common.max_quiz_attempts(cfg)
+    remaining = total - participant.comprehension_failed_attempts
+    if remaining <= 1:
+        if common.is_prolific(cfg):
+            return (
+                "One or more quiz answers are wrong. This was your last attempt "
+                "before removal: if your next submission is not fully correct, "
+                "the study will end and you will be asked to return your "
+                "submission on Prolific. This is a return request, not a "
+                "rejection.")
+        return (
+            "One or more quiz answers are wrong. This was your last attempt: if "
+            "your next submission is not fully correct, the study will end.")
+    return (
+        f"One or more quiz answers are wrong. You have {remaining} attempts "
+        f"remaining out of {total}.")
+
+
 def at_will_reread_available(player) -> bool:
     """True where the instructions are ALWAYS one click away, in a dialog on
     the quiz page — the ONLINE re-read.
@@ -281,6 +312,17 @@ def instructions_context(player) -> dict:
         'stag_payoff': C.STAG_PAYOFF,
         'hare_payoff': C.HARE_PAYOFF,
         'stag_alone': C.STAG_ALONE,
+        # THE QUIZ-ATTEMPTS DISCLOSURE, Prolific only. Built here (the ONE
+        # builder for intro/instructions_text.html) so the sentence renders both
+        # on the instructions page AND in the quiz's at-will re-read dialog, which
+        # also includes that file; a key present for one and missing for the other
+        # would render a silent blank. intro/prequiz_text.html also reads these,
+        # through instructing.vars_for_template which spreads this dict. Copy that
+        # names the platform branches on `is_prolific` (never a module flag — the
+        # rule above common.is_lab); the count comes from the ONE helper the quiz
+        # ejects on, so the promise and the ejection cannot disagree.
+        'is_prolific': common.is_prolific(cfg),
+        'max_quiz_attempts': common.max_quiz_attempts(cfg),
     }
 
 
@@ -467,6 +509,18 @@ class quiz(participant_tab_monitor.MonitoredPage):
                     common.set_exit_code(
                         player.participant, common.EXIT_CODES['comprehension'])
                     return  # no error -> the page advances to the ending
+                # NOT YET EJECTED, and DQ is on (the online path): tell the
+                # participant how many graded attempts remain, and on the LAST
+                # tolerated failure warn that the next wrong submission ends the
+                # study with a return request. `max_quiz_attempts` IS the count
+                # the ejection above uses (the threshold), so one wrong short of
+                # it here means exactly one attempt left — the countdown cannot
+                # disagree with the eviction. Prolific is named only when
+                # is_prolific: this branch needs DQ on, which a valid config pairs
+                # with a Prolific study (scripts/prelaunch_check.py forbids DQ for
+                # a lab session), but the guard keeps the wording honest for any
+                # other configuration too.
+                return _quiz_failure_message(cfg, player.participant)
             return "One or more quiz answers are wrong."
 
     @staticmethod
