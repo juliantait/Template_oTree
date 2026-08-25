@@ -11,6 +11,181 @@ working.
 
 ---
 
+## Prolific participants are told the quiz-attempts limit up front — gated on `recruitment`, counted from the ejection threshold — 2026-08-25
+
+A Prolific participant who fails the comprehension check too many times is
+ejected with a RETURN REQUEST (`quiz_comprehension_dq`). They are now told so
+before it can happen, in four config-driven places: a consent participation
+condition, the instructions intro, the pre-quiz prompt, and the quiz's own
+wrong-answer message, which counts down the remaining attempts and, on the last
+tolerated failure, warns that the next wrong submission ends the study. None of
+it appears in a lab session, where returning a submission is meaningless.
+
+- **Gated on `common.is_prolific` (the `recruitment` axis), NOT on
+  `participant_label` presence and NOT on a new config flag.** A lab session can
+  carry a seat-ID label too, so a label-presence gate would show return-request
+  wording in the room — the exact collapsed-distinction trap CLAUDE.md names.
+  `recruitment` is already the template's "decides copy" signal (see the rule
+  above `common.is_lab`), so this reuses it rather than inventing a parallel
+  `is_prolific` boolean. *Rejected:* the task's own fallback suggestion of a new
+  `is_prolific` SESSION_CONFIG flag — unnecessary here because a cleaner platform
+  signal already exists.
+- **The disclosed count is the failure THRESHOLD, not threshold+1.**
+  `intro.quiz.error_message` ejects at `comprehension_failed_attempts >=
+  quiz_comprehension_max_failures`, incrementing before the compare, so with the
+  shipped `3` the third wrong submission is the ejecting one and a participant
+  has exactly three chances. The mirrored source this was ported from computes
+  `max_quiz_attempts = max_quiz_failures + 1` because ITS config means "tolerated
+  failures"; this template's config already means "the failure that fails the
+  quiz", i.e. it already equals that source's `cap+1`. Disclosing threshold+1
+  here would promise four attempts and eject on the third — a broken promise, so
+  the `+1` was deliberately NOT carried over. *Enforced:* `common.max_quiz_attempts`
+  returns the threshold, with a docstring tying it to the ejection predicate, and
+  `quiz_attempts_disclosure_test.py` walks the real countdown 2→1→eject.
+- **One helper, both apps.** `common.max_quiz_attempts` is the single source of
+  the number; the consent page (`before`) and the instructions/pre-quiz/error
+  copy (`intro`) all read it, so the promise on the consent page and the count
+  the quiz ejects on cannot drift — one-concept-two-implementations avoided.
+- **Safe-config fallbacks, so old/lab sessions never 500 and never leak the
+  wording.** The count reads through `common.cfg` (frozen session missing
+  `quiz_comprehension_max_failures` → shipped default 3, not a KeyError); the
+  gate reads through `common.is_prolific` → `cfg('recruitment')` → default `lab`,
+  so a session created before `recruitment` existed reads as non-Prolific and
+  shows nothing.
+- **The consent line is kept to two lines, and Mode 2's reading rhythm was
+  tightened, so consent keeps its one-screen fit.** The Prolific consent card is
+  a Mode 2 single-page-fit page with only ~8px of spare height at the font floor
+  at 1280x720, and this file's logo-footer note requires the consent control to
+  stay ABOVE THE FOLD there. The disclosure as first written (two sentences plus
+  a "does not affect your standing" clause, ~74px) pushed the card past the
+  viewport — Mode 2 gave up and fell to whole-window scroll, dropping the consent
+  radio below the fold (caught only by `render_check.py`, no 500, no other failing
+  test — the layout trap CLAUDE.md warns of). Fixed by (a) compacting the consent
+  line to one sentence + the bold `This is a return request, not a rejection.`
+  (the "standing" reassurance lives in the quiz-page error instead), and (b)
+  tightening the SHARED Mode-2 rhythm in `base.css .single-page-fit`: body
+  line-height 1.65→1.4 (still an easy measure; the largest single reclaim), the
+  content flex-gap 10→8px, the button-row pad 14→12px, and zeroing a stacked
+  form's trailing `.mb-3` margin (Bootstrap `!important`, so overridden with
+  `!important`). Prolific consent now fits Mode 2 at font 16 (above the 15 floor)
+  with the radio and Next well above the fold; lab consent is a touch tighter and
+  still fits at the full font. *Rejected:* accepting the Mode-1 scroll fallback on
+  consent (a documented UX regression) and dropping the consent-page disclosure
+  (the task requires all four places). *Not-yet-done here:* the CSS change ages
+  the site previews — re-run `scripts/site_previews/build_site_previews.py` and
+  its check after this (CLAUDE.md styling note).
+
+*Enforced:* `scripts/tests/quiz_attempts_disclosure_test.py` (production, in-process)
+asserts the Prolific path — wording on consent/instructions/pre-quiz, the exact
+per-attempt error messages, the count of 3, the DQ on the third failure, and a
+correct submission always passing — AND the lab path (no wording, plain error,
+no 500), AND the two frozen-config fallbacks (threshold key absent → default 3;
+`recruitment` key absent → no wording). `copy_routing_test.py` independently
+holds that the word Prolific never reaches a lab participant and is still named
+exactly once on the Prolific consent page. `render_check.py`'s `consent`
+(Prolific) single-page-fit leg measures that the card, with the disclosure, still
+fits one viewport at 1280x720 with the consent control above the fold.
+
+## The dashboard columns are click-to-sort — client-side, and the timeline is NOT one — 2026-08-25
+
+Every data column header now sorts the table on click, toggling ascending /
+descending with a ▲/▼ marker on the active column. The choices worth recording:
+
+- **Five columns sort; the TIMELINE does not.** Participant (`label`), Quiz
+  (`quiz`), Time (`time` — total, falling back to intro), Earnings (`earnings`)
+  and State (`state`) each carry a `data-sort` key and the `sortable` class. The
+  timeline column is deliberately left alone: it is a per-row complete/advance
+  ACTION, not a value, and turning it into a sort key would overload the one
+  column an operator clicks to DO something. *Enforced:* `dashboard_render_check.py` (`check_sort`)
+  asserts the timeline th has no `data-sort`/`sortable`, that clicking it leaves
+  the order untouched, and that it paints no arrow.
+- **Sorting is CLIENT-SIDE, and re-applied after every refresh.** The rows
+  already live in the page (the poll ships JSON, `renderRow` paints it), so
+  `cmpRows` sorts them in the browser — it therefore works identically embedded
+  in the oTree tab and standalone, with no round-trip. `repaint()` re-applies the
+  chosen `sortKey`/`sortDir` on every 2s tick, so a sort SURVIVES the auto-refresh
+  instead of snapping back to the server order. `sortKey === null` leaves the
+  server's natural-name order (see row-order entry) untouched.
+- **The State sort's order is active → done → dq → waiting** (`statusRank`):
+  active/live rows first (the people who need watching), then finished, then any
+  terminal/disqualified state, then not-arrived. DQ is tested BEFORE finished
+  because a terminal row can be finished-shaped. The rank uses the SAME three
+  outcome flags the row tint uses, so the grouping the eye sees (amber/green/red)
+  and the sort can never disagree.
+- **A missing value sorts as -1 (smallest).** No quiz / no earnings / no clock →
+  a not-yet-reached row sinks to the bottom in descending order, which is where
+  "hasn't got there yet" belongs when ranking by most-of-X.
+- **Natural order is duplicated in JS, and must agree with the server.**
+  `naturalCompare` is the client twin of `natural_label_key` (digits as numbers,
+  before text, case-folded) — the `a2 … a10` seat case is the one that exposes a
+  plain-string regression, exactly as the server comment warns. One concept, two
+  implementations that are tested to match.
+- **A click on a header's `.th-info` icon is NOT a sort.** The Quiz header's ⓘ
+  opens the mistakes panel and the State header's ⓘ is the threshold legend; the
+  sort handler bails when the click landed on a `.th-info`, so those keep their
+  own behaviour. (An operator sorts by clicking the column NAME.)
+
+*Enforced:* `scripts/tests/dashboard_render_check.py` (`check_sort`) drives real Chromium over the
+render check's 13-row diverse session, and for each sortable column asserts the
+rendered order matches the intended key ascending then descending, the ▲/▼ sits
+on exactly the active column, the State buckets come out `active→done→dq→waiting`,
+the sort holds across an auto-refresh tick, and the whole thing works INSIDE a
+100dvh iframe. the render check's geometry legs (equal step spacing, overview-above-table,
+no horizontal scroll, no clipped cell at 1152px) and the site-preview check
+still pass, so the added header markup did not disturb the timeline's spacing.
+
+---
+
+## The dashboard summary and table header are STICKY — a fixed-height column, not a scrolling page — 2026-08-25
+
+The experimenter dashboard used to scroll as one document: past a screenful of
+participants the summary block (`#overview`) and the table's column-header row
+both scrolled out of sight, so an operator reading a row at the bottom of a full
+lab could no longer see which column was which nor the session totals. Now the
+summary and the header row stay pinned and ONLY the participant rows scroll under
+them. The choices that read as arbitrary without the reasoning:
+
+- **A fixed-height flex column, not viewport-relative sticky.** `body` is
+  `height: 100dvh; display: flex; flex-direction: column; overflow: hidden`; the
+  overview is `flex: 0 0 auto` at the top and the table lives in a new
+  `.dash-scroll` (`flex: 1 1 auto; min-height: 0; overflow: auto`) — the one
+  element on the page that scrolls. The header pins with `thead th { position:
+  sticky; top: 0 }` **relative to `.dash-scroll`, not the window**. *Rejected:*
+  `position: sticky; top: 0` on the overview plus `top: <overview height>` on the
+  header against the page's own scroll. That needs a hard-coded offset equal to
+  the overview's height, and the overview's height is variable (the four pills
+  wrap at narrow widths), so the header would overlap or gap the moment the pills
+  rewrapped. Pinning inside our own scroll container needs no offset at all.
+- **Why this survives BOTH embeddings** (the brief). Standalone, the body's
+  viewport is the window; in the oTree Report tab the page is inside a `100dvh`
+  iframe (`outro/admin_report.html`), so the body's viewport is the iframe. In
+  both the body has a definite height to split between the pinned overview and the
+  scroll area, and the header sticks to `.dash-scroll` — not to whatever is
+  scrolling around us — so it does not matter which frame owns the scroll.
+- **`min-height: 0` on `.dash-scroll` is load-bearing, not tidiness.** A flex
+  child will not shrink below its content's height without it, so the full table
+  would push `body` past `100dvh` and the whole page would scroll again, defeating
+  the sticky. Do not remove it.
+- **The header underline is a `box-shadow`, not `border-bottom`.** The table is
+  `border-collapse: collapse`, whose cell borders belong to the table's own
+  collapsed border box and scroll away from a sticky `th` in several engines — so
+  a `border-bottom` underline would vanish on scroll. A `box-shadow` is painted as
+  part of the `th` and rides pinned with it. The card frame (border, radius,
+  shadow) moved from `table.dash` onto `.dash-scroll` for the same reason: the
+  table's own top border must not scroll out from under the pinned header.
+
+*Enforced:* `scripts/tests/dashboard_render_check.py` (`check_sticky`) drives real Chromium at a
+short viewport in BOTH contexts (standalone, and inside a `100dvh` iframe),
+scrolls `.dash-scroll`, and asserts the summary top and header top do NOT move,
+the header stays pinned to the container top, the first row DOES move up, and the
+page/body never scrolls — each a presence check, never absence-only. The existing
+the render check's geometry legs (overview-sits-above-table, equal step
+spacing, no horizontal scroll, no clipped cell at 1152px) still pass, and
+`check_site_previews.py` confirms the frozen `monitor.html` still fits its canvas
+with no overflow.
+
+---
+
 ## The dashboard timer's TOTAL pill, the stale-data banner's age, and the tab embed's height — 2026-08-23
 
 Three operator-facing improvements to the experimenter dashboard, each with a

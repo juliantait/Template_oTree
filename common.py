@@ -354,6 +354,33 @@ def is_prolific(config) -> bool:
     return recruitment(config) == 'prolific'
 
 
+def max_quiz_attempts(config) -> int:
+    """How many graded quiz submissions a participant gets before ejection.
+
+    THE ONE SOURCE OF TRUTH for the number the quiz-attempts disclosure promises
+    a Prolific participant (consent conditions, the instructions and pre-quiz
+    prompts, and the dynamic quiz error_message all read it, in `before` and in
+    `intro`, so it must live in one place both apps can call).
+
+    IT EQUALS THE FAILURE THRESHOLD, NOT threshold+1 — read the mechanic before
+    "fixing" that. `intro.quiz.error_message` ejects the moment
+    `participant.comprehension_failed_attempts >= quiz_comprehension_max_failures`
+    (see `intro.comprehension_threshold`), incrementing the counter BEFORE the
+    compare. So with the shipped `3`, the third wrong submission is the one that
+    ejects: a participant gets exactly THREE chances to submit a correct answer,
+    and the threshold IS that count. Disclosing threshold+1 would promise four
+    and eject on the third — turning the fee's own reassurance into a broken
+    promise, which is exactly the collapsed-distinction failure CLAUDE.md warns
+    about. If that ejection predicate ever changes shape, this must change with
+    it (they are the same fact, stated once for the participant and once for the
+    gate).
+
+    Via the safe accessor so a frozen session config falls back to the shipped
+    default rather than 500-ing a participant mid-study (CLAUDE.md).
+    """
+    return int(cfg(config, 'quiz_comprehension_max_failures'))
+
+
 def init_participant(participant):
     """Initialise every participant field at session creation.
 

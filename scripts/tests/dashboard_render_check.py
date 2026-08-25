@@ -1252,7 +1252,12 @@ def check_quiz_mistakes(base):
                                       'els => els.length') == 0,
               'the panel is closed until the ⓘ is clicked')
         pg.click('#quiz-mistakes-info')
-        pg.wait_for_selector('.qm-overlay.open .qm-panel', timeout=15000)
+        # WAIT FOR THE FETCH TO RESOLVE, not merely for the panel to open:
+        # qmLoad() shows a "Loading…" panel first (`.qm-panel` present, no cards)
+        # and only replaces it with the rendered content once /quiz_mistakes
+        # returns. Counting `.item-card` on `.qm-panel` alone is a race that
+        # reads 0 under CPU load — wait for a real card to exist first.
+        pg.wait_for_selector('.qm-overlay.open .item-card', timeout=15000)
         cards = pg.eval_on_selector_all('.item-card', 'els => els.length')
         check(cards == 2, f'one item card per quiz item ({cards})')
         # PASSES NOT POOLED, visible: the first card carries BOTH a first-pass
@@ -1306,6 +1311,295 @@ def check_quiz_mistakes(base):
         browser.close()
 
 
+# --------------------------------------------------------------------------
+# sticky summary + header, and click-to-sort — folded in from the former
+# standalone dashboard_sticky_check.py / dashboard_sort_check.py (2026-08-25).
+# The other legs above never SCROLL and never CLICK a header, so these two are
+# the only place those two behaviours are measured. See DECISIONS.md.
+# --------------------------------------------------------------------------
+_STICKY_MEASURE_JS = '''() => {
+  const r = el => el.getBoundingClientRect();
+  const ov = document.querySelector('#overview');
+  const th = document.querySelector('table.dash thead th');
+  const row = document.querySelector('tbody tr');
+  const scroll = document.querySelector('.dash-scroll');
+  return {
+    ovTop: r(ov).top, thTop: r(th).top, rowTop: r(row).top,
+    scrollTop: r(scroll).top, scrollScrollTop: scroll.scrollTop,
+    docScrollTop: document.scrollingElement.scrollTop,
+    bodyOverflowsWindow: document.body.getBoundingClientRect().bottom
+                         > window.innerHeight + 2,
+  };
+}'''
+
+
+def _assert_sticky(target, label, scroll_in_target):
+    """Measure that scrolling moves ONLY the rows. `target` is a Page or a Frame
+    (same evaluate/eval_on_selector surface), so the standalone and embedded
+    legs share it; `scroll_in_target(px)` scrolls .dash-scroll and also tries to
+    scroll the window, inside that target."""
+    target.wait_for_selector('tbody tr td.c-label', timeout=15000)
+    n = target.eval_on_selector_all('tbody tr', 'els => els.length')
+    check(n >= 12,
+          f'{label}: staged {n} visible rows (table taller than the viewport)')
+    before = target.evaluate(_STICKY_MEASURE_JS)
+    check(abs(before['thTop'] - before['scrollTop']) <= 2,
+          f'{label}: the header row starts pinned to the top of .dash-scroll '
+          f'(th {before["thTop"]:.1f} vs {before["scrollTop"]:.1f})')
+    check(abs(before['docScrollTop']) <= 1,
+          f'{label}: the page is not scrolled to begin with')
+    scroll_in_target(240)
+    target.wait_for_timeout(150)
+    after = target.evaluate(_STICKY_MEASURE_JS)
+    check(after['scrollScrollTop'] >= 150,
+          f'{label}: the .dash-scroll container actually scrolled '
+          f'({after["scrollScrollTop"]:.0f}px)')
+    check(abs(after['ovTop'] - before['ovTop']) <= 1,
+          f'{label}: the SUMMARY block stayed pinned '
+          f'({before["ovTop"]:.1f} -> {after["ovTop"]:.1f})')
+    check(abs(after['thTop'] - before['thTop']) <= 1,
+          f'{label}: the table HEADER row stayed pinned '
+          f'({before["thTop"]:.1f} -> {after["thTop"]:.1f})')
+    check(abs(after['thTop'] - after['scrollTop']) <= 2,
+          f'{label}: …still pinned to the top of .dash-scroll after scrolling')
+    check(before['rowTop'] - after['rowTop'] >= 150,
+          f'{label}: the participant ROWS scrolled up underneath it '
+          f'({before["rowTop"]:.1f} -> {after["rowTop"]:.1f})')
+    check(abs(after['docScrollTop']) <= 1 and not after['bodyOverflowsWindow'],
+          f'{label}: the page/body itself never scrolled — only the rows did '
+          f'(docScrollTop {after["docScrollTop"]:.0f})')
+
+
+def check_sticky(base):
+    """THE SUMMARY BLOCK AND THE COLUMN-HEADER ROW STAY PINNED while only the
+    participant rows scroll — in BOTH the standalone page and the 100dvh iframe
+    of the oTree Report tab (outro/admin_report.html). The other legs here never
+    scroll, so this is the only place the sticky behaviour is measured. See
+    DECISIONS.md ("The dashboard summary and table header are STICKY")."""
+    from playwright.sync_api import sync_playwright
+    section('headless Chromium: sticky summary + table header')
+    sess = ot.create_session('lab', num_participants=24, label='')
+    for i, code in enumerate(ot.participant_codes(sess)):
+        ot.set_label(code, f'Seat {i + 1:02d}')
+        # A GET renders the first page -> the row counts as arrived and shows
+        # (not-arrived rows are hidden by default; we need a full, tall table).
+        requests.get(f'{base}/InitializeParticipant/{code}',
+                     headers={'User-Agent': DESKTOP_UA})
+    url = f'{base}{ed.URL_BASE}/{sess.code}'
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(ignore_default_args=['--hide-scrollbars'])
+        # SHORT viewport, so the table is taller than the window.
+        pg = browser.new_page(viewport=dict(width=1280, height=460))
+        pg.goto(f'{base}/login')
+        pg.fill('input[name=username]', 'admin')
+        pg.fill('input[name=password]', 'admin')
+        pg.click('button[type=submit], input[type=submit]')
+
+        pg.goto(url)
+        _assert_sticky(pg, 'standalone', lambda px: pg.evaluate(
+            f'document.querySelector(".dash-scroll").scrollTop = {px};'
+            f' window.scrollTo(0, 400);'))
+
+        # Embedded: reproduce admin_report.html's 100dvh iframe. Same origin, so
+        # the admin cookie rides along and the frame renders the real dashboard.
+        pg.set_content(
+            '<body style="margin:0">'
+            f'<iframe id="f" src="{url}" '
+            'style="display:block;box-sizing:border-box;width:100%;'
+            'height:100dvh;border:1px solid #ccc"></iframe></body>')
+        pg.wait_for_selector('#f')
+        fr = pg.frames[-1]
+        _assert_sticky(fr, 'embedded (100dvh iframe)', lambda px: fr.evaluate(
+            f'document.querySelector(".dash-scroll").scrollTop = {px};'
+            f' window.scrollTo(0, 400);'))
+        browser.close()
+
+
+def _status_rank(r):
+    """Python twin of statusRank() in the page JS: active < done < dq < waiting."""
+    if r.get('error'):
+        return 4
+    if r.get('terminal'):
+        return 2
+    if r.get('finished'):
+        return 1
+    if r.get('arrived'):
+        return 0
+    return 3
+
+
+def _sort_key_for(col, r):
+    """The numeric key a column sorts on, matching the page's comparators. label
+    is handled separately (natural order on the displayed name)."""
+    if col == 'quiz':
+        return r['quiz']['attempts_wrong'] if r.get('quiz') else -1
+    if col == 'time':
+        t = r.get('total_seconds')
+        if t is None:
+            t = r.get('intro_seconds')
+        return -1 if t is None else t
+    if col == 'earnings':
+        return -1 if r.get('earnings') is None else r['earnings']
+    if col == 'state':
+        return _status_rank(r)
+    raise AssertionError(col)
+
+
+def _dom_labels(target):
+    """The displayed name of each visible row, top to bottom — the page-hint
+    span (display:block, contributes no newline) dropped by node, exactly as
+    check_row_order does, so an arrived row is not glued to its hint."""
+    return target.eval_on_selector_all(
+        'tbody tr td.c-label',
+        '''els => els.map(e => Array.from(e.childNodes)
+             .filter(n => !(n.classList &&
+                            n.classList.contains("page-hint")))
+             .map(n => n.textContent).join("").trim())''')
+
+
+def _indicator_map(pg):
+    """data-sort key -> the ▲/▼ text on its header (‘’ if none)."""
+    return pg.evaluate('''() => {
+        const out = {};
+        document.querySelectorAll('table.dash thead th.sortable').forEach(th => {
+            out[th.getAttribute('data-sort')] =
+                (th.querySelector('.sort-ind') || {}).textContent || '';
+        });
+        return out;
+    }''')
+
+
+def _click_sort_header(pg, key):
+    # Click the LEFT edge, on the label word — never the centred `.th-info` icon
+    # (the Quiz header's ⓘ opens the mistakes panel, deliberately not a sort).
+    # A real operator sorts by clicking the column NAME.
+    pg.click(f'table.dash thead th[data-sort="{key}"]',
+             position={'x': 6, 'y': 12})
+    pg.wait_for_timeout(120)
+
+
+def _monotonic(names, rows_by_name, col, ascending):
+    """Is the key sequence sorted in `col`'s order? label uses natural order (the
+    server's own natural_label_key), everything else the numeric key."""
+    if col == 'label':
+        keyed = [ed.natural_label_key(n) for n in names]
+    else:
+        keyed = [_sort_key_for(col, rows_by_name[n]) for n in names]
+    ordered = keyed if ascending else list(reversed(keyed))
+    return all(ordered[i] <= ordered[i + 1] for i in range(len(ordered) - 1))
+
+
+def check_sort(base, sess):
+    """CLICK-TO-SORT on the data columns — client-side, toggling asc/desc with a
+    ▲/▼ marker, surviving the 2s auto-refresh — and the TIMELINE column
+    deliberately NOT sortable. Runs over the 13-row overview session (every State
+    bucket present) already staged for check_overview. See DECISIONS.md ("The
+    dashboard columns are click-to-sort")."""
+    from playwright.sync_api import sync_playwright
+    section('headless Chromium: click-to-sort columns')
+    url = f'{base}{ed.URL_BASE}/{sess.code}'
+    # The intended keys come from the SAME JSON the page sorts, read once here.
+    op = requests.Session()
+    r = op.get(f'{base}/login')
+    tok = re.search(r'name="csrftoken" value="([^"]+)"', r.text).group(1)
+    op.post(f'{base}/login',
+            data={'username': 'admin', 'password': 'admin', 'csrftoken': tok})
+    data = op.get(f'{url}/data').json()
+    rows_by_name = {}
+    for rr in data['rows']:
+        if rr.get('error'):
+            continue
+        rows_by_name[str(rr.get('label') or rr.get('code') or '')] = rr
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(ignore_default_args=['--hide-scrollbars'])
+        pg = browser.new_page(viewport=dict(width=1400, height=900))
+        pg.goto(f'{base}/login')
+        pg.fill('input[name=username]', 'admin')
+        pg.fill('input[name=password]', 'admin')
+        pg.click('button[type=submit], input[type=submit]')
+        pg.goto(url)
+        pg.wait_for_selector('tbody tr td.c-label', timeout=15000)
+        # Reveal not-arrived so EVERY row participates (the State rank-3 bucket
+        # and the full-population monotonicity checks).
+        pg.check('#show-not-arrived')
+        pg.wait_for_function(
+            '() => document.querySelectorAll("tbody tr").length === 13',
+            timeout=15000)
+
+        for col in ('label', 'quiz', 'time', 'earnings', 'state'):
+            _click_sort_header(pg, col)                # first click -> ascending
+            check(_monotonic(_dom_labels(pg), rows_by_name, col, True),
+                  f'sort {col}: ascending click orders the rows by {col}')
+            ind = _indicator_map(pg)
+            check(ind[col] == '▲'
+                  and all(v == '' for k, v in ind.items() if k != col),
+                  f'sort {col}: ▲ shows on {col} ONLY ({ind})')
+            _click_sort_header(pg, col)                # second click -> descending
+            check(_monotonic(_dom_labels(pg), rows_by_name, col, False),
+                  f'sort {col}: second click reverses to descending')
+            check(_indicator_map(pg)[col] == '▼',
+                  f'sort {col}: the indicator flips to ▼')
+
+        # THE STATE SORT GROUPS active -> done -> dq -> waiting.
+        _click_sort_header(pg, 'state')
+        ranks = [_status_rank(rows_by_name[n]) for n in _dom_labels(pg)]
+        check(ranks == sorted(ranks),
+              f'State ascending: ranks are non-decreasing {ranks}')
+        check(ranks[0] == 0 and 1 in ranks and 2 in ranks,
+              f'…active(0) at the top, finished(1) + dq(2) below ({ranks})')
+
+        # THE TIMELINE COLUMN IS NOT SORTABLE.
+        has_sort = pg.eval_on_selector(
+            'table.dash thead th.c-timeline',
+            'e => e.hasAttribute("data-sort") '
+            '|| e.classList.contains("sortable")')
+        check(has_sort is False,
+              'the timeline header has no data-sort and no sortable class')
+        before = _dom_labels(pg)
+        pg.click('table.dash thead th.c-timeline .tl-header')
+        pg.wait_for_timeout(120)
+        check(before == _dom_labels(pg),
+              'clicking the timeline header leaves the row order unchanged')
+        check('timeline' not in _indicator_map(pg),
+              'the timeline column carries no sort indicator at all')
+
+        # A CHOSEN SORT SURVIVES THE 2s AUTO-REFRESH.
+        _click_sort_header(pg, 'earnings')
+        if _indicator_map(pg)['earnings'] != '▲':
+            _click_sort_header(pg, 'earnings')         # normalise to ascending
+        order_before = _dom_labels(pg)
+        st = pg.text_content('#status')
+        pg.wait_for_function(
+            'document.getElementById("status").textContent !== ' + repr(st),
+            timeout=10000)
+        pg.wait_for_timeout(200)
+        check(_dom_labels(pg) == order_before,
+              'the earnings sort still holds after an auto-refresh tick')
+        check(_indicator_map(pg)['earnings'] == '▲',
+              'and the ▲ indicator is still on the earnings column')
+
+        # WORKS INSIDE THE 100dvh IFRAME (the oTree Report tab).
+        pg.set_content(
+            '<body style="margin:0">'
+            f'<iframe id="f" src="{url}" '
+            'style="display:block;width:100%;height:100dvh;border:0">'
+            '</iframe></body>')
+        pg.wait_for_selector('#f')
+        fr = pg.frames[-1]
+        fr.wait_for_selector('tbody tr td.c-label', timeout=15000)
+        fr.click('table.dash thead th[data-sort="label"]')
+        fr.wait_for_timeout(150)
+        check(_monotonic(_dom_labels(fr), rows_by_name, 'label', True),
+              'embedded: clicking Participant sorts by natural name')
+        emb_ind = fr.evaluate(
+            '() => (document.querySelector('
+            '"th[data-sort=\\"label\\"] .sort-ind")||{}).textContent')
+        check(emb_ind == '▲',
+              'embedded: the ▲ indicator renders inside the iframe too')
+        browser.close()
+
+
 def main():
     server = Server()
     server.start()
@@ -1316,9 +1610,14 @@ def main():
         check_row_order(server.base)
         check_pills(server.base)
         check_quiz_mistakes(server.base)
-        # The overview last: it is the biggest staging job, and running it after
-        # the assertions above means a failure there is not hidden behind it.
-        check_overview(server.base, stage_overview(server.base))
+        check_sticky(server.base)
+        # The overview session (every state) is the biggest staging job; stage
+        # it ONCE and use it for both the sort leg and the overview leg. The
+        # overview leg runs LAST so a failure there is not hidden behind the
+        # cheaper assertions above.
+        overview_sess = stage_overview(server.base)
+        check_sort(server.base, overview_sess)
+        check_overview(server.base, overview_sess)
     finally:
         server.stop()
     print(f'\nscreenshots: {OUT_DIR} and {OVERVIEW_DIR}')

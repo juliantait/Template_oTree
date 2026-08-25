@@ -416,9 +416,30 @@ a { color: var(--accent); }
     gap: clamp(10px, 1.6vw, 18px);
 }
 .screen-card.single-page-fit .experimental-header { gap: 8px; }
-.screen-card.single-page-fit .experimental-content { gap: 10px; }
-.screen-card.single-page-fit > .button-row { padding-top: 14px; }
+.screen-card.single-page-fit .experimental-content { gap: 8px; }
+.screen-card.single-page-fit > .button-row { padding-top: 12px; }
 .screen-card.single-page-fit .panel { padding: clamp(10px, 1.8vw, 16px); }
+/* MODE 2 tightens the READING RHYTHM too, not only the font. INTENTION: the
+   base body line-height (1.65) is generous for comfortable Mode-1 reading; in the
+   one-viewport Mode-2 fit it costs height on every wrapped line, so it tightens
+   to 1.4 — still an easy-to-read measure, and the largest single reclaim
+   available without dropping below the legibility font floor. This is what lets
+   the Prolific consent page carry its quiz-attempts return-request disclosure AND
+   keep the consent control above the fold at 1280x720 (before/welcome+consent.html);
+   the agreement page, which has spare height, is simply a touch tighter. Scoped
+   to .single-page-fit so Mode-1 reading is untouched. */
+.screen-card.single-page-fit .experimental-content :is(p, .section-text, .panel, label) {
+    line-height: 1.4;
+}
+/* A stacked form's last field (e.g. the consent radio) carries a trailing
+   form-field margin (oTree's .mb-3) that only pushes the fold down in Mode 2 —
+   the flex gap above and the button row below already own the spacing. Reclaim
+   it. Harmless in Mode 1 because this is .single-page-fit-scoped. */
+.screen-card.single-page-fit .stacked-form > *:last-child {
+    /* !important: oTree's .mb-3 is a Bootstrap utility (margin-bottom !important),
+       so a plain rule cannot beat it. */
+    margin-bottom: 0 !important;
+}
 
 /* Layer 1 — the scrollbar itself. WebKit/Blink ignores scrollbar-width when a
    ::-webkit-scrollbar rule exists, and painting one explicitly is what stops

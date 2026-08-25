@@ -67,6 +67,17 @@
         called the <strong>Stag Hunt</strong> with another participant in
         this room. You will play {{ num_experimental_rounds }} rounds in total.
     </p>
+    {# QUIZ-ATTEMPTS DISCLOSURE — PROLIFIC ONLY (is_prolific, from
+       instructions_context). Also stated in intro/prequiz_text.html, the same way
+       the bonus rule is stated twice on purpose. The count is the number of
+       graded attempts the quiz ejects on, from the one shared helper. Lab never
+       shows it — attempts are uncapped in the room (settings.py) — and the
+       re-read pass is lab-only, so is_prolific is False there too. #}
+    {% if is_prolific %}
+    <p>
+        You have up to {{ max_quiz_attempts }} attempts to pass the quiz.
+    </p>
+    {% endif %}
     {# THE BONUS RULE IS ALSO STATED in intro/prequiz_text.html — deliberately
        (Julian, 2026-08-13): once here in the payment overview, once as a
        reminder right before the quiz. If the rule changes, edit BOTH. #}

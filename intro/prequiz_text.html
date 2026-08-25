@@ -32,6 +32,16 @@
         You will next see a quiz. If you get all questions on the instructions
         correct on the first attempt you get <strong>{{ payment_quiz_bonus }}</strong>.
     </p>
+    {# QUIZ-ATTEMPTS DISCLOSURE — PROLIFIC ONLY (is_prolific, from
+       instructing.vars_for_template -> instructions_context). The reminder right
+       before the quiz, mirroring the same sentence in intro/instructions_text.html.
+       Only the round-1 (first-pass) branch: the reread pass is lab-only, where
+       is_prolific is False anyway and attempts are uncapped. #}
+    {% if is_prolific %}
+    <p>
+        You have up to {{ max_quiz_attempts }} attempts to pass the quiz.
+    </p>
+    {% endif %}
     {% endif %}
     <p>
         Would you like to reread the instructions first?
