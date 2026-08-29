@@ -3348,14 +3348,19 @@ function stateHTML(row) {
    them after EVERY 2s refresh, so a chosen sort survives the auto-refresh
    instead of snapping back to the server's default order on the next tick.
 
-   sortKey === null means "leave the server's order untouched" — which is the
-   natural-name, unlabelled-last order sort_rows_by_displayed_name already
-   produced (DECISIONS: row order). A column's click sets its key and resets to
-   ascending; clicking the SAME column again flips the direction.
+   THE DEFAULT IS THE STATE SORT (Julian, 2026-08-29): the monitor loads already
+   grouped by statusRank ascending — active rows first (sorted by name), then
+   finished, then the terminal/dq red rows, then not-arrived at the bottom, then
+   error — so the red/terminal rows are grouped and the not-arrived rows sit at
+   the bottom the moment the page opens, with no click required (DECISIONS:
+   default state sort). The server still ships rows in natural-name,
+   unlabelled-last order (sort_rows_by_displayed_name), and one click on the
+   Participant header restores that name order. A column's click sets its key and
+   resets to ascending; clicking the SAME column again flips the direction.
 
    THE TIMELINE COLUMN HAS NO KEY and is never made sortable (Julian,
    2026-08-25): it stays the per-row complete/advance action, not a sort. */
-var sortKey = null;
+var sortKey = 'state';
 var sortDir = 1;   // +1 ascending, -1 descending
 
 /* Natural order, the CLIENT twin of natural_label_key / displayed_name on the
@@ -3711,10 +3716,12 @@ function repaint(data) {
      the number under the header can never disagree with the table. */
   var hidden = data.rows.length - rows.length;
   /* RE-APPLY THE CHOSEN SORT AFTER EVERY REFRESH (2026-08-25). `rows` is a
-     fresh array from .filter above, so sorting it in place is safe. With no
-     column chosen (sortKey null) the server's natural-name order is left as-is;
-     `rows` is never reordered then. The indicators are refreshed here too so
-     the ▲/▼ stays on the active column across polls. */
+     fresh array from .filter above, so sorting it in place is safe. The default
+     sortKey is 'state' (state-grouped: active, done, dq/red, not-arrived), so
+     the very first paint is already sorted and its indicator set; if the
+     operator clears the sort back to the server order there is no such key and
+     `rows` is left as-is. The indicators are refreshed here too so the ▲/▼ stays
+     on the active column across polls — including on first paint. */
   if (sortKey) rows.sort(cmpRows);
   updateSortIndicators();
   var html = rows.map(function (r) { return renderRow(r, data); }).join('');

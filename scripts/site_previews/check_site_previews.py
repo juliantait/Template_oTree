@@ -79,11 +79,16 @@ IFRAME_SIZES = [(1920, 1080), (1280, 720), (960, 540), (720, 405)]
 FILES = ['welcome_lab.html', 'consent_lab.html', 'instructions.html',
          'game.html', 'results_lab.html', 'monitor.html']
 
-# WHICH SCREENS MAY NEVER NAME PROLIFIC. Not "the ones ending _lab.html": the
-# monitor preview is a LAB session too (see monitor_session.py — the lab profile
-# is what decides which states can appear on it), and it is exactly the screen
-# where a stray Prolific string would be easiest to miss, because the dashboard
-# renders both modalities from one implementation.
+# WHICH SCREENS MAY NEVER NAME PROLIFIC IN VISIBLE TEXT. Not "the ones ending
+# _lab.html". The monitor preview is now a DELIBERATE mixed lab-plus-online demo
+# (see monitor_session.py), and its online rows carry OBVIOUSLY FAKE ids — a run
+# of zeros and the word "demo" — never the literal string "Prolific". That is
+# the point of keeping it on this list even though it is no longer a pure lab
+# screen: the guard now catches an accidental "Prolific" typed into a label, a
+# title or the awaiting-return pill's VISIBLE text (its explanation lives in a
+# title tooltip, which innerText does not see), on exactly the screen where such
+# a string would be easiest to miss because the dashboard renders every
+# modality from one implementation.
 LAB_SCREENS = {'welcome_lab.html', 'consent_lab.html', 'results_lab.html',
                'monitor.html'}
 
@@ -122,6 +127,19 @@ MONITOR_MARKS = {
     '.ov-time': 'the overview TIME pill',
     '.ov-nest .ov-stall': 'stalled NESTED inside in-progress (not a sibling)',
     '.hdr-code': 'the header session-code chip',
+    # THE MIXED-DEMO STATES (2026-08-29). This preview is now a deliberate
+    # lab-plus-online demo (see monitor_session.py), and these are the states it
+    # exists to add: the four terminal/ejection pills, a terminal emoji marker on
+    # the timeline, the live tab-monitor count and the awaiting-return pill. Each
+    # is asserted for the same reason as the pills above — a freeze caught before
+    # the row rendered, or a fixture that quietly stopped producing one, would
+    # otherwise pass. (The FOUR specific terminal emoji are checked by grep on
+    # the built file, which a CSS selector cannot reach; this asserts the pill
+    # class is present at all.)
+    '.spill-terminal': 'a red terminal/ejection pill',
+    '.tl .marker.terminal-marker': 'a terminal emoji marker on the timeline',
+    '.spill-monitor': 'the live tab-monitor count pill',
+    '.spill-return': 'the awaiting-return pill',
 }
 
 

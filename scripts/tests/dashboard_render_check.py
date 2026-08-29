@@ -985,11 +985,20 @@ def check_browser(base, lab, pro):
 
 
 def check_row_order(base):
-    """THE TABLE READS DOWN THE ROOM, not in arrival order (Julian 2026-08-13).
+    """THE PARTICIPANT SORT READS DOWN THE ROOM, not in arrival order (Julian
+    2026-08-13).
 
     Measured in the real browser on the RENDERED Participant column, because
     that column is what the sort is defined against — a server-side check on the
     JSON would pass even if `renderRow` reordered or relabelled anything.
+
+    THE DASHBOARD NOW DEFAULTS TO THE STATE SORT (active → done → dq →
+    not-arrived; DECISIONS "The monitor defaults to the state sort"), so the
+    load order groups by state, not by name. This leg isolates the NAME sort by
+    clicking the Participant header first, then asserts the natural order — the
+    a2/a10 trap that the state default would otherwise mask (its active vs
+    not-arrived grouping would split a10 from a1/a2). check_sort covers the
+    state grouping itself.
 
     THE SESSION IS STAGED WITH LABELS DELIBERATELY OUT OF ARRIVAL ORDER, and
     with a natural-sort trap in it. `Seat 01`-style labels are zero-padded and
@@ -998,7 +1007,7 @@ def check_row_order(base):
     exposes it, and it is what a study produces the moment it stops padding.
     One participant is left UNLABELLED to pin where those rows go.
     """
-    section('row order: by displayed name, natural sort, unlabelled last')
+    section('row order: click Participant -> displayed name, natural, unlabelled last')
     sess = ot.create_session('lab', num_participants=6, label='')
     codes = ot.participant_codes(sess)
     # id (arrival) order on the left, intended display order on the right:
@@ -1027,6 +1036,9 @@ def check_row_order(base):
         reveal_not_arrived(pg)
         pg.wait_for_selector('tbody tr td.c-label', timeout=15000)
         pg.wait_for_timeout(400)
+        # THE DEFAULT IS THE STATE SORT NOW, so isolate the name sort: one click
+        # on the Participant header orders the whole room by natural label.
+        _click_sort_header(pg, 'label')
         shown = [t.strip() for t in pg.eval_on_selector_all(
             'tbody tr td.c-label',
             # THE DISPLAYED NAME ONLY. The label cell also carries the current
