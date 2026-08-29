@@ -24,58 +24,93 @@ by running the dashboard's real JavaScript over it (see build_site_previews.py,
 next rebuild; a change to the row SHAPE breaks it loudly, here, where the keys
 are named.
 
-THIS IS PLACEHOLDER DATA AND IT GOES ON A PUBLIC WEBSITE
---------------------------------------------------------
-Nothing below came from a participant. The labels are seat numbers a lab
-session assigns; there are NO Prolific IDs (a Prolific row's label IS the
-participant's platform ID), no completion codes, no contact details and no bank
-details — the dashboard has no column for any of those, and the one row that
-touches money at all shows a euro total and a "Non-SEPA" flag against an
-invented seat number. The single unlabelled row carries an obviously synthetic
-oTree participant code.
+THIS FIXTURE IS A DELIBERATE MIXED LAB-PLUS-ONLINE DEMO — READ THIS FIRST
+-------------------------------------------------------------------------
+This fixture DEPARTS ON PURPOSE from the generator's standing rule that every
+screen must be a single profile AS RESOLVED. It is not a lab session and it is
+not an online session: it is a SHOWCASE built to exercise as much of the
+dashboard's vocabulary as fits one canvas, for the academic website. The four
+red TERMINAL/ejection pills below (screened out, declined consent,
+comprehension DQ, tab-monitor DQ), the live tab-monitor count, and the
+awaiting-return pill can NEVER all appear in one real session — each needs a
+module a given profile turns on, and a lab session (implicit consent, no device
+gate, no comprehension DQ, no tab monitor) shows none of them. They are here
+anyway, on invented ONLINE rows, so the website shows what the monitor CAN
+display rather than the sparse subset one profile happens to reach.
 
-IT IS A **LAB** SESSION, AS THE LAB PROFILE ACTUALLY RESOLVES
--------------------------------------------------------------
-The generator's standing rule — EVERY SCREEN MUST BE THE PROFILE AS RESOLVED,
-NOT AS REMEMBERED — decides which states may appear here, and it rules out the
-most eye-catching ones. `RECRUITMENT_PROFILES['lab']` sets `tab_monitor=False`,
-`quiz_comprehension_dq=False`, `telemetry_device_capture=False` and `explicit_consent=False`,
-and every one of the four TERMINAL states needs a module the lab profile turns
-off:
+**So do not read the terminal pills as a bug, and do not "correct" this back to
+a strict lab session.** The earlier version of this file WAS a strict lab
+session and said so at length; this one is not, by choice, because a preview
+that shows only what the lab profile resolves leaves the monitor's most
+important states — the ejections an operator scans for — off the website
+entirely. The `build_site_previews.py` MONITOR_NOTE that ships in the built
+file says the same thing in as many words, so a viewer does not mistake the mix
+for a configuration this study runs.
 
-    📵 screened out    needs the device/screen-out gate   (lab: off)
-    ✋ declined consent needs the explicit consent radio   (lab: implicit)
-    ❌ comprehension DQ needs quiz_comprehension_dq             (lab: off)
-    👀 tab monitor DQ   needs tab_monitor                  (lab: off)
+WHAT IS INVENTED, AND WHAT IS NOT REAL DATA
+-------------------------------------------
+Nothing below came from a participant. The lab seats are cubicle-bank labels
+(two banks, A1–A8 and B1–B5 — thirteen seats) a lab session assigns. The online
+rows carry OBVIOUSLY FAKE placeholder ids — a run of zeros and the word "demo" —
+not real Prolific platform ids (a Prolific row's label IS the participant's
+platform id, so a real one would be someone's account). There are no completion
+codes, no contact details and no bank details — the dashboard has no column for
+any of those — and the few euro figures ride invented seat numbers. The single
+unlabelled row carries a synthetic oTree participant code.
 
-So a lab monitor shows NO terminal pills and no pink rows, and putting them
-here to make the screenshot livelier would be inventing a configuration — the
-same error that once shipped a consent preview with a radio button no lab
-participant has ever seen. The note on the built file says this in as many
-words, so nobody reads the absence as a missing feature.
+WHAT THE FIXTURE EXERCISES (one row each unless combined, per the row budget)
+-----------------------------------------------------------------------------
+    * the six-step timeline with the marker at every phase (entry → done);
+    * the round counter inside Task, and the ✓ done marker on finished rows;
+    * the four quiz-cell states: idle / filling / red at the limit / violet
+      "forced";
+    * live vs settled intro timers AND the second TOTAL timer beside each;
+    * the earnings pill, and the lab-only Non-SEPA condition pill riding a
+      FINISHED row (outcome and condition in separate channels);
+    * both amber stall phases (Intro long, and a Task round long);
+    * the dimmed not-arrived row and the unlabelled-row code fallback;
+    * NEW: all four terminal/ejection pills (on the four online rows), a live
+      tab-monitor count climbing towards its limit on an in-progress row, and
+      the awaiting-return pill on a finished row with no "back" click recorded
+      — the last two riding LAB seats (A7 and B3), because the demo shows the
+      lab labels carrying the full pill vocabulary rather than spending a scarce
+      online row on each.
 
-Everything the lab profile DOES produce is exercised below, deliberately, one
-row each: the six-step timeline with the marker at every phase, the round
-counter inside Task, the ✓ done marker, green finished rows, the four quiz-cell
-states (idle / filling / red at the limit / violet "forced"), live vs settled
-intro timers, earnings pills, both amber stall phases, the Non-SEPA condition
-pill riding a FINISHED row (outcome and condition in separate channels — the
-point of the pill split), dimmed not-arrived rows, and the unlabelled-row code
-fallback.
+THE ROW BUDGET IS A HARD CANVAS LIMIT — THIRTEEN SEATS STAY, ONLINE ROWS GIVE
+-----------------------------------------------------------------------------
+The preview is a FIXED 1920x1080 canvas with nothing to scroll: a row too many
+is a row silently clipped off the bottom. MEASURED against this dashboard (the
+overview block ~104px, the sticky header ~35px, ~49px a row, ~59px for a row
+whose State cell carries two pills): EIGHTEEN rows fit and nineteen overflow by
+~26px. check_site_previews.py asserts the table does not outgrow the canvas, so
+eighteen is a hard ceiling — if a future edit adds a row, MEASURE AGAIN.
+
+The THIRTEEN lab seats (two full banks, A1–A8 and B1–B5) are fixed and stay. So
+of the eighteen rows, thirteen are the lab seats, one is the unlabelled
+oTree-code fallback, and the remaining FOUR are online. The four online rows
+carry the four terminal/ejection pills — the states most naturally read as
+online. The other two online-only conditions (the live tab-monitor count and
+the awaiting-return pill) DO NOT need their own rows: they ride LAB seats here,
+because this demo shows the lab labels WITH the full pill vocabulary rather than
+splitting the vocabulary off onto a separate cohort. States are also combined
+onto single rows the way the dashboard naturally does (earnings + Non-SEPA on
+one finished row; a tab-monitor count on a task row; awaiting-return on a
+finished row), and at most two rows carry two State pills, because a third would
+push the table past the canvas.
 
 Usage: imported by build_site_previews.py. Not executable on its own.
 """
 
 # --- the session-constant half of the payload --------------------------------
-# These are the values the LAB config actually resolves (settings.py:
-# SESSION_CONFIG_DEFAULTS num_experimental_rounds=5, quiz_comprehension_max_failures=3,
+# These are the values the shipped config resolves (settings.py:
+# SESSION_CONFIG_DEFAULTS num_experimental_rounds, quiz_comprehension_max_failures,
 # REAL_WORLD_CURRENCY_CODE=EUR) and the shipped stall thresholds
 # (experimenter_dashboard.stall_legend). They are restated here rather than
 # imported because this file is a FIXTURE: the preview must keep showing a
 # coherent session even if a copied study retunes its own thresholds, and a
-# fixture that silently follows settings.py would produce rows whose "9:41"
+# fixture that silently followed settings.py would produce rows whose "9:41"
 # stopped being over the limit without anything saying so.
-SESSION_TITLE = 'Lab session (CREED)'
+SESSION_TITLE = 'Demo session — lab + online (CREED)'
 SESSION_CODE = 'demo1234'      # invented; a real oTree session code is 8 chars
 CURRENCY = 'EUR'
 ROUNDS_TOTAL = 10
@@ -86,6 +121,20 @@ STALL_LEGEND = [
     {'label': 'Task (one round)', 'seconds': 180},
     {'label': 'Questionnaire', 'seconds': 300},
 ]
+
+# THE FOUR TERMINAL/EJECTION states, restated in the shape the server derives
+# from settings.EXIT_CODE_META (see experimenter_dashboard._FALLBACK_EXIT_CODE_META,
+# which these mirror). Restated for the same fixture reason as the thresholds
+# above: the preview must keep drawing the four pills even against a study that
+# retunes its own exit table. The `when` groups the ending in the overview
+# exactly as ending_when() does on the server: an ENTRY turn-away vs an ejection
+# after STARTING. Emoji are the literal glyphs the dashboard ships.
+_TERMINAL_META = {
+    'screened_out':  dict(emoji='\U0001f4f5', label='Screened out',   when='entry'),
+    'no_consent':    dict(emoji='✋',     label='Declined consent', when='entry'),
+    'comprehension': dict(emoji='❌',     label='Comprehension DQ', when='started'),
+    'tab_monitor':   dict(emoji='\U0001f440', label='Tab monitor DQ',   when='started'),
+}
 
 
 def _row(label, step, **kw):
@@ -117,14 +166,15 @@ def _row(label, step, **kw):
         stall_elapsed=None,
         stall_section=None,
         non_sepa=False,
-        awaiting_return=False,   # Prolific redirect sessions only — never lab
-        monitor_count=None,      # tab monitor is off in the lab profile
+        awaiting_return=False,   # finished, no "back" click — redirect sessions
+        monitor_count=None,      # tab-monitor count while it climbs
         monitor_max=None,
         entry_only=False,
         # THE OVERVIEW's inputs, in _participant_row's shape. `treatment` feeds
         # the per-cell FINISHED split; `waiting_for` is [] for everybody because
-        # this template ships no wait page (see DECISIONS.md); the three ending
-        # fields are None on an ordinary row.
+        # this template ships no wait page (see DECISIONS.md); the ending fields
+        # are None on an ordinary row and filled by the derivation loop on a
+        # terminal one.
         treatment='',
         waiting_for=[],
         terminal_when=None,
@@ -145,103 +195,133 @@ def _quiz(state, wrong=0, display=0):
 
 
 # --- the room ----------------------------------------------------------------
-# Eighteen seats mid-session plus one not-yet-labelled arrival: most rows
-# unremarkable, which is the truthful shape
-# of a running session and the reason the amber tint has a job to do. Ordered by
-# displayed name with the unlabelled row last, exactly as `sort_rows_by_displayed_name`
-# would leave them — the preview skips the server, so the order is written out.
+# EIGHTEEN rows (the canvas ceiling — see the row-budget note in the docstring):
+# FOUR online rows with obviously-fake ids that sort FIRST because a digit-leading
+# label precedes a letter-leading one under natural_label_key, then the two full
+# lab banks A1–A8 and B1–B5 (thirteen seats), then the unlabelled arrival LAST.
+# This is exactly the order sort_rows_by_displayed_name would leave them in — the
+# preview skips the server, so the order is written out. Most rows carry more
+# than one state, because a running session's rows do.
+#
+# The fake online id: eighteen zeros then "demoNN". It reads as a 24-character
+# platform id (a Prolific label's length) while the run of zeros and the word
+# "demo" make it OBVIOUSLY not a real account. The four sort among themselves by
+# the trailing number and all sort ahead of the lettered seats.
+_OID = '000000000000000000demo%02d'
+
 ROWS = [
-    # On the consent page: present, nothing to report yet.
-    _row('Seat 01', 'entry', current_page='Consent', quiz=_quiz('idle')),
+    # ===== ONLINE COHORT (fake ids, sort first) =============================
+    # The four terminal/ejection states — each needs a module (device gate,
+    # explicit consent, comprehension DQ, tab monitor) the lab profile turns
+    # off, so they read most naturally on online rows. The other two online-only
+    # conditions (a climbing tab-monitor count, awaiting-return) ride LAB seats
+    # below; see the module docstring on the deliberate mix and the row budget.
+
+    # SCREENED OUT at the device/screen-out gate: red terminal pill, 📵 marker
+    # at the entry step. An ENTRY turn-away.
+    _row(_OID % 1, 'entry', current_page='DeviceCheck',
+         terminal='screened_out', quiz=_quiz('idle')),
+
+    # DECLINED CONSENT: ✋ terminal, also an ENTRY turn-away. Needs the explicit
+    # consent radio (online); the lab consents implicitly, so it can never show.
+    _row(_OID % 2, 'entry', current_page='Consent',
+         terminal='no_consent', quiz=_quiz('idle')),
+
+    # COMPREHENSION DQ: ❌ terminal, ejected DURING the quiz after too many
+    # wrong attempts — an ejection after STARTING. The quiz cell still shows the
+    # red at-limit count that got them ejected.
+    _row(_OID % 3, 'quiz', current_page='Quiz',
+         terminal='comprehension', quiz=_quiz('red', 3), intro_seconds=356),
+
+    # TAB-MONITOR DQ: 👀 terminal, ejected mid-task for leaving the tab too many
+    # times — an ejection after STARTING. Once terminal the DQ pill says it; the
+    # BEFORE-state (a count still climbing) rides lab seat A7 below.
+    _row(_OID % 4, 'task', current_page='GameStart', task_round=4,
+         terminal='tab_monitor', quiz=_quiz('green', 0, 1), intro_seconds=228),
+
+    # ===== LAB COHORT — bank A (cubicles A1–A8) ============================
+    # On the consent page: present, nothing to report yet, idle quiz cell.
+    _row('A1', 'entry', current_page='Consent', quiz=_quiz('idle')),
 
     # STALLED IN INTRO: 9:41 against the 8:00 threshold. Amber row tint (find it
     # across the room) + the timing pill (which phase, how long) — the two
-    # complementary channels the dashboard CSS argues for at length.
-    _row('Seat 02', 'instructions', current_page='Instructions',
+    # complementary channels the dashboard CSS argues for at length. Live intro
+    # timer, so the TOTAL beside it keeps counting too.
+    _row('A2', 'instructions', current_page='Instructions',
          quiz=_quiz('idle'), intro_seconds=581, intro_live=True,
          stalled=True, stall_elapsed=581, stall_limit=480,
          stall_section='Intro'),
 
     # Mid-quiz, one wrong attempt so far: the cell FILLS towards the limit.
-    _row('Seat 03', 'quiz', current_page='Quiz', quiz=_quiz('progress', 1),
+    _row('A3', 'quiz', current_page='Quiz', quiz=_quiz('progress', 1),
          intro_seconds=341, intro_live=True),
 
-    _row('Seat 04', 'task', current_page='GameStart', task_round=2,
+    # In the task at successive rounds — the round-of-total counter on the
+    # marker. Settled intro timers now (they have left the intro).
+    _row('A4', 'task', current_page='GameStart', task_round=2,
          quiz=_quiz('green', 0, 1), intro_seconds=204),
-    _row('Seat 05', 'task', current_page='GameStart', task_round=6,
-         quiz=_quiz('green', 1, 2), intro_seconds=172),
-    _row('Seat 06', 'task', current_page='GameStart', task_round=9,
-         quiz=_quiz('green', 2, 3), intro_seconds=380),
 
-    _row('Seat 07', 'questionnaire', current_page='Feedback',
-         quiz=_quiz('green', 0, 1), intro_seconds=195),
-
-    # FINISHED: green row, ✓ done marker, earnings pill.
-    _row('Seat 08', 'done', finished=True, quiz=_quiz('green', 0, 1),
-         intro_seconds=210, earnings=18.50),
-
-    # FINISHED **and** flagged: the green row says they completed, the red pill
-    # says their IBAN is outside SEPA and the transfer needs checking. Outcome
-    # and condition in separate channels — collapsing them (a red row) is the
-    # thing the pill split exists to prevent.
-    _row('Seat 09', 'done', finished=True, quiz=_quiz('green', 1, 2),
-         intro_seconds=372, earnings=14.00, non_sepa=True),
+    # HIT THE THREE-FAILURE LIMIT. In a LAB session that is not a
+    # disqualification (quiz_comprehension_dq off) — so a lab row runs on with a
+    # red cell as the operator's cue, distinct from the online comprehension DQ
+    # above where the SAME red count DID eject. That contrast is the point.
+    _row('A5', 'quiz', current_page='Quiz', quiz=_quiz('red', 3),
+         intro_seconds=402, intro_live=True),
 
     # FORCED past the quiz from the admin panel without ever answering it:
-    # violet, and it says the word rather than a count, because nothing is
-    # wrong with the participant.
-    _row('Seat 10', 'task', current_page='GameStart', task_round=5,
+    # violet, and it says the word rather than a count, because nothing is wrong
+    # with the participant. Now in the task; settled intro timer.
+    _row('A6', 'task', current_page='GameStart', task_round=5,
          quiz=_quiz('forced'), intro_seconds=245),
 
-    # Hit the three-failure limit. In a LAB session that is not a
-    # disqualification — quiz_comprehension_dq is off — so the row runs on and the
-    # red cell is the operator's cue to go and speak to them.
-    _row('Seat 11', 'quiz', current_page='Quiz', quiz=_quiz('red', 3),
-         intro_seconds=402, intro_live=True),
+    # TAB-MONITOR CLIMBING (not yet ejected): the live count "2 of 3" in the
+    # State cell — the operator's cue to speak to them BEFORE the DQ. Riding a
+    # LAB seat by choice (see the row budget): the demo shows the lab labels
+    # carrying the full pill vocabulary. Green quiz, settled intro timer.
+    _row('A7', 'task', current_page='GameStart', task_round=6,
+         quiz=_quiz('green', 1, 2), intro_seconds=172,
+         monitor_count=2, monitor_max=3),
 
     # STALLED ON A TASK ROUND: the second amber phase, judged against the
     # per-round 3:00 threshold rather than the intro's 8:00.
-    _row('Seat 12', 'task', current_page='GameStart', task_round=3,
+    _row('A8', 'task', current_page='GameStart', task_round=3,
          quiz=_quiz('green', 0, 1), intro_seconds=188,
          stalled=True, stall_elapsed=312, stall_limit=180,
          stall_section='Task round'),
 
-    # NB one plain mid-task row was removed here when the OVERVIEW BLOCK landed
-    # (2026-08-19): the block is ~106px tall against the old header's ~32px, and
-    # the site tile is a FIXED 1920x1080 canvas, so the table overflowed it by
-    # 16px. A duplicate state was the honest thing to drop — every state this
-    # screen can show is still in the picture, and the alternative (shrinking
-    # the real screen to fit a preview) would make the preview lie.
-    _row('Seat 14', 'instructions', current_page='Instructions',
-         quiz=_quiz('idle'), intro_seconds=72, intro_live=True),
-    _row('Seat 15', 'task', current_page='GameStart', task_round=4,
-         quiz=_quiz('green', 1, 2), intro_seconds=258),
-    _row('Seat 16', 'questionnaire', current_page='Feedback',
-         quiz=_quiz('green', 0, 1), intro_seconds=178),
-    _row('Seat 17', 'done', finished=True, quiz=_quiz('green', 0, 1),
-         intro_seconds=182, earnings=16.25),
+    # ===== LAB COHORT — bank B (cubicles B1–B5) ============================
+    # In the questionnaire, having passed the quiz.
+    _row('B1', 'questionnaire', current_page='Feedback',
+         quiz=_quiz('green', 0, 1), intro_seconds=195),
+
+    # FINISHED: green row, ✓ done marker, earnings pill.
+    _row('B2', 'done', finished=True, quiz=_quiz('green', 0, 1),
+         intro_seconds=210, earnings=18.50),
+
+    # FINISHED BUT AWAITING RETURN: green ✓ finished AND the amber "↩ no return
+    # click" condition — completed the study but no "back to the platform" click
+    # recorded, so their submission may still be open. Riding a LAB seat like the
+    # tab-monitor count above: the demo puts the online-only conditions on lab
+    # labels rather than spending a scarce online row on each.
+    _row('B3', 'done', finished=True, quiz=_quiz('green', 0, 1),
+         intro_seconds=243, earnings=12.75, awaiting_return=True),
+
+    # FINISHED **and** flagged: the green row says they completed, the red pill
+    # says their IBAN is outside SEPA and the transfer needs checking. Outcome
+    # and condition in separate channels — collapsing them (a red row) is the
+    # thing the pill split exists to prevent. Non-SEPA is lab-only.
+    _row('B4', 'done', finished=True, quiz=_quiz('green', 1, 2),
+         intro_seconds=372, earnings=14.00, non_sepa=True),
 
     # NOT ARRIVED: dimmed, and hideable by the header's toggle. The dim
-    # treatment means "nobody is here" and nothing else.
-    #
-    # ONE such row, not two, and the reason is the canvas rather than the
-    # design: EIGHTEEN rows is what fits 1920x1080 now that the OVERVIEW BLOCK
-    # sits above the table. The preview shell cannot show a scroll — the canvas
-    # is a fixed frame with nothing to scroll it — so a row too many is a row
-    # silently cut off. MEASURED 2026-08-19: 49px per row, the overview block
-    # 106px tall against the old header's ~32px, and the table overflowed by
-    # 16px at nineteen rows until one plain mid-task row came out.
-    # ADDING A ROW HERE MEANS MEASURING AGAIN (check_site_previews.py does).
-    #
-    # It carries an idle quiz cell like every other row: `_participant_row`
-    # always builds one, so a row WITHOUT it would be a shape the server never
-    # sends — the empty box is part of what a not-arrived row looks like.
-    _row('Seat 18', 'entry', arrived=False, entry_only=True,
-         quiz=_quiz('idle')),
+    # treatment means "nobody is here" and nothing else. It still carries an
+    # idle quiz cell, because `_participant_row` always builds one — a row
+    # WITHOUT it would be a shape the server never sends.
+    _row('B5', 'entry', arrived=False, entry_only=True, quiz=_quiz('idle')),
 
     # NO LABEL YET (a bare-link arrival before the ID page): the row falls back
-    # to the oTree participant code, which is what an operator can still act
-    # on. Unlabelled rows sort last.
+    # to the oTree participant code, which is what an operator can still act on.
+    # Unlabelled rows sort last.
     _row('', 'entry', code='k7m2p9xr', current_page='Welcome',
          quiz=_quiz('idle')),
 ]
@@ -250,16 +330,20 @@ ROWS = [
 # --- fill the derived per-row fields, so the overview has something to tally ---
 # Done here rather than on each _row(...) call above so the row definitions stay
 # readable: each states what is TRUE of that participant, and the mechanical
-# consequences are applied once. TREATMENT alternates across the ARRIVED rows —
-# an invented but balanced assignment, matching what balance-on-arrival produces.
-# TERMINAL_WHEN comes from the shipped EXIT_CODE_META, so the preview groups the
-# endings the way the real screen does rather than by a second hand-written map.
-_WHEN = {'screened_out': 'entry', 'no_consent': 'entry',
-         'comprehension': 'started', 'tab_monitor': 'started'}
+# consequences are applied once. TERMINAL rows get their emoji/label/when from
+# _TERMINAL_META, exactly as the server reads them from EXIT_CODE_META, so the
+# preview groups the endings the way the real screen does rather than by a second
+# hand-written map. TREATMENT alternates across the rows that reached the
+# instructions — an invented but balanced assignment, matching what
+# balance-on-arrival produces.
 _n = 0
 for _r in ROWS:
-    if _r.get('terminal'):
-        _r['terminal_when'] = _WHEN.get(_r['terminal'])
+    _t = _r.get('terminal')
+    if _t:
+        _m = _TERMINAL_META[_t]
+        _r['terminal_emoji'] = _m['emoji']
+        _r['terminal_label'] = _m['label']
+        _r['terminal_when'] = _m['when']
     # A cell is spent only by somebody who reached the instructions — so not by
     # a never-arrived row, and not by one still at ENTRY or turned away there.
     if _r.get('arrived') and _r.get('step') not in ('entry',):
@@ -267,11 +351,11 @@ for _r in ROWS:
         _n += 1
     # TOTAL TIME (pill 2): derived from the intro time so the invariant total >=
     # intro is visibly held rather than typed row by row (see _total_seconds).
-    # A live row's total keeps counting in the browser; a finished row's is
-    # frozen at the whole-run duration; a row with no intro time yet gets none.
+    # A live row's total keeps counting in the browser; a finished/terminal
+    # row's is frozen; a row with no intro time yet gets none.
     _it = _r.get('intro_seconds')
     if _it is not None:
-        if _r.get('finished'):
+        if _r.get('finished') or _r.get('terminal'):
             _r['total_seconds'] = _it + 1130   # + the whole task and outro
             _r['total_live'] = False
         elif _r.get('intro_live'):
@@ -297,7 +381,7 @@ def payload():
     # renders — the same discipline as earnings_total above, and for the same
     # reason: a pill gated on a key this file forgets degrades to NOTHING, and
     # the website's monitor preview then silently shows a dashboard without its
-    # overview. That happened once already (this comment is the fix).
+    # overview.
     _live = [r for r in ROWS if not r.get('error')]
     _fin = [r for r in _live if r.get('finished')]
     _term = [r for r in _live if r.get('terminal')]
@@ -342,7 +426,7 @@ def payload():
         endings=endings,
         time_summary=time_summary,
         ok=True,
-        session=dict(code=SESSION_CODE, config_name='lab',
+        session=dict(code=SESSION_CODE, config_name='demo',
                      display_name=SESSION_TITLE, num_participants=len(ROWS)),
         rows=ROWS,
         rounds_total=ROUNDS_TOTAL,

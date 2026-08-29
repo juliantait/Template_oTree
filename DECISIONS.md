@@ -104,8 +104,10 @@ descending with a ▲/▼ marker on the active column. The choices worth recordi
   `cmpRows` sorts them in the browser — it therefore works identically embedded
   in the oTree tab and standalone, with no round-trip. `repaint()` re-applies the
   chosen `sortKey`/`sortDir` on every 2s tick, so a sort SURVIVES the auto-refresh
-  instead of snapping back to the server order. `sortKey === null` leaves the
-  server's natural-name order (see row-order entry) untouched.
+  instead of snapping back to the server order. The default `sortKey` is `state`
+  (see "The monitor defaults to the state sort"); should the operator ever clear
+  it there is no active key and the server's natural-name order (see row-order
+  entry) is left untouched.
 - **The State sort's order is active → done → dq → waiting** (`statusRank`):
   active/live rows first (the people who need watching), then finished, then any
   terminal/disqualified state, then not-arrived. DQ is tested BEFORE finished
@@ -133,6 +135,39 @@ the sort holds across an auto-refresh tick, and the whole thing works INSIDE a
 100dvh iframe. the render check's geometry legs (equal step spacing, overview-above-table,
 no horizontal scroll, no clipped cell at 1152px) and the site-preview check
 still pass, so the added header markup did not disturb the timeline's spacing.
+
+---
+
+## The monitor DEFAULTS to the state sort — 2026-08-29
+
+The client `sortKey` initialises to `state` (not `null`), so the dashboard loads
+already grouped by `statusRank` ascending: the ACTIVE rows first (arrived, still
+going — stalls and quiz warnings mixed in among them — sorted by name within the
+group), then FINISHED, then the terminal/DQ RED rows (screen-out, declined,
+comprehension DQ, tab-monitor DQ), then NOT-ARRIVED at the bottom, then error.
+The State column shows its ▲ (ascending) indicator on the very first paint —
+`repaint()` calls `updateSortIndicators()` unconditionally, and with a non-null
+default key the indicator and `aria-sort` are set before any click.
+
+Julian wants the red/terminal rows grouped and the not-arrived rows pushed to the
+bottom the moment the page opens, rather than after a click — those are the rows
+an operator scans for at a glance, and the old default buried them among the
+active rows in name order. `statusRank` is UNCHANGED (finished/done stays rank 1,
+sitting just under the active rows); only the initial `sortKey` moved.
+
+Name order is still one click away on the Participant header, which restores the
+server's natural-name order exactly.
+
+*Rejected:* the old name-order default (`sortKey = null`, leave the server's
+natural-name order). It read down the room alphabetically but scattered the
+terminal and not-arrived rows through the list, so the states an operator most
+needs to spot were the ones the load order did nothing to surface.
+
+*Enforced:* `scripts/tests/dashboard_render_check.py` — `check_row_order` now
+clicks the Participant header to isolate the natural-name sort (the default is no
+longer name order), and `check_sort` asserts the state grouping; the built
+website monitor preview (`_ai/site_previews/monitor.html`) is frozen in this
+default order with the ▲ on the State column.
 
 ---
 

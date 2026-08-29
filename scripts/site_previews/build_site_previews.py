@@ -74,10 +74,14 @@ display — and that canvas is scaled to whatever 16:9 box the site gives it. Th
 canvas has to be a nested browsing context, because vh/vw resolve against the
 VIEWPORT: inside the srcdoc iframe the viewport is 1920x1080 whatever the outer
 iframe measures, so every clamp() and vh in the real stylesheets resolves
-exactly as it does for a participant on a 1080p screen. The scale is
-`calc(100vw / 1920px)` — a length divided by a length is a plain number in CSS
-Values 4 — so no script is involved and the page cannot fail to scale because
-scripts are blocked.
+exactly as it does for a participant on a 1080p screen. The scale is applied in
+two layers — a `scale(calc(100cqw / 1920px))` CSS fallback and a tiny inline
+script that measures and scales directly — because the tidy pure-CSS form
+(`calc(100vw / 1920px)`, a length divided by a length) is typed arithmetic that
+only shipped in Chrome 140 / Safari 18.2 and NO stable Firefox, so on most
+browsers the transform is dropped and the canvas renders at native 1920px. The
+CSS layer still scales with scripts blocked; the script covers engines without
+container-query units too. See the shell's own comment for the full reasoning.
 
 The ONLY hand-written CSS in the output is the seven-line shell below. It
 styles the canvas, never the screen: everything inside the frame is the
@@ -263,13 +267,16 @@ OUTER = """<!DOCTYPE html>
   fixed {cw}x{ch} canvas — an ordinary participant display — inside its own
   browsing context, where those units resolve as they do for a participant,
   and the canvas is scaled to fill whatever 16:9 box the page is given. The
-  scale is pure CSS (a length divided by a length is a number), so it works
-  with scripts disabled.
+  scale is applied two ways — a container-query-unit CSS fallback that works
+  with scripts disabled, and a tiny inline script that measures and scales
+  directly — because the tidy `calc(100vw / 1920px)` form is CSS typed
+  arithmetic that most browsers (all Firefox, pre-140 Chrome) silently drop.
 -->
 <style>
 /* PREVIEW SHELL — the only hand-written CSS in this file. It positions the
    canvas; it never styles the screen inside it. */
 html, body {{ margin: 0; height: 100%; overflow: hidden; background: #eef1f6; }}
+body {{ container-type: inline-size; }}
 #screen {{
     position: absolute;
     top: 0;
@@ -278,12 +285,24 @@ html, body {{ margin: 0; height: 100%; overflow: hidden; background: #eef1f6; }}
     height: {ch}px;
     border: 0;
     transform-origin: top left;
-    transform: scale(calc(100vw / {cw}px));
+    /* SCALE THE CANVAS DOWN TO THE SITE'S 16:9 BOX, TWO WAYS — belt and braces.
+       The obvious `scale(calc(100vw / {cw}px))` is CSS typed arithmetic
+       (dividing a length by a length to get a number): it only shipped in
+       Chrome 140 / Safari 18.2 and is in NO stable Firefox, so on most
+       browsers the whole `transform` is DROPPED and the canvas renders at its
+       native {cw}px — only its top-left corner shows. So the CSS below uses
+       container query units (100cqw), which resolve against the body's
+       container width without typed arithmetic and reach further back, and the
+       inline script before </body> sets the scale directly from measured pixels
+       wherever it runs (covering older engines that lack cqw too). With scripts
+       blocked the cqw fallback still scales on any engine that supports it. */
+    transform: scale(calc(100cqw / {cw}px));
 }}
 </style>
 </head>
 <body>
 <iframe id="screen" title="{title}" srcdoc="{srcdoc}"></iframe>
+<script>(function(){{var screen=document.getElementById("screen");if(!screen)return;function fit(){{screen.style.transform="scale("+(document.body.clientWidth/1920)+")";}}if(typeof ResizeObserver!=="undefined"){{new ResizeObserver(fit).observe(document.body);}}else if(window.addEventListener){{window.addEventListener("resize",fit);}}fit();}})();</script>
 </body>
 </html>
 """
@@ -353,15 +372,19 @@ MONITOR_NOTE = (
     '  It is a live view of one running session: one row per participant, a\n'
     '  six-step timeline showing where each of them is, and pills for the\n'
     '  things somebody in the room has to act on.\n\n'
-    '  THE SESSION IS INVENTED. Nineteen rows, no real participant behind any of\n'
-    '  them: no Prolific IDs (a Prolific row\'s label IS the platform ID), no\n'
-    '  completion codes, no contact or bank details — the screen has no column\n'
-    '  for any of those. The rows are in scripts/site_previews/monitor_session.py.\n\n'
-    '  IT IS A LAB SESSION, AND THAT IS WHY THERE ARE NO RED "ENDED EARLY" ROWS.\n'
-    '  All four terminal states (screened out, declined consent, comprehension\n'
-    '  DQ, tab-monitor DQ) need a module the lab profile switches OFF, so a lab\n'
-    '  monitor genuinely never shows one. An online session does; showing them\n'
-    '  here would be a picture of a configuration this study does not run.\n\n'
+    '  THE SESSION IS INVENTED, AND IT IS A DELIBERATE MIXED LAB-PLUS-ONLINE\n'
+    '  DEMO. No real participant is behind any row: the lab seats are cubicle\n'
+    '  labels (A1–A8, B1–B5), the online rows carry OBVIOUSLY FAKE ids (a run of\n'
+    '  zeros and the word "demo", never a real platform ID), and there are no\n'
+    '  completion codes, contact or bank details — the screen has no column for\n'
+    '  any of those. The rows are in scripts/site_previews/monitor_session.py.\n\n'
+    '  WHY A MIX, AND WHY THAT IS NOT A BUG. The four red terminal/ejection\n'
+    '  states (screened out, declined consent, comprehension DQ, tab-monitor\n'
+    '  DQ), the live tab-monitor count and the awaiting-return pill each need a\n'
+    '  module a single profile turns on, and NO one real session shows them all\n'
+    '  — a lab session shows none. This preview departs from a single profile ON\n'
+    '  PURPOSE so the website shows what the monitor CAN display rather than the\n'
+    '  sparse subset one profile reaches; the fixture\'s own docstring says so.\n\n'
     '  THE ROWS WERE DRAWN BY THE DASHBOARD ITSELF. This is not a mock-up of the\n'
     '  monitor: experimenter_dashboard.py\'s own JavaScript rendered every row\n'
     '  below, and the DOM it produced was then frozen so the page needs no\n'
