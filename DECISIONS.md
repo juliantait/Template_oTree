@@ -11,6 +11,106 @@ working.
 
 ---
 
+## The CREED lab block is CARRIED in `settings.py`, verbatim and last — the seat list is never hardcoded — 2026-09-01
+
+The CREED Lab Launcher (a GUI app, outside this repo) replaces the hand-edited
+`scripts/set_up_otree.bat` that lab staff run today. Each lab computer opens a
+desktop shortcut at the oTree ROOM carrying that machine's seat label
+(`/room/study?participant_label=B3`), and the admin page only shows the per-seat
+present/absent board when the room has a `participant_label_file`. The launcher
+writes that seat file into ITS OWN config directory and exports two variables —
+`CREED_LABEL_FILE` (absolute path) and `CREED_ROOM_NAME` (default `study`). It
+never writes a file into a project. A project opts in by carrying one marked
+block at the END of `settings.py`, which this template now does, so a study
+forked from here is CREED-lab ready with nothing to paste.
+
+- **The block is carried VERBATIM, both marker lines intact, and the delivery
+  vehicle was deleted.** `# === CREED lab support (paste at the END of
+  settings.py) ===` … `# === end CREED lab support ===` is how the launcher
+  detects that a project has opted in — a **text match**, not an import and not
+  a config key. So reflowing a marker, renaming it, or wrapping the block in
+  anything is not cosmetic: it makes the launcher believe this project never
+  opted in, and the only symptom is a lab session whose board is empty. The
+  block arrived as a top-level `creed_lab_block.py`; that file is a delivery
+  vehicle, not code this project runs, and a stray second copy of the block is
+  exactly the one-concept-two-implementations shape this file exists to prevent,
+  so it was removed in the same change.
+- **It APPENDS, and it MUTATES the room dict in place — it never reassigns
+  `ROOMS`.** This template's single room carries `welcome_page`
+  (`_templates/room_welcome.html`, the styled room gate — see the 2026-08-17
+  entry on the `experiment` → `study` rename) and `display_name`. A block that
+  ended `ROOMS = [dict(name=…, participant_label_file=…)]` would resolve
+  perfectly, raise nothing, fail no test, and drop both keys — the participant's
+  first screen silently reverts to oTree's bare framework interstitial. In-place
+  mutation keeps every key the project set, whatever they are, which is what
+  makes the block safe to carry into a study whose room this template has never
+  seen. The corollary is that POSITION is load-bearing in both directions: the
+  block must come after the project's `ROOMS` (or there is nothing to mutate),
+  and **nothing may assign `ROOMS` after the block** (that assignment wins, and
+  deletes the room the launcher just configured, again with no error).
+- **The duplicate `ADMIN_USERNAME` is deliberate. Do not "tidy" either one.**
+  `settings.py:1104` sets it from `OTREE_ADMIN_USERNAME`; the block sets it
+  again at the end, falling back to whatever was already defined. Under this
+  template the two resolve to the same value in every environment — that is
+  measured, not assumed. Both stay: the block's line is the only reason the
+  launcher's admin-username box does anything in a project that hardcodes
+  `ADMIN_USERNAME` to a literal (oTree reads the admin PASSWORD from the
+  environment but not the username), and it must sit after the project's own
+  assignment or the project's would win. Deleting the template's line instead
+  would make a block a study is free to remove the sole source of the
+  template's own credentials. This is precisely the "helpfulness" failure
+  CLAUDE.md opens with: the redundancy reads as an unfinished merge and is not.
+- **Rejected: hardcoding the CREED seat lists into `settings.py`.** Tempting,
+  because it needs no launcher and no environment variable. But which seats
+  exist — and which machines are broken this week — is a fact about the LAB,
+  not about a study, and a hardcoded list makes every study forked from this
+  template carry its own copy. They then go stale **independently and
+  invisibly**: nothing errors, the board simply stops matching the room, and it
+  is noticed on the day of a session. One seat file, owned by the launcher and
+  passed by path, is the single implementation. The project owns nothing.
+- **`room_gate_test.py` §3b's synthetic configuration is now the REAL lab
+  configuration.** That check builds a room WITH a `participant_label_file` by
+  hand, because without one a native GET submit strips the id and its
+  auto-submit loop cannot happen — it says so in its own docstring, and it says
+  the dangerous configuration is what "a copied study that adds a labels file"
+  would land in. Under the launcher that is no longer hypothetical: a CREED lab
+  run is always that configuration. §3b is therefore load-bearing for the lab,
+  not a defensive extra, and must not be simplified away on the grounds that
+  the template ships no labels file.
+
+**Enforced:** `scripts/tests/creed_lab_block_test.py`, 91 checks, no server and
+no browser. Its method is a **differential**, not a remembered baseline: each
+scenario executes `settings.py`'s source text in a child process twice under a
+byte-identical environment — once as shipped, once with everything from the
+start marker cut away — and requires `ROOMS`, `ADMIN_USERNAME`,
+`ADMIN_PASSWORD`, `DEBUG`, `DATABASES` and `SECRET_KEY` to be equal. A child
+process because `settings.py` is import-once and its values are decided by the
+environment at import; a differential because a committed "this is what ROOMS
+looked like" literal answers the wrong question and goes stale the first time a
+study edits its room. §1 pins the markers and that the block is genuinely last;
+§2 pins from the AST that nothing binds `ROOMS` after the block, and compares
+the executed `ROOMS` against the `ROOMS = [...]` literal evaluated alone, which
+catches a MUTATION an assignment scan cannot see; §3 runs the CREED variables
+absent; **§4 is the backwards-compatibility guarantee** — it runs the exact
+environment `scripts/set_up_otree.bat` exports, **read out of the bat file
+rather than retyped**, so `DATABASES`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`,
+`DEBUG` and `ROOMS` are proved identical for the workflow the lab uses today;
+§5 proves an ACTIVE block adds exactly one key to the room and changes or
+removes none, asserted as a key-by-key diff; §6 pins the `study` default and
+that a launcher pointed at a different room name leaves the `study` room alone;
+§7 aims squarely at `ADMIN_USERNAME`, the one name both assignments write.
+The suite was mutation-checked when it was written: reassigning `ROOMS` instead
+of mutating, removing the environment guard, and appending `ROOMS = []` after
+the block each turn it red on the checks that name that failure.
+
+**NOT enforced, honestly:** nothing here exercises the actual launcher, which is
+not in this repository — the contract tested is the block's behaviour under the
+variables the launcher is documented to export, not that the launcher exports
+them. The block's BODY is not pinned byte-for-byte against a copy of the
+delivered file either (deleting that copy was the point), so an edit inside the
+markers is caught by the behavioural checks above and not by a checksum. And as
+everywhere in this repo, nothing runs the suite for you.
+
 ## Prolific participants are told the quiz-attempts limit up front — gated on `recruitment`, counted from the ejection threshold — 2026-08-25
 
 A Prolific participant who fails the comprehension check too many times is
