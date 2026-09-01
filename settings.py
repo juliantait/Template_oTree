@@ -1251,3 +1251,39 @@ def _check_prelaunch():
 
 
 _check_prelaunch()
+
+# === CREED lab support (paste at the END of settings.py) ===
+# Inert unless the launcher sets these variables, so it is safe to leave in permanently.
+import os as _os
+
+if _os.environ.get("CREED_LABEL_FILE"):
+    # The launcher picked a room and wrote a seat list for this run.
+    _creed_room = _os.environ.get("CREED_ROOM_NAME", "study")
+
+    # ROOMS may not exist yet in this project.
+    try:
+        ROOMS
+    except NameError:
+        ROOMS = []
+
+    # Add the room only if the project does not already define it, so a project
+    # that has its own room keeps its own settings.
+    if not any(r.get("name") == _creed_room for r in ROOMS):
+        ROOMS = list(ROOMS) + [dict(name=_creed_room, display_name="CREED lab session")]
+
+    # Point that room at the seat list the launcher wrote. Mutating in place
+    # means any other keys the project set on the room survive.
+    for _room in ROOMS:
+        if _room.get("name") == _creed_room:
+            _room["participant_label_file"] = _os.environ["CREED_LABEL_FILE"]
+
+# oTree reads the admin password from the environment but hardcodes the admin
+# username, so without this line the launcher's admin username box would do
+# nothing. With no environment variable set this keeps whatever the project
+# already had, or "admin" if it had none.
+try:
+    _creed_admin_default = ADMIN_USERNAME
+except NameError:
+    _creed_admin_default = "admin"
+ADMIN_USERNAME = _os.environ.get("OTREE_ADMIN_USERNAME", _creed_admin_default)
+# === end CREED lab support ===
