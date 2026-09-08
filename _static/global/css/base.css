@@ -2223,3 +2223,58 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
     padding: 12px 14px;
     resize: vertical;
 }
+
+/* =========================================================================
+   BOT DETECTION (bucket A) — see _ai/ai_bot_detection_spec.md
+   ========================================================================= */
+
+/* COMPONENT — welcome decoy honeypot concealment (A1, §6a).
+   EXCEPTION: this component has NO specimen in template.html, deliberately. It
+   is a DECOY control a real participant must NEVER see, so a visible specimen
+   would either be invisible (pointless) or reveal the decoy (defeating it).
+   INTENTION: hide the decoy consent control from every human — with AND without
+   JavaScript — using a STATIC rule (not a JS toggle: if JS hid it, a no-JS human
+   would see and could tick it, causing a false ejection). It stays in the DOM
+   and remains fillable, so an agent that fills or clicks every control on the
+   page still engages it. Off-screen rather than display:none so it is a real,
+   submittable control for such an agent. */
+.hp-decoy {
+    position: absolute;
+    left: -9999px;
+    top: auto;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+}
+
+/* COMPONENT — DOT-BI visual gate (A2). INTENTION: present the moving challenge
+   and, by PROGRESSIVE ENHANCEMENT, show the no-JS fallback instead when the
+   page's own script has not run. The default (no JS) state HIDES the challenge
+   and SHOWS the fallback; dot_bi.js adds `.dotbi-ready` to `.dotbi-wrap`, which
+   flips them. Static rules — the JS only toggles the class it keys on. */
+.dotbi-challenge { display: none; }
+.dotbi-nojs { display: block; }
+.dotbi-wrap.dotbi-ready .dotbi-challenge { display: block; }
+.dotbi-wrap.dotbi-ready .dotbi-nojs { display: none; }
+
+/* The animation is centred and capped so it fits a laptop and a phone without
+   forcing the page to scroll horizontally; the intrinsic frame is 400x336. */
+.dotbi-stage { text-align: center; margin: 16px 0; }
+.dotbi-image {
+    max-width: 100%;
+    width: 400px;
+    height: auto;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+}
+.dotbi-answer-row { align-items: center; }
+.dotbi-input {
+    font: inherit;
+    color: var(--color-text);
+    background: var(--color-background);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    max-width: 12ch;
+    text-align: center;
+}

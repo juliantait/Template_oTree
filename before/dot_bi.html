@@ -1,0 +1,93 @@
+{{ block content }}
+{% include '_static/global/html/css_bundle.html' %}
+
+{# A2 — THE DOT-BI VISUAL BOT GATE (bucket A). A hidden number is drawn in the
+   same moving random-dot texture as its background; a human reads it from the
+   motion, current LLM/vision agents do not. The animated variant is served under
+   an OPAQUE id (dotbi_img); the answer is graded ENTIRELY server-side and never
+   reaches this page.
+
+   PROGRESSIVE ENHANCEMENT, and it is load-bearing. The challenge needs
+   JavaScript (dot_bi.js times the answer, marks that JS ran, and enforces the
+   answer field). So by DEFAULT — with JS off — the challenge is HIDDEN and the
+   no-JS fallback is SHOWN (static CSS, `.dotbi-challenge` / `.dotbi-nojs` in
+   base.css). dot_bi.js adds `.dotbi-ready` to the wrapper, which flips them.
+   A no-JS participant therefore only ever sees the fallback's Return control,
+   and submitting it (bot_dotbi_js empty) is how the server routes them to the
+   gentle no_javascript (-6) return — never a bot code. #}
+<div class="experimental-screen">
+    <div class="screen-card narrative-card dotbi-wrap">
+        <div class="experimental-header">
+            <div class="eyebrow">Before you begin</div>
+            <h2 class="header-title">A quick visual check</h2>
+        </div>
+
+        <div class="experimental-content">
+            {# THE CHALLENGE — revealed by dot_bi.js (hidden by default). #}
+            <div class="dotbi-challenge">
+                <p class="section-text">
+                    The moving image below contains a number. Watch it for a
+                    moment, then type the number you see.
+                </p>
+                <div class="dotbi-stage">
+                    {# OPAQUE id only — never the answer, never an original
+                       filename. Not participant-supplied, so no escaping needed. #}
+                    <img class="dotbi-image" alt="A short animation containing a number"
+                         src="{% static dotbi_img %}?v={{ C.STATIC_VERSION }}">
+                </div>
+                <div class="stacked-form dotbi-answer-row">
+                    <label for="bot_dotbi_answer" class="section-text">
+                        The number you see:
+                    </label>
+                    {# Raw input (name matches the form field). NOT HTML-required —
+                       dot_bi.js adds `required` only when JS is present, so a
+                       no-JS submit is never blocked by browser validation on a
+                       hidden field. A blank answer under JS is re-prompted by
+                       DotBiGate.error_message (a nudge, not an ejection). #}
+                    <input type="text" inputmode="numeric" pattern="[0-9]*"
+                           autocomplete="off" name="bot_dotbi_answer"
+                           id="bot_dotbi_answer" class="dotbi-input">
+                </div>
+                <div class="button-row">
+                    <input type="submit" value="Continue" class="next-button">
+                </div>
+            </div>
+
+            {# THE NO-JS FALLBACK — shown by default, hidden once dot_bi.js runs.
+               Gentle, no-punishment, and its Return submit routes to -6. #}
+            <div class="dotbi-nojs">
+                <p class="section-text">
+                    This short check needs JavaScript, which appears to be turned
+                    off in your browser, so you’re not able to continue here.
+                </p>
+                <div class="panel panel--hug">
+                    <strong>There is no penalty for this.</strong> Please use the
+                    button below to return your submission — it simply frees your
+                    place and is not a rejection.
+                </div>
+                <div class="button-row">
+                    <input type="submit" value="Return" class="next-button">
+                </div>
+            </div>
+        </div>
+
+        {# Hidden carriers, rendered explicitly as hidden inputs (an unplaced form
+           field auto-renders as a visible box). dot_bi.js fills these; a no-JS
+           submit leaves them empty, which is exactly how the -6 path is detected. #}
+        <input type="hidden" name="bot_dotbi_ms" id="bot_dotbi_ms" value="">
+        <input type="hidden" name="bot_dotbi_js" id="bot_dotbi_js" value="">
+        {# The OPAQUE variant id (already visible in the image src above, so this
+           exposes nothing new — the ANSWER never appears). It makes the submitted
+           POST self-describing (which variant was shown) and lets the automated
+           test walkers compute the answer the server's own way. The server
+           RECOMPUTES the variant from participant.code and NEVER trusts this
+           value (it is not a declared form field). #}
+        <input type="hidden" name="bot_dotbi_variant" value="{{ dotbi_variant_id }}">
+
+        {% include '_static/global/html/logo_section.html' %}
+    </div>
+</div>
+
+<script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
+<script src="{% static 'global/js/dot_bi.js' %}?v={{ C.STATIC_VERSION }}"></script>
+{{ endblock }}

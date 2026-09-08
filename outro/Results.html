@@ -175,6 +175,32 @@
                 </div>
             </div>
 
+            {# B1 RESULTS-STAGE CHECKBOX HONEYPOT (§6b). A decoy control whose
+               visible label ("Completed") lies about its purpose — the recorded
+               verdict lives in participant.honeypot_results_failed, whose name
+               says what it really is. Ticking follows the instruction (0); an
+               unticked departure trips it (10). RECORD-ONLY: it never ejects.
+               A PLAIN HTML checkbox, NOT an oTree form field: Results is the
+               terminal page (a form submit would strand the participant on
+               OutOfRange with no way back to Prolific), so the verdict rides the
+               live socket — the one server-side channel that exists without a
+               further submit (results.js -> results_live_method). Present for
+               every completer; the instruction copy branches on the study type. #}
+            <div class="stacked-form results-confirm">
+                {% if names_prolific %}
+                <label for="results_completed" class="section-text">
+                    <input type="checkbox" id="results_completed" name="results_completed">
+                    Please tick this box before completing and returning to Prolific.
+                    <strong>Completed</strong>
+                </label>
+                {% else %}
+                <label for="results_completed" class="section-text">
+                    <input type="checkbox" id="results_completed" name="results_completed">
+                    Please tick this box before finishing. <strong>Completed</strong>
+                </label>
+                {% endif %}
+            </div>
+
         </div>
 
         {# THE ENDING FOOTER — the way back to Prolific (a real link needing no
@@ -196,6 +222,40 @@
    plain link, and the page works with JavaScript off (pinned by
    render_check leg AF). #}
 <script src="{% static 'global/js/results.js' %}?v={{ C.STATIC_VERSION }}"></script>
+
+<script>
+    // B1 RESULTS-STAGE HONEYPOT — a LIVE-DATA field, NOT a form-submit field.
+    // Results is TERMINAL: the completion link below is a real no-JS <a>, and a
+    // form submit here would send the participant to oTree's OutOfRange with no
+    // way back to Prolific. So the "Completed" checkbox pushes its state over the
+    // live socket (the SAME channel as the tab-monitor live_method — see
+    // outro.results_live_method / common.focus_live_method), leaving the terminal
+    // page and its pinned no-JS completion link fully intact.
+    //
+    // RECORD-ONLY, and the DEFAULT is the TRIP: the server set
+    // honeypot_results_failed = 10 when this page loaded; an onchange that pushes
+    // a TICK records 0 (compliant), and un-ticking pushes 10 again. A no-JS human
+    // simply never pushes and stays at the default 10 — fine for a record-only
+    // end-stage honeypot, since a no-JS bot is already stopped at the DOT-BI
+    // gate. It never ejects. liveSend is checked at CALL time (oTree defines it
+    // at the foot of its own page).
+    (function () {
+        function wire() {
+            var cb = document.getElementById('results_completed');
+            if (!cb) { return; }
+            cb.addEventListener('change', function () {
+                try {
+                    if (typeof liveSend === 'function') {
+                        liveSend({type: 'results_completed', value: cb.checked});
+                    }
+                } catch (e) { /* never touch the page */ }
+            });
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', wire);
+        } else { wire(); }
+    })();
+</script>
 
 {% if prolific_completion_redirects %}
 <script>
