@@ -42,6 +42,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from main_contract import task_page_submits
 from otree_inprocess import boot, path_of, page_name_of  # noqa: E402
+import bot_walker  # noqa: E402  (solves the armed DOT-BI gate on a prolific walk)
 
 ot = boot(production=True)          # MUST come before any app import
 
@@ -74,8 +75,13 @@ STRIPPED = [
     # integrity modules and their thresholds
     'tab_monitor', 'quiz_comprehension_dq', 'tab_monitor_max_violations',
     'tab_monitor_threshold_ms', 'tab_monitor_overlay_delay_ms',
+    # bot detection: the MODULE flag (missing => off via common.flag, so bucket A
+    # simply does not run) and the ARMING off-switch (missing => armed via
+    # common.cfg, the safe direction — the ejectors still fire).
+    'bot_detection', 'bot_detection_armed',
     # measurement
     'telemetry_passive_capture', 'telemetry_device_capture', 'telemetry_focus_trace',
+    'telemetry_behaviour_capture',
     'collect_outro_demographics', 'collect_outro_bank_details',
     # consent-page copy switches
     'display_before_show_duration_and_fee',
@@ -86,6 +92,9 @@ STRIPPED = [
     'prolific_capture_participant_id', 'prolific_completion_redirects', 'prolific_allowed_devices',
     'prolific_cc_code', 'prolific_noconsent_code', 'prolific_dq_quiz_code',
     'prolific_dq_tab_code', 'prolific_device_code',
+    # the two neutral bot-detection return codes (missing => shipped placeholder
+    # via common.cfg, exactly like the other completion codes)
+    'prolific_bot_return_code', 'prolific_nojs_code',
     # misc
     'pilot_feedback', 'build_static_version',
     # build provenance — stripped because a session created before build
@@ -131,6 +140,12 @@ def drive(client, code, quiz_answers, wrong_quiz=None, max_steps=120):
             break
         if page == 'quiz' and wrong_quiz and not failed_once:
             data, failed_once = dict(wrong_quiz), True
+        elif page == 'DotBiGate':
+            # The DOT-BI gate ships ARMED on the prolific profile (unless the
+            # bot_detection flag was among the stripped keys, in which case this
+            # page never shows). Solve it so a frozen prolific walk still
+            # completes; the answer is computed the server's way from the code.
+            data = bot_walker.dotbi_payload(code)
         else:
             data = payload_for(page, quiz_answers)
         try:

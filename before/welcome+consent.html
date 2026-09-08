@@ -150,6 +150,21 @@
             </p>
             {% endif %}
 
+            {# A1 WELCOME DECOY HONEYPOT (bucket A) — a decoy consent control a
+               real participant NEVER sees. Concealed by the STATIC `.hp-decoy`
+               rule in base.css, which hides it with AND without JavaScript (a JS
+               toggle would let a no-JS human see and tick it -> a false
+               ejection). It is a PLACED form field, so oTree does not
+               auto-render it as a visible labelled box; only an agent that fills
+               or clicks every control on the page engages it. Rendered only when
+               the active bot-detection module is on (Prolific) — never in the
+               lab. A trip is a GENTLE, no-punishment return (see
+               before.welcome.before_next_page). #}
+            {% if show_welcome_decoy %}
+            <div class="hp-decoy" aria-hidden="true">
+                {% formfield player.honeypot_welcome %}
+            </div>
+            {% endif %}
         </div>
 
         <div class="button-row">
@@ -199,6 +214,14 @@
    no-Prolific-anything rule. #}
 <input type="hidden" name="participant_id_url" id="participant_id_url" value="">
 {% endif %}
+{% if telemetry_behaviour_capture %}
+{# B3 BEHAVIOUR CAPTURE carrier — an EXPLICIT hidden input (an unplaced form
+   field would auto-render as a visible box). telemetry_capture.js accumulates
+   passive page behaviour and writes a JSON string here; it rides this page's
+   own POST, the same reliable mechanism as client_ms. A no-JS submit leaves it
+   empty, which is stored as "not measured". #}
+<input type="hidden" name="telemetry_welcome" id="telemetry_welcome" value="">
+{% endif %}
 
 <script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
 {% if telemetry_device_capture %}
@@ -207,6 +230,12 @@
    User-Agent rules from js_vars (welcome.js_vars -> common.device_ua_rules), so
    it does not carry a second copy of them. #}
 <script src="{% static 'global/js/device_capture.js' %}?v={{ C.STATIC_VERSION }}"></script>
+{% endif %}
+{% if telemetry_behaviour_capture %}
+{# The shared behaviour-capture module. It reads TELEMETRY_CONFIG from js_vars
+   (welcome.js_vars) for its target hidden field, so it carries no page-specific
+   copy — the same one file the quiz page includes. #}
+<script src="{% static 'global/js/telemetry_capture.js' %}?v={{ C.STATIC_VERSION }}"></script>
 {% endif %}
 {% if prolific_capture_participant_id %}
 <script>

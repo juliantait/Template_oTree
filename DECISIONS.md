@@ -11,6 +11,111 @@ working.
 
 ---
 
+## AI-bot & inattentive-participant detection — the two-bucket build — 2026-09-08
+
+Built from `_ai/ai_bot_detection_spec.md` (design settled by Julian 2026-09-07).
+Adds a detection layer that distinguishes "a bot arrived" from the existing
+tab-monitor / comprehension / device gates, keeps it invisible in the lab, and
+can be disarmed for the AI bots we run to test our own studies. The design rests
+on an **A/B split**, and every piece below is placed to keep that split coherent.
+
+- **Two orthogonal new controls, not one.** `bot_detection` is the MODULE flag
+  (bucket A on/off), resolved ON in the prolific profile and absent/OFF in the
+  lab, read via raw `common.flag` (missing ⇒ off). `bot_detection_armed` is a
+  **fourth independent axis** in `SESSION_CONFIG_DEFAULTS` (default `True`),
+  **not** in any recruitment profile and **not** tied to DEBUG or study type,
+  read via `common.cfg` (missing ⇒ armed, the safe direction). *Why two, kept
+  apart:* the module can be present-but-not-ejecting so our AI testers run the
+  gates and record verdicts without being screened out — and that has to work in
+  **study mode** (`OTREE_PRODUCTION=1`), which is exactly when a DEBUG- or
+  study-type-tied switch would be unreachable. Enforced: `common.bot_detection_active`
+  (module runs) vs `common.bot_detection_armed` (and ejects); the fourth-axis
+  header in `settings.py`; `scripts/tests/bot_detection_test.py` §3.
+
+- **A disarmed launch LOUD-FAILS but is OVERRIDABLE — the tension is the point.**
+  Because the switch is reachable in production, `settings._prelaunch_problems`
+  makes `bot_detection_armed=False` a hard-stop (so `scripts/prelaunch_check.py`
+  exits non-zero and the boot banner prints it in the `####` block), for ANY
+  recruitment and regardless of DEBUG. It is deliberately waivable by an explicit
+  `ALLOW_DISARMED_BOT_DETECTION=1`, which turns the failure into a printed,
+  acknowledged waiver line (`_disarmed_waiver_line`, shared by the banner and the
+  script). *Rejected:* softening to an advisory (a forgotten disarm would ship a
+  wide-open study) and hardening to unskippable (a disarmed study-mode bot run
+  must be possible on purpose). Enforced: `bot_detection_test.py` §7 pins all
+  three cases.
+
+- **Two ejectors, both GENTLE, one shared ending.** The welcome decoy honeypot
+  (A1, `before.welcome`) and the DOT-BI visual gate (A2, `before.DotBiGate`) both
+  set exit `-5 bot_return`, split by `participant.bot_detection_cause` ∈
+  {`honeypot_welcome`, `dot_bi`}, and route to ONE non-accusatory
+  `outro.NeutralReturn` screen (prominent RETURN button, "no penalty" wording,
+  never revealing the mechanism). *Why gentle, not a DQ:* a real human can trip
+  either (a password manager ticking a hidden control; a `prefers-reduced-motion`
+  reader who genuinely cannot solve a motion challenge), so it must never accuse
+  — the false-positive class and the gentle handling are tied. The collapsed-
+  distinction rule is satisfied by the CAUSE (two populations, one code), and
+  `-5`/`-6` are kept apart from the punitive `-2`/`-3`. Enforced:
+  `common.is_neutral_return` (one predicate read by the routing belt and the
+  page), `Ended.is_displayed` narrowed to cede these, `bot_detection_test.py`
+  §1/§1b.
+
+- **No-JavaScript at DOT-BI is its OWN code (`-6 no_javascript`), and the
+  off-switch does not touch it.** JS-capability is not a bot signal, so it gets a
+  separate neutral code and its own return code, but the same gentle screen. It
+  fires whenever the module is active and JS did not run — armed or disarmed —
+  because a disarmed session still owes a JS-less participant the friendly return.
+  The DOT-BI page is progressive-enhancement: challenge hidden by default (static
+  CSS), `dot_bi.js` reveals it and sets a "JS ran" flag; its absence at submit is
+  how the server routes to `-6`. Enforced: `bot_detection_test.py` §2;
+  `before.DotBiGate.before_next_page`.
+
+- **DOT-BI answer served under an OPAQUE id; graded server-side; never leaks.**
+  The upstream repo encodes the answer only in the filename stem, so a subset of
+  15 variants is vendored under opaque ids (`_static/global/img/dot_bi/dotbi_NN.gif`,
+  ~37 MB, GIFs unaltered) and the id→answer map lives in `dot_bi.py`, server-side,
+  never under `_static/` and never sent to the client. *Format choice:* kept the
+  original GIFs, NOT re-encoded — lossy compression of the random-noise texture
+  can destroy the concealment and human-solvability could not be verified here,
+  so per the spec we keep GIFs and ship fewer. MIT LICENSE + ATTRIBUTION retained
+  beside the variants. Enforced: `bot_detection_test.py` §5 (answer/number/filename
+  absent from the page; opaque id is the media reference).
+
+- **Bucket B is record-only and recorded EVERYWHERE, including the lab.** The
+  results-stage "Completed" checkbox honeypot (decoy label / truthful field name
+  `honeypot_results_failed`) and the welcome/quiz behaviour capture
+  (`telemetry_welcome`/`telemetry_quiz`, one shared `telemetry_capture.js`
+  re-authored from the Mission Possible tracker approach) never eject and keep
+  recording even when the off-switch is on. *The results checkbox lives ON the
+  terminal `Results` page as a LIVE-DATA field, not a form-submit field (Julian,
+  2026-09-08).* `Results` is terminal — its no-JS completion link is a real `<a>`
+  (heavily pinned, render_check leg AF), and a form submit there would send the
+  participant to oTree's `OutOfRangeNotification` with no way back to Prolific
+  (verified in the oTree source). So the checkbox pushes its state over the
+  **live socket** — the SAME channel as the tab-monitor `live_method`
+  (`outro.results_live_method` delegates to it) — with NO extra screen and the
+  terminal page fully intact. THE DEFAULT IS THE TRIP: reaching `Results` records
+  `10`, and only a socket-pushed TICK records `0` (compliant); a no-JS human
+  stays at the default `10`, which is fine for a record-only end-stage honeypot
+  since a no-JS bot is already stopped at the DOT-BI gate. Init stays `0` so a
+  NON-completer who never reached `Results` reads `0` ("complied OR never
+  reached", disambiguated by `exit_code`). An earlier build used a standalone
+  `CompletionCheck` page before `Results`; it was removed because it added a
+  screen and Julian wanted the checkbox on `Results` with the link untouched. The
+  derived AI-likelihood flags are computed EX-POST in
+  `scripts/format_session_data.py` (thresholds 75 ms / 50 chars, re-tunable in
+  one place), which then blanks the raw JSON in the analysis-ready export.
+  Enforced: `bot_detection_test.py` §4/§6 (incl. a direct `results_live_method`
+  record-logic check), `bot_render_check.py` (checkbox visible + link intact on
+  Results), `scripts/tests/telemetry_derivation_test.py`.
+
+- **The prolific profile now ships the gates armed, so every prolific-completing
+  walker must pass them.** The DOT-BI answer is computed the server's way in ONE
+  shared test helper (`scripts/tests/bot_walker.py`, `dot_bi` loaded by path, the
+  participant code as the variant seed) and the welcome decoy is passed by leaving
+  its checkbox untouched. A real bot has neither the repo module nor the
+  participant seed, so the test's ability to solve the gate is a property of the
+  harness, not a leak. `frozen_config_test`'s `STRIPPED` list gained the new keys.
+
 ## The CREED lab block is CARRIED in `settings.py`, verbatim and last — the seat list is never hardcoded — 2026-09-01
 
 The CREED Lab Launcher (a GUI app, outside this repo) replaces the hand-edited

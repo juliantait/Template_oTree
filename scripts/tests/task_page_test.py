@@ -35,6 +35,7 @@ sys.path.insert(0, _TESTS_DIR)
 from _repo import REPO_ROOT  # noqa: E402  (also puts REPO_ROOT on sys.path)
 
 from otree_inprocess import boot, path_of, page_name_of
+import bot_walker
 
 ot = boot(production=True)          # MUST come before any app import
 
@@ -86,8 +87,27 @@ def main_test():
         check(cls.live_method is common.focus_live_method,
               f'{cls.__name__}.live_method IS common.focus_live_method '
               f'(the ejecting handler, one implementation)')
+        # THE QUIZ IS THE ONE SANCTIONED EXCEPTION: it defines its OWN js_vars to
+        # add the behaviour-capture TELEMETRY_CONFIG, and the four-pieces rule
+        # says such a page must SPREAD common.monitor_js_vars rather than replace
+        # it (participant_tab_monitor.py's gotcha). So for the quiz we assert the
+        # SPREAD (below), not identity; every other page keeps the identity.
+        if cls is intro.quiz:
+            continue
         check(cls.js_vars is common.monitor_js_vars,
               f'{cls.__name__}.js_vars IS common.monitor_js_vars')
+    # The quiz's own js_vars must still deliver the monitor config unchanged — a
+    # page that overrode js_vars and forgot to spread it would silently lose its
+    # monitoring. Prove it produces the same TAB_MONITOR_CONFIG the base would.
+    import types as _types
+    _pl = _types.SimpleNamespace(session=_types.SimpleNamespace(
+        config={'tab_monitor': True, 'tab_monitor_max_violations': 2,
+                'tab_monitor_threshold_ms': 4000, 'tab_monitor_overlay_delay_ms': 400,
+                'telemetry_behaviour_capture': True}))
+    _qv = intro.quiz.js_vars(_pl)
+    check(_qv.get('TAB_MONITOR_CONFIG') == common.monitor_js_vars(_pl).get('TAB_MONITOR_CONFIG'),
+          'intro.quiz.js_vars SPREADS the monitor config (it adds TELEMETRY_CONFIG, '
+          'never replaces the monitor payload)')
     check(issubclass(main.TaskPage, participant_tab_monitor.MonitoredPage),
           'TaskPage itself subclasses MonitoredPage (generalised, not duplicated)')
     for cls in (main.GameStart, main.payoff):
@@ -155,7 +175,11 @@ def main_test():
             quiz_html = resp.text
         if page in (None, 'GameStart'):
             break
-        resp = client.post(path_of(resp), data=payload_for(page, correct),
+        # The DOT-BI gate (bucket A, armed on prolific) sits before intro; solve
+        # it the server's way so the walk reaches the task page.
+        data = (bot_walker.dotbi_payload(code) if page == 'DotBiGate'
+                else payload_for(page, correct))
+        resp = client.post(path_of(resp), data=data,
                            allow_redirects=True, headers=DESKTOP)
     check(page_name_of(path_of(resp)) == 'GameStart',
           'walked a prolific participant onto the task page')

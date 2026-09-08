@@ -1,0 +1,68 @@
+{{ block content }}
+{% include '_static/global/html/css_bundle.html' %}
+
+{# THE ONE SHARED NEUTRAL RETURN ending (outro.NeutralReturn) — for every
+   bot-detection ejection: bot_return (-5, both causes) and no_javascript (-6).
+
+   IT IS DELIBERATELY GENTLE AND NON-ACCUSATORY. The message and the RETURN
+   button are prominent; the copy NEVER reveals why (never names the honeypot or
+   the DOT-BI check) and never accuses. A wrongly-failing human — a
+   `prefers-reduced-motion` reader who genuinely cannot solve the motion check,
+   an autofill that ticked a hidden control — must be stopped kindly and told
+   there is no penalty, not blamed. The two -5 populations are kept apart in the
+   DATA (participant.bot_detection_cause), never on screen.
+
+   THE RETURN BUTTON IS A REAL LINK, not a scripted button, so it works with
+   JavaScript off — the same invariant as the completion links on Ended/Results
+   (prolific_return_footer.html). It carries the neutral return code from the ONE
+   builder (outro.completion_link). #}
+<div class="experimental-screen">
+    <div class="screen-card narrative-card">
+        <div class="experimental-header">
+            <div class="eyebrow">Study ended</div>
+            <h2 class="header-title">You can’t continue with this study</h2>
+        </div>
+
+        <div class="experimental-content">
+            <p class="section-text">
+                Unfortunately you’re not able to continue with this study, so it
+                has ended here. This can happen for a number of reasons and is
+                often nothing to do with you.
+            </p>
+            {# THE NO-PUNISHMENT MESSAGE — prominent, because reassuring the
+               participant that returning costs them nothing is the whole point of
+               the gentle design. Bold is reserved for the phrase that changes
+               what someone does / how they feel about doing it. #}
+            <div class="panel panel--hug">
+                <strong>There is no penalty for this.</strong> Please use the
+                button below to return your submission on Prolific. Returning it
+                simply frees your place — it is not a rejection and it does not
+                affect your standing.
+            </div>
+
+            {% if show_return_link %}
+            <p class="section-text closing-instruction">
+                Please click the button below to return to Prolific.
+            </p>
+            {% endif %}
+        </div>
+
+        {# THE RETURN BUTTON — a real link (needs no JavaScript), prominent
+           (.next-button), carrying the neutral return code. Rendered only when
+           there is a platform to return to; escaped because ibis does not
+           auto-escape and the URL carries a config-supplied value. The logo
+           strip stays a direct child of the card, like every ending. #}
+        {% if show_return_link %}
+        <div class="button-row">
+            <a class="next-button" href="{{ completionlink|escape }}">
+                Return to Prolific
+            </a>
+        </div>
+        {% endif %}
+
+        {% include '_static/global/html/logo_section.html' %}
+    </div>
+</div>
+
+<script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
+{{ endblock }}
