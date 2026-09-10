@@ -1514,7 +1514,15 @@ def _check_prelaunch():
 _check_prelaunch()
 
 # === CREED lab support (paste at the END of settings.py) ===
-# Inert unless the launcher sets these variables, so it is safe to leave in permanently.
+# CREED LAB SUPPORT — appended by the CREED lab launcher. It re-asserts, from the
+# environment, everything a lab run needs, so it OVERRIDES anything hardcoded
+# above and is completely inert unless the launcher sets its variables. Safe to
+# leave in permanently. TO REMOVE: delete everything from the banner/marker line
+# above (`# === CREED lab support ... ===`) to the END of the file.
+#
+# NB the marker line above is how the launcher DETECTS that a project opted in (a
+# text match, not an import) — do not reflow, rename or wrap it. See DECISIONS.md,
+# "The CREED lab block is carried in settings.py".
 import os as _os
 
 if _os.environ.get("CREED_LABEL_FILE"):
@@ -1547,4 +1555,51 @@ try:
 except NameError:
     _creed_admin_default = "admin"
 ADMIN_USERNAME = _os.environ.get("OTREE_ADMIN_USERNAME", _creed_admin_default)
+
+# The overrides below re-assert the rest of what a lab run needs, each from the
+# ONE environment variable it depends on and each inert without it. Like the
+# ADMIN_USERNAME line above they are REDUNDANT in this template — its own
+# DATABASES / ADMIN_PASSWORD / DEBUG already read the same variables higher up —
+# but a study forked from here may hardcode any of these to a literal, and then
+# the launcher's box for it would silently do nothing without the override. So
+# they stay, and each must sit AFTER the project's own assignment to win. Do not
+# "tidy" them as duplication (the ADMIN_USERNAME argument in DECISIONS.md applies
+# to each of these too).
+
+# Database: rebuild it as Postgres from the DB_* variables when DB_NAME is set,
+# so it wins over a DATABASES hardcoded above. Left alone (the project's own
+# DATABASES stands) when DB_NAME is absent. Kept byte-identical to the template's
+# own Postgres branch above, so with the launcher off the resolved value is the
+# same either way.
+if _os.environ.get("DB_NAME"):
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql_psycopg2",
+            "NAME": _os.environ.get("DB_NAME"),
+            "USER": _os.environ.get("DB_USER"),
+            "PASSWORD": _os.environ.get("DB_PASSWORD"),
+            "HOST": _os.environ.get("DB_HOST", "localhost"),
+            "PORT": _os.environ.get("DB_PORT", "5432"),
+        }
+    }
+
+# Admin password: take it from the environment when the launcher sets it, so it
+# wins over a password hardcoded above. Left alone when the variable is absent.
+if _os.environ.get("OTREE_ADMIN_PASSWORD"):
+    ADMIN_PASSWORD = _os.environ["OTREE_ADMIN_PASSWORD"]
+
+# Admin login level: lock it to what the launcher asks for (STUDY in the lab, so
+# the admin, the data exports and the experimenter dashboard require a login).
+# Applied only when OTREE_AUTH_LEVEL is set; otherwise oTree's own reading of the
+# variable stands.
+if _os.environ.get("OTREE_AUTH_LEVEL"):
+    AUTH_LEVEL = _os.environ["OTREE_AUTH_LEVEL"]
+
+# Debug: re-derive it from OTREE_PRODUCTION when that variable is set, so a study
+# that hardcoded DEBUG = True above cannot ship debug pages (skip buttons, quiz
+# solutions in the browser) into a lab session. Presence-based, exactly like the
+# template's own derivation at the top of the file (OTREE_PRODUCTION set => off).
+# Left alone when the variable is absent.
+if "OTREE_PRODUCTION" in _os.environ:
+    DEBUG = "OTREE_PRODUCTION" not in _os.environ
 # === end CREED lab support ===

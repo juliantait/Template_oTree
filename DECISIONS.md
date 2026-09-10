@@ -11,6 +11,78 @@ working.
 
 ---
 
+## The CREED lab block is EXTENDED to the launcher block's full behaviour — DATABASES, ADMIN_PASSWORD, AUTH_LEVEL and DEBUG, each env-gated — 2026-09-10
+
+The CREED Lab Launcher now appends a larger self-documenting block to a project's
+`settings.py`: one that re-asserts from the environment *everything* a lab run
+needs, so it overrides anything hardcoded above and stays inert without the
+launcher's variables. This template carried only the SMALLER version (ROOMS +
+`participant_label_file` + `ADMIN_USERNAME`, the 2026-09-01 entry below). It is
+brought up to the same behaviour so a study forked from here is protected the
+same way the launcher would protect a hand-written project — CREED-lab-ready with
+nothing to paste.
+
+- **Four overrides added, each guarded by the ONE variable it needs.** `DATABASES`
+  rebuilt as Postgres from the `DB_*` variables, gated on `DB_NAME`, so it wins
+  over a hardcoded `DATABASES`; `ADMIN_PASSWORD` from `OTREE_ADMIN_PASSWORD`,
+  gated on that var; `AUTH_LEVEL` from `OTREE_AUTH_LEVEL`, gated on that var; and
+  `DEBUG` re-derived from `OTREE_PRODUCTION`, gated on that var, so a fork that
+  hardcoded `DEBUG = True` cannot ship debug pages (skip buttons, quiz solutions)
+  into a lab session. With NO lab environment set, every guard is false and the
+  file resolves byte-for-byte as before.
+- **In THIS template the overrides are REDUNDANT — and that redundancy is exactly
+  why the block stays inert.** The template already env-derives `DATABASES`,
+  `ADMIN_PASSWORD` and `DEBUG` higher up (from the same variables, with the same
+  defaults), so each override reproduces the value the base code already produced.
+  That is precisely what keeps `creed_lab_block_test.py`'s differential green: the
+  block-present and block-absent runs resolve identically. The fork PROTECTION is
+  the point — a fork is free to hardcode any of these to a literal, and then the
+  launcher's box for it would silently do nothing without the override sitting
+  after the project's own assignment. Do not "tidy" them as duplication; this is
+  the same "helpfulness" failure the `ADMIN_USERNAME` duplication defends against
+  (see the 2026-09-01 entry, whose argument now applies to each of these keys).
+- **`AUTH_LEVEL` is genuinely new to `settings.py`.** The template never set it —
+  oTree reads `OTREE_AUTH_LEVEL` from the environment itself
+  (`otree/settings.py`), which is why `scripts/prelaunch_check.py` reads the env
+  rather than the setting. Assigning it here to the same env value is consistent,
+  not a change, and it is deliberately absent from the differential's `COMPARED`
+  set, so it neither helps nor breaks that test — it is the one override with no
+  base value to match, and it simply mirrors what oTree already derives.
+- **The marker line is kept VERBATIM; the banner is added as comments under it.**
+  The task asked for an unmissable opening banner; the `# === CREED lab support
+  (paste at the END of settings.py) ===` line is how the launcher DETECTS opt-in
+  (a text match) and is pinned character-for-character by
+  `creed_lab_block_test.py` §1, so it must not be reflowed into a new banner. The
+  banner wording ("appended by the CREED lab launcher … TO REMOVE delete
+  everything from the marker line above to the END of the file … safe to leave in
+  permanently") is carried in the comment lines immediately below the marker,
+  which are cut with the block and have no behavioural effect.
+- **Rejected: rebuilding `DATABASES` from `DATABASE_URL`** (which the bat also
+  exports). Parsing the URL would produce a `DATABASES` dict of a different shape
+  than the template's own `DB_*` Postgres branch, so the block-present and
+  block-absent runs would DIFFER and the differential would go red — a false
+  alarm hiding a real question. The task and the base code both use `DB_*`, so the
+  override matches the base exactly. **Also rejected: renaming the marker into the
+  new banner** (breaks launcher detection and §1) and **dropping the guards to
+  assign unconditionally** (a fork with no lab environment would then have its
+  `DATABASES`/`DEBUG` silently reset at import).
+
+**Enforced:** `scripts/tests/creed_lab_block_test.py` — `DATABASES`,
+`ADMIN_PASSWORD` and `DEBUG` are already in its `COMPARED` set, so the differential
+now covers the three new env-derived overrides for free, under BOTH the bare
+environment (§3) and the exact `set_up_otree.bat` environment (§4, which sets
+`DB_NAME`, `OTREE_ADMIN_PASSWORD`, `OTREE_PRODUCTION` and `OTREE_AUTH_LEVEL`), and
+§4 additionally asserts the Postgres engine, the database name, `ADMIN_PASSWORD`
+and `DEBUG=False` absolutely. `AUTH_LEVEL` is not compared (no base value to match).
+`scripts/prelaunch_check.py`, `scripts/tests/frozen_config_test.py` and
+`scripts/tests/room_gate_test.py` stay green. **NOT enforced, honestly:** as with
+the 2026-09-01 entry, nothing here exercises the real launcher — the contract
+tested is the block's behaviour under the variables the launcher is documented to
+export, not that the launcher exports them, and the block body is not pinned
+byte-for-byte.
+
+---
+
 ## AI-bot & inattentive-participant detection — the two-bucket build — 2026-09-08
 
 Built from `_ai/ai_bot_detection_spec.md` (design settled by Julian 2026-09-07).
