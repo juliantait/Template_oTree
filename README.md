@@ -772,6 +772,17 @@ Otherwise the generator lives in the intro app it previews: run `python3 intro/g
   strand in-progress participants). Authenticates REST calls with
   `OTREE_REST_KEY` when `OTREE_AUTH_LEVEL=STUDY`; fails loudly rather than
   leaving the room unbound.
+
+  > **CREED lab sessions are started with a separate tool, the oTree Lab
+  > Launcher** — a small pywebview app that lives in its own private repository
+  > (forkable on request) and is **not part of this template**. The experimenter
+  > picks a lab and its seats; the launcher sets the launch environment
+  > (Postgres database, admin login, production mode, and the room's seat list),
+  > starts `otree prodserver`, and can append the CREED lab support block —
+  > already shipped at the end of `settings.py` — to any project's `settings.py`
+  > so the study redirects into the lab while staying completely inert unless the
+  > launcher is running. The launcher's code is not in this repo; only the
+  > support block it targets is.
 - `scripts/prelaunch_check.py` : the machine-checked **pre-launch** guard as a
   standalone command (non-zero exit on any testing/placeholder value). Run it in
   the target environment, e.g. `OTREE_PRODUCTION=1 python scripts/prelaunch_check.py`.
