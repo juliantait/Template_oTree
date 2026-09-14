@@ -48,6 +48,7 @@
 
 from otree.api import *
 import common
+import dot_bi
 import fee_guard
 import identity
 import payoff_guard
@@ -173,6 +174,30 @@ class Player(BasePlayer):
     # this column carries the OWNING ROW's participant code so payment triage
     # can find both sides. Silent to the participant, by design.
     prolific_label_conflict = models.StringField(blank=True)
+    # --- BOT DETECTION carriers (bucket A; §6a/§A2). These are on-page FORM
+    #     carriers only — the authoritative records are the PARTICIPANT fields,
+    #     written in before_next_page. See _ai/ai_bot_detection_spec.md. ---
+    # A1 WELCOME DECOY: a hidden decoy consent control a real participant never
+    # sees (CSS-concealed with AND without JS). Left untouched by a human (and by
+    # a no-JS human); an agent that fills/clicks every control engages it. Plain
+    # checkbox, no widget-required, blank=True so an untouched submit is fine.
+    honeypot_welcome = models.BooleanField(
+        blank=True, widget=widgets.CheckboxInput,
+        # A plausible-but-redundant acknowledgement, so an agent that ticks every
+        # control engages it. A real participant never sees it (CSS-concealed),
+        # so this label is only ever read by something reading the whole form.
+        label="I acknowledge that I can leave the study at any time.")
+    # A2 DOT-BI: the typed number, the client ms, and a "JS ran" flag. All
+    # blank=True — a no-JS submit leaves them empty, which is exactly how the
+    # no-JavaScript gentle return (-6) is detected. Copied to the participant
+    # fields in DotBiGate.before_next_page; the ANSWER is graded server-side
+    # against dot_bi.py and NEVER leaves the server.
+    bot_dotbi_answer = models.StringField(blank=True)
+    bot_dotbi_ms = models.StringField(blank=True)
+    bot_dotbi_js = models.StringField(blank=True)
+    # --- BEHAVIOUR CAPTURE carrier (bucket B, B3): the raw telemetry blob for
+    #     the welcome page, copied verbatim to participant.telemetry_welcome. ---
+    telemetry_welcome = models.LongStringField(blank=True)
     # Spare columns (future-proofing) — never rename in place; see CODEBOOK.md.
     spare_str_1 = models.LongStringField(blank=True)
     spare_str_2 = models.LongStringField(blank=True)
@@ -387,8 +412,16 @@ def _leaving_study(player) -> bool:
     ORDER IS LOAD-BEARING: the screen-out test comes first because it is what
     keeps `_declined_consent` from reading a consent field that was never on the
     screened-out participant's form (see its docstring).
+
+    A participant a bot-detection ejector has already stopped (the welcome decoy,
+    or the DOT-BI gate) is leaving too: is_neutral_return sees the -5/-6 exit code
+    the ejector wrote, so the remaining `before` pages (ID confirmation, the
+    tab-monitor agreement, the DOT-BI gate itself) skip themselves for them,
+    exactly as they do for a decliner or a screen-out.
     """
-    return common.is_screened_out(player.participant) or _declined_consent(player)
+    return (common.is_screened_out(player.participant)
+            or common.is_neutral_return(player.participant)
+            or _declined_consent(player))
 
 
 # DEVICE CAPTURE IS DECIDED BY `telemetry_device_capture` ALONE (Julian, 2026-08-13).
@@ -565,6 +598,19 @@ class welcome(Page):
         # same script, so they appear and disappear together.
         if _flag(player, 'telemetry_device_capture'):
             fields += ['is_mobile', 'device_info_json']
+        # A1 WELCOME DECOY (bucket A) — present only when the active
+        # bot-detection module is running for this session (Prolific + on), so it
+        # is NOT ADDED AT ALL in the lab (inert & invisible there). Present even
+        # when DISARMED: the ejectors still run and record their verdict, they
+        # just do not screen out. The concealing CSS is what hides it from a
+        # human; get_form_fields is what stops oTree auto-rendering it as a
+        # visible labelled box.
+        if common.bot_detection_active(player):
+            fields.append('honeypot_welcome')
+        # B3 BEHAVIOUR CAPTURE carrier — present wherever the capture module is on
+        # (both profiles resolve it on, so everywhere including the lab).
+        if _flag(player, 'telemetry_behaviour_capture'):
+            fields.append('telemetry_welcome')
         return fields
 
     @staticmethod
@@ -579,9 +625,17 @@ class welcome(Page):
         client records `ua_rules: 'unavailable'` and classifies nothing rather
         than falling back to a private list.
         """
-        if not _flag(player, 'telemetry_device_capture'):
-            return {}
-        return dict(DEVICE_UA_RULES=common.device_ua_rules())
+        v = {}
+        if _flag(player, 'telemetry_device_capture'):
+            v['DEVICE_UA_RULES'] = common.device_ua_rules()
+        # BEHAVIOUR CAPTURE config for the shared telemetry_capture.js: it reads
+        # its target hidden-field name from here (like tab_monitor.js reads
+        # TAB_MONITOR_CONFIG and device_capture.js reads DEVICE_UA_RULES — one
+        # pattern, no private copies). The welcome page has no per-control
+        # structure to name, so no `fields`.
+        if _flag(player, 'telemetry_behaviour_capture'):
+            v['TELEMETRY_CONFIG'] = dict(target='telemetry_welcome', page='welcome')
+        return v
 
     @staticmethod
     def vars_for_template(player):
@@ -631,6 +685,11 @@ class welcome(Page):
             # promise and the ejection cannot disagree. Safe accessor: a frozen
             # session config falls back to the shipped default rather than 500.
             max_quiz_attempts=common.max_quiz_attempts(cfg),
+            # A1 WELCOME DECOY: render the CSS-concealed decoy control only when
+            # the active bot-detection module is on (Prolific). Never in the lab.
+            show_welcome_decoy=common.bot_detection_active(player),
+            # B3 BEHAVIOUR CAPTURE: render the hidden telemetry carrier + script.
+            telemetry_behaviour_capture=_flag(player, 'telemetry_behaviour_capture'),
         )
 
     # NB: there is deliberately no error_message here blocking `is_mobile`.
@@ -667,6 +726,33 @@ class welcome(Page):
         if _flag(player, 'telemetry_device_capture') and player.device_info_json:
             common.extra_set(player.participant, 'device_info_json', player.device_info_json)
 
+        # A1 WELCOME DECOY (bucket A). PASS = decoy left untouched (a real human,
+        # and a no-JS human, never see it, so it comes back unset) -> stays 0.
+        # TRIP = the decoy came back engaged -> 1, and on an ARMED session this is
+        # a GENTLE ejection: bot_return (-5), cause honeypot_welcome, routed to
+        # the shared neutral return ending (never a punitive DQ). Recorded (but
+        # not ejecting) when the module is active-but-disarmed — a bot-tester's
+        # verdict is exactly what we want to keep. Only when the module is active
+        # for this session (Prolific); in the lab the field is not even present.
+        if common.bot_detection_active(player):
+            if player.field_maybe_none('honeypot_welcome'):
+                player.participant.honeypot_welcome_failed = 1
+                if common.bot_detection_armed(player):
+                    common.set_bot_return(player.participant, common.BOT_CAUSE_WELCOME)
+            common.refresh_bot_flag(player.participant)
+
+        # B3 BEHAVIOUR CAPTURE: copy the raw blob VERBATIM to the participant
+        # field (no derivation here — the AI flags are computed downstream). A
+        # no-JS submit leaves it blank, which reads as "not measured". Wrapped so
+        # a malformed blob never breaks the page (instrumentation must never break
+        # a page); the LongStringField has no byte cap, so the whole blob is kept.
+        if _flag(player, 'telemetry_behaviour_capture'):
+            try:
+                player.participant.telemetry_welcome = (
+                    player.field_maybe_none('telemetry_welcome') or '')
+            except Exception:
+                pass
+
         common.stamp_stage(player.participant, common.STAGE_CONSENT)
         # And the entry-block exit stamp, written by EVERY page of this app and
         # deliberately overwritten each time — see common.stamp_left_before_app.
@@ -679,9 +765,11 @@ class welcome(Page):
 
     @staticmethod
     def app_after_this_page(player, upcoming_apps):
-        # Send non-consenters straight to the final app (outro), skipping intro
-        # and main entirely.
-        if _declined_consent(player):
+        # Send non-consenters — AND a participant the welcome decoy just ejected
+        # (bot_return -5) — straight to the final app (outro), skipping intro and
+        # main entirely. The neutral-return case lands on outro.NeutralReturn;
+        # the remaining `before` pages skip themselves via _leaving_study.
+        if _declined_consent(player) or common.is_neutral_return(player.participant):
             return upcoming_apps[-1]
 
 
@@ -831,10 +919,138 @@ class TabMonitorAgree(Page):
         common.stamp_left_before_app(player.participant)
 
 
+class DotBiGate(Page):
+    """A2 — the DOT-BI visual bot gate (bucket A ejector; the primary ACTIVE
+    check). A bundled pre-rendered animated variant shows a hidden number; the
+    participant types it. A wrong answer under working JS is a DEFINITE, GENTLE
+    ejection — a hard stop to the shared neutral return ending (§5b), NOT a retry
+    loop and NOT a punitive DQ, because a real human can genuinely fail a visual
+    motion test (a `prefers-reduced-motion` reader, a paused / low-frame render).
+
+    A PLAIN `Page`, not a MonitoredPage, and that is deliberate: it lives in
+    `before`, which sits at/before the tab-monitor arming boundary and is
+    outside the monitored-by-default rule (participant_tab_monitor.py). It comes
+    AFTER TabMonitorAgree so the arming block stays together.
+
+    SECURITY: the variant is served under an OPAQUE id; the hidden number is
+    graded ENTIRELY server-side (dot_bi.check) and NEVER reaches the client — the
+    page carries only the opaque image id, no answer, no original filename.
+
+    THE NO-JAVASCRIPT PATH is its OWN gentle exit (`no_javascript`, -6), kept
+    separate from a bot-detection return (-5): a participant lacking JS is a
+    capability fact, not a bot signal. It fires regardless of the arming
+    off-switch (§7) — a disarmed session still owes a JS-less participant the
+    friendly unpunished return. dot_bi.js sets a "JS ran" flag; its absence at
+    submit is how the server knows JS never ran, and the page shows a no-JS
+    fallback with a Return control instead of the challenge.
+    """
+    template_name = 'before/dot_bi.html'
+    form_model = 'player'
+
+    @staticmethod
+    def is_displayed(player):
+        # Prolific-only (bucket A inert & invisible in the lab), and never for a
+        # participant already on their way to an ending (a decliner, a screen-out,
+        # or someone the welcome decoy already ejected). Shown even when DISARMED
+        # — it still runs and records; it just does not eject.
+        if not common.bot_detection_active(player):
+            return False
+        return not _leaving_study(player)
+
+    @staticmethod
+    def get_form_fields(player):
+        return ['bot_dotbi_answer', 'bot_dotbi_ms', 'bot_dotbi_js']
+
+    @staticmethod
+    def _variant(player):
+        """This participant's variant id — deterministic from the participant
+        code, so a reload (and the server-side grade) uses the SAME one, and it
+        rotates across participants. Stateless: no need to store it."""
+        return dot_bi.choose_variant(player.participant.code)
+
+    @staticmethod
+    def vars_for_template(player):
+        variant = DotBiGate._variant(player)
+        # ONLY the opaque id / static path reaches the template — never the
+        # answer, never an original filename. The template renders the path via
+        # {% static %}; the bare opaque id makes the POST self-describing (the
+        # server still recomputes and never trusts a client-sent variant).
+        return dict(dotbi_img=dot_bi.variant_static_path(variant),
+                    dotbi_variant_id=variant)
+
+    @staticmethod
+    def error_message(player, values):
+        # NOT-ENGAGING NEVER AUTO-FAILS. Under working JS the answer is required:
+        # a blank submit is re-prompted (a nudge), not treated as a wrong answer.
+        # This is the ONLY re-render — a WRONG (non-empty) answer is graded in
+        # before_next_page and is a hard stop, never a retry. Under no-JS the
+        # flag is empty and there is no error, so the fallback's Return control
+        # submits straight through to the -6 gentle return.
+        js_ran = (values.get('bot_dotbi_js') or '') == '1'
+        answered = str(values.get('bot_dotbi_answer') or '').strip()
+        if js_ran and not answered:
+            return "Please type the number shown in the moving image to continue."
+
+    @staticmethod
+    def before_next_page(player, timeout_happened):
+        participant = player.participant
+        # This is the LAST `before` page on a prolific session, so it is the end
+        # of the ENTRY block: stamp left_before_app (overwriting, like every
+        # other `before` page — see common.stamp_left_before_app) so the DOT-BI
+        # dwell is billed to entry, not to the intro. Unconditional and first, so
+        # every branch below (pass, wrong, no-JS) records it.
+        common.stamp_left_before_app(participant)
+        # Defensive belt: the page is only shown when the module is active, but a
+        # crafted POST could reach here otherwise — do nothing then.
+        if not common.bot_detection_active(player):
+            return
+        # Record the raw client telemetry (never breaks the page).
+        try:
+            ms_raw = (player.field_maybe_none('bot_dotbi_ms') or '').strip()
+            participant.bot_dotbi_ms = float(ms_raw) if ms_raw else None
+        except Exception:
+            participant.bot_dotbi_ms = None
+        answer = (player.field_maybe_none('bot_dotbi_answer') or '').strip()
+        participant.bot_dotbi_answer = answer[:20]
+        participant.bot_dotbi_attempts = (
+            (participant.vars.get('bot_dotbi_attempts') or 0) + 1)
+
+        js_ran = (player.field_maybe_none('bot_dotbi_js') or '') == '1'
+        if not js_ran:
+            # NO JAVASCRIPT — the gentle -6 return, regardless of the arming
+            # off-switch. bot_dotbi_passed stays None (never shown a solvable
+            # challenge), which is honest: they did not fail the test, they could
+            # not take it.
+            common.set_no_javascript(participant)
+            common.refresh_bot_flag(participant)
+            return
+
+        # JS ran: grade server-side. The answer is compared against dot_bi's
+        # server-only key; it never reaches the client, so this is the one place
+        # the verdict is decided.
+        passed = dot_bi.check(participant.code, answer)
+        participant.bot_dotbi_passed = passed
+        if not passed and common.bot_detection_armed(player):
+            # DEFINITE gentle ejection — a hard stop to NeutralReturn, cause
+            # dot_bi (bot_dotbi_passed also recorded False, so the failure is
+            # legible beyond the cause). Disarmed: recorded False, NOT ejected.
+            common.set_bot_return(participant, common.BOT_CAUSE_DOT_BI)
+        common.refresh_bot_flag(participant)
+
+    @staticmethod
+    def app_after_this_page(player, upcoming_apps):
+        # A wrong answer (-5) or a no-JS submit (-6) routes straight to the outro,
+        # landing on NeutralReturn. A passing participant returns None and
+        # continues into intro/main normally.
+        if common.is_neutral_return(player.participant):
+            return upcoming_apps[-1]
+
+
 # LAB      : startpage (the CREED gate) -> welcome/consent
-#            (no ID page and no agreement page: the lab captures no platform id
-#             and ships the tab monitor off)
+#            (no ID page, no agreement page and no DOT-BI gate: the lab captures
+#             no platform id, ships the tab monitor off, and bucket A is inert)
 # PROLIFIC : [device screen-out, no page of its own] -> welcome/consent ->
 #            ConfirmProlificID -> TabMonitorAgree (arms the monitor BEFORE the
-#            instructions and the quiz — see TabMonitorAgree's docstring)
-page_sequence = [startpage, welcome, ConfirmProlificID, TabMonitorAgree]
+#            instructions and the quiz) -> DotBiGate (the active visual bot gate,
+#            after the arming block; a wrong answer -> gentle NeutralReturn)
+page_sequence = [startpage, welcome, ConfirmProlificID, TabMonitorAgree, DotBiGate]

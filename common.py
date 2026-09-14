@@ -354,6 +354,143 @@ def is_prolific(config) -> bool:
     return recruitment(config) == 'prolific'
 
 
+# =============================================================================
+# BOT DETECTION — the arming predicate, the neutral-return codes, the causes and
+# the reader-facing verdict.  (Full design: _ai/ai_bot_detection_spec.md.)
+# =============================================================================
+# THREE FLAGS, THREE JOBS, and they must not be collapsed (§7 of the spec):
+#   * `bot_detection`        — is the MODULE present for this session? Read via
+#                              raw `flag` (missing => OFF), so a session created
+#                              before the module gets no active bucket A. On in
+#                              the prolific profile, absent/off in the lab.
+#   * `bot_detection_armed`  — does a trip actually EJECT? The independent FOURTH
+#                              axis, read via `cfg` (missing => armed, the safe
+#                              direction). This is the switch Julian flips to run
+#                              our own AI bot testers through without ejection.
+#   * settings.DEBUG          — deliberately ABSENT from the predicate: final
+#                              testing happens in study mode.
+#
+# TWO LEVELS, deliberately distinct. `bot_detection_active` = the module RUNS and
+# RECORDS its verdict for this (Prolific) session; `bot_detection_armed` = and it
+# also EJECTS. Disarming (bot_detection_armed=False) leaves the ejectors running
+# and recording but not screening out — which is exactly what a bot-tester run
+# wants — and it is a READ-TIME override, never a rewrite of the resolved config
+# (the resolve_recruitment_profile guarantee). Bucket A is Prolific-only and
+# inert in the lab, so both predicates require is_prolific.
+
+def bot_detection_active(player) -> bool:
+    """Is the active bot-detection module running for this session?
+
+    True when this is a Prolific session AND the `bot_detection` module flag is
+    on. This gates whether the welcome decoy and the DOT-BI gate RUN and RECORD
+    at all — independent of the arming off-switch, because even a disarmed
+    session still runs them and records their verdict (it just does not eject).
+    Prolific-only: bucket A is completely inert and invisible in the lab.
+    """
+    return is_prolific(player.session.config) and flag(player, 'bot_detection')
+
+
+def bot_detection_armed(player) -> bool:
+    """Does a bot-detection trip actually EJECT this participant? (§7 predicate.)
+
+    armed = the module is active for this session (Prolific + `bot_detection`)
+            AND the fourth-axis off-switch `bot_detection_armed` is on.
+
+    The off-switch is read through `cfg` (the safe accessor), so a session whose
+    frozen config predates the key falls back to the shipped default — ARMED,
+    the safe direction (missing => armed). Disarmed, the ejectors still run and
+    record (bot_detection_active stays True) but this returns False, so nothing
+    is screened out. It does NOT touch the no-JS neutral return, which is a
+    JS-capability fact rather than a detection signal.
+    """
+    return bot_detection_active(player) and bool(
+        cfg(player.session.config, 'bot_detection_armed'))
+
+
+# THE TWO ACTIVE-EJECTOR CAUSES. exit code -5 (bot_return) is ONE neutral code
+# for BOTH ejectors, split by this cause so the two populations stay apart in the
+# data (the collapsed-distinction rule satisfied by the cause, not two codes) —
+# the same shape as the device gate's screenout_cause. Add a third ONLY after
+# revisiting the ejection map in the spec (§4): there are deliberately two.
+BOT_CAUSE_WELCOME = 'honeypot_welcome'
+BOT_CAUSE_DOT_BI = 'dot_bi'
+BOT_DETECTION_CAUSES = (BOT_CAUSE_WELCOME, BOT_CAUSE_DOT_BI)
+
+
+def set_bot_return(participant, cause):
+    """Record a GENTLE bot-detection ejection: exit code -5, with its cause.
+
+    ONE call so an ejector cannot set the code but forget the cause (the two are
+    what keep the -5 populations distinguishable). Never a punitive DQ — the
+    participant is routed to the shared neutral return ending (outro.NeutralReturn)
+    with a prominent no-punishment RETURN button. `cause` must be one of
+    BOT_DETECTION_CAUSES.
+    """
+    set_exit_code(participant, EXIT_CODES['bot_return'])
+    participant.bot_detection_cause = cause
+    refresh_bot_flag(participant)
+
+
+def set_no_javascript(participant):
+    """Record the NO-JAVASCRIPT neutral return: exit code -6.
+
+    A JS-capability fact, NOT a bot signal, so its own code and NO cause — but
+    the same gentle treatment and the same shared return ending. Fires regardless
+    of the arming off-switch (§7): a disarmed session still owes a JS-less
+    participant the friendly unpunished return, never -5.
+    """
+    set_exit_code(participant, EXIT_CODES['no_javascript'])
+    refresh_bot_flag(participant)
+
+
+def is_neutral_return(participant) -> bool:
+    """True for a participant on a GENTLE bot-detection / no-JS return (-5 or -6).
+
+    ONE implementation, read by BOTH the ending page (outro.NeutralReturn) and
+    the routing/belt predicates, so the "which terminal page shows" decision
+    cannot drift. Reads the durable exit code, so it answers the same on any
+    request. Accepts a participant (not a player), like is_screened_out.
+    """
+    return participant.vars.get('exit_code') in (
+        EXIT_CODES['bot_return'], EXIT_CODES['no_javascript'])
+
+
+# THE READER-FACING BOT VERDICT, mirroring tab_monitor_flag: one column an
+# analyst sorts instead of learning seven. Ordered least-to-most severe; the
+# order IS the semantics. Derived in ONE place from the raw columns, which stay
+# the datum.
+BOT_FLAG_ORDER = ('', 'flag', 'screened')
+
+
+def derive_bot_flag(pvars) -> str:
+    """The single derivation. `pvars` is a participant.vars-like mapping.
+
+    'screened'  a bucket-A ejector actually REMOVED them (exit code -5). EXCLUDE.
+    'flag'      not screened, but a bot signal is present in the record — a
+                tripped honeypot, or a wrong DOT-BI answer that did NOT eject
+                (a disarmed / bot-tester run). A covariate for analysis, not a
+                removal.
+    ''          nothing recorded (clean OR never reached — cross-check exit_code,
+                the same read as the honeypot 0s).
+
+    Pure and read-only, so it applies to a live participant, an exported row or a
+    fixture alike.
+    """
+    if pvars.get('exit_code') == EXIT_CODES['bot_return']:
+        return 'screened'
+    if (int(pvars.get('honeypot_welcome_failed') or 0)
+            or int(pvars.get('honeypot_results_failed') or 0)
+            or pvars.get('bot_dotbi_passed') is False):
+        return 'flag'
+    return ''
+
+
+def refresh_bot_flag(participant) -> None:
+    """Recompute the reader-facing bot_flag from the raw columns, from inside the
+    code that changed them (the tab-monitor refresh pattern)."""
+    participant.bot_flag = derive_bot_flag(participant.vars)
+
+
 def max_quiz_attempts(config) -> int:
     """How many graded quiz submissions a participant gets before ejection.
 
@@ -429,6 +566,20 @@ def init_participant(participant):
     # every index; not anything id-related, because the gate must be able to
     # answer the question on a request for any page.
     participant.consent_submitted = False
+    # BOT DETECTION — every field seeded so no export row is ever blank, and so
+    # the "0 = clean OR never reached" read holds from creation (see CODEBOOK and
+    # _ai/ai_bot_detection_spec.md §4). bot_dotbi_passed is NULLABLE (None = not
+    # shown/reached), so it is seeded None, not 0.
+    participant.honeypot_welcome_failed = 0
+    participant.honeypot_results_failed = 0
+    participant.bot_dotbi_passed = None
+    participant.bot_dotbi_answer = ''
+    participant.bot_dotbi_ms = None
+    participant.bot_dotbi_attempts = 0
+    participant.bot_detection_cause = ''
+    participant.bot_flag = ''
+    participant.telemetry_welcome = ''
+    participant.telemetry_quiz = ''
     # BUILD PROVENANCE — seeded BLANK, never with the current build. A row that
     # was created and never arrived did not run any build, and writing today's
     # SHA here is exactly the lie the on-arrival stamp exists to avoid: a
@@ -631,6 +782,12 @@ def removed_from_study(participant) -> bool:
         or v.get('tab_monitor_disqualified')
         or v.get('comprehension_disqualified')
         or v.get('exit_code') == EXIT_CODES['no_consent']
+        # A GENTLE bot-detection / no-JS return (-5 or -6) is also "out of the
+        # study": the ejector fires in `before` and routes past intro/main via
+        # app_after_this_page, and this is the belt to that brace, exactly as the
+        # screen-out and DQ flags are. outro.ending_reason reads the SAME records
+        # for its copy cascade — extend BOTH when adding a mechanism.
+        or is_neutral_return(participant)
     )
 
 

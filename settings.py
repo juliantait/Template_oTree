@@ -20,7 +20,7 @@ import identity
 identity.install_duplicate_label_guard()
 
 # =============================================================================
-# THE THREE AXES  (read this first — between them they determine everything a
+# THE FOUR AXES  (read this first — between them they determine everything a
 # participant experiences, and they are INDEPENDENT of each other)
 # =============================================================================
 # 1. STUDY TYPE (`recruitment`: 'prolific' | 'lab') — the recruitment plumbing,
@@ -38,6 +38,20 @@ identity.install_duplicate_label_guard()
 # 3. PILOT FEEDBACK FORM (`pilot_feedback`) — whether the free-text feedback
 #    page is shown at the end. On for a pilot or a friend test, off for the
 #    real run, regardless of study type or debug.
+# 4. BOT-DETECTION ARMED (`bot_detection_armed`) — the master off-switch for the
+#    ACTIVE bot-detection ejectors (the welcome decoy honeypot and the DOT-BI
+#    gate). It is DELIBERATELY its own axis, tied to NEITHER debug NOR study
+#    type: final testing happens IN study mode (OTREE_PRODUCTION=1) while driving
+#    the study with AI agents, so a switch tied to DEBUG or to prolific-vs-lab
+#    would be unreachable exactly when it is needed. Defaults to ARMED, so a real
+#    run always ships armed (the safe default SHIPS — the toggle is not made
+#    unreachable). Disarming it (bot_detection_armed=False) lets those AI testers
+#    through without being ejected, works in study mode, and is reversible; but a
+#    disarmed launch FAILS the pre-launch check LOUDLY, overridable only by an
+#    explicit acknowledgement (ALLOW_DISARMED_BOT_DETECTION=1). Disarming touches
+#    the two EJECTORS only — the record-only bucket-B measures and the no-JS
+#    neutral return keep working. See `common.bot_detection_armed` and the
+#    _ai/ai_bot_detection_spec.md §7.
 
 # STUDY TYPE default when a session config names none.
 DEFAULT_RECRUITMENT = 'lab'
@@ -50,6 +64,16 @@ DEBUG = 'OTREE_PRODUCTION' not in os.environ
 
 # PILOT FEEDBACK FORM default; a session config may override `pilot_feedback`.
 PILOT_FEEDBACK = False
+
+# BOT-DETECTION ARMED default (axis 4). SHIPS ARMED — the safe default is the
+# one that ships, so a real production run always has the active ejectors on. It
+# is turned OFF only to run our own AI bot testers through a study without
+# ejecting them, and doing so must be a deliberate, acknowledged act (see the
+# LOUD-FAIL-but-overridable prelaunch guard below). NOT in any recruitment
+# profile: it is orthogonal to study type. Read at the point of use through the
+# safe accessor, so a session frozen before the key existed falls back here — to
+# ARMED, the safe direction.
+BOT_DETECTION_ARMED = True
 
 # =============================================================================
 # PARAMETER SCHEME  (everything else hangs off the axes above)
@@ -95,6 +119,20 @@ EXIT_CODES = dict(
     comprehension=-2,    # disqualified: failed the comprehension check
     tab_monitor=-3,      # disqualified: tab-switch monitor
     screened_out=-4,     # device screened out at entry (prolific_allowed_devices gate)
+    # BOT DETECTION — NEUTRAL asked-to-return codes, NOT punitive DQs (see the
+    # EJECTION MAP in _ai/ai_bot_detection_spec.md §4/§5). Both route to the ONE
+    # shared neutral return ending (outro.NeutralReturn), a gentle "you cannot
+    # continue, please return, no penalty" screen.
+    bot_return=-5,       # a bot-detection ejector fired (welcome decoy OR DOT-BI
+                         #   wrong answer). Split by participant.bot_detection_cause
+                         #   in {'honeypot_welcome', 'dot_bi'} so the two
+                         #   populations stay apart in the data (the
+                         #   collapsed-distinction rule satisfied by the cause,
+                         #   not by two codes).
+    no_javascript=-6,    # JavaScript off at the DOT-BI gate — a JS-capability
+                         #   fact, NOT a bot signal, so its OWN code; same gentle
+                         #   treatment and the same shared return ending. NOT
+                         #   touched by the bot_detection_armed off-switch.
 )
 
 # --- exit-code PRESENTATION (the experimenter dashboard reads this) ----------
@@ -152,6 +190,14 @@ EXIT_CODE_META = {
     'comprehension': dict(label='Comprehension DQ',  emoji='\u274c', kind='premature', when='started'),
     'tab_monitor':   dict(label='Tab monitor DQ',    emoji='\U0001f440', kind='premature', when='started'),
     'screened_out':  dict(label='Screened out',      emoji='\U0001f4f5', kind='premature', when='entry'),
+    # NEUTRAL, not a DQ. These MUST NOT render as a red/accusatory disqualification
+    # on the monitor: a bot-detection return is a gentle asked-to-return, and a
+    # wrongly-failing human (a `prefers-reduced-motion` reader who genuinely
+    # cannot solve DOT-BI, an autofill that ticked the decoy) is exactly who the
+    # gentle framing protects. Both causes fire at entry (before a treatment
+    # cell), so when='entry' is honest.
+    'bot_return':    dict(label='Asked to return (bot check)', emoji='\U0001f501', kind='premature', when='entry'),
+    'no_javascript': dict(label='No JavaScript (returned)',    emoji='\U0001f6ab', kind='premature', when='entry'),
 }
 
 # The two ENDED-EARLY groups, in display order, with the wording the monitor
@@ -191,6 +237,19 @@ RECRUITMENT_PROFILES = {
         telemetry_passive_capture=False,
         telemetry_device_capture=False,
         telemetry_focus_trace=False,       # measurement only; off in the lab, like the sibling telemetry flags
+        # BUCKET-B behaviour capture (welcome + quiz telemetry, §D of the bot
+        # spec) is MEASUREMENT and fits the lab — unlike the active bot ejectors,
+        # which the lab profile deliberately never turns on. So it is ON here as
+        # well as online: recording a lab participant's page behaviour never
+        # harms the room and is useful. It NEVER ejects; the derived AI flags are
+        # computed downstream (scripts/format_session_data.py), not live.
+        telemetry_behaviour_capture=True,
+        # NB: `bot_detection` (the ACTIVE ejectors — bucket A) is deliberately
+        # ABSENT here, so it falls through to the OFF baseline. Bucket A is
+        # Prolific-only and completely inert & invisible in the lab: an
+        # experimenter is in the room, and ejecting a seated, paid participant is
+        # the exact incoherence that already makes tab_monitor/quiz DQ
+        # unsupported in the lab (scripts/prelaunch_check.py forbids them there).
         collect_outro_bank_details=True,   # lab pays by bank transfer
         collect_outro_demographics=True,   # lab asks demographics itself (no platform export)
         quiz_reread=True,            # one supervised re-read pass instead of DQ
@@ -206,6 +265,14 @@ RECRUITMENT_PROFILES = {
         telemetry_passive_capture=True,
         telemetry_device_capture=True,
         telemetry_focus_trace=True,        # measurement only; on for online runs, like the sibling telemetry flags
+        telemetry_behaviour_capture=True,  # welcome + quiz behaviour capture (bucket B, §D)
+        # THE ACTIVE BOT-DETECTION EJECTORS (bucket A): the welcome decoy honeypot
+        # and the DOT-BI visual gate. On for online runs, where a self-serve
+        # participant may be a bot with no experimenter to notice. This is the
+        # MODULE on/off flag (read via raw common.flag — missing means OFF, so a
+        # session predating the module gets no bucket A); whether a trip actually
+        # EJECTS is the separate `bot_detection_armed` axis (default armed).
+        bot_detection=True,
         collect_outro_bank_details=False,  # Prolific pays through the platform
         collect_outro_demographics=False,  # Prolific supplies demographics in its own export
         quiz_reread=False,           # no re-read pass online; quiz_comprehension_dq instead
@@ -249,7 +316,8 @@ RECRUITMENT_PROFILES = {
 # populations, which is a different thing and remains wrong.
 PROLIFIC_CODE_PLACEHOLDERS = ('COMP-XXXXXX_REPLACE', 'NOCONS-XXXXXX_REPLACE',
                               'DQ-QUIZ-XXXXXX_REPLACE', 'DQ-TAB-XXXXXX_REPLACE',
-                              'DEVICE-XXXXXX_REPLACE')
+                              'DEVICE-XXXXXX_REPLACE',
+                              'RETURN-XXXXXX_REPLACE', 'NOJS-XXXXXX_REPLACE')
 
 # THE FIVE ENDING POPULATIONS, AND WHY EACH HAS ITS OWN CODE (Julian,
 # 2026-08-15). A shared code COLLAPSES TWO POPULATIONS IRREVERSIBLY, and the
@@ -268,6 +336,11 @@ PROLIFIC_CODE_KEYS = (
     'prolific_dq_quiz_code',     # comprehension DQ -> request return
     'prolific_dq_tab_code',      # tab-monitor DQ   -> request return
     'prolific_device_code',      # device screen-out-> request return
+    # The two NEUTRAL bot-detection returns (asked-to-return, no penalty). Clean
+    # returns, not DQs, but they still send a Prolific participant back with a
+    # code, so they are owed and guarded exactly like the rest.
+    'prolific_bot_return_code',  # bot-detection ejector (-5) -> request return
+    'prolific_nojs_code',        # no-JavaScript at DOT-BI (-6) -> request return
 )
 
 
@@ -415,7 +488,15 @@ DASHBOARD_RETURN_GRACE_SECONDS = 90
 # pure-CSS fixes served from a `?v=`-stamped URL, so WITHOUT this bump a
 # returning participant's cached base.css keeps the broken layout and nothing
 # anywhere reports it. See DECISIONS.md for both entries.
-STATIC_VERSION = '21'
+# 21 -> 22 on 2026-09-08: the AI-bot-detection build adds files under _static/ —
+# `_static/global/js/dot_bi.js` and `_static/global/js/telemetry_capture.js`,
+# the 15 vendored DOT-BI variants + LICENSE + ATTRIBUTION under
+# `_static/global/img/dot_bi/`, and new components in base.css (the `.hp-decoy`
+# decoy concealment and the `.dotbi-*` progressive-enhancement / challenge
+# styles). All are served from `?v=`-stamped URLs, so without this bump a
+# returning participant's cached bundle would miss them. Re-stamped with
+# `python scripts/prelaunch_check.py --stamp-assets`. See DECISIONS.md.
+STATIC_VERSION = '22'
 
 # --- whose study this is ------------------------------------------------------
 # THE ONE PLACE A COPIED STUDY NAMES ITS INSTITUTION IN PROSE (Julian,
@@ -490,6 +571,22 @@ SESSION_CONFIG_DEFAULTS = dict(
     # Show the free-text feedback page at the end of the study. On for a pilot
     # or a friend test, off for the real run.
     pilot_feedback=PILOT_FEEDBACK,
+
+    # =========================================================================
+    # BOT-DETECTION OFF-SWITCH  (axis 4 — independent of study type and DEBUG)
+    # =========================================================================
+    # ARMS the active bot-detection ejectors (the welcome decoy honeypot and the
+    # DOT-BI gate). SHIPS ARMED, on purpose: the safe default is the one that
+    # ships. Set it False ONLY to run our own AI bot testers through a study
+    # (including in study mode) without ejecting them — the ejectors still RUN
+    # and RECORD their verdict, they just do not screen anyone out. A disarmed
+    # launch FAILS the prelaunch check LOUDLY, overridable only by the explicit
+    # ALLOW_DISARMED_BOT_DETECTION=1 acknowledgement (see _prelaunch_problems).
+    # NOT in any recruitment profile — it is its own axis. Read at the point of
+    # use through common.cfg (missing => armed, the safe direction). Disarming
+    # does NOT touch the no-JS neutral return (a JS-capability fact, not a bot
+    # signal) or the record-only bucket-B measures.
+    bot_detection_armed=BOT_DETECTION_ARMED,
 
     # =========================================================================
     # GAME AND DESIGN
@@ -653,6 +750,19 @@ SESSION_CONFIG_DEFAULTS = dict(
     # main.Player and their wiring in main/__init__.py. See DECISIONS.md and
     # CODEBOOK.md §2a.
     telemetry_focus_trace=False,              # passive per-page focus/unfocused-time trace
+    # BEHAVIOUR CAPTURE on the WELCOME and QUIZ pages only (bucket B / measure B3
+    # of the bot-detection spec, §D). ONE shared capture module
+    # (_static/global/js/telemetry_capture.js) re-authored from the Mission
+    # Possible tracker approach records raw passive behaviour (keystrokes, paste,
+    # mouse, scroll, tab-blur, timing) into a hidden field per page; the raw JSON
+    # rides the page's own POST into participant.telemetry_welcome /
+    # participant.telemetry_quiz. It NEVER ejects and NEVER derives anything live
+    # — the AI-likelihood flags are computed EX-POST in
+    # scripts/format_session_data.py. Recorded EVERYWHERE (both profiles resolve
+    # it ON, including the lab), and it keeps recording even when the
+    # bot_detection off-switch is on. Only these two pages carry it; task pages
+    # differ per study and are a study's own choice (cf. telemetry_focus_trace).
+    telemetry_behaviour_capture=False,
 
     # =========================================================================
     # BUILD  (build_*)
@@ -733,6 +843,24 @@ SESSION_CONFIG_DEFAULTS = dict(
     tab_monitor_max_violations=2,   # disqualify on the Nth recorded tab-away (intro/main only)
     tab_monitor_threshold_ms=4000,  # continuous away-time that counts as a violation
     tab_monitor_overlay_delay_ms=400,  # grace before the warning overlay appears
+
+    # =========================================================================
+    # INTEGRITY — BOT DETECTION  (bot_detection; the OFF-SWITCH is the axis above)
+    # =========================================================================
+    # The MODULE on/off flag for the ACTIVE bot-detection ejectors (bucket A of
+    # _ai/ai_bot_detection_spec.md): the welcome decoy honeypot (A1) and the
+    # DOT-BI visual gate (A2). Off by default like every module; the prolific
+    # profile turns it on and the lab profile leaves it off (bucket A is
+    # Prolific-only and inert & invisible in the lab). Read via raw common.flag,
+    # so a session created before the module existed reads it as OFF.
+    #
+    # THREE FLAGS, THREE JOBS — do not collapse them:
+    #   * bot_detection        — is the module present for this session (here);
+    #   * bot_detection_armed   — does a trip EJECT (the 4th axis, at the top);
+    #   * settings.DEBUG        — deliberately ABSENT from the arming predicate.
+    # The verdict-recording bucket-B measures (results checkbox, welcome/quiz
+    # telemetry) are separate and record regardless of this flag.
+    bot_detection=False,
 
     # =========================================================================
     # PROLIFIC  —  LAST, AND EVERY KEY HERE IS PREFIXED `prolific_`
@@ -834,6 +962,16 @@ SESSION_CONFIG_DEFAULTS = dict(
     # PROMPTS the participant to return the submission, which frees the place;
     # the bare researcher URL it replaces left the submission sitting in limbo.
     prolific_device_code='DEVICE-XXXXXX_REPLACE',      # device screen-out
+    # THE TWO NEUTRAL BOT-DETECTION RETURN CODES. Both are asked-to-return, no
+    # penalty (NOT a DQ code): the welcome decoy and a wrong DOT-BI answer share
+    # `prolific_bot_return_code` (-5, split by bot_detection_cause in the data),
+    # and a no-JavaScript DOT-BI participant gets `prolific_nojs_code` (-6). Both
+    # are REQUEST_RETURN codes — they prompt the participant to return the
+    # submission, freeing the place — and both are owed to a Prolific participant
+    # even without completion redirects (a bot-detected participant has no
+    # experimenter), so _prelaunch_problems guards them in the prolific branch.
+    prolific_bot_return_code='RETURN-XXXXXX_REPLACE',  # bot-detection return (-5)
+    prolific_nojs_code='NOJS-XXXXXX_REPLACE',          # no-JavaScript return (-6)
     # NB: no screened-out code. See PROLIFIC_CODE_PLACEHOLDERS above.
 )
 
@@ -961,6 +1099,21 @@ PARTICIPANT_FIELDS = [
     'consent_submitted',    # the consent page was submitted (the gate's boundary)
     'build_sha',            # build provenance: the commit this participant ARRIVED on ('' = never arrived)
     'build_number',         # build provenance: that build's number (None = never arrived)
+    # --- BOT DETECTION (family `bot_`; honeypots keep the `honeypot_*_failed`
+    #     grouping so they eyeball as a block in the export). All are PARTICIPANT
+    #     fields (one row per person, next to exit_code), read with .vars.get /
+    #     field_maybe_none, never bare. See _ai/ai_bot_detection_spec.md §4 and
+    #     the CODEBOOK bot-detection tier. ---
+    'honeypot_welcome_failed',   # welcome decoy honeypot: 0 clean/never-reached, 1 tripped (A1)
+    'honeypot_results_failed',   # results checkbox honeypot: default 10 on reaching Results, 0 when the box is ticked; 0 also = never reached (B1)
+    'bot_dotbi_passed',          # DOT-BI gate: None not shown/reached, True passed, False wrong answer (A2)
+    'bot_dotbi_answer',          # DOT-BI: the number the participant submitted ('' default)
+    'bot_dotbi_ms',              # DOT-BI: client ms to answer (None until answered)
+    'bot_dotbi_attempts',        # DOT-BI: graded attempts (0 default; no retry loop, so 0 or 1)
+    'bot_detection_cause',       # which ejector fired: 'honeypot_welcome' | 'dot_bi' | '' (splits the -5 population)
+    'bot_flag',                  # READER-FACING derived verdict: '' | 'flag' | 'screened' (derive_bot_flag)
+    'telemetry_welcome',         # raw behaviour-capture JSON blob from the welcome page (B3; '' if not measured)
+    'telemetry_quiz',            # raw behaviour-capture JSON blob from the quiz page (B3; '' if not measured)
 ]
 # Description of PARTICIPANT_FIELDS:
 # - temp_data: Temporary storage for any participant-specific data during the session.
@@ -1033,6 +1186,38 @@ PARTICIPANT_FIELDS = [
 #   or not). The device gate's boundary: past it the check never applies again.
 #   A durable fact rather than a page index, because indices move when the page
 #   sequence does and the gate must answer on requests for any page.
+# - honeypot_welcome_failed: welcome decoy verdict. Init 0; set to the
+#   distinctive 1 ONLY when the decoy is engaged. 0 means "clean OR never
+#   reached", NOT "confirmed human" — cross-check exit_code.
+# - honeypot_results_failed: results-stage checkbox verdict, recorded over the
+#   live socket (it is a LIVE field on the terminal Results page, not a form
+#   field — see outro.results_live_method). THE DEFAULT IS THE TRIP: init 0
+#   (never reached Results), set to the distinctive 10 when the participant
+#   REACHES Results, and cleared to 0 only when they TICK "Completed" (a pushed
+#   compliance signal). So 10 = a completer who did not tick / had no JS; 0 =
+#   complied OR never reached (disambiguate with exit_code). Record-only, never
+#   ejects. See CODEBOOK.
+# - bot_dotbi_passed / bot_dotbi_answer / bot_dotbi_ms / bot_dotbi_attempts:
+#   the DOT-BI visual gate's record. bot_dotbi_passed is NULLABLE on purpose —
+#   None = not shown/never reached, True = solved, False = wrong answer (a
+#   definite ejection when armed). Read with field_maybe_none. The answer/ms are
+#   the submitted number and the client time; attempts counts graded submissions
+#   (0 or 1 — a wrong answer is a hard stop, never a retry loop).
+# - bot_detection_cause: which active ejector fired for this participant —
+#   'honeypot_welcome' or 'dot_bi', '' otherwise. It is what keeps the two -5
+#   (bot_return) populations apart in the export (the device-gate screenout_cause
+#   shape). Set by common.set_bot_return.
+# - bot_flag: the READER-FACING derived verdict, mirroring tab_monitor_flag —
+#   '' (nothing), 'flag' (a record-only bot signal is present), 'screened' (a
+#   bucket-A ejector actually removed them). Derived in ONE place
+#   (common.derive_bot_flag) from the raw columns above; the raw columns stay the
+#   datum, this is a reading of them.
+# - telemetry_welcome / telemetry_quiz: the RAW behaviour-capture JSON blob from
+#   the welcome and quiz pages (measure B3). Stored verbatim, never derived live;
+#   the AI-likelihood flags are computed EX-POST by
+#   scripts/format_session_data.py, which then blanks these in the analysis-ready
+#   export (the raw JSON stays in the raw oTree export). Blank means "not
+#   measured" (no JS, or the module off), never "clean".
 
 SESSION_FIELDS = []
 
@@ -1139,11 +1324,76 @@ SECRET_KEY = os.environ.get('OTREE_SECRET_KEY', 'dev-secret-key-change-me')
 # axes; the env derivation must never be overridden with a hardcoded value.)
 
 
+def _allow_disarmed_bot_detection() -> bool:
+    """Is the explicit disarmed-launch waiver set in the environment?
+
+    The one, visible acknowledgement that turns the disarmed-launch hard-stop
+    below into a printed waiver line instead. Deliberately an env var and not a
+    config key: it must read as a decision in the launch record ("we ran this
+    disarmed on purpose"), never as a silent config value somebody could leave
+    set. Read from the environment for the same reason OTREE_AUTH_LEVEL is — run
+    the checks in the environment you will launch in.
+    """
+    return os.environ.get('ALLOW_DISARMED_BOT_DETECTION') == '1'
+
+
+def _disarmed_bot_configs():
+    """Names of configs shipping the bot-detection ejectors DISARMED.
+
+    A config is disarmed when its EFFECTIVE `bot_detection_armed` is False. The
+    default is True (armed), so only a config that explicitly set it to False
+    appears here — and it does so regardless of DEBUG and of recruitment,
+    because a disarmed REAL run is dangerous whatever the study type.
+    """
+    disarmed = []
+    for cfg in SESSION_CONFIGS:
+        eff = {**SESSION_CONFIG_DEFAULTS, **cfg}
+        if eff.get('bot_detection_armed', True) is False:
+            disarmed.append(cfg['name'])
+    return disarmed
+
+
+def _disarmed_waiver_line():
+    """The acknowledged-waiver line to print when a disarmed launch is allowed,
+    or None. Shared by the boot banner and scripts/prelaunch_check.py so the
+    waiver is worded once and named in every launch record."""
+    disarmed = _disarmed_bot_configs()
+    if disarmed and _allow_disarmed_bot_detection():
+        return ("[prelaunch] WAIVER: bot-detection ejectors DISARMED for "
+                f"config(s) {', '.join(disarmed)} — acknowledged via "
+                "ALLOW_DISARMED_BOT_DETECTION=1. The active ejectors will NOT "
+                "screen anyone out (deliberate: this is a bot-testing launch).")
+    return None
+
+
 def _prelaunch_problems():
     """Return a list of (label, current, must_be) tuples for anything unsafe."""
     problems = []
     if DEBUG:
         problems.append(('DEBUG (set OTREE_PRODUCTION=1)', True, False))
+
+    # DISARMED BOT DETECTION — a LOUD, OVERRIDABLE hard-stop (§7 of the bot spec).
+    # bot_detection_armed ships True; disarming it ships the active ejectors OFF,
+    # which is right for a bot-testing run and dangerous for a real one, and the
+    # switch is reachable in PRODUCTION (that is the whole point of it), so a
+    # disarmed launch must FAIL LOUDLY here — NOT the soft advisory line
+    # quiz_verify gets. It is DELIBERATELY OVERRIDABLE: the explicit
+    # ALLOW_DISARMED_BOT_DETECTION=1 acknowledgement turns the failure into the
+    # printed waiver line (_disarmed_waiver_line) and lets the run proceed. This
+    # loud-and-overridable behaviour is the INTENDED design — do not soften it to
+    # an advisory (a forgotten disarm would then ship a wide-open study) and do
+    # not harden it into an unskippable gate (a disarmed study-mode session with
+    # AI agents is a thing we must be able to run on purpose). Fires regardless of
+    # DEBUG and of recruitment.
+    if not _allow_disarmed_bot_detection():
+        for name in _disarmed_bot_configs():
+            problems.append(
+                (f"config {name!r} bot_detection_armed", False,
+                 'True — a disarmed launch ships the bot-detection ejectors OFF '
+                 '(no welcome-decoy / DOT-BI screen-out). If this is a '
+                 'deliberate bot-testing launch, acknowledge it explicitly by '
+                 'setting ALLOW_DISARMED_BOT_DETECTION=1 in the launch '
+                 'environment; otherwise arm it (the shipped default)'))
 
     # EXIT_CODE_META parity, and the ASYMMETRY is the point (see the table).
     # A CODE WITH NO META IS FINE — it renders on the documented fallbacks, and
@@ -1199,7 +1449,13 @@ def _prelaunch_problems():
         if eff.get('prolific_completion_redirects'):
             code_keys = PROLIFIC_CODE_KEYS
         elif eff.get('recruitment') == 'prolific':
-            code_keys = ('prolific_device_code',)
+            # Owed by the STUDY TYPE, not the redirect flag: a Prolific
+            # participant screened out or bot-detected at entry has no
+            # experimenter to ask, so their way out is owed whether or not the
+            # study uses completion redirects. The device screen-out and the two
+            # neutral bot-detection returns are all entry-time exits of this kind.
+            code_keys = ('prolific_device_code', 'prolific_bot_return_code',
+                         'prolific_nojs_code')
         else:
             code_keys = ()
         if code_keys:
@@ -1238,6 +1494,11 @@ def _check_prelaunch():
     # is also how provenance is turned "off" — a build with no BUILD_INFO.json
     # simply reports unstamped, and nothing anywhere behaves differently.
     print(f"[prelaunch] build: {buildinfo.label()}")
+    # The acknowledged disarmed-bot waiver, if any — printed whether or not there
+    # are other problems, so the deliberate disarm is always named in the record.
+    _waiver = _disarmed_waiver_line()
+    if _waiver:
+        print(_waiver)
     problems = _prelaunch_problems()
     if not problems:
         print("[prelaunch] CLEAN — no testing/placeholder values detected.")
@@ -1253,7 +1514,15 @@ def _check_prelaunch():
 _check_prelaunch()
 
 # === CREED lab support (paste at the END of settings.py) ===
-# Inert unless the launcher sets these variables, so it is safe to leave in permanently.
+# CREED LAB SUPPORT — appended by the CREED lab launcher. It re-asserts, from the
+# environment, everything a lab run needs, so it OVERRIDES anything hardcoded
+# above and is completely inert unless the launcher sets its variables. Safe to
+# leave in permanently. TO REMOVE: delete everything from the banner/marker line
+# above (`# === CREED lab support ... ===`) to the END of the file.
+#
+# NB the marker line above is how the launcher DETECTS that a project opted in (a
+# text match, not an import) — do not reflow, rename or wrap it. See DECISIONS.md,
+# "The CREED lab block is carried in settings.py".
 import os as _os
 
 if _os.environ.get("CREED_LABEL_FILE"):
@@ -1286,4 +1555,51 @@ try:
 except NameError:
     _creed_admin_default = "admin"
 ADMIN_USERNAME = _os.environ.get("OTREE_ADMIN_USERNAME", _creed_admin_default)
+
+# The overrides below re-assert the rest of what a lab run needs, each from the
+# ONE environment variable it depends on and each inert without it. Like the
+# ADMIN_USERNAME line above they are REDUNDANT in this template — its own
+# DATABASES / ADMIN_PASSWORD / DEBUG already read the same variables higher up —
+# but a study forked from here may hardcode any of these to a literal, and then
+# the launcher's box for it would silently do nothing without the override. So
+# they stay, and each must sit AFTER the project's own assignment to win. Do not
+# "tidy" them as duplication (the ADMIN_USERNAME argument in DECISIONS.md applies
+# to each of these too).
+
+# Database: rebuild it as Postgres from the DB_* variables when DB_NAME is set,
+# so it wins over a DATABASES hardcoded above. Left alone (the project's own
+# DATABASES stands) when DB_NAME is absent. Kept byte-identical to the template's
+# own Postgres branch above, so with the launcher off the resolved value is the
+# same either way.
+if _os.environ.get("DB_NAME"):
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql_psycopg2",
+            "NAME": _os.environ.get("DB_NAME"),
+            "USER": _os.environ.get("DB_USER"),
+            "PASSWORD": _os.environ.get("DB_PASSWORD"),
+            "HOST": _os.environ.get("DB_HOST", "localhost"),
+            "PORT": _os.environ.get("DB_PORT", "5432"),
+        }
+    }
+
+# Admin password: take it from the environment when the launcher sets it, so it
+# wins over a password hardcoded above. Left alone when the variable is absent.
+if _os.environ.get("OTREE_ADMIN_PASSWORD"):
+    ADMIN_PASSWORD = _os.environ["OTREE_ADMIN_PASSWORD"]
+
+# Admin login level: lock it to what the launcher asks for (STUDY in the lab, so
+# the admin, the data exports and the experimenter dashboard require a login).
+# Applied only when OTREE_AUTH_LEVEL is set; otherwise oTree's own reading of the
+# variable stands.
+if _os.environ.get("OTREE_AUTH_LEVEL"):
+    AUTH_LEVEL = _os.environ["OTREE_AUTH_LEVEL"]
+
+# Debug: re-derive it from OTREE_PRODUCTION when that variable is set, so a study
+# that hardcoded DEBUG = True above cannot ship debug pages (skip buttons, quiz
+# solutions in the browser) into a lab session. Presence-based, exactly like the
+# template's own derivation at the top of the file (OTREE_PRODUCTION set => off).
+# Left alone when the variable is absent.
+if "OTREE_PRODUCTION" in _os.environ:
+    DEBUG = "OTREE_PRODUCTION" not in _os.environ
 # === end CREED lab support ===

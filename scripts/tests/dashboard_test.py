@@ -56,6 +56,7 @@ os.environ['OTREE_AUTH_LEVEL'] = 'STUDY'
 
 from main_contract import task_page_submits
 from otree_inprocess import boot, path_of, page_name_of
+import bot_walker
 
 ot = boot(production=True)          # MUST come before any app import
 
@@ -134,6 +135,11 @@ def walk(client, code, quiz_answers, stop_after=None, quiz_posts=None,
             break
         if page == 'quiz' and quiz_posts:
             data = quiz_posts.pop(0)
+        elif page == 'DotBiGate':
+            # DOT-BI gate (bucket A, armed on prolific) — solve it the server's
+            # way so a prolific walker reaches intro/main (and its intended DQ or
+            # completion) instead of the no-JavaScript gentle return.
+            data = bot_walker.dotbi_payload(code)
         else:
             data = payload_for(page, quiz_answers)
         if overrides and page in overrides:
@@ -797,7 +803,12 @@ def main():
         if page == 'TabMonitorAgree':
             saw_agreement = True
             _time.sleep(DWELL)          # the ONLY dwell in this walk
-        resp = c.post(path_of(resp), data=payload_for(page, correct),
+        # DotBiGate now sits after the agreement and is the LAST before page —
+        # solve it so the walk reaches intro (and so left_before_app is stamped
+        # HERE, the true end of the entry block).
+        data = (bot_walker.dotbi_payload(dwell_code) if page == 'DotBiGate'
+                else payload_for(page, correct))
+        resp = c.post(path_of(resp), data=data,
                       allow_redirects=True, headers=DESKTOP)
     check(saw_agreement,
           'the prolific flow really does show the tab-monitor agreement page '

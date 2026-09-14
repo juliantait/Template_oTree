@@ -287,10 +287,16 @@ def journey(base, config, label):
         # 'TabMonitorAgree' after 'quiz', the tab monitor is once again arming
         # only once the comprehension check is over, and the instructions and
         # the quiz are unmonitored.
-        expected = (['welcome', 'ConfirmProlificID', 'TabMonitorAgree',
+        # DotBiGate is the bot-detection visual gate, after the tab-monitor
+        # agreement (bucket A, Prolific only). If it ever moves before the
+        # agreement, the monitor is arming after the gate — keep the order. The
+        # results-stage checkbox honeypot lives ON Results (recorded over the
+        # live socket), so it adds no page to the sequence.
+        expected = (['welcome', 'ConfirmProlificID', 'TabMonitorAgree', 'DotBiGate',
                      'instructing', 'quiz', 'quiz']
                     + TASK_PAGES * rounds + ['Results'])
     else:
+        # No DotBiGate in the lab (bucket A is inert there).
         expected = (['startpage', 'welcome', 'instructing', 'quiz', 'quiz']
                     + TASK_PAGES * rounds
                     + ['Demographics', 'Results'])

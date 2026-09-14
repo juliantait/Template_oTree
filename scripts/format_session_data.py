@@ -30,6 +30,116 @@ from pathlib import Path
 import pandas as pd
 
 
+# =============================================================================
+# BEHAVIOUR-CAPTURE DERIVATION (bucket B / measure B3, §D + §8.10 of the bot
+# spec). The live WELCOME/QUIZ pages store ONLY the raw telemetry blob
+# (participant.telemetry_welcome / telemetry_quiz). The AI-likelihood flags are
+# derived HERE, ex-post, exactly as Mission Possible derives them downstream in
+# Cleaning_Tracker.R — one place, re-tunable, off the raw JSON. This script then
+# BLANKS the raw JSON in the analysis-ready outputs (it survives in the raw oTree
+# export). NB the thresholds are lifted, with attribution, from the MIT
+# `mission-possible-code` repo; re-tune the two numbers against your own pilot.
+# =============================================================================
+
+# median inter-keystroke interval at or below this reads as non-human (Mission
+# Possible: ~8% of AI agents pass the typing-speed check).
+TYPING_FAST_MAX_MS = 75.0
+# a single input-length jump larger than this, with no matching keystrokes, is a
+# paste-without-a-paste-event (their input-jump signal).
+INPUT_JUMP_MIN_CHARS = 50
+
+# The telemetry participant-field columns, and the page prefix each derives to.
+TELEMETRY_COLUMNS = {
+    'participant.telemetry_welcome': 'welcome',
+    'participant.telemetry_quiz': 'quiz',
+}
+
+
+def _median(values):
+    vals = sorted(values)
+    n = len(vals)
+    if n == 0:
+        return None
+    mid = n // 2
+    if n % 2:
+        return float(vals[mid])
+    return (vals[mid - 1] + vals[mid]) / 2.0
+
+
+def derive_telemetry(blob):
+    """Turn one raw behaviour-capture blob (a JSON string, or already-parsed
+    dict) into analysis-ready flags. Returns a dict of UN-prefixed columns; the
+    caller prefixes them per page. Returns {} for a blank / unparseable blob (a
+    no-JS submission has no measured input — "not measured", never "clean").
+
+    Mirrors telemetry_capture.js's field family. Pure and self-contained so it is
+    unit-testable over fixture blobs without a browser (see
+    scripts/tests/telemetry_derivation_test.py)."""
+    if isinstance(blob, dict):
+        data = blob
+    else:
+        text = str(blob or '').strip()
+        if not text:
+            return {}
+        try:
+            data = json.loads(text)
+        except Exception:
+            return {}
+        if not isinstance(data, dict):
+            return {}
+
+    key_times = data.get('key_times') or []
+    intervals = []
+    if isinstance(key_times, list) and len(key_times) >= 2:
+        try:
+            ordered = sorted(float(t) for t in key_times)
+            intervals = [b - a for a, b in zip(ordered, ordered[1:]) if b >= a]
+        except Exception:
+            intervals = []
+    median_ms = _median(intervals) if intervals else None
+    max_jump = data.get('max_input_jump') or 0
+
+    return {
+        'paste_detected': bool(data.get('paste_detected')),
+        'copy_detected': bool(data.get('copy_detected')),
+        'input_jump': bool(isinstance(max_jump, (int, float))
+                           and max_jump > INPUT_JUMP_MIN_CHARS),
+        'typing_median_ms': median_ms,
+        # Only a real typing sample can read as "fast": with no intervals the
+        # flag is False, not a spurious True from an empty median.
+        'typing_fast': bool(median_ms is not None and median_ms <= TYPING_FAST_MAX_MS),
+        'keystroke_count': int(data.get('keydown_count') or 0),
+        'mouse_move_count': int(data.get('mouse_move_count') or 0),
+        'click_count': int(data.get('click_count') or 0),
+        'scroll_count': int(data.get('scroll_event_count') or 0),
+        'tab_hidden': bool(data.get('tab_hidden')),
+        'window_blurred': bool(data.get('window_blurred')),
+        'time_on_page_ms': data.get('time_on_page_ms'),
+    }
+
+
+def add_telemetry_derivation(df):
+    """For each raw telemetry column present, emit the derived bot_<page>_* columns
+    and BLANK the raw JSON in this (analysis-ready) frame. Mutates and returns df.
+    A no-op when neither column is present (e.g. a session that never enabled the
+    capture module)."""
+    for raw_col, page in TELEMETRY_COLUMNS.items():
+        if raw_col not in df.columns:
+            continue
+        derived = df[raw_col].apply(derive_telemetry)
+        # Union of keys, so every row gets the full column set (missing -> None).
+        keys = ['paste_detected', 'copy_detected', 'input_jump', 'typing_median_ms',
+                'typing_fast', 'keystroke_count', 'mouse_move_count', 'click_count',
+                'scroll_count', 'tab_hidden', 'window_blurred', 'time_on_page_ms']
+        for k in keys:
+            df[f'participant.bot_{page}_{k}'] = derived.apply(
+                lambda d, k=k: d.get(k) if isinstance(d, dict) else None)
+        # Blank the raw blob in the analysis-ready output (it stays in the raw
+        # oTree export). Capture and judgement are kept separate.
+        df[raw_col] = ''
+    return df
+
+
 def is_serialized_blob(value):
     """True for a cell holding a serialised container.
 
@@ -115,6 +225,13 @@ def main():
 
     print(f"Reading: {input_path}")
     df = pd.read_csv(str(input_path))
+
+    # BEHAVIOUR-CAPTURE DERIVATION (§D/§8.10): emit the analysis-ready bot_<page>_*
+    # flags from the raw telemetry blobs, then blank the raw JSON in these
+    # outputs (it survives in the raw oTree export). Done here, before the sweeps
+    # below, so the (large) raw blobs are already blanked and the derived columns
+    # are present in every output written from df.
+    df = add_telemetry_derivation(df)
 
     # Bulky JSON telemetry/audit blobs this template exports (see CODEBOOK.md).
     # Their cells are BLANKED in every output: they are logs for debugging and

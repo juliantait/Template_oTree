@@ -94,6 +94,11 @@ def main():
         prolific_dq_quiz_code='C0FFEE03',
         prolific_dq_tab_code='C0FFEE04',
         prolific_device_code='C0FFEE05',
+        # The two neutral bot-detection return codes, also owed on a prolific
+        # session (added 2026-09-08) — real values here so the only failures in
+        # play are the ones each section deliberately constructs.
+        prolific_bot_return_code='C0FFEE06',
+        prolific_nojs_code='C0FFEE07',
     )
 
     section('one session created BEFORE a key existed, one AFTER — '

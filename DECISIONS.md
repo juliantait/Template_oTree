@@ -11,6 +11,183 @@ working.
 
 ---
 
+## The CREED lab block is EXTENDED to the launcher block's full behaviour — DATABASES, ADMIN_PASSWORD, AUTH_LEVEL and DEBUG, each env-gated — 2026-09-10
+
+The CREED Lab Launcher now appends a larger self-documenting block to a project's
+`settings.py`: one that re-asserts from the environment *everything* a lab run
+needs, so it overrides anything hardcoded above and stays inert without the
+launcher's variables. This template carried only the SMALLER version (ROOMS +
+`participant_label_file` + `ADMIN_USERNAME`, the 2026-09-01 entry below). It is
+brought up to the same behaviour so a study forked from here is protected the
+same way the launcher would protect a hand-written project — CREED-lab-ready with
+nothing to paste.
+
+- **Four overrides added, each guarded by the ONE variable it needs.** `DATABASES`
+  rebuilt as Postgres from the `DB_*` variables, gated on `DB_NAME`, so it wins
+  over a hardcoded `DATABASES`; `ADMIN_PASSWORD` from `OTREE_ADMIN_PASSWORD`,
+  gated on that var; `AUTH_LEVEL` from `OTREE_AUTH_LEVEL`, gated on that var; and
+  `DEBUG` re-derived from `OTREE_PRODUCTION`, gated on that var, so a fork that
+  hardcoded `DEBUG = True` cannot ship debug pages (skip buttons, quiz solutions)
+  into a lab session. With NO lab environment set, every guard is false and the
+  file resolves byte-for-byte as before.
+- **In THIS template the overrides are REDUNDANT — and that redundancy is exactly
+  why the block stays inert.** The template already env-derives `DATABASES`,
+  `ADMIN_PASSWORD` and `DEBUG` higher up (from the same variables, with the same
+  defaults), so each override reproduces the value the base code already produced.
+  That is precisely what keeps `creed_lab_block_test.py`'s differential green: the
+  block-present and block-absent runs resolve identically. The fork PROTECTION is
+  the point — a fork is free to hardcode any of these to a literal, and then the
+  launcher's box for it would silently do nothing without the override sitting
+  after the project's own assignment. Do not "tidy" them as duplication; this is
+  the same "helpfulness" failure the `ADMIN_USERNAME` duplication defends against
+  (see the 2026-09-01 entry, whose argument now applies to each of these keys).
+- **`AUTH_LEVEL` is genuinely new to `settings.py`.** The template never set it —
+  oTree reads `OTREE_AUTH_LEVEL` from the environment itself
+  (`otree/settings.py`), which is why `scripts/prelaunch_check.py` reads the env
+  rather than the setting. Assigning it here to the same env value is consistent,
+  not a change, and it is deliberately absent from the differential's `COMPARED`
+  set, so it neither helps nor breaks that test — it is the one override with no
+  base value to match, and it simply mirrors what oTree already derives.
+- **The marker line is kept VERBATIM; the banner is added as comments under it.**
+  The task asked for an unmissable opening banner; the `# === CREED lab support
+  (paste at the END of settings.py) ===` line is how the launcher DETECTS opt-in
+  (a text match) and is pinned character-for-character by
+  `creed_lab_block_test.py` §1, so it must not be reflowed into a new banner. The
+  banner wording ("appended by the CREED lab launcher … TO REMOVE delete
+  everything from the marker line above to the END of the file … safe to leave in
+  permanently") is carried in the comment lines immediately below the marker,
+  which are cut with the block and have no behavioural effect.
+- **Rejected: rebuilding `DATABASES` from `DATABASE_URL`** (which the bat also
+  exports). Parsing the URL would produce a `DATABASES` dict of a different shape
+  than the template's own `DB_*` Postgres branch, so the block-present and
+  block-absent runs would DIFFER and the differential would go red — a false
+  alarm hiding a real question. The task and the base code both use `DB_*`, so the
+  override matches the base exactly. **Also rejected: renaming the marker into the
+  new banner** (breaks launcher detection and §1) and **dropping the guards to
+  assign unconditionally** (a fork with no lab environment would then have its
+  `DATABASES`/`DEBUG` silently reset at import).
+
+**Enforced:** `scripts/tests/creed_lab_block_test.py` — `DATABASES`,
+`ADMIN_PASSWORD` and `DEBUG` are already in its `COMPARED` set, so the differential
+now covers the three new env-derived overrides for free, under BOTH the bare
+environment (§3) and the exact `set_up_otree.bat` environment (§4, which sets
+`DB_NAME`, `OTREE_ADMIN_PASSWORD`, `OTREE_PRODUCTION` and `OTREE_AUTH_LEVEL`), and
+§4 additionally asserts the Postgres engine, the database name, `ADMIN_PASSWORD`
+and `DEBUG=False` absolutely. `AUTH_LEVEL` is not compared (no base value to match).
+`scripts/prelaunch_check.py`, `scripts/tests/frozen_config_test.py` and
+`scripts/tests/room_gate_test.py` stay green. **NOT enforced, honestly:** as with
+the 2026-09-01 entry, nothing here exercises the real launcher — the contract
+tested is the block's behaviour under the variables the launcher is documented to
+export, not that the launcher exports them, and the block body is not pinned
+byte-for-byte.
+
+---
+
+## AI-bot & inattentive-participant detection — the two-bucket build — 2026-09-08
+
+Built from `_ai/ai_bot_detection_spec.md` (design settled by Julian 2026-09-07).
+Adds a detection layer that distinguishes "a bot arrived" from the existing
+tab-monitor / comprehension / device gates, keeps it invisible in the lab, and
+can be disarmed for the AI bots we run to test our own studies. The design rests
+on an **A/B split**, and every piece below is placed to keep that split coherent.
+
+- **Two orthogonal new controls, not one.** `bot_detection` is the MODULE flag
+  (bucket A on/off), resolved ON in the prolific profile and absent/OFF in the
+  lab, read via raw `common.flag` (missing ⇒ off). `bot_detection_armed` is a
+  **fourth independent axis** in `SESSION_CONFIG_DEFAULTS` (default `True`),
+  **not** in any recruitment profile and **not** tied to DEBUG or study type,
+  read via `common.cfg` (missing ⇒ armed, the safe direction). *Why two, kept
+  apart:* the module can be present-but-not-ejecting so our AI testers run the
+  gates and record verdicts without being screened out — and that has to work in
+  **study mode** (`OTREE_PRODUCTION=1`), which is exactly when a DEBUG- or
+  study-type-tied switch would be unreachable. Enforced: `common.bot_detection_active`
+  (module runs) vs `common.bot_detection_armed` (and ejects); the fourth-axis
+  header in `settings.py`; `scripts/tests/bot_detection_test.py` §3.
+
+- **A disarmed launch LOUD-FAILS but is OVERRIDABLE — the tension is the point.**
+  Because the switch is reachable in production, `settings._prelaunch_problems`
+  makes `bot_detection_armed=False` a hard-stop (so `scripts/prelaunch_check.py`
+  exits non-zero and the boot banner prints it in the `####` block), for ANY
+  recruitment and regardless of DEBUG. It is deliberately waivable by an explicit
+  `ALLOW_DISARMED_BOT_DETECTION=1`, which turns the failure into a printed,
+  acknowledged waiver line (`_disarmed_waiver_line`, shared by the banner and the
+  script). *Rejected:* softening to an advisory (a forgotten disarm would ship a
+  wide-open study) and hardening to unskippable (a disarmed study-mode bot run
+  must be possible on purpose). Enforced: `bot_detection_test.py` §7 pins all
+  three cases.
+
+- **Two ejectors, both GENTLE, one shared ending.** The welcome decoy honeypot
+  (A1, `before.welcome`) and the DOT-BI visual gate (A2, `before.DotBiGate`) both
+  set exit `-5 bot_return`, split by `participant.bot_detection_cause` ∈
+  {`honeypot_welcome`, `dot_bi`}, and route to ONE non-accusatory
+  `outro.NeutralReturn` screen (prominent RETURN button, "no penalty" wording,
+  never revealing the mechanism). *Why gentle, not a DQ:* a real human can trip
+  either (a password manager ticking a hidden control; a `prefers-reduced-motion`
+  reader who genuinely cannot solve a motion challenge), so it must never accuse
+  — the false-positive class and the gentle handling are tied. The collapsed-
+  distinction rule is satisfied by the CAUSE (two populations, one code), and
+  `-5`/`-6` are kept apart from the punitive `-2`/`-3`. Enforced:
+  `common.is_neutral_return` (one predicate read by the routing belt and the
+  page), `Ended.is_displayed` narrowed to cede these, `bot_detection_test.py`
+  §1/§1b.
+
+- **No-JavaScript at DOT-BI is its OWN code (`-6 no_javascript`), and the
+  off-switch does not touch it.** JS-capability is not a bot signal, so it gets a
+  separate neutral code and its own return code, but the same gentle screen. It
+  fires whenever the module is active and JS did not run — armed or disarmed —
+  because a disarmed session still owes a JS-less participant the friendly return.
+  The DOT-BI page is progressive-enhancement: challenge hidden by default (static
+  CSS), `dot_bi.js` reveals it and sets a "JS ran" flag; its absence at submit is
+  how the server routes to `-6`. Enforced: `bot_detection_test.py` §2;
+  `before.DotBiGate.before_next_page`.
+
+- **DOT-BI answer served under an OPAQUE id; graded server-side; never leaks.**
+  The upstream repo encodes the answer only in the filename stem, so a subset of
+  15 variants is vendored under opaque ids (`_static/global/img/dot_bi/dotbi_NN.gif`,
+  ~37 MB, GIFs unaltered) and the id→answer map lives in `dot_bi.py`, server-side,
+  never under `_static/` and never sent to the client. *Format choice:* kept the
+  original GIFs, NOT re-encoded — lossy compression of the random-noise texture
+  can destroy the concealment and human-solvability could not be verified here,
+  so per the spec we keep GIFs and ship fewer. MIT LICENSE + ATTRIBUTION retained
+  beside the variants. Enforced: `bot_detection_test.py` §5 (answer/number/filename
+  absent from the page; opaque id is the media reference).
+
+- **Bucket B is record-only and recorded EVERYWHERE, including the lab.** The
+  results-stage "Completed" checkbox honeypot (decoy label / truthful field name
+  `honeypot_results_failed`) and the welcome/quiz behaviour capture
+  (`telemetry_welcome`/`telemetry_quiz`, one shared `telemetry_capture.js`
+  re-authored from the Mission Possible tracker approach) never eject and keep
+  recording even when the off-switch is on. *The results checkbox lives ON the
+  terminal `Results` page as a LIVE-DATA field, not a form-submit field (Julian,
+  2026-09-08).* `Results` is terminal — its no-JS completion link is a real `<a>`
+  (heavily pinned, render_check leg AF), and a form submit there would send the
+  participant to oTree's `OutOfRangeNotification` with no way back to Prolific
+  (verified in the oTree source). So the checkbox pushes its state over the
+  **live socket** — the SAME channel as the tab-monitor `live_method`
+  (`outro.results_live_method` delegates to it) — with NO extra screen and the
+  terminal page fully intact. THE DEFAULT IS THE TRIP: reaching `Results` records
+  `10`, and only a socket-pushed TICK records `0` (compliant); a no-JS human
+  stays at the default `10`, which is fine for a record-only end-stage honeypot
+  since a no-JS bot is already stopped at the DOT-BI gate. Init stays `0` so a
+  NON-completer who never reached `Results` reads `0` ("complied OR never
+  reached", disambiguated by `exit_code`). An earlier build used a standalone
+  `CompletionCheck` page before `Results`; it was removed because it added a
+  screen and Julian wanted the checkbox on `Results` with the link untouched. The
+  derived AI-likelihood flags are computed EX-POST in
+  `scripts/format_session_data.py` (thresholds 75 ms / 50 chars, re-tunable in
+  one place), which then blanks the raw JSON in the analysis-ready export.
+  Enforced: `bot_detection_test.py` §4/§6 (incl. a direct `results_live_method`
+  record-logic check), `bot_render_check.py` (checkbox visible + link intact on
+  Results), `scripts/tests/telemetry_derivation_test.py`.
+
+- **The prolific profile now ships the gates armed, so every prolific-completing
+  walker must pass them.** The DOT-BI answer is computed the server's way in ONE
+  shared test helper (`scripts/tests/bot_walker.py`, `dot_bi` loaded by path, the
+  participant code as the variant seed) and the welcome decoy is passed by leaving
+  its checkbox untouched. A real bot has neither the repo module nor the
+  participant seed, so the test's ability to solve the gate is a property of the
+  harness, not a leak. `frozen_config_test`'s `STRIPPED` list gained the new keys.
+
 ## The CREED lab block is CARRIED in `settings.py`, verbatim and last — the seat list is never hardcoded — 2026-09-01
 
 The CREED Lab Launcher (a GUI app, outside this repo) replaces the hand-edited
