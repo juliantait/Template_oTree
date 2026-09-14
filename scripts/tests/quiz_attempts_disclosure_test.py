@@ -27,6 +27,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from otree_inprocess import boot, path_of, page_name_of  # noqa: E402
+import bot_walker
 
 ot = boot(production=True)
 
@@ -77,8 +78,11 @@ def walk_to(client, code, target, limit=20):
             return resp
         if page is None:
             raise AssertionError(f'reached the end before {target!r}')
-        resp = client.post(path_of(resp), data=PAYLOAD.get(page, {}),
-                           allow_redirects=True)
+        # DOT-BI gate (bucket A, armed on prolific) — solve it the server's way
+        # so a prolific walk can reach the instructions/quiz.
+        data = (bot_walker.dotbi_payload(code) if page == 'DotBiGate'
+                else PAYLOAD.get(page, {}))
+        resp = client.post(path_of(resp), data=data, allow_redirects=True)
     raise AssertionError(f'never reached {target!r}')
 
 

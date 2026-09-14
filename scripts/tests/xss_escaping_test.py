@@ -40,6 +40,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from main_contract import task_page_submits
 from otree_inprocess import boot, path_of, page_name_of  # noqa: E402
+import bot_walker
 
 ot = boot(production=True)          # MUST come before any app import
 
@@ -112,6 +113,10 @@ def walk(client, code, id_value, quiz_answers, max_steps=80):
         if page in TERMINAL:
             break
         data = dict(BASE_PAYLOAD.get(page, {}))
+        if page == 'DotBiGate':
+            # DOT-BI gate (bucket A, armed on prolific) — solve it the server's
+            # way so the walk reaches a real completer ending.
+            data = bot_walker.dotbi_payload(code)
         if page == 'ConfirmProlificID':
             data['participant_id_external'] = id_value
         if page == 'quiz':

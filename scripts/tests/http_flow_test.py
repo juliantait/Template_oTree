@@ -47,6 +47,11 @@ from _repo import REPO_ROOT  # noqa: E402,F401  (also puts REPO_ROOT on sys.path
 # only thing that passes the quiz; under DEBUG the page's solutions re-affirm it.
 from quiz_answers import CORRECT as QUIZ_CORRECT  # noqa: E402
 from settings import EXIT_CODES  # noqa: E402  (a module import; does not start oTree)
+# The bot-detection gates ship ARMED on the prolific profile, so a walker that
+# means to COMPLETE a Prolific session must solve the DOT-BI gate (the welcome
+# decoy is passed automatically by leaving the checkbox untouched). One shared
+# implementation, so every walker treats the gate identically.
+import bot_walker  # noqa: E402
 
 
 class FormParser(HTMLParser):
@@ -97,7 +102,7 @@ END_MARKERS = (
     'Thank you for taking part',
     'participation has ended',
     'Please leave up to 2 weeks',
-)
+) + bot_walker.END_MARKERS_BOT   # the shared neutral-return ending (-5 / -6)
 
 
 # Radio groups whose answer is a DECISION, not a formality. An unmapped radio
@@ -151,6 +156,20 @@ def build_payload(inputs, overrides, answers, warn=True):
                   f"first option {val!r}. If this choice ROUTES the "
                   f"participant, add it to DECISION_RADIOS or override it.")
         payload.setdefault(name, val)
+    # DOT-BI gate: if this form is the visual check, SOLVE it by default (done
+    # LAST so it wins over the hidden-field defaults assigned above) so any walker
+    # that means to get past `before` on a prolific session can. The welcome
+    # decoy is passed automatically — build_payload skips the unticked checkbox.
+    # The opaque variant id rides the form as a hidden input, so the answer is
+    # computed the server's own way (bot_walker/dot_bi) with no per-caller wiring.
+    # A caller testing a WRONG or NO-JS DOT-BI answer overrides the field, and its
+    # override wins.
+    dotbi_variant = next((f.get('value') for f in inputs
+                          if f.get('name') == 'bot_dotbi_variant'), None)
+    if dotbi_variant and any(f.get('name') == 'bot_dotbi_answer' for f in inputs):
+        for k, v in bot_walker.dotbi_from_variant(dotbi_variant).items():
+            if k not in overrides:
+                payload[k] = v
     return payload
 
 
@@ -218,6 +237,9 @@ def walk(base, config, overrides=None, answers=None, label='', expect_exit='fini
                     answers[item['name']] = item['value']
             except Exception:
                 pass
+        # build_payload solves the DOT-BI gate itself (from the opaque variant in
+        # the form), so a happy-path walk COMPLETES; a caller override wins for a
+        # wrong/no-JS test.
         payload = build_payload(fp.inputs, overrides, answers)
         post_url = fp.action if (fp.action and fp.action.startswith('http')) else r.url
         r = s.post(post_url, data=payload, allow_redirects=True)

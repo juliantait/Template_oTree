@@ -83,6 +83,11 @@ class Player(BasePlayer):
     # template has no data yet. Being a PER-ROUND player field, it separates
     # the first pass from the post-re-read pass (round 2) for free.
     quiz_attempt_log = models.LongStringField(blank=True)
+    # B3 BEHAVIOUR CAPTURE carrier for the QUIZ page (bucket B, §D). The raw
+    # blob is copied verbatim to participant.telemetry_quiz in
+    # quiz.before_next_page; the AI-likelihood flags are derived EX-POST in
+    # scripts/format_session_data.py. blank=True — a no-JS submit leaves it empty.
+    telemetry_quiz = models.LongStringField(blank=True)
     # Spare columns (future-proofing) — never rename in place; see CODEBOOK.md.
     spare_str_1 = models.LongStringField(blank=True)
     spare_str_2 = models.LongStringField(blank=True)
@@ -472,7 +477,27 @@ class quiz(participant_tab_monitor.MonitoredPage):
 
     @staticmethod
     def get_form_fields(player):
-        return QUIZ_FIELD_NAMES + ['redoinstructions']
+        fields = QUIZ_FIELD_NAMES + ['redoinstructions']
+        # B3 BEHAVIOUR CAPTURE carrier — present wherever the capture module is on
+        # (both profiles resolve it on, so everywhere including the lab).
+        if _flag(player, 'telemetry_behaviour_capture'):
+            fields = fields + ['telemetry_quiz']
+        return fields
+
+    @staticmethod
+    def js_vars(player):
+        # OWN js_vars, so it MUST spread the monitor config or this page's tab
+        # monitor silently loses it (participant_tab_monitor.py's gotcha). Then
+        # add the behaviour-capture config for telemetry_capture.js: the quiz
+        # passes EXTRA config naming its own controls (the per-item radios and the
+        # re-read button) so the log can label them — structure the welcome page
+        # does not have.
+        v = dict(common.monitor_js_vars(player))
+        if _flag(player, 'telemetry_behaviour_capture'):
+            v['TELEMETRY_CONFIG'] = dict(
+                target='telemetry_quiz', page='quiz',
+                fields=QUIZ_FIELD_NAMES + ['redoinstructions'])
+        return v
 
     @staticmethod
     def error_message(player, values):
@@ -545,11 +570,24 @@ class quiz(participant_tab_monitor.MonitoredPage):
             **quiz_modal_state(player),
             'quiz_solutions_json': json.dumps(solution_pairs),
             'is_debug': is_debug,
+            # B3 BEHAVIOUR CAPTURE: render the hidden telemetry carrier + script.
+            'telemetry_behaviour_capture': _flag(player, 'telemetry_behaviour_capture'),
         }
 
     @staticmethod
     def before_next_page(player, timeout_happened):
         common.stamp_stage(player.participant, common.STAGE_QUIZ_DONE)
+        # B3 BEHAVIOUR CAPTURE: copy the raw blob VERBATIM (no live derivation),
+        # wrapped so a malformed blob never breaks the page. A no-JS submit leaves
+        # it blank ("not measured"). Only the FIRST pass is captured to the
+        # participant field; a round-2 re-read pass would overwrite it, so guard
+        # on round 1 — the welcome+quiz capture is about the standard first pass.
+        if _flag(player, 'telemetry_behaviour_capture') and player.round_number == 1:
+            try:
+                player.participant.telemetry_quiz = (
+                    player.field_maybe_none('telemetry_quiz') or '')
+            except Exception:
+                pass
         # Taking the re-read offer: consume it HERE — the moment the
         # participant leaves for the second pass — not when the modal opened.
         # (field_maybe_none: redoinstructions is blank=True and may arrive empty.)

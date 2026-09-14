@@ -342,6 +342,12 @@ def main(argv):
         return stamp_assets()
 
     print(build_line())
+    # The acknowledged disarmed-bot waiver (§7), if the explicit override is set.
+    # Printed so a disarmed-but-allowed launch names the waiver in the CI/launch
+    # record rather than passing silently. Worded once in settings.
+    waiver = settings._disarmed_waiver_line()
+    if waiver:
+        print(waiver)
     problems = (settings._prelaunch_problems() + lab_module_problems()
                 + asset_problems() + auth_level_problems()
                 + dashboard_problems())

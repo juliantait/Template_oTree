@@ -333,7 +333,10 @@ def record(name, ok, detail):
 # the completer ending; `Ended` is the non-completer ending (disqualified,
 # declined consent, screened out at entry). A study that adds an end page adds
 # it here (or names it in PREDEPLOY_END_PAGES).
-TERMINAL_PAGES = {'Results', 'Ended'}
+# NeutralReturn is the shared gentle bot-detection / no-JS return ending — a
+# VALID terminal page (a no-JS participant on a Prolific study legitimately ends
+# there at the DOT-BI gate with exit code -6).
+TERMINAL_PAGES = {'Results', 'Ended', 'NeutralReturn'}
 TERMINAL_PAGES |= {p.strip() for p in
                    os.environ.get('PREDEPLOY_END_PAGES', '').split(',') if p.strip()}
 
@@ -368,6 +371,18 @@ NOJS_KEEP_FIELDS = {'csrfmiddlewaretoken', 'csrf_token'}
 # number and its confirmation) then matches without this check knowing the
 # pair exists.
 GENERIC_TEXT = 'PREDEPLOY'
+
+
+def _dotbi_answer(variant):
+    """The correct DOT-BI number for an OPAQUE variant id, computed the server's
+    own way (dot_bi.py, repo root) — never a leak, since the variant id is
+    already on the page and the answer map is server-side. None if the module or
+    the id is absent, so a study without DOT-BI is unaffected. Never raises."""
+    try:
+        import dot_bi
+        return dot_bi.answer_for(variant) if variant else None
+    except Exception:
+        return None
 
 
 class Log:
@@ -867,6 +882,30 @@ class PayloadBuilder:
             if field == 'consent':
                 overlay[field] = 'True'
                 continue
+            if field.startswith('honeypot_'):
+                # A decoy honeypot control (e.g. the CSS-concealed welcome decoy).
+                # A real participant NEVER engages it — leave it untouched.
+                # Filling it (as the generic checkbox filler would) is exactly the
+                # fill-every-control bot behaviour the decoy exists to catch, and
+                # would eject this happy-path walker before it reaches the end.
+                continue
+            # BOT-DETECTION DOT-BI GATE (bucket A, armed on prolific). Under JS
+            # this walk simulates a solved challenge — mark that JS ran and type
+            # the correct number (computed the server's own way from the OPAQUE
+            # variant id the page exposes, via dot_bi) — so a completer reaches
+            # the end. The NO-JS walk deliberately leaves the JS flag empty
+            # (blanked above with the other hidden fields), so the server routes
+            # the participant to the gentle no_javascript return (-6, a valid
+            # ending). A study without the module simply has no such fields.
+            if field == 'bot_dotbi_js':
+                if not nojs:
+                    overlay[field] = '1'
+                continue
+            if field == 'bot_dotbi_answer' and not nojs:
+                answer = _dotbi_answer(defaults.get('bot_dotbi_variant'))
+                if answer is not None:
+                    overlay[field] = str(answer)
+                    continue
             if field in ('participant_id_external', 'participant_id_url'):
                 overlay[field] = '' if nojs else 'predeploy'
                 continue

@@ -52,6 +52,7 @@ os.environ['OTREE_AUTH_LEVEL'] = 'STUDY'
 
 from main_contract import task_page_submits
 from otree_inprocess import boot, path_of, page_name_of
+import bot_walker
 
 ot = boot(production=True)          # MUST come before any app import
 
@@ -96,8 +97,10 @@ def walk_to_results(client, code, quiz_answers, max_steps=120):
         page = page_name_of(path_of(resp))
         if page is None or page == 'Results':
             return resp
-        resp = client.post(path_of(resp), data=payload_for(page, quiz_answers),
-                           allow_redirects=True)
+        # DOT-BI gate (bucket A, armed on prolific) — solve it the server's way.
+        data = (bot_walker.dotbi_payload(code) if page == 'DotBiGate'
+                else payload_for(page, quiz_answers))
+        resp = client.post(path_of(resp), data=data, allow_redirects=True)
         assert resp.status_code == 200, f'walk: HTTP {resp.status_code}'
     raise AssertionError('never reached Results')
 

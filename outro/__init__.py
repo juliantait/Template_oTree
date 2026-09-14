@@ -144,7 +144,25 @@ def ending_reason(player) -> str:
         return 'no_consent'
     if was_screened_out(player):
         return 'screened_out'
+    # A GENTLE bot-detection / no-JS return (-5 / -6). Its own bucket, kept apart
+    # from the punitive DQ so it never inherits the DQ-styled copy — it routes to
+    # NeutralReturn, not Ended. Lowest priority in the cascade: a participant
+    # ejected by a bot check in `before` never also carries a DQ or a declined
+    # consent, so the order only decides an impossible tie. This is the SAME
+    # record common.removed_from_study reads (extend BOTH together).
+    if common.is_neutral_return(player.participant):
+        return 'neutral_return'
     return ''
+
+
+def is_neutral_return(player) -> bool:
+    """True for a participant on the shared gentle return ending (-5 / -6).
+
+    A thin player-facing wrapper on common.is_neutral_return (which takes the
+    participant), so this app reads it the same way it reads is_completer. ONE
+    implementation — the ending page and Ended.is_displayed both call it, so the
+    'which terminal page shows' decision cannot drift."""
+    return common.is_neutral_return(player.participant)
 
 
 def is_completer(player) -> bool:
@@ -189,6 +207,16 @@ def completion_link(player) -> str:
     investigation. Pinned by scripts/tests/frozen_config_test.py.
     """
     config = player.session.config
+    # NEUTRAL bot-detection / no-JS returns come FIRST — they carry their own
+    # clean-return codes and never have a dq_cause. -6 (no JavaScript) has its own
+    # code; -5 (a bot ejector) shares one across both causes (the split lives in
+    # bot_detection_cause, in the data, not in the code). This is the one
+    # return-URL builder the neutral return ending uses too, so there is no second
+    # implementation of the return link.
+    if common.is_neutral_return(player.participant):
+        if player.participant.vars.get('exit_code') == common.EXIT_CODES['no_javascript']:
+            return PROLIFIC_COMPLETE_URL + str(common.cfg(config, 'prolific_nojs_code'))
+        return PROLIFIC_COMPLETE_URL + str(common.cfg(config, 'prolific_bot_return_code'))
     cause = dq_cause(player)
     if cause == 'tab_monitor':
         code = common.cfg(config, 'prolific_dq_tab_code')
@@ -349,7 +377,12 @@ class Ended(participant_tab_monitor.OutroMonitoredPage):
 
     @staticmethod
     def is_displayed(player):
-        return not is_completer(player)
+        # CEDE the gentle bot-detection / no-JS returns to NeutralReturn: they are
+        # non-completers too, but they must NOT inherit this page's DQ-styled
+        # copy. Exactly one terminal page shows — Ended for the punitive endings,
+        # NeutralReturn for the gentle ones (is_neutral_return, the one predicate
+        # both read).
+        return not is_completer(player) and not is_neutral_return(player)
 
     # NO js_vars. The completion URL is a TEMPLATE var (below) because the
     # button is a real link: a participant whose JavaScript never ran must still
@@ -392,6 +425,56 @@ class Ended(participant_tab_monitor.OutroMonitoredPage):
             # both-flags priority.
             dq_cause=dq_cause(player),
             prolific_completion_redirects=_flag(player, 'prolific_completion_redirects'),
+        )
+
+
+class NeutralReturn(participant_tab_monitor.OutroMonitoredPage):
+    """THE ONE shared GENTLE return ending — for every bot-detection ejection.
+
+    A single terminal, NON-ACCUSATORY "you cannot continue, please return, no
+    penalty" screen with a prominent RETURN button. It serves ALL THREE gentle
+    exits: `bot_return` (-5) for BOTH causes (welcome decoy + wrong DOT-BI
+    answer) and `no_javascript` (-6). The copy is uniform and never reveals WHY
+    (never names the honeypot / DOT-BI mechanism); `bot_detection_cause` keeps the
+    two -5 populations apart in the DATA, not on screen.
+
+    It sits BESIDE Ended, not inside it (Julian): a deliberately gentle screen, so
+    a bot-detection return never inherits the DQ-styled Ended copy. But the
+    predicate (is_neutral_return) and the return-URL builder (completion_link) are
+    SHARED, so this is not a second implementation of the ending machinery.
+
+    A HARD STOP, not a retry loop: a wrong DOT-BI answer or a tripped decoy
+    DEFINITELY ejects here, and the participant's only action is the RETURN
+    button. OutroMonitoredPage so it passes assert_monitored_page_sequence
+    (record-only, like every outro page).
+    """
+    template_name = 'outro/neutral_return.html'
+
+    @staticmethod
+    def is_displayed(player):
+        return is_neutral_return(player)
+
+    # NO js_vars beyond the inherited monitor config: the RETURN button is a real
+    # link built server-side (completion_link), so it works with JavaScript off —
+    # the same invariant as Ended's completion link.
+
+    @staticmethod
+    def vars_for_template(player):
+        return dict(
+            # The neutral return code URL, from the ONE builder the other endings
+            # use (completion_link routes -5/-6 to the neutral codes).
+            completionlink=completion_link(player),
+            # A Prolific participant is owed the way out even without completion
+            # redirects (they were stopped at entry with no experimenter to ask),
+            # so the button shows whenever this is a Prolific session — the same
+            # study-type reasoning as the screen-out exit. NeutralReturn is only
+            # reached on Prolific (bucket A is inert in the lab), but gate it
+            # explicitly so a stray lab arrival never renders a Prolific link.
+            show_return_link=common.is_prolific(player.session.config),
+            # Data-only: which ejector fired. NOT rendered (the copy is uniform);
+            # passed so a template author can see it exists and must stay off the
+            # page. Read with field_maybe_none-style safety via the participant var.
+            bot_detection_cause=player.participant.vars.get('bot_detection_cause', ''),
         )
 
 
@@ -604,6 +687,26 @@ def results_live_method(player, data):
             return
     except Exception:
         pass  # measurement only: never block the participant
+    try:
+        # THE RESULTS-STAGE CHECKBOX HONEYPOT (B1, §6b). Results is the terminal
+        # page (the completion link is a real no-JS <a>, and a form submit here
+        # would send the participant to oTree's OutOfRange with no way back to
+        # Prolific), so the verdict rides the ONE server-side channel that exists
+        # without a further submit — this live socket, exactly as the return-click
+        # stamp above does. The client sends the "Completed" checkbox state as it
+        # changes and as the participant leaves. PASS = ticked -> 0; TRIP =
+        # unticked -> the distinctive 10 (legible beside the 1-coded honeypots).
+        # RECORD-ONLY: it never ejects. A participant who never sends (no JS, or
+        # never reached Results) keeps the init 0 — "clean OR never reached", the
+        # same read as every other honeypot. Recorded in the lab too (bucket B),
+        # and it keeps recording when the bot_detection off-switch is on. Wrapped:
+        # instrumentation must never break a page.
+        if isinstance(data, dict) and data.get('type') == 'results_completed':
+            player.participant.honeypot_results_failed = 0 if data.get('value') else 10
+            common.refresh_bot_flag(player.participant)
+            return
+    except Exception:
+        pass  # measurement only: never block the participant
     # Everything else on this channel is the monitor's. Record-only here, like
     # the rest of the outro (the phase note at the top of this file).
     return common.focus_live_method_outro(player, data)
@@ -644,6 +747,19 @@ class Results(participant_tab_monitor.OutroMonitoredPage):
         compute_final_payoff(player)
         common.set_exit_code(player.participant, common.EXIT_CODES['finished'])
         common.stamp_stage(player.participant, common.STAGE_FINISHED)
+        # B1 RESULTS-STAGE CHECKBOX HONEYPOT (§6b) — the DEFAULT is the TRIP.
+        # Reaching the results stage sets honeypot_results_failed to the
+        # distinctive 10; a participant who then TICKS "Completed" pushes their
+        # compliance over the live socket, which records 0 (see
+        # results_live_method). So the un-pushed default (didn't tick, or no JS)
+        # stays 10, and only an active tick clears it — a compliance probe, not a
+        # form field. RECORD-ONLY: it never ejects. Init stays 0 for anyone who
+        # NEVER reached Results (a non-completer), so 0 still means "complied OR
+        # never reached" — disambiguated by exit_code, like every honeypot.
+        # Set on the participant here (idempotent on a re-render), from the ONE
+        # page every completer sees.
+        player.participant.honeypot_results_failed = 10
+        common.refresh_bot_flag(player.participant)
         # Parse the stored JSON back into rows for the per-round table.
         try:
             payouts = json.loads(player.payouts) if player.payouts else []
@@ -713,6 +829,12 @@ class Results(participant_tab_monitor.OutroMonitoredPage):
             # a lab participant can still collapse the table if they want to.
             'results_open': is_lab(player),
             'prolific_completion_redirects': _flag(player, 'prolific_completion_redirects'),
+            # B1 RESULTS-STAGE CHECKBOX HONEYPOT (§6b). Stationary — shown to
+            # every completer, lab and online. The instruction copy branches on
+            # the STUDY TYPE (the copy rule): "returning to Prolific" vs
+            # "finishing". The verdict is recorded over the live socket (see
+            # results_live_method) because Results is terminal.
+            'names_prolific': common.is_prolific(player.session.config),
         }
 
 def vars_for_admin_report(subsession):
@@ -762,7 +884,13 @@ def vars_for_admin_report(subsession):
 # a normal page, negated for an ending. Forgetting it fails SILENTLY: a
 # disqualified participant reaching a payment or feedback page produces no
 # error, just wrong pages served and wrong data collected.
-page_sequence = [Ended, Demographics, Feedback, Results]
+# NeutralReturn sits right after Ended (both are early-ending pages that gate on
+# NOT is_completer). Exactly one terminal page ever shows: Ended for the punitive
+# endings, NeutralReturn for the gentle bot-detection ones, Results for a
+# completer. The results-stage checkbox honeypot (B1) lives ON Results itself —
+# recorded over the live socket, since Results is terminal (see
+# results_live_method) — not on a page of its own.
+page_sequence = [Ended, NeutralReturn, Demographics, Feedback, Results]
 
 # MONITORED BY DEFAULT — every page above must be a
 # participant_tab_monitor.MonitoredPage subclass (here, OutroMonitoredPage:

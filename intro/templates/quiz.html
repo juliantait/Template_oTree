@@ -14,12 +14,20 @@
             <div class="quiz-block">
                 <div class="stacked-form">
                     {% for field in form %}
-                        {% if field.name != 'redoinstructions' %}
+                        {# Skip the two NON-QUIZ carrier fields: they are placed
+                           explicitly as hidden inputs below (an unplaced form
+                           field auto-renders as a visible labelled box). #}
+                        {% if field.name != 'redoinstructions' and field.name != 'telemetry_quiz' %}
                             <p>{{ field.label }}</p>
                             {{ field }}
                         {% endif %}
                     {% endfor %}
                     <input type="hidden" name="redoinstructions" id="redoinstructions">
+                    {% if telemetry_behaviour_capture %}
+                    {# B3 BEHAVIOUR CAPTURE carrier — explicit hidden input, filled
+                       by telemetry_capture.js (config from js_vars TELEMETRY_CONFIG). #}
+                    <input type="hidden" name="telemetry_quiz" id="telemetry_quiz" value="">
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -146,5 +154,11 @@
 {# global.js first: quiz.js calls its submitFormBehindVeil helper. #}
 <script src="{% static 'global/js/global.js' %}?v={{ C.STATIC_VERSION }}"></script>
 <script src="{% static 'global/js/quiz.js' %}?v={{ C.STATIC_VERSION }}"></script>
+{% if telemetry_behaviour_capture %}
+{# The shared behaviour-capture module — same file the welcome page includes; it
+   reads TELEMETRY_CONFIG (target field + the quiz's control ids to label) from
+   js_vars (quiz.js_vars). #}
+<script src="{% static 'global/js/telemetry_capture.js' %}?v={{ C.STATIC_VERSION }}"></script>
+{% endif %}
 
 {{ endblock }}

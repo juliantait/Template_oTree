@@ -271,6 +271,8 @@ participant leaves early. Defined in `settings.EXIT_CODES`.
 | `-2` | comprehension | Disqualified: failed the comprehension check too many times. **Prolific only** — see "Comprehension failure means different things by study type" in the comprehension tier below for what the same threshold means in a lab session. | `intro.quiz.error_message` |
 | `-3` | tab_monitor | Disqualified: tab-switch monitor. **Prolific only** — the tab monitor is not supported in the lab. **Only the ejecting phases (intro + main) can set it** — outro violations never do; see "Tab-monitor violation counts" below. | `common.focus_live_method` |
 | `-4` | screened_out | **General** "removed at entry, before the consent page" bucket. Set by the **device allow-list** (`prolific_allowed_devices`) and by any future entry gate. WHICH DEVICE was detected is in `participant_extra['screenout_cause']` — see below. The code is deliberately NOT device-specific: one bucket, split by cause. **NOT write-once** — see the note directly below. | `common.set_screened_out`, called by `before._apply_device_gate` |
+| `-5` | bot_return | **NEUTRAL asked-to-return, NOT a DQ.** A bot-detection ejector fired — the welcome decoy honeypot **or** a wrong DOT-BI answer. **Prolific only** (bucket A is inert in the lab), and only when the module is ARMED (`bot_detection_armed`). Split by `participant.bot_detection_cause` ∈ {`honeypot_welcome`, `dot_bi`} so the two populations stay apart in the data. Routes to the shared gentle `outro.NeutralReturn` screen (no penalty), NOT to the DQ-styled `Ended`. `bot_dotbi_passed=False` also records a DOT-BI failure. | `common.set_bot_return`, called by `before.welcome.before_next_page` (decoy) and `before.DotBiGate.before_next_page` (DOT-BI) |
+| `-6` | no_javascript | **NEUTRAL asked-to-return.** JavaScript was off at the DOT-BI gate, so the participant could not take the visual check — a **capability fact, not a bot signal**, so its own code and no cause. Same gentle `NeutralReturn` screen. Fires regardless of the arming off-switch (a disarmed session still owes a JS-less participant the friendly return). | `common.set_no_javascript`, called by `before.DotBiGate.before_next_page` |
 
 > **ADDING A CODE IN A FORKED STUDY.** Add it to `settings.EXIT_CODES` and
 > describe it in `settings.EXIT_CODE_META` (label, emoji, `kind`, `when`) in the
@@ -301,8 +303,10 @@ participant leaves early. Defined in `settings.EXIT_CODES`.
 When you add an outcome, add it to `settings.EXIT_CODES` **and** this table —
 with the place that sets it. Every code in the table must be set by real code:
 a code that nothing records is a lie in the export, so a reserved-but-unwired
-code gets deleted, not documented. (One such code, `-5`, has already been
-removed on those grounds; `-4` was wired up instead of removed.)
+code gets deleted, not documented. (`-4` was wired up rather than removed; `-5`
+was once removed on those grounds and is now wired for a genuinely different
+outcome — the neutral bot-detection return — with `-6` added alongside it, both
+set by real code paths above.)
 
 ### Screen-out causes (`participant_extra['screenout_cause']`)
 
@@ -696,6 +700,49 @@ Do not read a NULL as "never left" — it is "not measured".
 > the monitor; `focus_trace_departures` counts **every** departure on the task
 > screen regardless of length or arming. A participant can have
 > `focus_trace_departures > 0` with `tab_monitor_focus_loss_count = 0`.
+
+---
+
+## Bot detection — active ejectors (bucket A) and ex-post quality flags (bucket B)
+
+The full design is `_ai/ai_bot_detection_spec.md`. All columns are **participant
+fields** (one row per person). Two buckets, and the split is load-bearing:
+
+- **Bucket A — ACTIVE ejectors. Prolific only; completely inert & invisible in
+  the lab.** Two, both a GENTLE no-punishment return (exit `-5 bot_return`),
+  never a DQ: the **welcome decoy honeypot** and the **DOT-BI visual gate**. They
+  fire only when the `bot_detection` module is on (prolific profile) **and**
+  `bot_detection_armed` is true (the default). Disarmed, they still RUN and
+  RECORD but never eject — that is how our own AI bot testers pass through.
+- **Bucket B — record-only quality flags. Recorded EVERYWHERE, including the
+  lab**, and they keep recording even when the off-switch is on. They never
+  eject; they feed **analysis-time** exclusion.
+
+| Column | Bucket | Values | Meaning |
+|---|---|---|---|
+| `honeypot_welcome_failed` | A | `0` clean/never-reached · `1` tripped | The hidden decoy consent control was engaged (an agent that fills every control). A human never sees it. On an armed Prolific session a `1` also means they were gently returned (`exit_code -5`, cause `honeypot_welcome`). |
+| `bot_dotbi_passed` | A | `None` not shown/reached · `True` solved · `False` wrong answer | The DOT-BI visual challenge. `None` for the lab and for anyone who never reached it. `False` on an armed session is a gentle return (`-5`, cause `dot_bi`). Read with `field_maybe_none`. |
+| `bot_dotbi_answer` / `bot_dotbi_ms` / `bot_dotbi_attempts` | A | typed number / client ms / graded count | The submitted number, the time to answer, and the number of graded submissions (`0` or `1` — a wrong answer is a hard stop, never a retry). |
+| `bot_detection_cause` | A | `''` · `honeypot_welcome` · `dot_bi` | Which ejector fired. This is what keeps the two `-5` populations apart in the export. |
+| `honeypot_results_failed` | B | `0` complied-or-never-reached · `10` reached-Results-and-didn't-tick | The results-stage "Completed" checkbox on the terminal `Results` page (label is a decoy; the field name is the truth). It is a LIVE field, not a form field: **the default is the trip** — reaching `Results` records `10`, and only ticking the box (pushed over the live socket) records `0`. So `10` = a completer who did not tick (or has no JS); `0` = complied, **or** a non-completer who never reached `Results` (disambiguate with `exit_code`). Record-only — a careful human who forgot to tick, or a no-JS human, is a harmless ex-post flag, never an ejection. The distinctive `10` sets it apart from the `1`-coded honeypots at a glance. |
+| `bot_flag` | derived | `''` · `flag` · `screened` | READER-FACING verdict (mirrors `tab_monitor_flag`): `screened` = a bucket-A ejector removed them (`-5`); `flag` = a bot signal is present but they were not ejected (a tripped honeypot, or a wrong DOT-BI answer on a disarmed run) — a covariate, not a removal; `''` = nothing (clean OR never reached; cross-check `exit_code`). Derived in one place (`common.derive_bot_flag`) from the raw columns, which stay the datum. |
+| `telemetry_welcome` / `telemetry_quiz` | B | raw JSON blob, or `''` | Passive behaviour capture on the welcome and quiz pages (keystrokes, paste, mouse, scroll, tab-blur, timing). Stored VERBATIM, never derived live. **Blank means "not measured"** (no JS, or the module off), never "clean". |
+
+**The derived AI-likelihood flags are NOT live columns — they are produced
+EX-POST** by `scripts/format_session_data.py`, which parses the raw telemetry
+blobs and emits `participant.bot_welcome_*` / `participant.bot_quiz_*` columns
+(`paste_detected`, `copy_detected`, `input_jump`, `typing_median_ms`,
+`typing_fast` (median ≤ 75 ms), the interaction counts, `tab_hidden`,
+`window_blurred`, `time_on_page_ms`), then **blanks the raw JSON** in the
+analysis-ready output (it survives in the raw oTree export). Capture (live) and
+judgement (downstream) are kept separate; the two thresholds (75 ms, 50 chars)
+live in one place there and are re-tunable against your own pilot.
+
+**For analysis:** a `-5`/`-6` participant never reached the task and is dropped
+like any early exit. Among COMPLETERS, `bot_flag == 'flag'`, a tripped
+`honeypot_results_failed`, and the ex-post `bot_*` telemetry flags are the
+covariates for a suspected-bot exclusion — decide the rule for your study and
+record it in the Analyst quick start's exclusions.
 
 ---
 
