@@ -3369,6 +3369,15 @@ var sortDir = 1;   // +1 ascending, -1 descending
    whose seats are `a2 … a10` is the case that exposes a plain-string sort (the
    same trap the server comment records). */
 function dispName(r) { return String(r.label || r.code || ''); }
+/* Rows with NO LABEL (rendered as a bare participant code) sink below the
+   labelled ones — the SAME "unlabelled last" rule the server's displayed-name
+   order applies (sort_rows_by_displayed_name / the session_snapshot sort key:
+   `1 if not label else 0`). Without this the client twin drifted: a bare code
+   sorted purely by its own characters and jumped to wherever it happened to
+   land, so clicking Participant did NOT restore the server's order "exactly"
+   (DECISIONS.md, "click-to-sort") — and it only failed when a code sorted
+   ahead of a real label, i.e. invisibly, on the random code. */
+function noLabelRank(r) { return r.label ? 0 : 1; }
 function naturalKey(s) {
   /* \\d / \\D so Python emits a single backslash into the JS (this template
      string is NOT raw — same doubling as QM_URL's regex below). */
@@ -3424,7 +3433,8 @@ function statusRank(r) {
 function cmpRows(a, b) {
   var d = 0;
   switch (sortKey) {
-    case 'label':    d = naturalCompare(dispName(a), dispName(b)); break;
+    case 'label':    d = (noLabelRank(a) - noLabelRank(b)) ||
+                         naturalCompare(dispName(a), dispName(b)); break;
     case 'quiz':     d = quizNum(a) - quizNum(b); break;
     case 'time':     d = timeNum(a) - timeNum(b); break;
     case 'earnings': d = earnNum(a) - earnNum(b); break;
