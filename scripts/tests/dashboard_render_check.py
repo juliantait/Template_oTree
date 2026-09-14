@@ -69,6 +69,16 @@ from intro.quiz_items import QUIZ_ITEMS  # noqa: E402
 # from the shipped items, so a study that swaps its quiz cannot leave a second
 # copy of the answers here quietly answering the wrong quiz.
 from quiz_answers import CORRECT, WRONG  # noqa: E402
+# The prolific profile ships the DOT-BI visual bot gate ARMED (before.DotBiGate,
+# added in the bot-detection merge). Any walk that means to COMPLETE — reach
+# Results with earnings determined — has to get past it, and it is solved the
+# same way every other walker solves it: bot_walker.dotbi_payload computes the
+# right answer under a "JS ran" flag from the participant code (the ONE
+# implementation, so this file cannot drift from the gate). Without it a
+# completer submits the gate EMPTY, is read as no-JS, and lands on the
+# `no_javascript` return — so the overview has no finished/paid participant and
+# its conditional earnings/time pills correctly stay hidden.
+from bot_walker import dotbi_payload  # noqa: E402
 
 OUT_DIR = os.path.join(_APP_ROOT, '_ai', 'dashboard_render')
 os.makedirs(OUT_DIR, exist_ok=True)
@@ -188,8 +198,14 @@ def walk(base, code, quiz_answers, stop_after=None, stop_after_n=1,
         page = page_name_of(path_of(resp))
         if page is None or page in ('Results', 'Ended'):
             break
-        data = (quiz_posts.pop(0) if page == 'quiz' and quiz_posts
-                else payload_for(page, quiz_answers))
+        if page == 'DotBiGate':
+            # Solve the armed visual bot gate the shared way (see import note),
+            # keyed on this participant's code — the gate's variant seed.
+            data = dotbi_payload(code)
+        elif page == 'quiz' and quiz_posts:
+            data = quiz_posts.pop(0)
+        else:
+            data = payload_for(page, quiz_answers)
         if overrides and page in overrides:
             data = dict(data, **overrides[page])
         resp = s.post(resp.url, data=data)
@@ -364,10 +380,14 @@ def stage_overview(base):
     #    judged on elapsed-since-left_before_app (the pills change; see
     #    _stall_elapsed), which stage_intro_time below shifts — the row's entry
     #    in that list carries the derived over-threshold age.
-    #    Stops after the AGREEMENT page, not after welcome: for Prolific the
-    #    entry block is welcome -> ConfirmProlificID -> TabMonitorAgree, so
-    #    stopping earlier would leave this row still at Entry.
-    walk(base, codes[1], correct, stop_after='TabMonitorAgree')
+    #    Stops after the LAST entry page, not earlier: for Prolific the entry
+    #    block is welcome -> ConfirmProlificID -> TabMonitorAgree -> DotBiGate
+    #    (the bot-detection merge added the DOT-BI gate at the end — see the
+    #    before/ page_sequence), so stopping any earlier leaves this row still
+    #    at Entry (on the gate) rather than on the instructions this row exists
+    #    to show as stalled. left_before_app is stamped as DotBiGate is left,
+    #    which is exactly what the intro-stamp aging below keys off.
+    walk(base, codes[1], correct, stop_after='DotBiGate')
     # 3. on the quiz with one wrong attempt (below the DQ threshold of 3)
     walk(base, codes[2], correct, quiz_posts=[wrong], stop_after='quiz')
     # 4-5. mid-task, early and late (round 2 of 5 and round 4 of 5). stop_after_n
@@ -1492,9 +1512,16 @@ def _click_sort_header(pg, key):
 
 def _monotonic(names, rows_by_name, col, ascending):
     """Is the key sequence sorted in `col`'s order? label uses natural order (the
-    server's own natural_label_key), everything else the numeric key."""
+    server's own natural_label_key) with UNLABELLED ROWS LAST — the same two-part
+    key the server sorts on (sort_rows_by_displayed_name: `1 if not label else 0`
+    then natural_label_key), because clicking Participant must restore the
+    server's order EXACTLY (DECISIONS.md). A bare-code row is unlabelled even
+    though its rendered name looks like any other, so the rank comes from the
+    row's own label, not from the displayed string. Everything else the numeric
+    key."""
     if col == 'label':
-        keyed = [ed.natural_label_key(n) for n in names]
+        keyed = [(0 if rows_by_name[n].get('label') else 1,
+                  ed.natural_label_key(n)) for n in names]
     else:
         keyed = [_sort_key_for(col, rows_by_name[n]) for n in names]
     ordered = keyed if ascending else list(reversed(keyed))
