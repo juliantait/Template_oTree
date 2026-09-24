@@ -17,6 +17,10 @@ since been built, and two of the mechanisms it documented no longer exist:
 
 If you find advice elsewhere that references either, it is stale.
 
+A Prolific study has to be hosted somewhere for participants to reach it; see
+[`hosting_railway.md`](./hosting_railway.md) for the verified way to put a study
+built from this template online.
+
 ---
 
 ## 1. Turn it on
