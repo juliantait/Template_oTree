@@ -11,7 +11,7 @@ WHY THIS FILE EXISTS
 the site. A hosting platform's own check is "did the process open a port", which
 a broken oTree container passes happily — the study this template feeds had a
 deploy report SUCCESS with the container already exited (see
-``docs/skills_claude/hosting_railway.md``). So this module serves ONE route,
+``docs/hosting_railway.md``). So this module serves ONE route,
 ``GET /health``, whose STATUS CODE is a verdict a machine can act on:
 
     200  the database answers AND a session is bound to the room
@@ -23,7 +23,7 @@ It ships even though this repo deliberately contains no deploy configuration,
 because it is HOST-AGNOSTIC: it is equally the thing a lab launcher curls before
 opening the door and the thing the Mac mini's monitoring polls. Pointing a
 platform healthcheck at it is a service SETTING, documented as a snippet in
-``docs/skills_claude/hosting_railway.md``, not a file this repo ships.
+``docs/hosting_railway.md``, not a file this repo ships.
 
 WHAT "READY" MEANS HERE, AND WHAT IT DELIBERATELY DOES NOT
 -----------------------------------------------------------

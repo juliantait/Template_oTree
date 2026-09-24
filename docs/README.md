@@ -162,7 +162,7 @@ launcher can poll before you open the door, and `curl -s localhost:8000/health`
 is the quickest way to find out whether `start.sh` got a session bound. On a
 hosted study, pointing the platform's health check at it is what makes the
 platform refuse to promote a broken build — the snippet is in
-`skills_claude/hosting_railway.md`.
+`hosting_railway.md`.
 
 ## 7. Which build is running, and which build your data came from
 
@@ -213,7 +213,7 @@ python3 scripts/write_build_info.py \
 
 It takes the values as arguments and never shells out to git, so it also runs
 where there is no repository. **If you deploy with `railway up`, read
-`skills_claude/hosting_railway.md` first** — `railway up` honours `.gitignore`,
+`hosting_railway.md` first** — `railway up` honours `.gitignore`,
 so the very line that makes the stamp safe for git stops it ever reaching the
 server. That file has the trap and the fix; it is not repeated here.
 

@@ -2,7 +2,7 @@
 
 Audience: bossman or any agent wiring a study built from this template into
 Prolific. Companion for the hosting side:
-[`hosting_railway.md`](./hosting_railway.md).
+[`hosting_railway.md`](../hosting_railway.md).
 
 > **Scope of this file: the Prolific API PROCEDURE and its money/seat semantics,
 > plus the exact points where no API exists and a person must act.** The
@@ -38,7 +38,7 @@ step performed by a person until it is confirmed against the API. See the
   so a precise pointer to where a live API token sits helps no legitimate reader
   (they have their own token, on their own machine) and only helps someone you
   would not want reading it. Never commit the token. Same stance as
-  `hosting_railway.md`.
+  `../hosting_railway.md`.
 
 ## Verified working
 
@@ -97,8 +97,8 @@ They are specified and guarded in
 [`../running_on_prolific.md`](../running_on_prolific.md) (section 2) and
 `scripts/prelaunch_check.py`. Create all five in the Prolific study, paste them
 into the matching `settings.py` keys, and bind a FRESH session AFTER the codes
-commit. The launch-order rules are in `hosting_railway.md`'s "Study day" and in
-`running_on_prolific.md`.
+commit. The launch-order rules are in `../hosting_railway.md`'s "Study day" and in
+`../running_on_prolific.md`.
 
 ## Where the API stops and a person must act
 

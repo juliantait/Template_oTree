@@ -19,7 +19,7 @@ catches:
     platform only ever checked that a port opened.
   * a build went out with its BUILD STAMP SILENTLY MISSING (`railway up` honours
     `.gitignore`, and the stamp is gitignored — see
-    `docs/skills_claude/hosting_railway.md`). Everything looked healthy; the
+    `docs/hosting_railway.md`). Everything looked healthy; the
     data simply could not say afterwards which code produced it.
 
 THE ONE PLACE PROVENANCE IS ALLOWED TO FAIL ANYTHING

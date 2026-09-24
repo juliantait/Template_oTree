@@ -19,7 +19,7 @@ commit — worse than no stamp at all.
      while looking perfectly healthy. The property that makes the file safe for
      git makes it invisible to that deploy. The fix — delete ``.gitignore`` from
      the throwaway staging tree and write a ``.railwayignore`` instead — is
-     documented in ``docs/skills_claude/hosting_railway.md``.
+     documented in ``docs/hosting_railway.md``.
   2. Not running this script at all is how you turn provenance OFF. There is no
      setting, because there is nothing to switch: with no ``BUILD_INFO.json``
      the whole feature is inert and everything reads ``unstamped``. That is the

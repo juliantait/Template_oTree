@@ -859,7 +859,7 @@ reason — the comment at each says which.
 for git makes it invisible to that deploy: the build ships completely inert,
 reports unstamped, and looks perfectly healthy. The fix (delete `.gitignore` from
 the throwaway staging tree, write a `.railwayignore` instead) is documented in
-`docs/skills_claude/hosting_railway.md` and pointed at from `.gitignore` itself.
+`docs/hosting_railway.md` and pointed at from `.gitignore` itself.
 The same `.gitignore` also excludes curl COOKIE JARS by pattern rather than by
 name: they only ever arrive from ad-hoc debugging, one was committed in
 `exp_pilots` holding a live admin session cookie, and the next one will not be

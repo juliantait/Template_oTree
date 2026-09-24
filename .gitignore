@@ -24,7 +24,7 @@ _ai/
 # makes the stamp invisible to that deploy and the build ships inert, reporting
 # unstamped while looking perfectly healthy. The deploy step must delete
 # .gitignore from its throwaway staging tree and write a .railwayignore instead
-# — see docs/skills_claude/hosting_railway.md.
+# — see docs/hosting_railway.md.
 BUILD_INFO.json
 
 # EXPORTED PARTICIPANT DATA. `scripts/export_data.py` defaults `--out` to the

@@ -139,7 +139,7 @@ commit this template to nothing.
 
 One real deploy has been done from a project built on this template (Railway,
 2026-08-14), by the team that did the `exp_pilots` hosting. **The step-by-step
-is `skills_claude/hosting_railway.md`** — deploy-repo export via `git subtree
+is `hosting_railway.md`** — deploy-repo export via `git subtree
 split`, project tokens, which operations need the GraphQL API rather than the
 CLI, the env vars as actually set, the crash rehearsal, and study day. It is
 tracked, and it is the source of truth for the Railway PROCEDURE.
