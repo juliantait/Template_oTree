@@ -13,7 +13,7 @@ so you know the file is deliberately absent rather than missing.
 | page | what it is for |
 |---|---|
 | `headless_chromium_recipe.md` | Running the measured render checks on a machine without root. Needed the first time you change a layout. |
-| `hosting_a_prolific_study.md` | Reference for putting an online study on managed hosting. **Reference, not machinery** — this repo deliberately ships no deploy config. Irrelevant to a lab study. |
+| `hosting_railway.md` | Reference for putting an online study on managed hosting: what a hosted deploy needs in general, plus the verified Railway procedure. **Reference, not machinery** — this repo deliberately ships no deploy config. Irrelevant to a lab study. |
 | `postgres_assumptions.md` | The gaps you inherit if you host on Postgres. Read before a hosted launch. |
 | `group_matching_reference.py` | Reference implementation to read first if your design needs participants matched into groups. |
 | `running_on_prolific.md` | **Operating guide for a study running on Prolific** — the ID capture, the five completion codes, the device gate, what each ending does. Moved here from a top-level `prolific/` folder on 2026-08-16; it is an operating guide, not a conversion plan. Irrelevant to a lab study. |
@@ -151,9 +151,10 @@ nothing: the request may well have completed and bound the room. **Re-running
 `start.sh` is always safe** — it reuses whatever is bound by then.
 
 **An online Prolific study needs a host.** This repo deliberately contains no
-deployment configuration; `hosting_a_prolific_study.md` is a written record of
-what such a deploy needs and what to watch for, so it can be implemented when
-somebody decides to. Read `postgres_assumptions.md` alongside it.
+deployment configuration; `hosting_railway.md` is a written record of what such a
+deploy needs and what to watch for, plus the one Railway workflow actually run, so
+it can be implemented when somebody decides to. Read `postgres_assumptions.md`
+alongside it.
 
 **`GET /health` answers "is this thing actually ready?"** — 200 only when the
 database answers *and* a session is bound to the room, 503 otherwise, with no

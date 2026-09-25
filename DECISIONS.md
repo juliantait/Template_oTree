@@ -2410,7 +2410,8 @@ checks this template calls the only evidence a layout change works),
 `group_matching_reference.py` (`main/__init__.py` tells whoever implements group
 matching to read it first). Two were written into `docs/`: a researcher-facing
 `README.md` — the front door, in the terms somebody running a study thinks in
-rather than the terms we built it in — and `hosting_a_prolific_study.md`.
+rather than the terms we built it in — and a researcher-facing hosting reference
+(its content was later merged into `hosting_railway.md`).
 
 **Everything else stayed in `_ai/` and every reference to it now carries `local
 only — _ai/ is gitignored; not in a clone`**, in one style, so a reader can tell
