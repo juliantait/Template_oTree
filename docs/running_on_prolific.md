@@ -1,5 +1,14 @@
 # Running this template on Prolific
 
+> **Referenced by (update these if you move or rename this file):**
+> - `docs/skills_claude/hosting_a_prolific_study.md` (the end-to-end agent playbook)
+> - `docs/skills_claude/README.md` and `docs/README.md`
+> - `docs/hosting_railway.md` (its general hosting reference links here for the Prolific wiring)
+> - `README.md` (root) and `settings.py`
+> - **External, off-repo:** the CREED lab doc at `juliantait.eu/CREED`, section 5.1
+>   "Running the Study Online" (source in the `juliantait.github.io` repo, file
+>   `CREED Instructions/FAQ.tex`) links this path directly.
+
 **Status: everything described here is implemented and tested.** This is an
 operating guide, not a conversion plan.
 

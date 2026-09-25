@@ -1,24 +1,58 @@
-# Recruiting an oTree study on Prolific (the API, and where a person is unavoidable)
+# Hosting and running a study on Prolific: the end-to-end agent playbook
 
-Audience: bossman or any agent wiring a study built from this template into
-Prolific. Companion for the hosting side:
-[`hosting_railway.md`](../hosting_railway.md).
+> **Referenced by (update these if you move or rename this file):**
+> - `docs/skills_claude/README.md`
+> - `docs/README.md`
 
-> **Scope of this file: the Prolific API PROCEDURE and its money/seat semantics,
-> plus the exact points where no API exists and a person must act.** The
-> study-side Prolific wiring a researcher configures (the five completion codes,
-> the entry sequence, the device gate, what each ending does) is already written
-> for the researcher in [`../running_on_prolific.md`](../running_on_prolific.md),
-> and the provider-neutral "what a hosted deploy needs" is in
-> [`../hosting_a_prolific_study.md`](../hosting_a_prolific_study.md). Do not
-> restate those here; fix them there and link.
+Audience: bossman or any agent asked to **host and run** a study built from this
+template on Prolific, start to finish. This is the orchestrating playbook: it says
+**do this, then that**, and hands off the detail to the two reference docs rather
+than repeating them. Online studies only; a lab study needs none of this.
+
+The three reference docs this skill drives, and the split between them:
+
+- [`../hosting_railway.md`](../hosting_railway.md), the **hosting** info doc:
+  everything a hosted deploy needs in general (container host, managed Postgres,
+  `DATABASE_URL`, the boot guard, the untested caveats), plus the verified Railway
+  PROCEDURE (deploy-repo export, tokens, GraphQL-vs-CLI, deploy order, domains,
+  env vars, study day). Source of truth for hosting.
+- [`../running_on_prolific.md`](../running_on_prolific.md), the **study-side**
+  info doc: the five completion codes, the entry sequence, the device allow-list,
+  the participant id, what each ending does, the before-you-launch list. Source of
+  truth for how the template wires to Prolific.
+- **This file**, the API procedure and the human-only steps for creating and
+  configuring the Prolific study itself, plus the order the three pieces go in.
+
+Do not restate the two info docs here. If something about hosting or study-side
+wiring is wrong, fix it there and link.
+
+## The order (each step delegates)
+
+1. **Deploy the study on a host.** Follow
+   [`../hosting_railway.md`](../hosting_railway.md) end to end: export the deploy
+   repo, create the project and Postgres, set the env vars, deploy, generate the
+   domain, run the crash rehearsal. You come out of this with a live
+   `https://<railway-domain>/room/<room_name>` URL and a bound session.
+2. **Wire the study to Prolific.** Follow
+   [`../running_on_prolific.md`](../running_on_prolific.md): turn on the Prolific
+   study type, create the **five** completion codes (one per ending population) in
+   the Prolific UI and paste them into the matching `settings.py` keys, decide
+   `prolific_allowed_devices`, set the `screenout_return_url`, and clear the
+   pre-launch guard (`scripts/prelaunch_check.py`). Bind a **fresh** session
+   AFTER the codes commit, because a session's config is frozen at creation, so a
+   pre-codes session keeps the placeholder frozen inside it (the launch-order
+   rules are in [`../hosting_railway.md`](../hosting_railway.md)'s "Study day").
+3. **Create and configure the Prolific study via the API, then the human-only
+   steps.** That is the rest of this file.
+
+## Step 3: the Prolific study, the API, the money, and where a person is unavoidable
 
 **The verified surface below was verified by the team that ran the live study,
 against a draft study on 2026-08-18. This file was written from that record. It
 does not re-verify anything, and the block marked NOT VERIFIED is carried as NOT
 VERIFIED. Never treat that block as tested.**
 
-## Agent autonomy: what the token gets you and where a human is unavoidable
+### Agent autonomy: what the token gets you and where a human is unavoidable
 
 With the API token an agent can create and fully configure the study draft
 (reward, places, naming) and query its state. It **cannot** Preview or
@@ -28,7 +62,7 @@ API is NOT verified** (see the NOT VERIFIED block), so treat publishing as a UI
 step performed by a person until it is confirmed against the API. See the
 `HUMAN STEP` markers below.
 
-## Credentials
+### Credentials
 
 - Base URL `https://api.prolific.com/api/v1/`.
 - Header `Authorization: Token <token>`.
@@ -37,10 +71,10 @@ step performed by a person until it is confirmed against the API. See the
   recorded here: this file is tracked and ships with every copy of the template,
   so a precise pointer to where a live API token sits helps no legitimate reader
   (they have their own token, on their own machine) and only helps someone you
-  would not want reading it. Never commit the token. Same stance as
-  `../hosting_railway.md`.
+  would not want reading it. Never commit the token. Same stance as the Railway
+  project token in [`../hosting_railway.md`](../hosting_railway.md).
 
-## Verified working
+### Verified working
 
 - `GET /studies/<id>/` returns the full study object (about 90 fields).
 - `PATCH /studies/<id>/` with a JSON body. Confirmed editable on an **UNPUBLISHED
@@ -54,7 +88,7 @@ Fields worth reading back: `status`, `is_ready_to_publish`,
 `number_of_submissions`, `total_cost`, `fees_percentage`, `is_underpaying`,
 `minimum_reward_per_hour`, `published_at`.
 
-## Semantics that bite (get these wrong and it costs money or strands a participant)
+### Semantics that bite (get these wrong and it costs money or strands a participant)
 
 - **`reward` is in PENCE.** `175` means £1.75. Sending pounds overpays by 100x.
 - **The advertised hourly rate is computed from the BASE reward only.** Prolific
@@ -74,7 +108,7 @@ Fields worth reading back: `status`, `is_ready_to_publish`,
   the oTree session generously and recruit exactly the number you want:
   `total_available_places` no greater than the oTree seat count, always.
 
-## Study naming convention (Julian)
+### Study naming convention (Julian)
 
 Studies are named **"A Study on Decision Making"**, not more descriptive, and with
 **no duration in the title**. A descriptive title primes participants; a duration
@@ -82,7 +116,7 @@ in the title is a second place the number lives and it drifts (one study shipped
 "(~15 min)" while the field said 12, then 13). `estimated_completion_time` is the
 single source of truth and Prolific displays it already.
 
-## The URL and codes you hand Prolific
+### The URL and codes you hand Prolific
 
 The `external_study_url` you PATCH must carry the participant id and point at the
 live room:
@@ -95,12 +129,13 @@ The **five completion codes**, one per ending population, and the
 `screenout_return_url` are **study configuration**, not something to invent here.
 They are specified and guarded in
 [`../running_on_prolific.md`](../running_on_prolific.md) (section 2) and
-`scripts/prelaunch_check.py`. Create all five in the Prolific study, paste them
-into the matching `settings.py` keys, and bind a FRESH session AFTER the codes
-commit. The launch-order rules are in `../hosting_railway.md`'s "Study day" and in
-`../running_on_prolific.md`.
+`scripts/prelaunch_check.py`. This is Step 2 above: create all five in the
+Prolific study, paste them into the matching `settings.py` keys, and bind a FRESH
+session AFTER the codes commit. The launch-order rules are in
+[`../hosting_railway.md`](../hosting_railway.md)'s "Study day" and in
+[`../running_on_prolific.md`](../running_on_prolific.md).
 
-## Where the API stops and a person must act
+### Where the API stops and a person must act
 
 Two things have no API and are the exact points a fresh agent stalls silently, so
 each carries a marker you cannot miss:
@@ -119,7 +154,7 @@ each carries a marker you cannot miss:
 > participants: every server-side test can pass while the return link is still
 > wrong.
 
-## NOT VERIFIED (do not assume these work, and do not tell anyone they were tested)
+### NOT VERIFIED (do not assume these work, and do not tell anyone they were tested)
 
 The following were **not exercised** against the API and must be treated as
 unknown, not as working:
