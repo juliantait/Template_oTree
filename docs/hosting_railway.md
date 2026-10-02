@@ -518,7 +518,8 @@ admin panel during the run. After the study: export, then delete the app service
 ## Appendix: performance and usage statistics
 
 *Measured under real load, with the `exp_pilots` run as the worked case
-(2026-09-13).*
+(2026-09-13), and a second dataset from Pilot 2 of the same study (2026-10-02)
+further down.*
 
 This appendix tells you what to expect when you host a Prolific study built from
 this template on Railway, and it is backed by measurements rather than guesses. A
@@ -601,6 +602,75 @@ operator mistakes during quiet windows, not platform failures under load, and th
 were **zero 5xx errors during either participant wave**. The remaining non-5xx noise
 is what any public URL attracts: 1,255 404s from bots and scanners, and 910 499s
 from clients closing the connection early.
+
+### Second dataset: Experts Pilot 2 (2026-10-02)
+
+Pilot 2 of the same Experts study ran on the same stack: one Railway container
+on the Hobby plan running oTree 6, plus managed Postgres. One 220-seat session
+(`a56uqeqb`), **195 participants started and 129 completed**. Prolific places were
+raised gradually from 10 rather than released in one batch. The numbers below
+come from three sources: Railway's per-minute container metrics (12:30 to 16:20
+UTC), oTree's page-submission times for the session (participant codes only),
+and a health poll every two minutes from 14:16 UTC.
+
+**Concurrency** was reconstructed the same way as Pilot 1: a participant counts as
+on site in every minute between their first and their last page submission. The
+first 10 places drew a small group around 12:58 UTC (never more than 9 at once).
+The main ramp began at about 14:15 UTC and peaked at **75 simultaneous
+participants at 14:31 to 14:32 UTC**. A later raise of places gave a second,
+smaller hump of 33 around 15:05 to 15:10, and the session drained by 16:11.
+Completers took a median of 16.6 minutes; over all 195 participants, from first to
+last submission, the median was 13.8 minutes. The busiest minute carried 118 page
+submissions.
+
+![Concurrent participants (left axis) and container RAM (right axis) over Pilot 2 on 2 Oct 2026. The ramp peaks at 75 concurrent at 14:31 UTC; memory climbs from 0.11 GB idle to a plateau of 0.40 GB.](figures/railway_concurrency_ram_pilot2.png)
+
+**What it cost the box.** Idle before the study, the container sat at 0.11 GB and
+0.002 vCPU.
+
+- **At the peak minute** (75 concurrent, 14:31 UTC): **0.29 GB RAM and 0.07 vCPU**.
+- **Highest values of the run**: CPU **0.22 vCPU** at 15:03 UTC, during the second
+  raise of places, when arrivals rather than the number already on site drove the
+  load (CPU above 0.2 vCPU for only 2 minutes); RAM **0.40 GB** at 15:14 UTC.
+- **Means**: over the active window (12:58 to 16:11 UTC), 0.29 GB RAM and 0.06 vCPU;
+  over the hour around the peak, 0.26 GB and 0.08 vCPU (about 8% of one core).
+
+CPU tracks concurrency closely (correlation 0.77 per minute). RAM does not: it
+climbs during the ramp and then stays at about 0.39 to 0.40 GB after the
+participants have left. That is the Python process keeping memory it has already
+allocated, the same plateau Pilot 1 shows, not a leak that grows with load.
+
+**Latency.** Pilot 2 has no request log, so latency here is the health poll's full
+round trip from outside (network included), not the server-side percentiles
+reported for Pilot 1. Across 60 polls from 14:16 to 16:13 UTC: **median 0.18 s**,
+90th percentile 0.34 s, **maximum 0.94 s**. Four polls took over 0.5 s, and they
+do not follow load: the slowest (0.94 s) came at 15:28 with 10 participants on
+site, and one of 0.75 s at 15:56 with 2 on site. At the peak itself polls answered
+in 0.08 to 0.27 s.
+
+**Reliability.** All 60 polls returned **HTTP 200** with the session ready; there
+was no non-200 response and no poll over one second. The polls did not cover the
+first small wave (12:58 to 13:50 UTC).
+
+### Pilot 1 vs Pilot 2
+
+| | Pilot 1 (25 Aug 2026) | Pilot 2 (2 Oct 2026) |
+|---|---|---|
+| Stack | 1 Railway container + managed Postgres | same |
+| Participants started / completed | 195 across two waves | 195 / 129 (220 seats) |
+| How places opened | small release, then one batch of 180 | raised gradually from 10 |
+| Peak concurrency | 81 at 17:15 UTC | 75 at 14:31 UTC |
+| RAM at peak / max | 0.41 GB max | 0.29 GB at peak, 0.40 GB max |
+| CPU max | 0.26 vCPU (about one minute) | 0.22 vCPU (2 minutes over 0.2) |
+| CPU mean, peak hour | about 0.06 vCPU | 0.08 vCPU |
+| Latency | server-side p50 25 ms, p99 406 ms at peak | health poll median 0.18 s, max 0.94 s |
+| Errors during participant load | 0 5xx | 0 non-200 of 60 polls |
+
+The two runs agree: about 75 to 80 people on site at once costs a quarter of a
+core at worst and under half a gigabyte, and nothing failed under load in either.
+Opening places gradually in Pilot 2 did not lower the peak much (75 vs 81), because
+Prolific filled the raised places within minutes; it spread the CPU load over more
+of the afternoon rather than flattening the concurrency spike.
 
 ### Cost
 
