@@ -33,6 +33,14 @@ class C(BaseConstants):
     # num_experimental_rounds lower — the extra pages are skipped via
     # is_displayed) but NEVER MORE than were imported here.
     NUM_ROUNDS = num_experimental_rounds
+    # THE EXPERIMENTER MONITOR (optional constants; see the timeline section of
+    # experimenter_dashboard.py). The step reads "Task" and its marker "2 of N",
+    # where N is THIS session's round count — the config key below caps
+    # C.NUM_ROUNDS exactly as rounds_for() does, so the operator sees the same
+    # total as the participant's progress strip.
+    MONITOR_LABEL = 'Task'
+    MONITOR_ROUNDS = 'fraction'
+    MONITOR_ROUNDS_CONFIG = 'num_experimental_rounds'
 
 
 def rounds_for(session) -> int:

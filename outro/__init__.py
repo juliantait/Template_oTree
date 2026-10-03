@@ -246,6 +246,9 @@ class C(BaseConstants):
     NAME_IN_URL = 'outro'
     PLAYERS_PER_GROUP = None
     NUM_ROUNDS = 1
+    # THE EXPERIMENTER MONITOR's header label for this app's step (optional;
+    # absent -> the raw app name). See experimenter_dashboard.py.
+    MONITOR_LABEL = 'Questionnaire'
 
 class Subsession(BaseSubsession):
     pass
@@ -928,6 +931,10 @@ experimenter_dashboard.install_dashboard_route_or_note()
 # moved, quiet when oTree is legitimately absent, never a raise) — see
 # note_admin_tab_problems and outro/admin_report.html.
 experimenter_dashboard.note_admin_tab_problems()
+# The monitor's timeline is built from each session's app_sequence; this warns
+# (never raises) about configs missing an app the monitor reads BY NAME, so a
+# fork knows which pills will be blank — see note_timeline_problems.
+experimenter_dashboard.note_timeline_problems()
 
 # `GET /health` — unauthenticated, read-only, 200 only when the database answers
 # AND a session is bound to the room. It is what a platform healthcheck and

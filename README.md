@@ -881,9 +881,14 @@ separate service:
 
 One row per participant, keyed on `participant.label` (the seat number in the lab,
 the Prolific ID online; the participant code, dimmed, until a label exists). Each
-row carries a six-step timeline — **Entry → Instructions → Quiz → Task →
-Questionnaire → Done** — with the marker on the current step, carrying the round
-number ("2 of 10") while they are in the task. Then the quiz-attempts cell (white
+row carries a timeline built **from that session's own `app_sequence`** — one
+step per app, `intro` split into Instructions and Quiz, then Done; for the
+shipped apps **Entry → Instructions → Quiz → Task → Questionnaire → Done** — with
+the marker on the current step, carrying the round inside a multi-round app
+("2 of 10" in the task, "2" on the intro's re-read pass). A study that adds or
+renames an app needs no dashboard edit: an app may declare `C.MONITOR_LABEL`,
+`C.MONITOR_ROUNDS` and `C.MONITOR_ROUNDS_CONFIG` (CLAUDE.md, "Adding, renaming or
+splitting apps"). Then the quiz-attempts cell (white
 → filling → red at `quiz_comprehension_max_failures` → green with the attempt count
 once passed, so `1` means passed first time), time on the instructions, earnings
 once known, and a state cell. A terminal state **overrides the marker** with an
@@ -927,17 +932,20 @@ reader turns amber; high enough for the instructions and nobody stuck at entry
 is ever flagged. Both failures are silent, and the operator simply learns to
 ignore the colour.
 
+A phase is an APP: the setting for app `x` is `DASHBOARD_STALL_SECONDS_X`
+(uppercased), so a new app gets its own line by naming it.
+
 | setting | default | governs |
 |---|---|---|
 | `DASHBOARD_STALL_SECONDS_BEFORE` | 60 | the entry block (startpage, consent, ID, tab-monitor) |
 | `DASHBOARD_STALL_SECONDS_INTRO` | 480 | the whole `intro` app — instructions and quiz share one |
-| `DASHBOARD_STALL_SECONDS_TASK` | 180 | ONE task round (raise it for a longer task page) |
+| `DASHBOARD_STALL_SECONDS_TASK` | 180 | ONE task round in `main` (its legacy name; `..._MAIN` also works and wins) |
 | `DASHBOARD_STALL_SECONDS_OUTRO` | 300 | the outro, before being marked complete |
-| `DASHBOARD_STALL_SECONDS_DEFAULT` | 300 | any phase not named above |
+| `DASHBOARD_STALL_SECONDS_DEFAULT` | 300 | any app without its own line (judged on time on the current page) |
 | `DASHBOARD_POLL_SECONDS` | 2 | poll interval; 2 is also a floor, enforced server-side |
 
 The thresholds in force are **shown on the page itself**: the ⓘ in the **State**
-column header lists all four, read from these settings on every poll, so an
+column header lists one per app in the session, read from these settings on every poll, so an
 operator can see what counts as too long without opening `settings.py`. An amber
 row additionally names the limit it tripped.
 
@@ -1006,10 +1014,11 @@ in DECISIONS.md (2026-08-17).
 **Adding a column** is three marked places and nothing else — compute the value
 in `_participant_row` (`ADD A COLUMN HERE`), add a `<th>` to `_COLGROUP_HTML`,
 add the cell branch in `renderRow` (`ADD A COLUMN HERE (render)`). **Adding an
-APP** to a study copied from this template means adding it to `APP_STEPS`, which
-is the map deciding where a new app's pages sit on the timeline; a participant in
-an app that is not in that map is shown as `⁉️ app "x" not on the timeline` with
-no marker, rather than being silently placed at Entry.
+APP** needs nothing here: the timeline is the session's `app_sequence`. A
+participant in an app that is NOT in their session's sequence is shown as `⁉️ app
+"x" not on the timeline` with no marker, rather than being silently placed at
+Entry, and a config missing an app the monitor reads by name (`outro`, `intro`,
+`before`, `main`) gets a `MONITOR WARNING` in the server log at launch.
 
 ## Testing
 
@@ -1036,7 +1045,9 @@ configs, browser rendering checks) rather than just listing these files.
 | **`scripts/tests/device_gate_test.py`** — the entry allow-list, weighted towards FALSE POSITIVES: eleven real browsers (desktop Chrome/Safari/Firefox/Edge, Chrome OS, a touchscreen laptop, an iPad, an Android tablet, phones) plus every shape of unusable User-Agent | the listed types are admitted and nothing else is screened by accident: those browsers are never removed, an unusable User-Agent always proceeds recording nothing, an excluded type gets `-4` with the DETECTED type as its cause, and the default list does nothing at all | client-side behaviour; anything past entry | after touching the entry gate, the classifier or `prolific_allowed_devices` |
 | **`scripts/tests/screenout_softwall_test.py`** — the screen-out lifecycle over real HTTP: screened → cleared → re-screened → completes, the post-consent immunity, the way out, and the no-decision asymmetry | the verdict is written immediately (a closed tab still exports `-4`), clears only on POSITIVE evidence of an accepted device before consent, never touches anyone after consent, and the way out is a codeless real link | rendering; anything a browser does with the page | after touching the gate, the clear rules or the screen-out page |
 | **`scripts/tests/identity_test.py`** — in-process: re-entry, two tabs on one id, case/whitespace variants, a clashing id claim, a PLANTED duplicate label, and a room rebound to a new session | one participant row per id (which is what re-entry and the soft wall depend on); a clashing claim is refused silently with the owner's code recorded; a duplicate that exists anyway does not 500 | anything about the pages themselves | after touching label writes, `identity.py` or the entry sequence |
-| **`scripts/tests/dashboard_test.py`** — in-process, production + `AUTH_LEVEL=STUDY`: the install discipline, the two dashboard acceptance criteria, row truth for every stage and all four terminal states, the entry-block boundary, an unmapped app, and read-only | that the dashboard is **unreachable without an admin login** (page, data and index, for an anonymous client AND for a mid-study participant's own cookies; the redirect leaks nothing; POST is 405); that a raising handler yields the **error panel** and `ok:false` JSON rather than a 500, and one poisoned ROW leaves the table `ok:true` with every other row live; that it **writes nothing** (byte-identical participant rows plus an ORM dirty-flag check); that an app missing from `APP_STEPS` is visibly unplaced instead of silently at Entry; and that the **quiz-mistakes** endpoint returns the first-attempt aggregate (worst-item-first, chosen-option counts), keeps the two passes unpooled, excludes and counts blank admin-advance submissions, degrades to `ok:false`/`available:false` without touching the main table, and carries the answer text for the renderer to escape | **it is NOT proof that the wrapper is what protects participants.** Section C's participant walks are a regression guard: participant survival rests partly on oTree's `NEW_IDMAP_EACH_REQUEST` giving every request a fresh DB session, and those checks still pass with the wrapper deleted (check C0 pins that oTree property so a future version changing it goes red). The checks that fail when the wrapper is removed are the error-panel ones. Also blind to: anything about how the page LOOKS, and concurrency — the polls here are sequential | after touching `experimenter_dashboard.py`, the entry-block stamps, or any app's `page_sequence`/app list |
+| **`scripts/tests/dashboard_test.py`** — in-process, production + `AUTH_LEVEL=STUDY`: the install discipline, the two dashboard acceptance criteria, row truth for every stage and all four terminal states, the entry-block boundary, an unmapped app, and read-only | that the dashboard is **unreachable without an admin login** (page, data and index, for an anonymous client AND for a mid-study participant's own cookies; the redirect leaks nothing; POST is 405); that a raising handler yields the **error panel** and `ok:false` JSON rather than a 500, and one poisoned ROW leaves the table `ok:true` with every other row live; that it **writes nothing** (byte-identical participant rows plus an ORM dirty-flag check); that an app not in the session's `app_sequence` is visibly unplaced instead of silently at Entry; that the header, grid, connector and JS step order all derive from the session's one timeline; and that the **quiz-mistakes** endpoint returns the first-attempt aggregate (worst-item-first, chosen-option counts), keeps the two passes unpooled, excludes and counts blank admin-advance submissions, degrades to `ok:false`/`available:false` without touching the main table, and carries the answer text for the renderer to escape | **it is NOT proof that the wrapper is what protects participants.** Section C's participant walks are a regression guard: participant survival rests partly on oTree's `NEW_IDMAP_EACH_REQUEST` giving every request a fresh DB session, and those checks still pass with the wrapper deleted (check C0 pins that oTree property so a future version changing it goes red). The checks that fail when the wrapper is removed are the error-panel ones. Also blind to: anything about how the page LOOKS, and concurrency — the polls here are sequential | after touching `experimenter_dashboard.py`, the entry-block stamps, or any app's `page_sequence`/app list |
+| **`scripts/tests/dashboard_timeline_test.py`** — in-process: one throwaway session's stored `app_sequence` rewritten to insert apps (one unimportable, one a `sys.modules` stub declaring `C.MONITOR_LABEL`) | that the monitor's timeline IS the session's `app_sequence`: an inserted app gets its own step at the right position with its raw name, a declared label is the header, intro shows the round number only, main shows "x of N" capped by the config, the stall threshold is found by app name, an app outside the sequence is still flagged, a tab-monitor DQ is placed where it happened, and the launch warning names a config missing a name-bound app | the inserted apps' own pages (never rendered here); how the wider timeline LOOKS — that was checked once over real HTTP with a dummy app (`_ai/monitor_dynamic/`), not on every run | after touching the timeline code in `experimenter_dashboard.py` or any `C.MONITOR_*` constant |
+| **`scripts/tests/dashboard_timeline_render_check.py`** — real headless Chromium over the dashboard's own page and JS (fixture data, no server) for **4 to 9 timeline steps** at 1024/1152/1280/1440px, raw app names included | that whatever app sequence a study runs, the header labels stay centred on the row dots (±1px), tracks stay equal, a label is cut only in the extreme ≥7-steps-at-≤1152px case and then keeps its tooltip, two-pill state cells stay on one line, rows share one height, and the page never scrolls sideways | the numbers in the cells; a real session's column widths; emoji fonts | after touching the dashboard's timeline/state CSS or `fitTimeline` |
 | **`scripts/tests/dashboard_render_check.py`** — real uvicorn + real headless Chromium at 1280/1512/1152, staging 13 participants across every state | that the operator screen is actually USABLE: the login wall stands in a browser, the poll paints and ticks without a reload, the six timeline steps are **measured** equal to within 2px, the mid-task marker reads "2 of 3", the amber row differs in sampled PIXELS rather than by class, entry-only rows dim and the toggle hides them, no horizontal page scroll, and no time/earnings/stall cell is ever clipped; and that the **quiz-mistakes panel** opens on the ⓘ, shows the two passes side by side, **escapes** a hostile answer into the DOM (injecting no element), states the blank-exclusion count, expands later attempts and dismisses on Escape | server-side correctness (that is `dashboard_test.py`'s job); whether the numbers are RIGHT — it checks that cells render legibly, not that they say the truth; anything about a real operator's screen size or emoji font | after ANY change to the dashboard's HTML, CSS or JS — a broken operator layout produces no error anywhere |
 | **`scripts/tests/dashboard_total_time_test.py`** — offline unit test of `_total_seconds`, the per-participant TOTAL timer | where the total clock **starts** (the first stage stamp) and **stops** (now while live; the `finished` stamp for a finisher; the last stamp for a terminal row), that a post-finish receipt click is not billed, that a terminal row ignores the wall clock, that a missing/garbled stamp yields no pill rather than a crash, and the **total ≥ intro** invariant | anything about how the pills LOOK or tick (that is the browser test); the intro clock's own boundary (that is `_intro_seconds`) | after touching `_total_seconds`, `_intro_seconds`, or the stage-stamp vocabulary |
 | **`scripts/tests/dashboard_timer_banner_test.py`** — real headless Chromium loading the dashboard's own page with a **mocked poll** (request routing), so the poll can be made to fail on demand | the two timer pills render (intro then total, total ≥ intro), a live pill **counts up on its own** while a frozen one does not, and the **stale-data banner** names the last good data's wall-clock time and an age that **keeps climbing** while the refresh fails — each measured at two times and asserted to have MOVED (never an absence-only check) | server-side correctness of the numbers (that is the unit test); the real network stack — the poll here is stubbed to isolate the client behaviour | after touching the dashboard's poll loop, `renderRow` time pills, `tickLivePills`, or `paintStatus` |

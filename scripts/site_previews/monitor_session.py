@@ -116,10 +116,25 @@ CURRENCY = 'EUR'
 ROUNDS_TOTAL = 10
 QUIZ_MAX_FAILURES = 3
 STALL_LEGEND = [
-    {'label': 'Entry', 'seconds': 60},
-    {'label': 'Intro (instructions + quiz)', 'seconds': 480},
-    {'label': 'Task (one round)', 'seconds': 180},
-    {'label': 'Questionnaire', 'seconds': 300},
+    {'label': 'Entry', 'seconds': 60, 'scope': 'page'},
+    {'label': 'Intro (instructions + quiz)', 'seconds': 480, 'scope': 'phase'},
+    {'label': 'Task (one round)', 'seconds': 180, 'scope': 'page'},
+    {'label': 'Questionnaire', 'seconds': 300, 'scope': 'phase'},
+]
+
+# THE TIMELINE the preview is drawn against, in session_timeline()'s step shape:
+# the shipped app_sequence (before, intro, main, outro) with each app's
+# C.MONITOR_LABEL and intro split by page. Restated rather than built from the
+# apps for the fixture reason above (and because building it would import the
+# apps, which need oTree): a fork that relabels its apps changes its live
+# monitor at once, and this demo only when someone edits this list.
+TIMELINE = [
+    {'id': 'before', 'label': 'Entry'},
+    {'id': 'instructions', 'label': 'Instructions'},
+    {'id': 'quiz', 'label': 'Quiz'},
+    {'id': 'main', 'label': 'Task'},
+    {'id': 'outro', 'label': 'Questionnaire'},
+    {'id': 'done', 'label': 'Done'},
 ]
 
 # THE FOUR TERMINAL/EJECTION states, restated in the shape the server derives
@@ -146,7 +161,8 @@ def _row(label, step, **kw):
         code=kw.pop('code', ''),
         arrived=True,
         step=step,
-        task_round=None,
+        round=None,            # the marker's round (C.MONITOR_ROUNDS)
+        round_total=None,      # …and its 'of N', for a 'fraction' app
         terminal=None,
         terminal_emoji=None,
         terminal_label=None,
@@ -219,12 +235,12 @@ ROWS = [
 
     # SCREENED OUT at the device/screen-out gate: red terminal pill, 📵 marker
     # at the entry step. An ENTRY turn-away.
-    _row(_OID % 1, 'entry', current_page='DeviceCheck',
+    _row(_OID % 1, 'before', current_page='DeviceCheck',
          terminal='screened_out', quiz=_quiz('idle')),
 
     # DECLINED CONSENT: ✋ terminal, also an ENTRY turn-away. Needs the explicit
     # consent radio (online); the lab consents implicitly, so it can never show.
-    _row(_OID % 2, 'entry', current_page='Consent',
+    _row(_OID % 2, 'before', current_page='Consent',
          terminal='no_consent', quiz=_quiz('idle')),
 
     # COMPREHENSION DQ: ❌ terminal, ejected DURING the quiz after too many
@@ -236,62 +252,67 @@ ROWS = [
     # TAB-MONITOR DQ: 👀 terminal, ejected mid-task for leaving the tab too many
     # times — an ejection after STARTING. Once terminal the DQ pill says it; the
     # BEFORE-state (a count still climbing) rides lab seat A7 below.
-    _row(_OID % 4, 'task', current_page='GameStart', task_round=4,
+    _row(_OID % 4, 'main', current_page='GameStart',
          terminal='tab_monitor', quiz=_quiz('green', 0, 1), intro_seconds=228),
 
     # ===== LAB COHORT — bank A (cubicles A1–A8) ============================
     # On the consent page: present, nothing to report yet, idle quiz cell.
-    _row('A1', 'entry', current_page='Consent', quiz=_quiz('idle')),
+    _row('A1', 'before', current_page='Consent', quiz=_quiz('idle')),
 
     # STALLED IN INTRO: 9:41 against the 8:00 threshold. Amber row tint (find it
     # across the room) + the timing pill (which phase, how long) — the two
     # complementary channels the dashboard CSS argues for at length. Live intro
     # timer, so the TOTAL beside it keeps counting too.
-    _row('A2', 'instructions', current_page='Instructions',
+    _row('A2', 'instructions', current_page='Instructions', round=1,
          quiz=_quiz('idle'), intro_seconds=581, intro_live=True,
          stalled=True, stall_elapsed=581, stall_limit=480,
          stall_section='Intro'),
 
     # Mid-quiz, one wrong attempt so far: the cell FILLS towards the limit.
-    _row('A3', 'quiz', current_page='Quiz', quiz=_quiz('progress', 1),
+    _row('A3', 'quiz', current_page='Quiz', round=1,
+         quiz=_quiz('progress', 1),
          intro_seconds=341, intro_live=True),
 
     # In the task at successive rounds — the round-of-total counter on the
     # marker. Settled intro timers now (they have left the intro).
-    _row('A4', 'task', current_page='GameStart', task_round=2,
+    _row('A4', 'main', current_page='GameStart',
+         round=2, round_total=ROUNDS_TOTAL,
          quiz=_quiz('green', 0, 1), intro_seconds=204),
 
     # HIT THE THREE-FAILURE LIMIT. In a LAB session that is not a
     # disqualification (quiz_comprehension_dq off) — so a lab row runs on with a
     # red cell as the operator's cue, distinct from the online comprehension DQ
     # above where the SAME red count DID eject. That contrast is the point.
-    _row('A5', 'quiz', current_page='Quiz', quiz=_quiz('red', 3),
+    _row('A5', 'quiz', current_page='Quiz', round=1, quiz=_quiz('red', 3),
          intro_seconds=402, intro_live=True),
 
     # FORCED past the quiz from the admin panel without ever answering it:
     # violet, and it says the word rather than a count, because nothing is wrong
     # with the participant. Now in the task; settled intro timer.
-    _row('A6', 'task', current_page='GameStart', task_round=5,
+    _row('A6', 'main', current_page='GameStart',
+         round=5, round_total=ROUNDS_TOTAL,
          quiz=_quiz('forced'), intro_seconds=245),
 
     # TAB-MONITOR CLIMBING (not yet ejected): the live count "2 of 3" in the
     # State cell — the operator's cue to speak to them BEFORE the DQ. Riding a
     # LAB seat by choice (see the row budget): the demo shows the lab labels
     # carrying the full pill vocabulary. Green quiz, settled intro timer.
-    _row('A7', 'task', current_page='GameStart', task_round=6,
+    _row('A7', 'main', current_page='GameStart',
+         round=6, round_total=ROUNDS_TOTAL,
          quiz=_quiz('green', 1, 2), intro_seconds=172,
          monitor_count=2, monitor_max=3),
 
     # STALLED ON A TASK ROUND: the second amber phase, judged against the
     # per-round 3:00 threshold rather than the intro's 8:00.
-    _row('A8', 'task', current_page='GameStart', task_round=3,
+    _row('A8', 'main', current_page='GameStart',
+         round=3, round_total=ROUNDS_TOTAL,
          quiz=_quiz('green', 0, 1), intro_seconds=188,
          stalled=True, stall_elapsed=312, stall_limit=180,
          stall_section='Task round'),
 
     # ===== LAB COHORT — bank B (cubicles B1–B5) ============================
     # In the questionnaire, having passed the quiz.
-    _row('B1', 'questionnaire', current_page='Feedback',
+    _row('B1', 'outro', current_page='Feedback',
          quiz=_quiz('green', 0, 1), intro_seconds=195),
 
     # FINISHED: green row, ✓ done marker, earnings pill.
@@ -317,12 +338,12 @@ ROWS = [
     # treatment means "nobody is here" and nothing else. It still carries an
     # idle quiz cell, because `_participant_row` always builds one — a row
     # WITHOUT it would be a shape the server never sends.
-    _row('B5', 'entry', arrived=False, entry_only=True, quiz=_quiz('idle')),
+    _row('B5', 'before', arrived=False, entry_only=True, quiz=_quiz('idle')),
 
     # NO LABEL YET (a bare-link arrival before the ID page): the row falls back
     # to the oTree participant code, which is what an operator can still act on.
     # Unlabelled rows sort last.
-    _row('', 'entry', code='k7m2p9xr', current_page='Welcome',
+    _row('', 'before', code='k7m2p9xr', current_page='Welcome',
          quiz=_quiz('idle')),
 ]
 
@@ -346,7 +367,7 @@ for _r in ROWS:
         _r['terminal_when'] = _m['when']
     # A cell is spent only by somebody who reached the instructions — so not by
     # a never-arrived row, and not by one still at ENTRY or turned away there.
-    if _r.get('arrived') and _r.get('step') not in ('entry',):
+    if _r.get('arrived') and _r.get('step') not in ('before',):
         _r['treatment'] = ('row', 'column')[_n % 2]
         _n += 1
     # TOTAL TIME (pill 2): derived from the intro time so the invariant total >=
@@ -429,7 +450,7 @@ def payload():
         session=dict(code=SESSION_CODE, config_name='demo',
                      display_name=SESSION_TITLE, num_participants=len(ROWS)),
         rows=ROWS,
-        rounds_total=ROUNDS_TOTAL,
+        timeline=TIMELINE,
         quiz_max_failures=QUIZ_MAX_FAILURES,
         stall_seconds={p['label']: p['seconds'] for p in STALL_LEGEND},
         stall_legend=STALL_LEGEND,

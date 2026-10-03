@@ -409,8 +409,11 @@ def is_placeholder(value) -> bool:
 # enough for the instructions and nobody stuck at entry is ever flagged.
 #
 # Each phase below is its own line, tuned independently. The amber row treatment
-# is unchanged — only which number decides it. A phase with no threshold here
-# falls back to DASHBOARD_STALL_SECONDS_DEFAULT.
+# is unchanged — only which number decides it. A PHASE IS AN APP: the line for
+# app `x` is DASHBOARD_STALL_SECONDS_<X UPPERCASED>, so an app a study adds gets
+# its own threshold by adding a line with its name (main's line keeps its legacy
+# name, TASK). An app with no line here falls back to
+# DASHBOARD_STALL_SECONDS_DEFAULT.
 DASHBOARD_STALL_SECONDS_BEFORE = 60    # entry block (startpage, consent, ID, tab-monitor)
 DASHBOARD_STALL_SECONDS_INTRO = 480    # instructions + quiz, whole intro app
 # TASK: 180s per ROUND, and this one is a judgement call rather than Julian's
@@ -431,9 +434,9 @@ DASHBOARD_STALL_SECONDS_TASK = 180
 # for the longest legitimate outro this template ships and short enough to catch
 # somebody who has walked away without finishing.
 DASHBOARD_STALL_SECONDS_OUTRO = 300
-# Fallback for any phase not named above (an unmapped app, or a step added to
-# the dashboard without a threshold). Deliberately the old global value, so a
-# study that never touches these lines behaves as before.
+# Fallback for any app not named above (an app a study added without its own
+# line, or an unplaced one). Deliberately the old global value, so a study that
+# never touches these lines behaves as before.
 DASHBOARD_STALL_SECONDS_DEFAULT = 300
 DASHBOARD_POLL_SECONDS = 2      # dashboard refresh; 2s is a floor, enforced server-side
 # Grace before a finisher with no recorded "Back to Prolific" click is flagged

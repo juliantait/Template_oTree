@@ -59,8 +59,9 @@ def section(title):
 def build_page():
     """The real dashboard shell, with the session placeholders filled and no
     external stylesheet (this test measures behaviour, not pixels — the pills
-    are built by renderRow regardless of CSS)."""
-    return (ed._PAGE_HTML
+    are built by renderRow regardless of CSS). The timeline is resolved from
+    the fixture's own TIMELINE, as a live page resolves it per session."""
+    return (ed.page_template_for_steps(monitor_session.TIMELINE)
             .replace('__CSS_HREF__', '')
             .replace('__SESSION_CODE__', 'demo1234')
             .replace('__SESSION_TITLE__', 'Timer/banner test')

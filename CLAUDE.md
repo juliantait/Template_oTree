@@ -179,6 +179,40 @@ stylesheet or its `renderRow`**, which the monitor preview is literally rendered
 by. Nothing fails if you don't — the site simply goes on showing an older study,
 which is exactly how the hand-written snapshots it replaced went stale.
 
+## Adding, renaming or splitting apps: the experimenter monitor follows
+
+The monitor's timeline is built **per session from its `app_sequence`** (one
+step per app, in order, then Done), so adding, renaming or reordering an app
+needs no dashboard edit. What a fork may set, all optional, on the app's `C`:
+
+- **`MONITOR_LABEL`** — the step's header (absent: the raw app name).
+- **`MONITOR_ROUNDS`** — the marker inside the app: `'fraction'` ("2 of 10"),
+  `'number'` ("2") or `'hidden'`. Absent: `fraction` over `C.NUM_ROUNDS` for a
+  multi-round app, `hidden` for a single-round one.
+- **`MONITOR_ROUNDS_CONFIG`** — a session-config key capping that total, for an
+  app that runs fewer rounds than it imports (`main`: `num_experimental_rounds`).
+- The amber threshold: **`DASHBOARD_STALL_SECONDS_<APP>`** in `settings.py`
+  (else `_DEFAULT`; `main` also reads its legacy `_TASK`).
+
+Long labels and many steps need nothing either: the header fits itself
+(`fitTimeline`, see DECISIONS.md 2026-10-03) and stays aligned with the dots;
+`scripts/tests/dashboard_timeline_render_check.py` measures it for 4–9 steps.
+
+**To split an app into several steps by page name** (as `intro` is split into
+Instructions and Quiz), add one entry to `PAGE_SPLIT_STEPS` in
+`experimenter_dashboard.py`: `'app': (('step_id', 'Label', ('PageA', 'PageB')),
+...)`. A page listed nowhere sits on the app's first sub-step — list every page
+after the first sub-step, or the marker appears to move backwards.
+
+**Still bound to the template's app NAMES** (`NAME_BOUND_APPS`): earnings and
+Non-SEPA (`outro`), quiz cell, quiz-mistakes panel and intro timer (`intro`),
+treatment pill (`before`), terminal placement after the task (`main`'s
+`task_done`). Renaming one blanks those pills (wrapped, never an error); the
+server prints a `MONITOR WARNING` at launch naming them. A participant in an app
+not in their session's sequence still gets the loud "⁉️ not on the timeline"
+row. Then check the monitor against a real session with participants in every
+app.
+
 ## Testing standard
 
 Bot tests passing is not evidence that a browser works. Drive form pages **over
