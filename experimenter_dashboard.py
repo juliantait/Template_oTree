@@ -83,12 +83,14 @@ CONFIG — tuneable without touching this file
 --------------------------------------------
 Read from ``settings.py`` AT REQUEST TIME if present, else these defaults:
 
-  DASHBOARD_STALL_SECONDS_BEFORE   (60)  — amber after this long on one page,
-  DASHBOARD_STALL_SECONDS_INTRO    (480)   PER PHASE: the entry block, the whole
-  DASHBOARD_STALL_SECONDS_TASK     (180)   intro app, ONE task round, the outro.
-  DASHBOARD_STALL_SECONDS_OUTRO    (300)   See STALL_SETTING_BY_STEP for why one
-  DASHBOARD_STALL_SECONDS_DEFAULT  (300)   number for the whole flow could not be
-                                           right at both ends of it.
+  DASHBOARD_STALL_SECONDS_<APP>    — amber after this long, PER APP: <APP> is
+                                     the app name uppercased (BEFORE 60, INTRO
+                                     480, OUTRO 300; `main` also answers to its
+                                     legacy name TASK, 180, per ROUND).
+  DASHBOARD_STALL_SECONDS_DEFAULT  (300) — any app without its own line.
+                                     See stall_seconds_for_app, and the
+                                     timeline section below for why one number
+                                     for the whole flow could not be right.
   DASHBOARD_POLL_SECONDS    (default 2)   — poll interval; 2s is also the
                             FLOOR, enforced server-side, whatever settings
                             says. The client skips a tick while the previous
@@ -108,7 +110,116 @@ DEFAULT_STALL_SECONDS = 300
 DEFAULT_POLL_SECONDS = 2
 POLL_FLOOR_SECONDS = 2
 
-# THE STALL THRESHOLD IS PER PHASE (Julian, 2026-08-13, round-2 item 6).
+URL_BASE = '/experimenter_dashboard'
+
+# =============================================================================
+# THE TIMELINE IS BUILT PER SESSION, FROM ITS OWN app_sequence (2026-10-02)
+# =============================================================================
+# One step per app in THIS session's `app_sequence`, in that order, then Done.
+# Nothing here lists the template's apps: a study that adds, renames, reorders
+# or drops an app gets a correct timeline without editing this file. Until
+# 2026-10-02 the steps were a fixed STEP_LABELS dict plus an APP_STEPS map, and
+# a fork that added an app and forgot the map got that app's participants
+# rendered as "not on the timeline" (or, before that, silently at Entry).
+#
+# WHAT A STEP IS: an id (the APP NAME, or a split sub-step's id — below), a
+# label, and the app it belongs to. The ids are what the row's `step` carries
+# and what the page's JS STEPS array holds. Everything that used to derive from
+# STEP_LABELS at import now derives from ONE per-session list
+# (`session_timeline`) at request time — the header cells, the grid's track
+# count, the connector inset and the JS STEPS — so the one-source-of-truth
+# discipline is unchanged, just per session (dashboard_test §D6 and
+# dashboard_timeline_test assert they agree).
+#
+# WHAT AN APP MAY DECLARE, all OPTIONAL class constants on its `C`:
+#
+#   MONITOR_LABEL         the step's header label. Absent -> the raw app name,
+#                         deliberately unprettified: a slightly ugly header is a
+#                         standing prompt to declare a real one.
+#   MONITOR_ROUNDS        how the marker shows the round inside this app:
+#                           'fraction' -> "2 of 10"   'number' -> "2"
+#                           'hidden'   -> the plain dot
+#                         Absent -> 'fraction' when C.NUM_ROUNDS > 1, else
+#                         'hidden' (see ROUNDS_DEFAULT below for why).
+#   MONITOR_ROUNDS_CONFIG the name of a SESSION-CONFIG key that caps this app's
+#                         round count, for an app that runs FEWER rounds than
+#                         it imported (main: 'num_experimental_rounds'). The
+#                         fraction's total is then min(config value,
+#                         C.NUM_ROUNDS) — the same number the participant's own
+#                         progress strip shows. Absent -> C.NUM_ROUNDS.
+#
+# THE AMBER THRESHOLD is per app too, from settings.py:
+# DASHBOARD_STALL_SECONDS_<APP NAME UPPERCASED>, else
+# DASHBOARD_STALL_SECONDS_DEFAULT (see stall_seconds_for_app).
+DONE_STEP = 'done'
+DONE_LABEL = 'Done'
+
+# THE ONE HARDCODED SHAPE: SPLITTING AN APP INTO SEVERAL STEPS BY PAGE NAME.
+#
+# app name -> ordered sub-steps, each (step id, label, page class names).
+# The app then occupies one step PER ENTRY instead of one step, and a
+# participant is placed by `_current_page_name`. `intro` is the template's one
+# split: its instructions and its quiz are two phases an operator watches
+# separately, which no app-level fact could tell apart.
+#
+# TO SPLIT ANOTHER APP: add one entry here, nothing else. E.g. a `main` with a
+# practice block before the paid rounds:
+#     'main': (('practice', 'Practice', ('PracticeIntro', 'PracticeRound')),
+#              ('task', 'Task', ('Decision', 'RoundResults'))),
+# Rules, each enforced or warned about:
+#   * a page not listed in ANY entry sits on the FIRST sub-step. An unlisted
+#     page IS known to be inside this app, so degrading to its first step is a
+#     placement, not a guess — but a page added AFTER a later sub-step and not
+#     listed here will make the marker appear to move BACKWARDS. List it.
+#   * sub-step ids must not collide with an app name or with 'done' /
+#     'unmapped' (the launch check warns — note_timeline_problems).
+#   * the app's own MONITOR_LABEL is NOT a header (each sub-step has its own);
+#     it names the PHASE in the timing pill and the threshold legend, because
+#     the threshold is per app, not per sub-step.
+# The ids 'instructions' and 'quiz' are also read by the name-bound semantics
+# below (the quiz cell, the intro timer, the comprehension-DQ marker), so
+# renaming them is a semantic change, not a cosmetic one.
+PAGE_SPLIT_STEPS = {
+    'intro': (
+        ('instructions', 'Instructions', ('instructing',)),
+        ('quiz', 'Quiz', ('quiz',)),
+    ),
+}
+
+
+def steps_of_app(app) -> tuple:
+    """The step ids one app occupies: its split sub-steps, else its own name."""
+    split = PAGE_SPLIT_STEPS.get(app)
+    return tuple(s[0] for s in split) if split else (app,)
+
+
+# THE UNRECOGNISED-APP SENTINEL — deliberately NOT one of any timeline's steps.
+#
+# Until 2026-08-12 an app this module had never heard of fell through the same
+# `return 'entry'` as the `before` app, and the two were indistinguishable. They
+# are not the same situation: the first app IS the entry block, while an
+# unknown app is not known to be anywhere — so reporting the first step is a
+# claim, and a wrong one. Kept apart, such a row shows no marker at all and
+# says loudly which app it could not place. Since the timeline is now built from
+# the session's own app_sequence this should be RARE (a participant whose
+# current app is not in their own session's sequence means the stored config
+# and the participant disagree), which is exactly why it must stay loud rather
+# than be placed somewhere plausible. DO NOT "simplify" this back into a step.
+UNMAPPED_STEP = 'unmapped'
+
+# Section name for the timing pill on an unplaced row.
+UNMAPPED_SECTION_LABEL = 'Unplaced app'
+
+# ROUND DISPLAY. The default for an app that declares nothing is 'fraction' for
+# a multi-round app and 'hidden' for a single-round one: an operator watching a
+# multi-round block wants "how far through", and C.NUM_ROUNDS is the only total
+# the dashboard can know without being told; "1 of 1" on a single-round app is
+# noise. An app whose real count differs from C.NUM_ROUNDS declares
+# MONITOR_ROUNDS_CONFIG (or 'number') rather than this file guessing.
+ROUNDS_MODES = ('fraction', 'number', 'hidden')
+
+# THE AMBER THRESHOLD IS PER PHASE (Julian, 2026-08-13, round-2 item 6), and a
+# phase is an APP (2026-10-02).
 #
 # One number for the whole flow was a collapsed distinction (CLAUDE.md): "too
 # long on the consent page" and "too long reading the instructions" differ by an
@@ -117,127 +228,150 @@ POLL_FLOOR_SECONDS = 2
 # enough for the instructions and nobody stuck at entry is ever flagged. Both
 # failures are silent: the operator just learns to ignore the colour.
 #
-# Maps a TIMELINE STEP to the settings.py name that governs it. Steps not listed
-# (`done`, and UNMAPPED_STEP) fall back to DASHBOARD_STALL_SECONDS_DEFAULT —
-# `done` never stalls anyway (a finished row is not active), and an unmapped app
-# has no phase to have a threshold for, which is the honest answer.
+# The setting for app X is DASHBOARD_STALL_SECONDS_<X.upper()>, else
+# DASHBOARD_STALL_SECONDS_DEFAULT. A split app has ONE threshold for all its
+# sub-steps (Julian asked for one on INTRO, not on each half).
 #
-# `entry` covers the whole `before` app, `instructions` and `quiz` are both the
-# `intro` app and share ONE threshold (Julian asked for a threshold on INTRO,
-# not on each of its halves), `task` is per SINGLE ROUND and `questionnaire` is
-# the outro.
-STALL_SETTING_BY_STEP = {
-    'entry': 'DASHBOARD_STALL_SECONDS_BEFORE',
-    'instructions': 'DASHBOARD_STALL_SECONDS_INTRO',
-    'quiz': 'DASHBOARD_STALL_SECONDS_INTRO',
-    'task': 'DASHBOARD_STALL_SECONDS_TASK',
-    'questionnaire': 'DASHBOARD_STALL_SECONDS_OUTRO',
-}
-# Used only when settings.py defines neither the phase's own name nor the
-# fallback — i.e. deleting every DASHBOARD_STALL_* line still works.
+# LEGACY NAME, KEPT WORKING: `main`'s threshold was always called
+# DASHBOARD_STALL_SECONDS_TASK, and a study's settings.py may still set it, so
+# it is consulted when DASHBOARD_STALL_SECONDS_MAIN is absent. Not a pattern to
+# extend: a new app just uses its own name.
+LEGACY_STALL_SETTINGS = {'main': 'DASHBOARD_STALL_SECONDS_TASK'}
+# Used only when settings.py defines neither the app's own name nor the
+# fallback — i.e. deleting every DASHBOARD_STALL_* line still leaves the
+# template's apps with the numbers they always had.
 FALLBACK_STALL_SECONDS = {
-    'entry': 60,
-    'instructions': 480,
-    'quiz': 480,
-    'task': 180,
-    'questionnaire': 300,
+    'before': 60,
+    'intro': 480,
+    'main': 180,
+    'outro': 300,
 }
 
-URL_BASE = '/experimenter_dashboard'
-
-# =============================================================================
-# THE SIX TIMELINE STEPS — DEFINED HERE, ONCE, AND NOWHERE ELSE
-# =============================================================================
-# In order, EQUAL SPACING (the CSS grid gives each the same track). Consent, the
-# ID page and the tab-monitor agreement all fold into ENTRY; the outro's
-# ending/demographics/feedback pages are QUESTIONNAIRE.
-#
-# One concept, one definition (single-sourced 2026-08-12). It used to be stated
-# SIX times — a STEPS tuple, a STEP_LABELS dict nothing rendered, the six
-# <span>s in the table header, the STEPS array in the page's JavaScript, and two
-# copies of the step COUNT in the CSS (the grid's track count and the
-# connector's half-track inset) — which is the inverted collapsed-distinction
-# rule in CLAUDE.md: one concept with several implementations, which drift, and
-# the drift stays invisible until something changes. Renaming a step used to
-# mean finding six places, and missing one gave a header that disagreed with the
-# data, with nothing going red.
-#
-# EVERYTHING ELSE NOW DERIVES FROM THIS ORDERED MAPPING:
-#   * STEPS               — the order, for the marker's position
-#   * _COLGROUP_HTML      — the header cells (_step_header_html, below)
-#   * the CSS grid        — one track per step, __STEP_COUNT__
-#   * the connector inset — half a track, __TL_INSET__
-#   * the page's JS STEPS — injected as JSON, never retyped
-# Add, rename or reorder a step HERE and all five follow.
-# `scripts/tests/dashboard_test.py` §D6 asserts they still agree — including that no
-# placeholder survived unreplaced into the served page, which would be invalid
-# CSS and would collapse the timeline with nothing in any log. A future edit that
-# reintroduces a second copy fails there rather than drifting quietly.
-#
-# Dicts preserve insertion order (Python 3.7+), and that order IS the timeline
-# order — do not sort it anywhere.
-STEP_LABELS = {
-    'entry': 'Entry',
-    'instructions': 'Instructions',
-    'quiz': 'Quiz',
-    'task': 'Task',
-    'questionnaire': 'Questionnaire',
-    'done': 'Done',
-}
-STEPS = tuple(STEP_LABELS)
-
-# =============================================================================
-# THE APP → STEP MAP. **A STUDY THAT ADDS AN APP MUST ADD IT HERE.**
-# =============================================================================
-# This template exists to be COPIED, and adding an app is the likeliest thing a
-# study does to it — so this map is the one place that decides where a new app's
-# pages sit on the timeline. Adding an app to an EXISTING step is this one line.
-# Adding a whole new STEP is one line too, in STEP_LABELS above: the header, the
-# grid and the client-side step order all derive from it.
-APP_STEPS = {
-    'before': 'entry',           # startpage, consent, ID capture, tab-monitor
-    'intro': 'instructions',     # split by page below (instructions vs quiz)
-    'main': 'task',
-    'outro': 'questionnaire',
+# WHAT THE STALL CLOCK MEASURES, per app — the NAME-BOUND part of the threshold.
+# The default for any app is TIME ON THE CURRENT PAGE. Two template apps have a
+# phase clock instead, because their thresholds are written for the whole phase
+# (see _stall_elapsed): `intro` uses the intro timer (from leaving `before`),
+# `outro` counts since the `task_done` stamp `main` writes. Both clocks start
+# at a stamp written by the PREVIOUS app, so each is used only when that app
+# really is the one immediately before it in this session — otherwise an app
+# inserted in between would be billed to this phase and turn rows amber the
+# moment they arrive. The value is the app that must precede it.
+PHASE_CLOCK_APPS = {
+    'intro': 'before',
+    'outro': 'main',
 }
 
-# Which step a page of `intro` belongs to. AN UNRECOGNISED PAGE HERE IS NOT THE
-# SAME SITUATION AS AN UNRECOGNISED APP, and the two must not be merged: a page
-# in `intro` is KNOWN to be inside the instructions/quiz block, just not which
-# half of it, so it degrades to the first half. An unrecognised APP is not known
-# to be anywhere at all, and degrading that to a step would be a guess (see
-# UNMAPPED_STEP). Residual worth knowing: a study that adds a page to `intro`
-# AFTER the quiz and does not list it here gets a marker that reads
-# Instructions, i.e. one that appears to move BACKWARDS.
-INTRO_PAGE_STEPS = {'instructing': 'instructions', 'quiz': 'quiz'}
 
-# THE UNRECOGNISED-APP SENTINEL — deliberately NOT one of STEPS.
-#
-# Until 2026-08-12 an app this module had never heard of fell through the same
-# `return 'entry'` as the `before` app, and the two were indistinguishable. They
-# are not the same situation: `before` IS the entry block and Entry is the right
-# answer, while an unknown app is not known to be anywhere — so reporting Entry
-# is a claim, and a wrong one. Collapsed, the first study to copy this template
-# and add an app got EVERY participant in that app rendered at Entry, looking
-# like they had barely started, with nothing on screen to say otherwise and no
-# test to catch it. Kept apart, such a row now shows no marker at all and says
-# loudly which app it could not place, which is what sends somebody to
-# APP_STEPS above. DO NOT "simplify" this back into a step.
-UNMAPPED_STEP = 'unmapped'
+def _app_constants(app):
+    """The app's `C` class, or None. Never raises.
 
-# What the TIMING PILL calls the phase (Julian, 2026-08-13: the warning names
-# the SECTION it applies to). Short, because it shares a pill with a time.
-# `instructions` and `quiz` are one phase here exactly as they share one
-# threshold in STALL_SETTING_BY_STEP; `task` says "round" because its
-# threshold and its elapsed are PER ROUND, not per task block (_stall_elapsed).
-STALL_SECTION_LABELS = {
-    'entry': 'Entry',
-    'instructions': 'Intro',
-    'quiz': 'Intro',
-    'task': 'Task round',
-    'questionnaire': 'Questionnaire',
-    UNMAPPED_STEP: 'Unplaced app',
-}
+    Plain import (a dict lookup for an app oTree already imported at boot), with
+    the old-style `<app>.models` as a fallback — the same two shapes oTree's
+    get_models_module accepts, without its per-call disk read.
+    """
+    import importlib
+    for name in (app, f'{app}.models'):
+        try:
+            c = getattr(importlib.import_module(name), 'C', None)
+        except Exception:
+            continue
+        if c is not None:
+            return c
+    return None
+
+
+def _app_rounds(app, c, config):
+    """(mode, total, num_rounds) for one app. total is None unless 'fraction'."""
+    import common
+    try:
+        num_rounds = int(getattr(c, 'NUM_ROUNDS', 1) or 1)
+    except Exception:
+        num_rounds = 1
+    mode = getattr(c, 'MONITOR_ROUNDS', None)
+    if mode is None:
+        mode = 'fraction' if num_rounds > 1 else 'hidden'
+    elif mode not in ROUNDS_MODES:
+        logger.warning('[dashboard] %s.C.MONITOR_ROUNDS=%r is not one of %s; '
+                       'showing the round number only', app, mode, ROUNDS_MODES)
+        mode = 'number'
+    total = None
+    if mode == 'fraction':
+        total = num_rounds
+        key = getattr(c, 'MONITOR_ROUNDS_CONFIG', None)
+        if key and config is not None:
+            try:
+                total = min(int(common.cfg(config, key)), num_rounds)
+            except Exception:
+                total = num_rounds
+    return mode, total, num_rounds
+
+
+def timeline_for_apps(app_sequence, config=None) -> dict:
+    """THE TIMELINE for one app sequence — the single source every derivation
+    reads (header, grid, connector, JS STEPS, placement, thresholds, legend).
+
+    Returns dict(steps=[dict(id, label, app)...], apps={app: info}) where
+    `steps` ends with Done and `info` carries the app's label, round display,
+    stall threshold, stall clock and the names its pill and legend use.
+    Never raises: an app whose constants cannot be read still gets its step,
+    labelled with its raw name.
+    """
+    apps_in_order = []
+    for app in list(app_sequence or []):
+        app = str(app)
+        if app and app not in apps_in_order:
+            apps_in_order.append(app)
+    steps, apps = [], {}
+    for i, app in enumerate(apps_in_order):
+        c = _app_constants(app)
+        label = str(getattr(c, 'MONITOR_LABEL', '') or app)
+        mode, total, num_rounds = _app_rounds(app, c, config)
+        split = PAGE_SPLIT_STEPS.get(app)
+        if split:
+            for sid, slabel, _pages in split:
+                steps.append(dict(id=sid, label=str(slabel), app=app))
+        else:
+            steps.append(dict(id=app, label=label, app=app))
+        previous = apps_in_order[i - 1] if i else None
+        clock = ('phase' if PHASE_CLOCK_APPS.get(app) == previous
+                 and previous is not None else 'page')
+        # The pill/legend names. "<label> round" for a multi-round app judged on
+        # page time: its threshold is effectively PER ROUND, and the old
+        # "Task round" wording said so. A split app's legend names its halves.
+        per_round = clock == 'page' and num_rounds > 1 and mode != 'hidden'
+        section = f'{label} round' if per_round else label
+        if split:
+            legend = f"{label} ({' + '.join(s[1].lower() for s in split)})"
+        elif per_round:
+            legend = f'{label} (one round)'
+        else:
+            legend = label
+        apps[app] = dict(
+            label=label, rounds_mode=mode, rounds_total=total,
+            num_rounds=num_rounds, clock=clock, section=section,
+            legend=legend, stall_seconds=stall_seconds_for_app(app),
+            steps=steps_of_app(app),
+        )
+    steps.append(dict(id=DONE_STEP, label=DONE_LABEL, app=None))
+    return dict(steps=steps, apps=apps)
+
+
+def session_timeline(session) -> dict:
+    """THIS session's timeline, from its own frozen config's app_sequence.
+    `.get`, never `[...]` — the frozen-config rule (CLAUDE.md)."""
+    config = session.config
+    return timeline_for_apps(config.get('app_sequence') or [], config)
+
+
+def step_ids(timeline) -> list:
+    return [s['id'] for s in timeline['steps']]
+
+
+def app_of_step(timeline, step):
+    for s in timeline['steps']:
+        if s['id'] == step:
+            return s['app']
+    return None
 
 # =============================================================================
 # ENDINGS ARE GENERATED FROM THE EXIT-CODE TABLE — there is no list to forget
@@ -394,57 +528,53 @@ def _setting(name, default):
         return default
 
 
-def stall_seconds_for(step) -> int:
-    """The amber threshold for ONE timeline step, in seconds.
+def stall_seconds_for_app(app) -> int:
+    """The amber threshold for ONE app, in seconds.
 
-    Precedence: the step's own settings.py name, then
-    DASHBOARD_STALL_SECONDS_DEFAULT, then this module's own fallback for that
-    step. Never raises and never returns less than 1 — a zero or negative
-    threshold would paint every row amber the instant it loaded, which is the
-    same as having no signal at all.
+    Precedence: DASHBOARD_STALL_SECONDS_<APP UPPERCASED>, then the app's legacy
+    name if it has one (main -> ..._TASK), then DASHBOARD_STALL_SECONDS_DEFAULT,
+    then this module's own fallback for that app. `app=None` (an unplaced row)
+    gets the default. Never raises and never returns less than 1 — a zero or
+    negative threshold would paint every row amber the instant it loaded, which
+    is the same as having no signal at all.
     """
-    fallback = FALLBACK_STALL_SECONDS.get(step, DEFAULT_STALL_SECONDS)
+    fallback = FALLBACK_STALL_SECONDS.get(app, DEFAULT_STALL_SECONDS)
     try:
-        default = _setting('DASHBOARD_STALL_SECONDS_DEFAULT', fallback)
-        name = STALL_SETTING_BY_STEP.get(step)
-        value = _setting(name, default) if name else default
+        value = _setting('DASHBOARD_STALL_SECONDS_DEFAULT', fallback)
+        if app:
+            legacy = LEGACY_STALL_SETTINGS.get(app)
+            if legacy:
+                value = _setting(legacy, value)
+            value = _setting(f'DASHBOARD_STALL_SECONDS_{str(app).upper()}',
+                             value)
         return max(1, int(value))
     except Exception:
         return fallback
 
 
-def stall_seconds_map() -> dict:
-    """Every step's threshold, resolved once per snapshot and shipped in the
-    JSON so the operator screen and the tests can both see what is in force."""
-    return {step: stall_seconds_for(step)
-            for step in list(STEPS) + [UNMAPPED_STEP]}
+def stall_seconds_map(timeline) -> dict:
+    """Every step's threshold (a split app's sub-steps share the app's), plus
+    Done and the unplaced sentinel at the default. Resolved once per snapshot
+    and shipped in the JSON so the screen and the tests see what is in force."""
+    out = {}
+    for s in timeline['steps']:
+        info = timeline['apps'].get(s['app'])
+        out[s['id']] = (info['stall_seconds'] if info
+                        else stall_seconds_for_app(None))
+    out[UNMAPPED_STEP] = stall_seconds_for_app(None)
+    return out
 
 
-# The PHASES as an operator thinks of them, for the header's threshold legend.
-# NOT the same list as STEPS: `instructions` and `quiz` are two steps sharing
-# ONE threshold (the intro app), and `done` has no threshold because a finished
-# row cannot stall. Kept next to STALL_SETTING_BY_STEP, since that is the map it
-# has to stay true to — a step added there needs a line here or it silently
-# vanishes from the legend.
-STALL_LEGEND_PHASES = (
-    ('Entry', 'entry'),
-    ('Intro (instructions + quiz)', 'instructions'),
-    ('Task (one round)', 'task'),
-    ('Questionnaire', 'questionnaire'),
-)
-
-
-def stall_legend() -> list:
-    """The four phase thresholds as (label, seconds), for the STATE column's
-    header affordance — "so we can see what the thresholds are" (Julian,
-    2026-08-13, round-2 item 17) WITHOUT opening settings.py.
-
-    Read from the settings at request time like every other threshold here, so
-    tuning one updates what the operator sees on the next poll. Nothing about
-    these numbers is written into the page's markup.
-    """
-    return [dict(label=label, seconds=stall_seconds_for(step))
-            for label, step in STALL_LEGEND_PHASES]
+def stall_legend(timeline) -> list:
+    """One (label, seconds, scope) per app in this session, in timeline order,
+    for the STATE column's header affordance — "so we can see what the
+    thresholds are" (Julian, 2026-08-13, round-2 item 17) WITHOUT opening
+    settings.py. Done has none (a finished row cannot stall). `scope` says what
+    the clock counts: 'page' (the current page, i.e. a round on a one-page
+    round) or 'phase' (the whole app so far)."""
+    return [dict(label=info['legend'], seconds=info['stall_seconds'],
+                 scope=info['clock'])
+            for info in timeline['apps'].values()]
 
 
 def poll_seconds() -> float:
@@ -485,10 +615,10 @@ def _exit_codes() -> dict:
 # So each label is split into digit and non-digit runs and the digit runs are
 # compared AS NUMBERS.
 #
-# NB THE "DO NOT SORT IT ANYWHERE" NOTE ON STEP_LABELS IS ABOUT A DIFFERENT
-# LIST and is untouched by this: that one says the STEP dict's insertion order
-# IS the timeline order (Entry → … → Done), so sorting it would scramble the
-# timeline. It says nothing about participant rows. Checked before writing this.
+# NB THE TIMELINE'S STEP ORDER IS A DIFFERENT LIST and is untouched by this:
+# it is the session's app_sequence order (Entry → … → Done, see
+# timeline_for_apps), and sorting it would scramble the timeline. This sort is
+# about participant rows only.
 _NATURAL_RUN_RE = re.compile(r'\d+|\D+')
 
 
@@ -590,14 +720,18 @@ def session_snapshot(session) -> dict:
             num_participants=len(rows),
         ),
         rows=rows,
-        rounds_total=ctx['rounds_total'],
+        # THIS SESSION'S TIMELINE, as the page's header and JS STEPS were
+        # rendered from it — shipped so a test (or a curious operator) can see
+        # what the dashboard placed rows against.
+        timeline=[dict(id=s['id'], label=s['label'])
+                  for s in ctx['timeline']['steps']],
         quiz_max_failures=ctx['quiz_max_failures'],
         # PER-PHASE now (round-2 item 6). Shipped as the whole map rather than
         # one number so the screen can say which threshold a row tripped.
         stall_seconds=ctx['stall_seconds'],
-        # The same thresholds as a labelled, deduplicated list for the header
-        # affordance (item 17). Derived from the map above, never typed.
-        stall_legend=stall_legend(),
+        # The same thresholds as a labelled list, one per app, for the header
+        # affordance (item 17). Derived from the timeline, never typed.
+        stall_legend=stall_legend(ctx['timeline']),
         poll_seconds=poll_seconds(),
         currency=str(_setting('REAL_WORLD_CURRENCY_CODE', '')),
         # TOTAL PAYMENTS for the EARNINGS pill in the overview: summed
@@ -641,20 +775,11 @@ def _safe(fn, *args):
 def _session_context(session) -> dict:
     """Session-constant values, computed once per snapshot, defensively."""
     import common
-    try:
-        # THIS session's round count (a config may run fewer than NUM_ROUNDS);
-        # same source as the participant-facing progress strip (main.rounds_for
-        # duplicates this min() but importing an app module here would be a
-        # heavier dependency than the two lines).
-        configured = int(common.cfg(session.config, 'num_experimental_rounds'))
-        try:
-            from otree.common import get_models_module
-            imported_max = int(get_models_module('main').C.NUM_ROUNDS)
-            rounds_total = min(configured, imported_max)
-        except Exception:
-            rounds_total = configured
-    except Exception:
-        rounds_total = None
+    # THE TIMELINE, once per snapshot. The ROUND TOTALS live in it now (per
+    # app, see _app_rounds): `main`'s is min(num_experimental_rounds,
+    # C.NUM_ROUNDS) via its C.MONITOR_ROUNDS_CONFIG, the same number the
+    # participant-facing progress strip shows (main.rounds_for).
+    timeline = session_timeline(session)
     try:
         quiz_max = int(common.cfg(session.config, 'quiz_comprehension_max_failures'))
     except Exception:
@@ -669,9 +794,12 @@ def _session_context(session) -> dict:
     _codes = _exit_codes()
     _meta = _exit_code_meta()
     return dict(
-        rounds_total=rounds_total,
+        timeline=timeline,
+        # Every step up to and including the quiz, for the quiz cell's "past
+        # the quiz" test (a step outside this set is past it).
+        through_quiz=_steps_through(timeline, 'quiz'),
         quiz_max_failures=quiz_max,
-        stall_seconds=stall_seconds_map(),
+        stall_seconds=stall_seconds_map(timeline),
         exit_codes=_codes,
         # THE ENDING TABLE, resolved once per snapshot rather than per row.
         exit_meta=_meta,
@@ -1520,24 +1648,35 @@ def _participant_row(pp, ctx, now) -> dict:
         )
 
     # --- the timeline step the marker occupies -------------------------------
+    timeline = ctx['timeline']
     if terminal is not None:
-        step = _reached_step(terminal, stamps)
+        step = _reached_step(terminal, stamps, timeline, v)
     elif finished:
-        step = 'done'
+        step = DONE_STEP
     else:
-        step = _position_step(pp)
+        step = _position_step(pp, timeline)
+    app = app_of_step(timeline, step)
+    app_info = timeline['apps'].get(app)
 
-    # --- task progress, carried inside the marker during TASK ----------------
-    task_round = None
-    if step == 'task' and terminal is None:
+    # --- round progress, carried inside the marker ---------------------------
+    # For ANY multi-round app, as that app declares (C.MONITOR_ROUNDS; see the
+    # timeline section): "2 of 10", or "2", or nothing. Active rows only — a
+    # terminal or finished row's marker is its outcome. The round is capped at
+    # the fraction's total, because an app that runs fewer rounds than it
+    # imported keeps counting `_round_number` through the skipped ones.
+    round_shown = round_total = None
+    if (app_info and app_info['rounds_mode'] != 'hidden'
+            and terminal is None and not finished):
         r = pp._round_number
-        task_round = int(r) if isinstance(r, int) and r >= 1 else 1
-        if ctx['rounds_total']:
-            task_round = min(task_round, ctx['rounds_total'])
+        round_shown = int(r) if isinstance(r, int) and r >= 1 else 1
+        cap = app_info['rounds_total'] or app_info['num_rounds']
+        if cap:
+            round_shown = min(round_shown, cap)
+        round_total = app_info['rounds_total']
 
     # --- quiz cell ------------------------------------------------------------
     quiz = _quiz_cell(v, stamps, step, terminal, ctx['quiz_max_failures'],
-                      ctx['quiz_outcomes'].get(pp.id))
+                      ctx['quiz_outcomes'].get(pp.id), ctx['through_quiz'])
 
     # --- INTRO TIME: the whole intro app, both rounds -------------------------
     intro = _intro_seconds(stamps, step, terminal, finished, now)
@@ -1564,7 +1703,8 @@ def _participant_row(pp, ctx, now) -> dict:
         seconds_on_page = max(0, int(now) - ts)
     active = pp.visited and terminal is None and not finished
     stall_limit = ctx['stall_seconds'].get(step, DEFAULT_STALL_SECONDS)
-    stall_elapsed = _stall_elapsed(step, stamps, intro, seconds_on_page, now)
+    stall_elapsed = _stall_elapsed(app, app_info, stamps, intro,
+                                   seconds_on_page, now)
     stalled = bool(active and stall_elapsed is not None
                    and stall_elapsed >= stall_limit)
 
@@ -1630,7 +1770,11 @@ def _participant_row(pp, ctx, now) -> dict:
         code=str(pp.code),
         arrived=bool(pp.visited),
         step=step,
-        task_round=task_round,
+        # The marker's round (None = no round shown) and, for a 'fraction'
+        # app, the total it is "of". Two keys rather than a pre-formatted
+        # string so the client and the tests read the same numbers.
+        round=round_shown,
+        round_total=round_total,
         terminal=terminal,
         # FROM THE TABLE, with the per-field fallbacks: a declared emoji, else
         # NONE (never a placeholder glyph — the gap is the signal), and a
@@ -1674,8 +1818,9 @@ def _participant_row(pp, ctx, now) -> dict:
         # pill can never say "Intro 12:00" about a verdict reached on some
         # other quantity. stall_section is the phase name written next to it.
         stall_elapsed=stall_elapsed,
-        stall_section=STALL_SECTION_LABELS.get(
-            step, STEP_LABELS.get(step, str(step))),
+        stall_section=(app_info['section'] if app_info
+                       else UNMAPPED_SECTION_LABEL if step == UNMAPPED_STEP
+                       else str(step)),
         # Non-SEPA CONDITION pill (lab only; sepa == 0 only — see
         # _non_sepa_ids for the three deliberate narrowings). A condition, not
         # an outcome: it stays True on a finished row.
@@ -1696,10 +1841,10 @@ def _participant_row(pp, ctx, now) -> dict:
         waiting_for=(_waiting_for(v, ctx['names'])
                      if (terminal is None and not finished) else []),
         current_page=str(pp._current_page_name or ''),
-        # The app name ONLY when it could not be placed on the timeline, so the
-        # operator is told which app to add to APP_STEPS. None on every normal
-        # row: this is a "something is wrong with the dashboard's map" channel,
-        # not a general-purpose app column.
+        # The app name ONLY when it could not be placed on the timeline (it is
+        # not in this session's app_sequence), so the operator is told which.
+        # None on every normal row: this is a "something is wrong" channel, not
+        # a general-purpose app column.
         unmapped_app=(str(pp._current_app_name or '')
                       if step == UNMAPPED_STEP else None),
         # ADD A COLUMN HERE: compute it defensively (a failure must blank the
@@ -1709,63 +1854,148 @@ def _participant_row(pp, ctx, now) -> dict:
     return row
 
 
-def _position_step(pp) -> str:
+def _position_step(pp, timeline) -> str:
     """Which step a LIVE participant's marker occupies, from oTree's own page
     cursor (app + page name, updated as each page renders). The marker
     advances exactly when a step completes, because completing it is what
     moves the cursor onto the next block's first page.
 
     THREE OUTCOMES, KEPT APART ON PURPOSE (see UNMAPPED_STEP):
-      * a page in a KNOWN app          -> that app's step (APP_STEPS)
-      * no cursor written yet          -> 'entry', which is where they are
-      * a page in an UNRECOGNISED app  -> UNMAPPED_STEP, a visible non-answer
+      * a page in an app of THIS session -> that app's step (or, for a split
+        app, the sub-step listing the page; an unlisted page -> its first)
+      * no cursor written yet            -> the FIRST step, where they are
+      * a page in any OTHER app          -> UNMAPPED_STEP, a visible non-answer
     """
+    first = timeline['steps'][0]['id'] if len(timeline['steps']) > 1 else None
     if not pp.visited:
-        return 'entry'
+        return first or UNMAPPED_STEP
     app = pp._current_app_name or ''
     page = pp._current_page_name or ''
     if not app:
         # Arrived, but oTree has not written a cursor yet. This is genuinely
-        # the start of the flow, not an unknown position — 'entry' is a fact
-        # here, which is why it is NOT the unmapped case.
-        return 'entry'
-    if app not in APP_STEPS:
+        # the start of the flow, not an unknown position — the first step is a
+        # fact here, which is why it is NOT the unmapped case.
+        return first or UNMAPPED_STEP
+    if app not in timeline['apps']:
         return UNMAPPED_STEP
-    if app == 'intro':
-        return INTRO_PAGE_STEPS.get(page, 'instructions')
-    return APP_STEPS[app]
+    split = PAGE_SPLIT_STEPS.get(app)
+    if split:
+        for sid, _label, pages in split:
+            if page in pages:
+                return sid
+        return split[0][0]
+    return app
 
 
-def _reached_step(terminal, stamps) -> str:
+# WHERE A TERMINAL ROW HAD REACHED: the stage stamps that mark a step as
+# COMPLETED, in the template's vocabulary (common.STAGE_*). NAME-BOUND: each is
+# written by one template app (consent by `before`, the next two by `intro`,
+# task_done by `main`), so an app with no stamp of its own is located only by
+# being the step after the last completed one. A consent stamp counts as
+# leaving `before` — what the marker has always shown for an ending after
+# consent.
+_COMPLETION_STAMPS = (
+    ('STAGE_CONSENT', 'before'),
+    ('STAGE_INSTRUCTIONS_DONE', 'instructions'),
+    ('STAGE_QUIZ_DONE', 'quiz'),
+    ('STAGE_TASK_DONE', 'main'),
+)
+
+
+def _steps_through(timeline, step) -> frozenset:
+    """Every step id up to and including `step`; empty if it is not there."""
+    ids = step_ids(timeline)
+    if step not in ids:
+        return frozenset()
+    return frozenset(ids[:ids.index(step) + 1])
+
+
+def _reached_step(terminal, stamps, timeline, v=None) -> str:
     """Where the marker HAD REACHED when a terminal state ended the session —
-    the step the emoji fills. Stamps, not page position: a disqualified
+    the step the emoji fills. Evidence, not page position: a disqualified
     participant's position has already moved on to the ending pages.
 
-    Screen-out and declined consent can only happen at entry. Comprehension
-    DQ can only happen on the quiz (its quiz_done stamp fires on the same
-    submit that disqualifies, so the stamp alone would claim 'task').
-    The tab monitor is the one that can fire anywhere, so only it is derived.
+    Screen-out and declined consent can only happen at entry (the `before`
+    app's step, or the first step if a study renamed it). Comprehension DQ can
+    only happen on the quiz (its quiz_done stamp fires on the same submit that
+    disqualifies, so the stamp alone would claim the step after it).
+    Everything else is the step AFTER the furthest one a stamp says was
+    completed — and for a tab-monitor DQ, also at least the step holding the
+    page where the disqualifying focus loss was recorded (server-side page
+    name, `tab_monitor_focus_events`), which is what places a DQ correctly when
+    a study inserts an app with no stamps between the quiz and the task.
     """
     import common   # local, like every common/settings import in this
     # module — the dashboard must stay importable with oTree absent
     # (the _FALLBACK_EXIT_CODES reasoning); the stage-name constants
     # (common.STAGE_*) are only needed at request time.
+    ids = step_ids(timeline)
+    first = ids[0] if len(ids) > 1 else DONE_STEP
     if terminal in ('screened_out', 'no_consent'):
-        return 'entry'
-    if terminal == 'comprehension':
+        return steps_of_app('before')[0] if 'before' in timeline['apps'] \
+            else first
+    if terminal == 'comprehension' and 'quiz' in ids:
         return 'quiz'
-    if common.STAGE_TASK_DONE in stamps:
-        return 'questionnaire'
-    if common.STAGE_QUIZ_DONE in stamps:
-        return 'task'
-    if common.STAGE_INSTRUCTIONS_DONE in stamps:
-        return 'quiz'
-    if common.STAGE_CONSENT in stamps:
-        return 'instructions'
-    return 'entry'
+    reached = 0
+    for stamp_name, done_step in _COMPLETION_STAMPS:
+        if (getattr(common, stamp_name) in stamps and done_step in ids):
+            reached = max(reached, ids.index(done_step) + 1)
+    if terminal == 'tab_monitor' and v:
+        located = _focus_loss_step(v, timeline)
+        if located in ids:
+            reached = max(reached, ids.index(located))
+    return ids[min(reached, len(ids) - 1)] if ids else UNMAPPED_STEP
 
 
-def _quiz_cell(v, stamps, step, terminal, max_failures, last_attempt_passed) -> dict:
+def _focus_loss_step(v, timeline):
+    """The step holding the page of the LAST ejecting-phase focus loss, or
+    None. Only the 'task' region counts — that is the region whose count
+    disqualifies; the outro's record-only events happen AFTER an ejection, on
+    the ending pages, and would drag the marker there."""
+    events = v.get('tab_monitor_focus_events') or []
+    page = None
+    for event in reversed(list(events)):
+        if isinstance(event, dict) and event.get('region') == 'task':
+            page = event.get('page')
+            break
+    if not page:
+        return None
+    found = []
+    for app in timeline['apps']:
+        try:
+            names = _page_names(app)
+        except Exception:
+            continue
+        if page in names:
+            found.append(app)
+    if len(found) != 1:                 # unknown or ambiguous: no claim
+        return None
+    app = found[0]
+    split = PAGE_SPLIT_STEPS.get(app)
+    if split:
+        for sid, _label, pages in split:
+            if page in pages:
+                return sid
+        return split[0][0]
+    return app
+
+
+def _page_names(app) -> set:
+    """The page class names in an app's page_sequence (oTree's
+    `_current_page_name` is the class name)."""
+    import importlib
+    for name in (app, f'{app}.pages'):
+        try:
+            seq = getattr(importlib.import_module(name), 'page_sequence', None)
+        except Exception:
+            continue
+        if seq:
+            return {getattr(p, '__name__', str(p)) for p in seq}
+    return set()
+
+
+def _quiz_cell(v, stamps, step, terminal, max_failures, last_attempt_passed,
+               through_quiz=frozenset(('before', 'instructions', 'quiz'))) -> dict:
     """The quiz-attempts cell: white before any attempt, filling as wrong
     attempts rise, RED at quiz_comprehension_max_failures, GREEN with the attempt
     count once passed (so 1 = passed first try), and VIOLET-BORDERED "forced"
@@ -1803,7 +2033,7 @@ def _quiz_cell(v, stamps, step, terminal, max_failures, last_attempt_passed) -> 
     past_quiz = (
         common.STAGE_QUIZ_DONE in stamps
         and terminal != 'comprehension'
-        and step not in ('entry', 'instructions', 'quiz')
+        and step not in through_quiz
     )
     forced = bool(past_quiz and last_attempt_passed is False)
     passed = past_quiz and not forced
@@ -1875,7 +2105,7 @@ def _intro_seconds(stamps, step, terminal, finished, now) -> dict:
         )
     if start is None:
         return dict(seconds=None, live=False)
-    in_intro = step in ('instructions', 'quiz')
+    in_intro = step in steps_of_app('intro')    # its split sub-steps
     if in_intro and terminal is None and not finished:
         return dict(seconds=max(0, int(now - start)), live=True)
     end = stamps.get(common.STAGE_QUIZ_DONE)
@@ -1950,29 +2180,32 @@ def _total_seconds(stamps, terminal, finished, now) -> dict:
     return dict(seconds=int(end - start), live=False)
 
 
-def _stall_elapsed(step, stamps, intro, seconds_on_page, now):
+def _stall_elapsed(app, app_info, stamps, intro, seconds_on_page, now):
     """The elapsed time the phase threshold is judged against — and the number
     the timing pill SHOWS, so display and detection cannot disagree (the pills
     change, 2026-08-13: the warning names the SECTION and the elapsed IN it).
 
-    PER PHASE, matching what each threshold MEANS in settings.py — the elapsed
-    and the threshold must measure the same thing, or the colour is unreadable:
+    PER APP, matching what each threshold MEANS in settings.py — the elapsed
+    and the threshold must measure the same thing, or the colour is unreadable.
+    THE DEFAULT, for every app including a fork's new one, is TIME ON THE
+    CURRENT PAGE. Two template apps have a phase clock instead (`clock ==
+    'phase'`, decided per session in timeline_for_apps — see PHASE_CLOCK_APPS):
 
-      * entry — time on the CURRENT page. The 60s entry threshold is a
-        per-page number: cumulative time across the entry block includes
-        reading the consent text, which legitimately takes minutes, so a
-        block-level 60s would flag every careful reader.
-      * instructions/quiz — the WHOLE intro app so far (the live intro clock,
+      * before — page time. The 60s entry threshold is a per-page number:
+        cumulative time across the entry block includes reading the consent
+        text, which legitimately takes minutes, so a block-level 60s would
+        flag every careful reader.
+      * intro — the WHOLE intro app so far (the live intro clock,
         _intro_seconds — one implementation, not a second stopwatch). The 480s
         threshold is documented as "instructions + quiz, whole intro app";
         judging it against one page under-fired: somebody could sit 7 minutes
         on each half and never trip a per-page check.
-      * task — time on the current page, because the threshold is PER SINGLE
-        ROUND ("A STUDY WITH A LONGER TASK PAGE MUST RAISE THIS",
-        settings.py) and a round has no start stamp; its decision page is
-        where the time goes, so page time is the round to within a click.
-      * questionnaire — since `task_done`, the block's start stamp. The 300s
-        threshold is written for the whole outro (demographics + bank form).
+      * main — page time, because the threshold is PER SINGLE ROUND ("A STUDY
+        WITH A LONGER TASK PAGE MUST RAISE THIS", settings.py) and a round has
+        no start stamp; its decision page is where the time goes, so page time
+        is the round to within a click.
+      * outro — since `task_done`, the block's start stamp. The 300s threshold
+        is written for the whole outro (demographics + bank form).
 
     Falls back to page time wherever a stamp is missing (a participant already
     mid-flow when the stamp was deployed), which is the pre-pills behaviour.
@@ -1981,11 +2214,13 @@ def _stall_elapsed(step, stamps, intro, seconds_on_page, now):
     # module — the dashboard must stay importable with oTree absent
     # (the _FALLBACK_EXIT_CODES reasoning); the stage-name constants
     # (common.STAGE_*) are only needed at request time.
-    if step in ('instructions', 'quiz'):
+    if not app_info or app_info['clock'] != 'phase':
+        return seconds_on_page
+    if app == 'intro':
         if intro['live'] and intro['seconds'] is not None:
             return intro['seconds']
         return seconds_on_page
-    if step == 'questionnaire':
+    if app == 'outro':
         t = stamps.get(common.STAGE_TASK_DONE)
         if isinstance(t, (int, float)):
             return max(0, int(now - t))
@@ -2190,6 +2425,78 @@ def note_admin_tab_problems():
     return 'ok'
 
 
+# THE NAME-BOUND LOOKUPS — the places this module still reads a TEMPLATE app by
+# name, because what it reads is that app's own data, not its position. The
+# timeline itself needs none of them. Each is wrapped, so a session without the
+# app gets a blank cell or no pill, never an error — which is exactly why
+# note_timeline_problems says so out loud at launch.
+NAME_BOUND_APPS = {
+    'before': 'treatment pill (before.treatment_assignment); entry-ending '
+              'marker placement',
+    'intro': 'quiz cell outcome and "forced" state, quiz-mistakes panel, intro '
+             'timer; its Instructions/Quiz split (PAGE_SPLIT_STEPS)',
+    'main': 'task_done stamp: terminal-marker placement after the task, '
+            'questionnaire stall clock',
+    'outro': 'earnings cell + EARNINGS pill (outro.earned), Non-SEPA pill '
+             '(outro.sepa)',
+}
+
+
+def timeline_problems(session_configs) -> list:
+    """Human-readable warnings about the session configs, for the launch log.
+
+    A config whose app_sequence lacks a NAME_BOUND_APPS app gets those pills
+    blank, and a timeline step id colliding with another (an app named 'done',
+    a split sub-step named like an app) would make two steps indistinguishable.
+    Pure: takes the configs, returns strings, raises nothing it can avoid.
+    """
+    problems = []
+    reserved = {DONE_STEP, UNMAPPED_STEP}
+    for cfg in session_configs or []:
+        try:
+            name = str(cfg.get('name', '?'))
+            seq = [str(a) for a in (cfg.get('app_sequence') or [])]
+        except Exception:
+            continue
+        for app, what in NAME_BOUND_APPS.items():
+            if app not in seq:
+                problems.append(
+                    f'config {name!r}: no {app!r} app in app_sequence, so these '
+                    f'monitor features will be blank: {what}.')
+        ids = [sid for app in seq for sid in steps_of_app(app)]
+        clashes = sorted({i for i in ids if ids.count(i) > 1 or i in reserved})
+        if clashes:
+            problems.append(
+                f'config {name!r}: timeline step id(s) {clashes} collide (an '
+                f'app or a PAGE_SPLIT_STEPS sub-step named like another step, '
+                f'or "done"/"unmapped"); rename one or the markers will be '
+                f'ambiguous.')
+    return problems
+
+
+def note_timeline_problems():
+    """THE LAUNCH-TIME TIMELINE CHECK (called from the end of outro/__init__.py
+    beside the route install). LOGGED AND PRINTED, NEVER RAISED — the same
+    rule as the install notes: a monitor gap must not cost a participant a
+    boot, but a fork must SEE which pills will be blank before a session runs
+    rather than discover it mid-session."""
+    try:
+        from settings import SESSION_CONFIGS
+    except Exception as exc:
+        logger.info('[dashboard] timeline check skipped: %s', exc)
+        return []
+    try:
+        problems = timeline_problems(SESSION_CONFIGS)
+    except Exception:
+        logger.exception('[dashboard] timeline check failed')
+        return []
+    for p in problems:
+        message = f'[dashboard] MONITOR WARNING: {p}'
+        logger.warning(message)
+        print(message, flush=True)
+    return problems
+
+
 def assert_dashboard_route():
     """THE SINGLE PLACE A MISSING DASHBOARD IS A FAILURE — for TESTS, which
     boot oTree and must fail loudly if the install silently regressed.
@@ -2390,7 +2697,7 @@ def _page_html(session) -> str:
     code = escape(session.code)
     title = escape(str(session.config.get('display_name', '')
                        or session.config.get('name', '')))
-    return (_PAGE_HTML
+    return (page_template_for_steps(session_timeline(session)['steps'])
             .replace('__CSS_HREF__', _base_css_href())
             .replace('__SESSION_CODE__', code)
             .replace('__SESSION_TITLE__', title)
@@ -2398,11 +2705,34 @@ def _page_html(session) -> str:
             .replace('__POLL_MS__', str(int(poll_seconds() * 1000))))
 
 
+def page_template_for_steps(steps) -> str:
+    """THE FOUR DERIVATIONS OF THE STEP LIST, resolved for ONE timeline: the
+    header cells, the grid's track count, the connector inset (half a track)
+    and the client's step order. Every one of them comes from `steps` (a
+    session's timeline, see timeline_for_apps); none is typed twice. Before
+    2026-10-02 these were resolved once at import from a fixed STEP_LABELS;
+    now the page is per session, so they are resolved per page — same
+    discipline, one list. Also called by scripts/site_previews to draw the
+    website's monitor preview from a fixture timeline.
+
+    The JSON is made safe for a <script> block: '<' is escaped so no label or
+    id can close the script element.
+    """
+    n = max(1, len(steps))
+    return (_PAGE_HTML
+            .replace('__STEP_HEADER__', _step_header_html(steps))
+            .replace('__STEP_COUNT__', str(n))
+            .replace('__TL_INSET__', f'{100 / n / 2:.2f}%')
+            .replace('__STEPS_JSON__',
+                     json.dumps([str(s['id']) for s in steps])
+                     .replace('<', '\\u003c')))
+
+
 # The column headers. ADD A COLUMN HERE: one <th>, in the position the cell
 # branch in renderRow (below) will fill.
-def _step_header_html() -> str:
-    """The timeline's header cells, DERIVED from STEP_LABELS — one <span> per
-    step, in definition order.
+def _step_header_html(steps) -> str:
+    """The timeline's header cells, DERIVED from the session's timeline — one
+    <span> per step, in timeline order.
 
     Joined with NO whitespace between the spans, deliberately: `.tl-header` is a
     CSS grid, and while whitespace-only text between grid items generates no
@@ -2411,8 +2741,15 @@ def _step_header_html() -> str:
     interpolated value in this file, even though they are developer-authored —
     the rule is not conditional on where the text came from.
     """
-    return ''.join(f'<span>{escape(label)}</span>'
-                   for label in STEP_LABELS.values())
+    out = []
+    for s in steps:
+        label = escape(str(s['label']))
+        # <wbr> after underscores: raw app names (belief_elicitation_task)
+        # have no other break opportunity, and the .tl-wrap rung of the
+        # fitting ladder needs one. Invisible when the label fits.
+        out.append(f'<span title="{label}"><span class="tl-hl">'
+                   f'{label.replace("_", "_<wbr>")}</span></span>')
+    return ''.join(out)
 
 
 # SORTABLE COLUMNS (2026-08-25). A column an operator can order by carries the
@@ -2427,7 +2764,7 @@ _COLGROUP_HTML = f"""
       title="Click to sort by participant (natural order)">Participant<span
       class="sort-ind" aria-hidden="true"></span></th>
   <th class="c-timeline">
-    <div class="tl-header">{_step_header_html()}</div>
+    <div class="tl-header">__STEP_HEADER__</div>
   </th>
   <th class="c-quiz sortable" data-sort="quiz" title="Quiz attempts — click to
 sort by how many attempts were wrong">Quiz<span class="sort-ind"
@@ -2555,6 +2892,11 @@ table.dash th.sortable:hover { color: var(--ink); }
 .sort-ind:empty { margin-left: 0; }
 table.dash td { padding: 6px 10px; border-bottom: 1px solid var(--line);
   vertical-align: middle; }
+/* ONE ROW HEIGHT (2026-10-03): a td height is a MINIMUM in table layout, set to
+   a labelled row with its page hint (two text lines), so rows without a hint
+   (finished, not arrived) no longer come out 6px shorter than their
+   neighbours. A row whose state pills genuinely wrap still grows. */
+table.dash tbody td { height: 48px; }
 table.dash tr:last-child td { border-bottom: none; }
 
 tr.entry-only td { opacity: .45; }        /* de-emphasised, still there */
@@ -2586,11 +2928,12 @@ tr.terminal-row td { background: #fdf1f2; }
 tr.finished-row td { background: #f1faf4; }
 tr.error-row td { color: var(--danger); }
 /* UNRECOGNISED APP: its own colour, not amber and not the terminal pink — it is
-   neither a slow participant nor an ended one, it is a gap in APP_STEPS. */
+   neither a slow participant nor an ended one: its app is not in this
+   session's app_sequence, so the timeline has no step for it. */
 tr.unmapped-row td { background: #f5f1fd; }
 tr.unmapped-row td.c-label { box-shadow: inset 4px 0 0 var(--dash-unmapped); }
 
-.c-label { width: 15%; font-weight: 650; color: var(--ink);
+.c-label { width: 14%; font-weight: 650; color: var(--ink);
   font-variant-numeric: tabular-nums; }
 .c-label .code-fallback { color: var(--ink-mute); font-weight: 400;
   font-size: .85em; }
@@ -2598,11 +2941,12 @@ tr.unmapped-row td.c-label { box-shadow: inset 4px 0 0 var(--dash-unmapped); }
   font-weight: 400; font-size: .72rem; }
 
 /* --- the timeline: EQUAL SPACING via one track per step -------------------
-   BOTH numbers below are DERIVED from STEP_LABELS, not typed: the track count
-   is len(STEPS), and the connector's inset is half a track (100/steps/2) so the
-   line starts and ends at the centre of the first and last markers. Hard-coding
-   them was two more copies of "how many steps are there" — add a seventh step
-   and a fixed 6-track grid would silently drop it off the end of the row. */
+   BOTH numbers below are DERIVED from the session's timeline, not typed: the
+   track count is its step count, and the connector's inset is half a track
+   (100/steps/2) so the line starts and ends at the centre of the first and
+   last markers. Hard-coding them was two more copies of "how many steps are
+   there" — a session with a seventh step on a fixed 6-track grid would
+   silently drop it off the end of the row. */
 /* 48%, AND NOT LESS: narrowing this squeezes the header grid until the long
    step labels ("Questionnaire") hit their min-content floor and the six tracks
    stop being equal — measured as a 3.8px spread by dashboard_render_check when
@@ -2613,9 +2957,56 @@ tr.unmapped-row td.c-label { box-shadow: inset 4px 0 0 var(--dash-unmapped); }
    wrap inside their own cell (.state-pills is flex-wrap) and the two time pills
    are kept compact and on one line, so neither needs width ceded to it. */
 .c-timeline { width: 48%; }
+/* minmax(0, 1fr), NOT 1fr (2026-10-03). A bare `1fr` is minmax(auto, 1fr): a
+   track can never be narrower than its content, so a long header label
+   ("Questionnaire", a raw app name like belief_elicitation_task) or a wide
+   marker ("10 of 10") silently widened ITS track, and the header columns
+   drifted up to 40px off the row dots below them — at 1152px even on the stock
+   six steps. With a 0 minimum every track is exactly 1/N of the column in the
+   header and in every row, whatever is in it, so header and dots cannot
+   disagree. What does not fit is handled by the fitting pass (fitTimeline in
+   the page JS), never by moving the grid. */
 .tl-header, .tl { display: grid;
-  grid-template-columns: repeat(__STEP_COUNT__, 1fr); }
-.tl-header span { font-size: .68rem; text-align: center; }
+  grid-template-columns: repeat(__STEP_COUNT__, minmax(0, 1fr));
+  /* THE FLOOR the 0-minimum tracks took away: with no content minimum the
+     auto table layout would hand the timeline whatever the other columns left
+     (measured: 23px tracks for nine steps at 1024px, beside a half-empty
+     Earnings column). 44px per step is the narrowest track that still holds a
+     compact "2/10" marker; the label ladder handles the text. Derived from
+     the step count like the two numbers above. */
+  min-width: calc(__STEP_COUNT__ * 44px); }
+/* THE HEADER LABEL FITTING LADDER. Each label is an outer grid cell (exactly
+   one track) holding .tl-hl. fitTimeline() tries these classes on .tl-header
+   IN ORDER and keeps the first under which no label overflows, so a header
+   that fits is left exactly as it always looked:
+     (none)         the shipped look;
+     .tl-tight      letter-spacing 0 and a slightly smaller size;
+     .tl-small      smaller again (.6rem, still legible), one line — what the
+                    stock six labels need at 1152px;
+     .tl-wrap       up to TWO lines inside the track, breaking at spaces and
+                    after underscores (the server emits <wbr> there);
+     .tl-stagger    alternate labels drop to a second row, so each may use
+                    two tracks' width centred on its OWN track (its neighbours
+                    are on the other row) — still exactly aligned;
+     .tl-stagger.tl-wrap  both. The last rung: anything still too long is
+                    clamped with an ellipsis, and the outer cell's title
+                    carries the full label.
+   EXCEPTION-free: it is all this one component, used by every session. */
+.tl-header > span { font-size: .68rem; text-align: center; min-width: 0; }
+.tl-header .tl-hl { display: block; white-space: nowrap; overflow: hidden;
+  line-height: 1.2; }
+/* Chromium breaks at <wbr> even under nowrap (measured), so the break points
+   exist ONLY on the wrapping rungs; elsewhere a label is one line or it does
+   not fit (and the ladder moves on). */
+.tl-header:not(.tl-wrap) .tl-hl wbr { display: none; }
+.tl-header.tl-tight > span { font-size: .64rem; letter-spacing: 0; }
+.tl-header.tl-small > span { font-size: .6rem; }
+.tl-header.tl-wrap .tl-hl { white-space: normal; display: -webkit-box;
+  -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: normal; }
+.tl-header.tl-stagger .tl-hl { width: calc(200% - 6px); margin-left: calc(-50% + 3px);
+  text-overflow: ellipsis; }
+.tl-header.tl-stagger > span:nth-child(even) .tl-hl { margin-top: 1.2em; }
+.tl-header.tl-stagger.tl-wrap > span:nth-child(even) .tl-hl { margin-top: 2.4em; }
 .tl { align-items: center; position: relative; height: 30px; }
 .tl::before { content: ''; position: absolute; left: __TL_INSET__;
   right: __TL_INSET__;
@@ -2633,12 +3024,16 @@ tr.unmapped-row td.c-label { box-shadow: inset 4px 0 0 var(--dash-unmapped); }
   justify-content: center; white-space: nowrap;
   font-variant-numeric: tabular-nums; }
 .tl .marker.done-marker { background: var(--ok); }
+/* NARROW TRACKS (set by fitTimeline when a track is under ~60px): the round
+   reads "2/10" instead of "2 of 10" and the pill sheds padding, so a marker
+   stays about one track wide instead of covering the neighbouring dots. */
+.tl-compact .tl .marker { padding: 0 4px; font-size: .72rem; }
 /* Terminal override: the emoji + state colour fill the marker wherever the
    participant had reached. */
 .tl .marker.terminal-marker { background: #fdeaec;
   border: 2px solid var(--danger); font-size: .95rem; padding: 0 5px; }
 
-.c-quiz { width: 8%; }
+.c-quiz { width: 7%; }
 .quizcell { position: relative; min-width: 52px; height: 22px;
   border: 1px solid var(--line-strong); border-radius: 6px; overflow: hidden;
   display: flex; align-items: center; justify-content: center;
@@ -2691,7 +3086,7 @@ tr.unmapped-row td.c-label { box-shadow: inset 4px 0 0 var(--dash-unmapped); }
 .time-pill em { font-style: normal; }
 .time-pill + .time-pill { margin-left: 4px; }
 .c-instr { width: 10%; white-space: nowrap; }
-.c-earn { width: 10%; white-space: nowrap; }
+.c-earn { width: 7%; white-space: nowrap; }
 
 /* =========================================================================
    THE OVERVIEW BLOCK — the header row and the four condensed pills.
@@ -2903,8 +3298,24 @@ tr.unmapped-row td.c-label { box-shadow: inset 4px 0 0 var(--dash-unmapped); }
    finishing does not make a condition go away. See stateHTML for the order.
    flex-wrap, so several pills stack to a second line instead of clipping
    (times and money must never truncate — the same rule as .pill above). */
-.c-state { width: 13%; font-size: .85rem; }
-.state-pills { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+/* THE COLUMN SHARES ADD UP TO 100 (2026-10-03): label 14, timeline 48, quiz 7,
+   time 10, earnings 7, state 14. They used to total 104, so the auto table
+   layout rescaled them and the STATE cell came out ~8% wide beside a half-empty
+   Earnings column (whose content is one ~85px pill) — and "✓ finished" next
+   to "Non-SEPA" wrapped onto two lines on every finished lab row. The timeline
+   keeps its 48% (see .c-timeline); state took from earnings, quiz and label. */
+.c-state { width: 14%; font-size: .85rem; }
+.state-pills { display: flex; flex-wrap: wrap; gap: 3px 4px; align-items: center; }
+/* ONE LINE WHERE IT CAN BE (2026-10-03). When a row's pills would wrap,
+   fitTimeline() marks the cell .sp-compact and the OUTCOME pill drops its
+   words, keeping its glyph: "✓ finished" -> "✓", a terminal pill -> its emoji.
+   Lossless, because the outcome is already said twice on the same row (the
+   row tint and the timeline marker) and the full text stays in the title;
+   CONDITION pills (Non-SEPA, stall, monitor, return…) never shorten, they are
+   the information. If the cell still wraps after that, it wraps — tidily, with
+   the 3px row gap — never by clipping. */
+.sp-compact .spill-finished .sp-text, .sp-compact .spill-terminal .sp-text {
+  display: none; }
 .spill { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px;
   border-radius: 999px; font-size: .78rem; font-weight: 650;
   white-space: nowrap; border: 1px solid transparent;
@@ -3126,10 +3537,14 @@ tr.qm-unreadable td { color: var(--dash-amber); background: #fffceb; }
 'use strict';
 var DATA_URL = '__DATA_URL__';
 var POLL_MS = Math.max(2000, parseInt('__POLL_MS__', 10) || 2000);
-/* INJECTED from STEP_LABELS (see the top of experimenter_dashboard.py), never
-   retyped here: the client's idea of the step order must be the server's. */
+/* INJECTED from this session's timeline (timeline_for_apps in
+   experimenter_dashboard.py), never retyped here: the client's idea of the
+   step order must be the server's. */
 var STEPS = __STEPS_JSON__;
 var inFlight = false;      // skip a tick while the previous one is running
+/* Set by fitTimeline when a track is too narrow for "2 of 10": the marker then
+   reads "2/10". Read by timelineHTML, so it lands on the next paint. */
+var compactMarkers = false;
 var lastGood = null;
 /* THE STALE-DATA BANNER's state (Julian, 2026-08-23). When a refresh fails the
    banner must say WHEN the last good data is from AND how long ago that was,
@@ -3194,9 +3609,13 @@ function timelineHTML(row, meta) {
                 esc(row.terminal_label) + '">' + row.terminal_emoji + '</span>';
       } else if (row.step === 'done') {
         inner = '<span class="marker done-marker">✓</span>';
-      } else if (row.step === 'task' && row.task_round != null) {
-        inner = '<span class="marker">' + row.task_round +
-                (meta.rounds_total ? ' of ' + meta.rounds_total : '') + '</span>';
+      } else if (row.round != null) {
+        /* ANY multi-round app, as the app declares it (C.MONITOR_ROUNDS):
+           "2 of 10" when the server sends a total, "2" when it does not. */
+        inner = '<span class="marker">' + esc(row.round) +
+                (row.round_total ? (compactMarkers ? '/' : ' of ') +
+                                   esc(row.round_total) : '') +
+                '</span>';
       } else {
         inner = '<span class="marker">●</span>';
       }
@@ -3252,20 +3671,28 @@ function stateHTML(row) {
        invented one would make an undeclared code look styled. The pill is red
        because an undeclared code defaults to PREMATURE, not because it is
        unrecognised: a code declaring kind='finished' comes out green above. */
-    pills.push('<span class="spill spill-terminal">' +
+    /* .sp-text is what a crowded cell may hide (see .sp-compact) — and ONLY
+       when there is an emoji left to carry the pill; an emoji-less ending
+       keeps its words, never shrinking to an empty pill. */
+    pills.push('<span class="spill spill-terminal" title="' +
+               esc(row.terminal_label) + '">' +
                (row.terminal_emoji
-                  ? '<span class="emoji">' + esc(row.terminal_emoji) + '</span>'
-                  : '') +
-               esc(row.terminal_label) + '</span>');
+                  ? '<span class="emoji">' + esc(row.terminal_emoji) +
+                    '</span><span class="sp-text">' +
+                    esc(row.terminal_label) + '</span>'
+                  : esc(row.terminal_label)) + '</span>');
   else if (row.finished)
-    pills.push('<span class="spill spill-finished">✓ finished</span>');
+    pills.push('<span class="spill spill-finished" title="finished">✓' +
+               '<span class="sp-text"> finished</span></span>');
   /* UNRECOGNISED APP: the timeline shows no marker for this row, so this cell
      has to say WHY — otherwise a row with no marker reads as a glitch. Names
-     the app, because that is what somebody types into APP_STEPS. Other pills
-     accumulate next to it: both facts matter. */
+     the app: it is not in this session's app_sequence, so the timeline (built
+     from that sequence) has no step for it. Other pills accumulate next to
+     it: both facts matter. */
   if (row.step === 'unmapped')
-    pills.push('<span class="spill spill-unmapped" title="add this app to ' +
-               'APP_STEPS in experimenter_dashboard.py">⁉️ app “' +
+    pills.push('<span class="spill spill-unmapped" title="this app is not in ' +
+               'the app_sequence of this session, so the timeline has no step ' +
+               'for it">⁉️ app “' +
                esc(row.unmapped_app) + '” not on the timeline</span>');
   /* WAITING FOR — WHO this participant is blocked on, by their PARTICIPANT
      LABEL, never an in-session number. Rendered ONLY while they are actually
@@ -3693,13 +4120,85 @@ function paintStallLegend(data) {
      never runs and the table never paints at all. (Measured: it did exactly
      that on the first attempt.) */
   var NL = '\\n';
-  el.title = 'A row turns amber after too long in one PHASE. Entry and Task ' +
-    'count the current page/round; Intro and Questionnaire count the whole ' +
-    'phase. The limits:' + NL + data.stall_legend.map(function (p) {
-      return '  • ' + p.label + ': ' + fmtSecs(p.seconds);
+  /* WHICH CLOCK each limit is judged on rides in the legend itself (`scope`,
+     from the server's per-app timeline), so the text stays true for a study
+     with different apps instead of naming the template's four. */
+  el.title = 'A row turns amber after too long in one PHASE. Most phases ' +
+    'count the current page (one round, on a one-page round); those marked ' +
+    'whole phase count everything since the phase began. The limits:' + NL +
+    data.stall_legend.map(function (p) {
+      return '  • ' + p.label + ': ' + fmtSecs(p.seconds) +
+             (p.scope === 'phase' ? ' (whole phase)' : '');
     }).join(NL) +
     NL + 'Tune them in settings.py (DASHBOARD_STALL_SECONDS_*).';
 }
+
+/* THE LAYOUT FITTING PASS (2026-10-03) — header labels, marker format and the
+   state cells, judged from MEASURED widths because only the browser knows how
+   wide a label or a pill set renders. The grid itself never moves (tracks are
+   minmax(0, 1fr)); this only chooses how the contents fit into it. Reads are
+   batched before writes. Returns true when the marker format changed (the
+   caller repaints so every row uses it). Wrapped: a bug here costs tidiness,
+   never the table. */
+var FIT_LADDER = [[], ['tl-tight'], ['tl-tight', 'tl-small'],
+                  ['tl-tight', 'tl-wrap'],
+                  ['tl-tight', 'tl-stagger'],
+                  ['tl-tight', 'tl-stagger', 'tl-wrap']];
+function headerOverflows(hdr) {
+  /* Too wide, clamped, or — on a one-line rung — taller than one line. The
+     last test is the belt to the <wbr> braces above: a label that found a way
+     to wrap where it should not have must count as not fitting. */
+  var oneLine = !hdr.classList.contains('tl-wrap');
+  return Array.prototype.some.call(hdr.children, function (cell) {
+    var t = cell.firstElementChild;
+    if (!t) return false;
+    var lh = parseFloat(getComputedStyle(t).lineHeight) || 12;
+    return t.scrollWidth > t.clientWidth + 1 ||
+           t.scrollHeight > t.clientHeight + 1 ||
+           (oneLine && t.clientHeight > lh * 1.5);
+  });
+}
+function fitTimeline() {
+  try {
+    var hdr = document.querySelector('.tl-header');
+    if (!hdr) return false;
+    var all = ['tl-tight', 'tl-small', 'tl-wrap', 'tl-stagger'];
+    for (var i = 0; i < FIT_LADDER.length; i++) {
+      all.forEach(function (c) { hdr.classList.remove(c); });
+      FIT_LADDER[i].forEach(function (c) { hdr.classList.add(c); });
+      if (!headerOverflows(hdr)) break;
+    }
+    var first = hdr.firstElementChild,
+        track = first ? first.getBoundingClientRect().width : 999,
+        compact = track < 60,
+        table = document.querySelector('table.dash');
+    if (table) table.classList.toggle('tl-compact', compact);
+    // State cells: compact only the rows whose pills would wrap.
+    var cells = Array.prototype.slice.call(
+      document.querySelectorAll('td.c-state .state-pills'));
+    cells.forEach(function (c) { c.classList.remove('sp-compact'); });
+    var wraps = cells.filter(function (c) {
+      var p = c.children;
+      return p.length > 1 &&
+             p[p.length - 1].offsetTop > p[0].offsetTop + 2;
+    });
+    wraps.forEach(function (c) { c.classList.add('sp-compact'); });
+    var changed = compact !== compactMarkers;
+    compactMarkers = compact;
+    return changed;
+  } catch (e) {
+    return false;
+  }
+}
+var fitPending = false;
+window.addEventListener('resize', function () {
+  if (fitPending) return;
+  fitPending = true;
+  requestAnimationFrame(function () {
+    fitPending = false;
+    if (fitTimeline() && lastGood) repaint(lastGood);
+  });
+});
 
 function repaint(data) {
   /* NOT-ARRIVED ROWS ARE HIDDEN BY DEFAULT (Julian, 2026-08-21), and the box
@@ -3750,6 +4249,14 @@ function repaint(data) {
     timeHTML(data);
   document.getElementById('ov-alert').innerHTML = alertHTML(data);
   paintStallLegend(data);
+  /* Column widths follow the content (auto table layout), so the fit is
+     re-judged after every paint. If the marker format had to flip, paint once
+     more so every row uses it — at most once, the flag is now settled. */
+  if (fitTimeline() && !data._refit) {
+    data._refit = true;
+    repaint(data);
+    return;
+  }
   var n = data.rows.length,
       /* ARRIVAL COUNT (Julian, 2026-08-13): how full the room is, at a
          glance. 👤 (bust-in-silhouette) rather than a person emoji: it
@@ -4136,11 +4643,8 @@ tick();
 setInterval(tick, POLL_MS);
 </script>
 </body></html>"""
-             # THE FOUR DERIVATIONS OF THE STEP LIST, all resolved once at
-             # import: the header cells, the grid's track count, the connector
-             # inset (half a track) and the client's step order. Every one of
-             # them comes from STEP_LABELS; none is typed twice.
-             .replace('__COLGROUP__', _COLGROUP_HTML)
-             .replace('__STEP_COUNT__', str(len(STEPS)))
-             .replace('__TL_INSET__', f'{100 / len(STEPS) / 2:.2f}%')
-             .replace('__STEPS_JSON__', json.dumps(list(STEPS))))
+             # The column headers are static; the FOUR DERIVATIONS OF THE STEP
+             # LIST (__STEP_HEADER__ inside them, __STEP_COUNT__, __TL_INSET__,
+             # __STEPS_JSON__) are resolved PER SESSION by
+             # page_template_for_steps, from that session's timeline.
+             .replace('__COLGROUP__', _COLGROUP_HTML))

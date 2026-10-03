@@ -111,6 +111,10 @@ class C(BaseConstants):
     NAME_IN_URL = 'before'
     PLAYERS_PER_GROUP = None
     NUM_ROUNDS = 1
+    # THE EXPERIMENTER MONITOR's header label for this app's step (optional;
+    # absent -> the raw app name). See the timeline section of
+    # experimenter_dashboard.py for every MONITOR_* constant.
+    MONITOR_LABEL = 'Entry'
 
 class Subsession(BaseSubsession):
     pass

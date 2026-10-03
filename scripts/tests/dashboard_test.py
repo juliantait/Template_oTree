@@ -494,18 +494,22 @@ def main():
                     allow_redirects=True)
 
     data, rows = rows_by_code(admin, lab)
-    check(data['rounds_total'] == 3,
-          f"rounds_total is this session's count (3, got {data['rounds_total']})")
+    # THE TIMELINE IS THIS SESSION'S app_sequence (2026-10-02), labelled by
+    # each app's C.MONITOR_LABEL and with intro split by page name.
+    check([s['label'] for s in data['timeline']]
+          == ['Entry', 'Instructions', 'Quiz', 'Task', 'Questionnaire', 'Done'],
+          f"the stock session's timeline reads as it always has "
+          f"(got {[s['label'] for s in data['timeline']]})")
     check(data['poll_seconds'] >= 2, 'poll interval floor is 2s')
 
     r0 = rows[codes[5]]
-    check(r0['arrived'] is False and r0['step'] == 'entry'
+    check(r0['arrived'] is False and r0['step'] == 'before'
           and r0['entry_only'] is True,
           'never-arrived participant: entry step, de-emphasised (entry_only)')
     # ... but ARRIVED-at-entry is a present person and is NOT dimmed
     # (deliberate correction, 2026-08-12: the dim means "nobody is here").
     r6 = rows[codes[6]]
-    check(r6['arrived'] is True and r6['step'] == 'entry'
+    check(r6['arrived'] is True and r6['step'] == 'before'
           and r6['entry_only'] is False,
           'arrived participant still at entry is NOT entry_only (not dimmed)')
     # THE SHIPPED DEFAULT OF THE VIEW CONTROL (2026-08-21), asserted where it
@@ -534,9 +538,11 @@ def main():
           and isinstance(r1['intro_seconds'], int),
           'INTRO TIME runs LIVE while they are still in the intro app')
     r2 = rows[codes[2]]
-    check(r2['step'] == 'task' and r2['task_round'] == 1,
-          f"participant in the task carries the round in the marker "
-          f"(1 of 3; got step={r2['step']}, round={r2['task_round']})")
+    check(r2['step'] == 'main' and r2['round'] == 1
+          and r2['round_total'] == 3,
+          f"participant in the task carries the round in the marker, of THIS "
+          f"session's count (1 of 3; got step={r2['step']}, "
+          f"round={r2['round']} of {r2['round_total']})")
     check(r2['quiz']['state'] == 'green' and r2['quiz']['display'] == 1,
           "first-try quiz shows GREEN 1 (1 = passed first attempt)")
     # NOT "fixed once instructions_done is stamped" any more (round-2 item 5):
@@ -640,7 +646,7 @@ def main():
 
     data, rows = rows_by_code(admin, pro)
     t0 = rows[pcodes[0]]
-    check(t0['terminal'] == 'no_consent' and t0['step'] == 'entry'
+    check(t0['terminal'] == 'no_consent' and t0['step'] == 'before'
           and t0['terminal_emoji'],
           f"declined consent: terminal at ENTRY with its emoji "
           f"(got {t0['terminal']}@{t0['step']})")
@@ -651,13 +657,13 @@ def main():
     check(t1['quiz']['state'] == 'red',
           f"comprehension DQ quiz cell is RED (got {t1['quiz']['state']})")
     t2 = rows[pcodes[2]]
-    check(t2['terminal'] == 'screened_out' and t2['step'] == 'entry',
+    check(t2['terminal'] == 'screened_out' and t2['step'] == 'before',
           f"device screen-out: terminal at ENTRY (got {t2['terminal']}"
           f"@{t2['step']})")
     check(t2['entry_only'] is False,
           'a screened-out row is NEVER hidden by the entry filter')
     t3 = rows[pcodes[3]]
-    check(t3['terminal'] == 'tab_monitor' and t3['step'] == 'task',
+    check(t3['terminal'] == 'tab_monitor' and t3['step'] == 'main',
           f"tab-monitor DQ mid-task: emoji fills the marker at TASK "
           f"(got {t3['terminal']}@{t3['step']})")
     emojis = {rows[pcodes[i]]['terminal_emoji'] for i in range(4)}
@@ -666,15 +672,17 @@ def main():
     section('D3. amber (stall) — PER-PHASE thresholds (round-2 item 6)')
     # The whole point of the change: the SAME time on a page is amber in one
     # phase and unremarkable in another. One global number could not be both,
-    # and the failure was silent either way (see STALL_SETTING_BY_STEP).
-    check(ed.stall_seconds_for('entry') == 60
-          and ed.stall_seconds_for('instructions') == 480
-          and ed.stall_seconds_for('quiz') == 480
-          and ed.stall_seconds_for('task') == 180
-          and ed.stall_seconds_for('questionnaire') == 300,
+    # and the failure was silent either way. A phase is an APP (2026-10-02):
+    # DASHBOARD_STALL_SECONDS_<APP>, with main's legacy name TASK kept working.
+    check(ed.stall_seconds_for_app('before') == 60
+          and ed.stall_seconds_for_app('intro') == 480
+          and ed.stall_seconds_for_app('main') == 180
+          and ed.stall_seconds_for_app('outro') == 300,
           'each phase has its own threshold from settings.py '
           '(entry 60, intro 480, task 180, outro 300)')
-    check(ed.stall_seconds_for('instructions') == ed.stall_seconds_for('quiz'),
+    _smap = ed.stall_seconds_map(ed.timeline_for_apps(
+        ['before', 'intro', 'main', 'outro']))
+    check(_smap['instructions'] == _smap['quiz'] == 480,
           'the two halves of intro share ONE threshold (Julian asked for a '
           'threshold on INTRO, not on each half)')
     import time as _time
@@ -742,8 +750,8 @@ def main():
     try:
         for k in _saved:
             delattr(user_settings, k)
-        check(ed.stall_seconds_for('entry') == 60
-              and ed.stall_seconds_for('task') == 180,
+        check(ed.stall_seconds_for_app('before') == 60
+              and ed.stall_seconds_for_app('main') == 180,
               'deleting every DASHBOARD_STALL_* line falls back to the same '
               'defaults inside the dashboard module')
     finally:
@@ -756,7 +764,7 @@ def main():
     # The snapshot ships the whole map, so the operator screen and this test
     # read the thresholds from one place.
     check(isinstance(data['stall_seconds'], dict)
-          and data['stall_seconds']['entry'] == 60,
+          and data['stall_seconds']['before'] == 60,
           'the snapshot ships the per-phase threshold map, not one number')
     # THE HEADER LEGEND (round-2 item 17): "so we can see what the thresholds
     # are" without opening settings.py. Served as data, never as markup, so a
@@ -835,24 +843,24 @@ def main():
     # instead of guessing.
     set_participant(codes[2], _current_app_name='a_study_added_this',
                     _current_page_name='SomeNewPage')
-    _, urows = rows_by_code(admin, lab)
+    udata, urows = rows_by_code(admin, lab)
     u = urows[codes[2]]
     check(u['step'] == ed.UNMAPPED_STEP,
           f"a page in an unrecognised app is NOT reported as a timeline step "
           f"(got step={u['step']!r})")
-    check(u['step'] != 'entry',
+    check(u['step'] != 'before',
           'and specifically NOT as entry — the collapse this replaced')
     check(u['unmapped_app'] == 'a_study_added_this',
-          f"the row names the app the operator must add to APP_STEPS "
+          f"the row names the app that is not in this session's app_sequence "
           f"(got {u['unmapped_app']!r})")
-    check(ed.UNMAPPED_STEP not in ed.STEPS,
-          'the sentinel is not one of the six steps, so no marker is drawn')
+    check(ed.UNMAPPED_STEP not in [s['id'] for s in udata['timeline']],
+          'the sentinel is not one of the timeline steps, so no marker is drawn')
     # ... while a known app in the same position still maps normally, i.e. the
     # new branch did not swallow the ordinary case.
     set_participant(codes[2], _current_app_name='main',
                     _current_page_name='GameStart')
     _, krows = rows_by_code(admin, lab)
-    check(krows[codes[2]]['step'] == 'task'
+    check(krows[codes[2]]['step'] == 'main'
           and krows[codes[2]]['unmapped_app'] is None,
           f"a KNOWN app still maps to its step with no unmapped flag "
           f"(got {krows[codes[2]]['step']!r})")
@@ -889,7 +897,7 @@ def main():
     _db.commit()
     _, farows = rows_by_code(admin, fa)
     one = list(farows.values())[0]
-    check(one['step'] == 'task',
+    check(one['step'] == 'main',
           f"the forced advance really did push them past the quiz "
           f"(step={one['step']!r}) — otherwise this section proves nothing")
     check(one['quiz']['state'] == 'forced',
@@ -964,47 +972,61 @@ def main():
     finally:
         ed.UNLABELLED_LAST = True
 
-    section('D6. the six steps are defined ONCE and everything derives from it')
-    # THE ANTI-DRIFT GUARD (added 2026-08-12 with the single-sourcing). The step
-    # list used to be stated four times — the STEPS tuple, an unrendered
-    # STEP_LABELS dict, the six <span>s in the table header, and the STEPS array
-    # in the page's JavaScript — plus two more copies of the step COUNT in the
-    # CSS (the grid's track count and the connector's half-track inset). Renaming
-    # a step meant finding six places, and missing one gave a header that
-    # disagreed with the data with nothing going red. These checks fail if any
+    section('D6. the timeline is defined ONCE PER SESSION and everything '
+            'derives from it')
+    # THE ANTI-DRIFT GUARD (added 2026-08-12 with the single-sourcing; made
+    # per-session 2026-10-02). The step list used to be stated four times — a
+    # STEPS tuple, an unrendered STEP_LABELS dict, the six <span>s in the table
+    # header, and the STEPS array in the page's JavaScript — plus two more
+    # copies of the step COUNT in the CSS (the grid's track count and the
+    # connector's half-track inset). It is now built per session from that
+    # session's app_sequence (ed.session_timeline), and each of those four
+    # derivations must still come from that ONE list. These checks fail if any
     # of them is ever restated instead of derived.
     import json as _json
-    check(ed.STEPS == tuple(ed.STEP_LABELS),
-          f'STEPS is derived from STEP_LABELS, not typed alongside it '
-          f'({ed.STEPS})')
+    from otree.database import db as _db6
+    from otree.models import Session as _S6
+    timeline = ed.session_timeline(
+        _db6.query(_S6).filter_by(code=lab.code).one())
+    t_ids = [s['id'] for s in timeline['steps']]
+    t_labels = [s['label'] for s in timeline['steps']]
+    check(t_ids == ['before', 'instructions', 'quiz', 'main', 'outro', 'done'],
+          f'the stock timeline is the app_sequence, intro split by page, then '
+          f'Done ({t_ids})')
+
+    def _page_derivations(page):
+        header = re.search(r'<div class="tl-header">(.*?)</div>', page, re.S)
+        rendered = ([x.replace('<wbr>', '') for x in re.findall(
+            r'<span class="tl-hl">(.*?)</span>', header.group(1))]
+                    if header else [])
+        js = re.search(r'var STEPS = (\[[^\]]*\]);', page)
+        # Parsed DEFENSIVELY, and single quotes normalised on purpose: a
+        # hand-typed JS array (which is what a regression here looks like) is
+        # not valid JSON, and this check must report the drift, not die on it.
+        raw = js.group(1) if js else None
+        try:
+            js_steps = _json.loads(raw.replace("'", '"')) if raw else None
+        except ValueError:
+            js_steps = raw
+        return rendered, js_steps
 
     page = admin.get(f'{URL}/{lab.code}').text
-    header = re.search(r'<div class="tl-header">(.*?)</div>', page, re.S)
-    rendered = re.findall(r'<span>(.*?)</span>', header.group(1)) if header else []
-    check(rendered == list(ed.STEP_LABELS.values()),
-          f'the rendered header cells ARE STEP_LABELS, in order (got {rendered})')
-
-    js = re.search(r'var STEPS = (\[[^\]]*\]);', page)
-    # Parsed DEFENSIVELY, and single quotes normalised on purpose: a hand-typed
-    # JS array (which is what a regression here looks like) is not valid JSON,
-    # and this check must report the drift, not die on it. An unparseable value
-    # is reported as itself. A test that fails by crashing tells you the test
-    # broke, not the code — that criticism was made of section C, so it applies
-    # here too.
-    raw = js.group(1) if js else None
-    try:
-        js_steps = _json.loads(raw.replace("'", '"')) if raw else None
-    except ValueError:
-        js_steps = raw
-    check(js_steps == list(ed.STEPS),
-          f"the page's JavaScript step order is injected from STEPS, not "
-          f"retyped (got {js_steps!r})")
-
-    check(f'repeat({len(ed.STEPS)}, 1fr)' in page,
-          f'the grid has one track per step (repeat({len(ed.STEPS)}, 1fr))')
-    inset = f'{100 / len(ed.STEPS) / 2:.2f}%'
+    rendered, js_steps = _page_derivations(page)
+    check(rendered == t_labels,
+          f'the rendered header cells ARE the session timeline\'s labels, in '
+          f'order (got {rendered})')
+    check(js_steps == t_ids,
+          f"the page's JavaScript step order is injected from the timeline, "
+          f"not retyped (got {js_steps!r})")
+    check(f'repeat({len(t_ids)}, minmax(0, 1fr))' in page,
+          f'the grid has one track per step '
+          f'(repeat({len(t_ids)}, minmax(0, 1fr)))')
+    inset = f'{100 / len(t_ids) / 2:.2f}%'
     check(page.count(f': {inset}') >= 2,
           f'the connector is inset by half a track ({inset}) on both sides')
+    data6, _ = rows_by_code(admin, lab)
+    check([s['id'] for s in data6['timeline']] == t_ids,
+          'the /data JSON ships the SAME timeline the page was rendered from')
 
     # A PLACEHOLDER THAT SURVIVED INTO THE PAGE IS INVISIBLE: `repeat(
     # __STEP_COUNT__, 1fr)` is invalid CSS, so the grid silently falls back and
@@ -1014,18 +1036,20 @@ def main():
           f'no __PLACEHOLDER__ survived into the served page ({leftovers})')
 
     # ... and the derivation is REAL, not a coincidence of matching literals:
-    # change the definition and the generator follows.
-    real_labels = ed.STEP_LABELS
-    try:
-        ed.STEP_LABELS = {'alpha': 'Alpha', 'omega': 'Omega'}
-        check(ed._step_header_html() ==
-              '<span>Alpha</span><span>Omega</span>',
-              'the header generator follows STEP_LABELS (proved by changing it)')
-    finally:
-        ed.STEP_LABELS = real_labels
-    check(ed._step_header_html() ==
-          ''.join(f'<span>{lbl}</span>' for lbl in ed.STEP_LABELS.values()),
-          'and the real labels are restored afterwards')
+    # a DIFFERENT timeline drives all four derivations to different values.
+    other = [dict(id='alpha', label='Alpha'), dict(id='beta', label='B<eta>'),
+             dict(id='done', label='Done')]
+    opage = ed.page_template_for_steps(other)
+    o_rendered, o_js = _page_derivations(opage)
+    check(o_rendered == ['Alpha', 'B&lt;eta&gt;', 'Done'],
+          f'the header follows the timeline it is given, labels ESCAPED '
+          f'(got {o_rendered})')
+    check(o_js == ['alpha', 'beta', 'done'],
+          f'…and so does the JS step order (got {o_js!r})')
+    check('repeat(3, minmax(0, 1fr))' in opage and opage.count(': 16.67%') >= 2,
+          '…and the grid track count and the connector inset (3 steps)')
+    check(not re.findall(r'__STEP_[A-Z_]*__|__TL_INSET__', opage),
+          '…with no timeline placeholder left unresolved')
 
     section('D7. state pills: Non-SEPA is lab-only, null is no pill, and '
             'conditions survive finishing')

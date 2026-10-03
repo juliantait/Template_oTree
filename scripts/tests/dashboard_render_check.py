@@ -424,7 +424,7 @@ def stage_overview(base):
     # rather than only the "0:00" a scripted walk produces. See
     # stage_intro_time. codes[1]'s age doubles as the overview's AMBER stall
     # (derived from the intro threshold — see the staging comment above).
-    for code, seconds in ((codes[1], ed.stall_seconds_for('instructions')
+    for code, seconds in ((codes[1], ed.stall_seconds_for_app('intro')
                            + 100), (codes[2], 340), (codes[3], 204),
                           (codes[4], 172), (codes[5], 195), (codes[6], 210),
                           (codes[7], 765), (codes[9], 380), (codes[11], 218)):
@@ -755,7 +755,7 @@ def stage_sessions(base):
     # phase is judged on elapsed-since-left_before_app, not on page time
     # (the pills change; see _stall_elapsed).
     stage_intro_time(codes[4],
-                     ed.stall_seconds_for('instructions') + 100)
+                     ed.stall_seconds_for_app('intro') + 100)
 
     pro = ot.create_session(
         'prolific', num_participants=4,
@@ -806,10 +806,11 @@ def check_http(base, lab, pro):
     check(rows['Seat 02']['step'] == 'quiz'
           and rows['Seat 02']['quiz']['attempts_wrong'] == 1,
           "Seat 02 on the quiz with one wrong attempt")
-    check(rows['Seat 03']['step'] == 'task'
-          and rows['Seat 03']['task_round'] == 2,
+    check(rows['Seat 03']['step'] == 'main'
+          and rows['Seat 03']['round'] == 2
+          and rows['Seat 03']['round_total'] == 3,
           f"Seat 03 mid-task carries round 2 of 3 "
-          f"(got {rows['Seat 03']['task_round']})")
+          f"(got {rows['Seat 03']['round']} of {rows['Seat 03']['round_total']})")
     check(rows['Seat 04']['step'] == 'done' and rows['Seat 04']['finished']
           and rows['Seat 04']['earnings'] is not None,
           "Seat 04 finished, earnings known")
@@ -875,7 +876,7 @@ def check_browser(base, lab, pro):
 
         # EQUAL SPACING, measured: all 6 header cells and all 6 step cells of
         # the first row within 2px of each other.
-        for sel, what in (('.tl-header span', 'header'),
+        for sel, what in (('.tl-header > span', 'header'),
                           ('tbody tr:first-child .stepcell', 'track')):
             widths = pg.eval_on_selector_all(
                 sel, 'els => els.map(e => e.getBoundingClientRect().width)')
@@ -1112,7 +1113,7 @@ def check_pills(base):
         'bank': US_IBAN, 'bank_confirmation': US_IBAN, 'bic': 'SVBKUS6S'}})
     walk(base, lcodes[1], correct)                       # NL IBAN (default)
     walk(base, lcodes[2], correct, stop_after='welcome')  # on instructions
-    stage_intro_time(lcodes[2], ed.stall_seconds_for('instructions') + 123)
+    stage_intro_time(lcodes[2], ed.stall_seconds_for_app('intro') + 123)
 
     pro = ot.create_session('prolific', num_participants=2)
     pcodes = ot.participant_codes(pro)

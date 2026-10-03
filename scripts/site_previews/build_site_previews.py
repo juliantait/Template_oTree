@@ -98,8 +98,8 @@ here would be a SECOND IMPLEMENTATION of renderRow, drifting silently from the
 first (`CLAUDE.md`, the inverted collapsed-distinction rule).
 
 So the monitor preview is built by RUNNING THE REAL PAGE: the dashboard's own
-`_PAGE_HTML` — its stylesheet, its script, its header cells, its step list, all
-imported rather than copied — is loaded in headless Chromium with `fetch`
+page (`page_template_for_steps`) — its stylesheet, its script, its header cells,
+its step list, all imported rather than copied — is loaded in headless Chromium with `fetch`
 stubbed to return the invented session in `monitor_session.py`, and the DOM it
 paints is then FROZEN into static HTML with every `<script>` removed. The result
 is markup the dashboard itself produced, that needs no server and no JavaScript
@@ -395,9 +395,11 @@ MONITOR_NOTE = (
 def build_monitor():
     """Freeze the experimenter monitor, RENDERED BY ITS OWN JAVASCRIPT.
 
-    The dashboard is imported, never copied: `_PAGE_HTML` already carries its
-    stylesheet, its script, the header cells and the step list, all resolved
-    from `STEP_LABELS` at that module's import. Only three things are changed,
+    The dashboard is imported, never copied: `page_template_for_steps` returns
+    its page with its stylesheet, its script, the header cells and the step
+    list, all resolved from ONE timeline — here the fixture's
+    `monitor_session.TIMELINE`, exactly as a live page resolves them from its
+    session's app_sequence. Only three things are changed,
     and each is a consequence of the page leaving the server:
 
       1. the `<link>` to base.css becomes the stylesheet INLINE — the file
@@ -419,7 +421,7 @@ def build_monitor():
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
     import monitor_session
 
-    live = (dash._PAGE_HTML
+    live = (dash.page_template_for_steps(monitor_session.TIMELINE)
             .replace('<link rel="stylesheet" href="__CSS_HREF__">',
                      '<style>\n%s\n</style>' % css('base.css'))
             .replace('__SESSION_TITLE__', html.escape(monitor_session.SESSION_TITLE))

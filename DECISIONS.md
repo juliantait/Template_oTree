@@ -11,6 +11,103 @@ working.
 
 ---
 
+## Monitor layout: `minmax(0,1fr)` tracks, a label-fitting ladder, one-line state cells — 2026-10-03
+
+Styling pass on the experimenter monitor, approved by Julian once the timeline
+became per-session (any number of steps, raw app names as labels).
+
+- **Tracks are `minmax(0, 1fr)` in the header AND every row**, with a floor of
+  44px per step on the grid. A bare `1fr` lets content set a track's minimum,
+  so a long label or a "10 of 10" marker widened its own track and the header
+  drifted up to 40px off the dots (already 6–12px on the stock six steps at
+  ≤1152px). Do not "simplify" back to `1fr`; the floor exists because without
+  any content minimum the auto table layout starved the timeline (23px tracks).
+- **Labels are fitted, never allowed to move the grid:** `fitTimeline()` in the
+  page JS tries none → tighter → smaller (.6rem) → two-line wrap (break after
+  `_`) → stagger (alternate rows, two tracks wide) → stagger+wrap with ellipsis,
+  and keeps the first rung where nothing overflows. The full label is always the
+  cell's `title`. Chromium breaks at `<wbr>` even under `nowrap`, so the break
+  points are hidden off the wrap rungs AND the fit test rejects a one-line rung
+  that grew taller. **Rejected:** CSS-only fitting (container queries cannot know
+  whether a label fits), and ellipsis as the first resort.
+- **Narrow tracks (<60px) get a compact "2/10" marker**; full "2 of 10" otherwise.
+- **State cells stay on one line:** the column shares now total 100% (they were
+  104%, so the auto layout rescaled them and squeezed State beside a half-empty
+  Earnings column). Where a cell would still wrap, the OUTCOME pill drops its
+  words ("✓ finished" → "✓"), lossless because the row tint and marker say it
+  too; condition pills never shorten. Rows have one minimum height (48px).
+- **The stock screen at 1440px uses no rung** and is unchanged apart from the
+  finished row's pills now sharing a line (and a ~15px shift from the 1% the
+  label column gave up).
+
+**Enforced by:** `scripts/tests/dashboard_timeline_render_check.py` (4–9 steps ×
+1024/1152/1280/1440 px: alignment ±1px, equal tracks, cut labels only in the
+≥7-steps-at-≤1152px corner and always with a tooltip, one-line two-pill cells,
+one row height, no page scroll, stock 1440 on no rung; 70 of its checks fail
+on the pre-pass CSS).
+
+---
+
+## The monitor's timeline is built per session from `app_sequence` — 2026-10-02
+
+The experimenter monitor no longer has a fixed step list. Its steps are THIS
+session's `app_sequence`, in order, then Done (`timeline_for_apps` in
+`experimenter_dashboard.py`); the header cells, grid track count, connector inset
+and the page's JS `STEPS` are all derived from that one per-session list, as they
+used to be from `STEP_LABELS` at import. A fork that adds, renames or reorders an
+app gets a correct monitor without editing the dashboard (Julian's request: the
+old "update APP_STEPS by hand" rule was the thing forks forgot).
+
+- **Step ids are app names** (`before`, `main`, `outro`), not the old phase words
+  (`entry`, `task`, `questionnaire`). The /data row's `step` changed accordingly;
+  the screen does not. Kept: `instructions`/`quiz` (intro's page split) and `done`.
+- **Apps declare their own presentation, optionally, on `C`:** `MONITOR_LABEL`
+  (else the raw app name — unprettified on purpose, a standing prompt to declare
+  one), `MONITOR_ROUNDS` (`fraction`/`number`/`hidden`; default `fraction` for a
+  multi-round app, `hidden` for a single-round one) and `MONITOR_ROUNDS_CONFIG`
+  (a session-config key capping the total — `main` uses
+  `num_experimental_rounds`, so the operator's "x of N" equals the participant's
+  progress strip). **intro is `number` on purpose:** "1 of 2" would read as half
+  done to everyone on their first pass, when round 2 is only the lab re-read.
+- **The page-name split stays hardcoded** (`PAGE_SPLIT_STEPS`, one entry: intro
+  → Instructions, Quiz). It is the one placement no app-level fact can express.
+- **Stall threshold per app:** `DASHBOARD_STALL_SECONDS_<APP>`, else `_DEFAULT`.
+  **`DASHBOARD_STALL_SECONDS_TASK` still governs `main`** (a legacy alias in
+  `LEGACY_STALL_SETTINGS`) so existing settings files keep working — do not
+  rename it to `_MAIN` in settings.py thinking it is dead; either name works and
+  `_MAIN` wins. Not a pattern to extend.
+- **intro's and outro's phase clocks apply only when their usual predecessor
+  (`before`, `main`) is immediately before them in the session**
+  (`PHASE_CLOCK_APPS`). Both clocks start at a stamp the previous app writes; an
+  app inserted in between would be billed to the phase and turn every arriving
+  row amber. Otherwise page time, the default for every app.
+- **Unmapped stays loud.** A participant whose app is not in their session's own
+  `app_sequence` is still the violet "not on the timeline" row, never placed
+  somewhere plausible — rare now, which is exactly why it must stay visible.
+- **A terminal tab-monitor DQ is placed by the page of the disqualifying focus
+  loss** (server-recorded, `region == 'task'` only) as well as by the stage
+  stamps, so a DQ in `main` is not drawn on an app inserted after the quiz.
+- **Name-bound lookups remain** (earnings/Non-SEPA from `outro`, quiz cell and
+  panel and intro timer from `intro`, treatments from `before`, `task_done` from
+  `main`): `NAME_BOUND_APPS` lists them, and `note_timeline_problems` warns at
+  launch (logged and printed, never raised) for any config missing one.
+- **Rejected:** keeping APP_STEPS as an override layer over the derived timeline
+  — two sources for "where is this app" is the inverted collapsed-distinction
+  rule; and deriving labels by prettifying app names, which would hide the gap a
+  declared label closes.
+- **Known residual (not introduced here):** at 1152px the header labels already
+  overflow their tracks on the stock six steps; a seventh step makes the same
+  drift visible at 1280px. Row tracks stay equal.
+
+**Enforced by:** `scripts/tests/dashboard_timeline_test.py` (inserted app,
+labels, intro number, main capped fraction, per-app stall, unmapped, terminal
+placement, launch warning — run against the old module it fails on every new
+behaviour; its main x/N and unknown-app checks are regression guards),
+`dashboard_test.py` §D6 (per-session derivation of all four), and the site
+preview built through `page_template_for_steps`.
+
+---
+
 ## The CREED lab block is EXTENDED to the launcher block's full behaviour — DATABASES, ADMIN_PASSWORD, AUTH_LEVEL and DEBUG, each env-gated — 2026-09-10
 
 The CREED Lab Launcher now appends a larger self-documenting block to a project's

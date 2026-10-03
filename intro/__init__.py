@@ -34,6 +34,14 @@ class C(BaseConstants):
     # takes the one-time re-read offer, so for everyone else every round-2
     # page returns is_displayed False (empty export rows, by design).
     NUM_ROUNDS = 2
+    # THE EXPERIMENTER MONITOR (optional constants; see experimenter_dashboard.py).
+    # intro is SPLIT into Instructions and Quiz steps by page name
+    # (PAGE_SPLIT_STEPS there), so this label is not a header: it names the
+    # phase in the timing pill and the threshold legend ("Intro 8:12").
+    # The marker shows the round NUMBER only — "2" is the lab re-read pass —
+    # because a total of 2 would read as "half done" to everyone on round 1.
+    MONITOR_LABEL = 'Intro'
+    MONITOR_ROUNDS = 'number'
     # Example figures referenced by intro/instructions_text.html to demonstrate
     # variable substitution. Replace with your own study's numbers.
     STAG_PAYOFF = 4
