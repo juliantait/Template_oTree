@@ -11,6 +11,31 @@ working.
 
 ---
 
+## Instructions preview: bare `{% if flag %}` is resolved at build time, absent = false — 2026-10-07
+
+`intro/generate_instructions_preview.py` only understood treatment
+conditionals (`{% if treatment == "row" %}`), which the interactive preview's
+switcher flips live. The intro text gained profile/page-state flags on
+2026-08-25 (`is_prolific` for the quiz-attempts disclosure, `is_reread_pass` in
+`prequiz_text.html`), and those tags fell through every transform and were
+printed as literal `{% if is_prolific %}` text in the long and interactive
+previews — found while regenerating the website copy
+(`_ai/site_previews/instructions_interactive.html`, which is this generator's
+interactive output copied, not a `build_site_previews.py` product).
+
+Such flags do not vary by treatment, so they are resolved once at build time
+(`resolve_flag_conditionals`) from an optional top-level `"flags"` dict in the
+config, and the PDF context receives the same dict. **An absent flag is
+false** — matching the PDF path's Jinja `Undefined`, so all three outputs agree
+— which makes the default the lab, first-pass view the website shows. Rejected:
+treating flags as matrix rows (they would then appear as fake treatment
+variables and could differ per column, which no session can do).
+**Enforced:** nowhere by a test. A new kind of template tag in
+`intro/*_text.html` can leak the same way; grep the outputs for `{%` after
+regenerating.
+
+---
+
 ## Monitor layout: `minmax(0,1fr)` tracks, a label-fitting ladder, one-line state cells — 2026-10-03
 
 Styling pass on the experimenter monitor, approved by Julian once the timeline
