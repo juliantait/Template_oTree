@@ -885,7 +885,66 @@ def transform_variables_only(text: str) -> str:
     return re.sub(r"\{\{\s*([^\}]+?)\s*\}\}", repl, text)
 
 
-def transform_for_client(text: str) -> str:
+_TAG_RE = re.compile(r"\{%-?\s*(if|elif|else|endif)\b\s*(.*?)\s*-?%\}", re.DOTALL)
+_BARE_FLAG_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_\.]*$")
+
+
+def resolve_flag_conditionals(text: str, flags: dict) -> str:
+    """Resolve `{% if flag %}...{% else %}...{% endif %}` at build time.
+
+    WHY THIS EXISTS: the client transform below only understands
+    `{% if var == "x" %}` — a TREATMENT conditional the floating switcher flips
+    live. A bare `{% if is_prolific %}` / `{% if is_reread_pass %}` is a
+    different thing: a PROFILE or PAGE-STATE flag that does not vary by
+    treatment, so there is nothing to switch. Before this existed (intro text
+    gained those flags 2026-08-25) the tags fell through and were printed to the
+    reader as literal `{% if is_prolific %}` text — on the public website copy.
+
+    Values come from the config's optional top-level "flags" dict. A flag that
+    is ABSENT is false, which is exactly what the PDF path's Jinja `Undefined`
+    already does, so the three outputs agree; the default view is therefore the
+    lab, first-pass view. Nesting is handled by matching each `if` to its own
+    `endif` by depth. Only bare-name ifs are resolved; anything else (including
+    a flag block with `elif`) is left untouched for the other transforms.
+    """
+    while True:
+        tags = list(_TAG_RE.finditer(text))
+        done = True
+        for i, t in enumerate(tags):
+            if t.group(1) != "if" or not _BARE_FLAG_RE.match(t.group(2)):
+                continue
+            depth, else_tag, end_tag, has_elif = 0, None, None, False
+            for u in tags[i + 1:]:
+                kind = u.group(1)
+                if kind == "if":
+                    depth += 1
+                elif kind == "endif":
+                    if depth == 0:
+                        end_tag = u
+                        break
+                    depth -= 1
+                elif depth == 0 and kind == "else":
+                    else_tag = u
+                elif depth == 0 and kind == "elif":
+                    has_elif = True
+            if end_tag is None or has_elif:
+                continue
+            if else_tag is not None:
+                true_part = text[t.end():else_tag.start()]
+                false_part = text[else_tag.end():end_tag.start()]
+            else:
+                true_part = text[t.end():end_tag.start()]
+                false_part = ""
+            chosen = true_part if flags.get(t.group(2)) else false_part
+            text = text[:t.start()] + chosen + text[end_tag.end():]
+            done = False
+            break
+        if done:
+            return text
+
+
+def transform_for_client(text: str, flags: dict | None = None) -> str:
+    text = resolve_flag_conditionals(text, flags or {})
     cond_pattern = re.compile(
         r"\{\%\s*if\s+([a-zA-Z_][a-zA-Z0-9_\.]*)\s*==\s*([^\%]+?)\s*\%\}"
         r"(.*?)"
@@ -1495,7 +1554,7 @@ def build_long_html(
 ) -> str:
     transformed = []
     for b in blocks:
-        inner = transform_for_client(b["inner"])
+        inner = transform_for_client(b["inner"], state.get("flags"))
         cls = b.get("classes", "instruction-block")
         block_html = f'<div class="{cls}">{inner}</div>'
         transformed.append(
@@ -1582,7 +1641,7 @@ def build_interactive_html(
     # Instruction + prequiz + quiz cards
     transformed_cards = []
     for b in blocks:
-        inner = transform_for_client(b["inner"])
+        inner = transform_for_client(b["inner"], state.get("flags"))
         cls = b.get("classes", "instruction-block")
         block_html = f'<div class="{cls}">{inner}</div>'
         transformed_cards.append(
@@ -1652,6 +1711,7 @@ def build_pdf_html(
     pdf_col: int,
 ) -> str:
     ctx = build_context(state, pdf_col)
+    ctx.update(state.get("flags") or {})  # same flags as resolve_flag_conditionals
 
     rendered_cards = []
     for b in blocks:
