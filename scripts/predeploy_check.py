@@ -1095,7 +1095,8 @@ def _is_placeholder(value) -> bool:
 # NOT DESPITE IT — for a key in this dict the consequence does not exist,
 # because absent is not an accident, it is the DESIGNED MEANING.
 #
-# `build_at_creation` is the whole (and, so far, only) case. It is read by
+# `screen_lock` is the second case, see its entry below. `build_at_creation` was
+# the first, and is the worked example. It is read by
 # `common.build_at_creation`, which is DELIBERATELY RAW and never routes through
 # `cfg`, precisely so that absent keeps meaning "this session was created before
 # build stamping existed" rather than being back-filled with the build running
@@ -1129,6 +1130,13 @@ MISSING_IS_THE_DESIGNED_MEANING = {
         'recreating the session would not repair it, because there is nothing '
         'broken. Provenance is documentation, never a gate (DECISIONS.md, '
         '2026-08-23)'),
+    'screen_lock': (
+        'absent is not a defect: it is the designed meaning, namely that this '
+        'session was created before the screen lock existed and runs without '
+        'it, as it started. The only reader (css_bundle.html) is deliberately '
+        'RAW, so nothing falls back to the shipped ON, and recreating a live '
+        'session over how text selects would cost more than it repairs '
+        '(DECISIONS.md, 2026-11-05)'),
 }
 
 

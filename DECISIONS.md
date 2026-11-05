@@ -11,6 +11,79 @@ working.
 
 ---
 
+## The screen lock: a switch, on by default, off for a frozen session, 2026-11-05
+
+**What it is.** `screen_lock=True` in `SESSION_CONFIG_DEFAULTS`. `css_bundle.html` loads
+`_static/global/js/screen_lock.js` when it is on; the script sets `html.screen-lock`,
+which switches on the rules in `base.css`, and stops `contextmenu` and `dragstart`.
+Julian's goal: participant pages feel like a screen, not a website. Copied from
+CREED_Helping Micro 1 (b955f04), which has no switch, and is a lab classroom game.
+
+**On by default, against "every flag ships OFF".** That rule is for study modules a
+project opts in to. This is no module and gates nobody, and Julian wants it by default.
+Not in a recruitment profile: it means the same in the lab and on Prolific.
+
+**A session created before the key existed reads as OFF,** by `is_defined`, the
+tab monitor's guard and `common.flag`'s rule, not by `common.cfg`, which would give
+the shipped ON. People already in a session keep the pages it started with, and one
+session does not change behaviour halfway through. `css_bundle.html` is the one reader,
+so the key has an entry in `MISSING_IS_THE_DESIGNED_MEANING` in
+`scripts/predeploy_check.py`: telling an operator to recreate a live session over how
+text selects would cost more than it repairs. It is still reported.
+
+**Scoped through a class the script sets, rather than bare rules like Micro 1's.**
+So switch off, previews (which link `base.css` directly), the room gate and admin
+pages get none of it. With JavaScript off the page is simply not locked, which breaks
+nothing. **No layout property**, so no geometry baseline can move.
+
+**No cursor rule on fields,** which Micro 1 has as `input, textarea { cursor: text }`.
+This template has radios and checkboxes, which that rule would give a text cursor. The
+browser's own per-type rules already do the right thing, and inheriting from `body`
+does not override them.
+
+**`-webkit-user-select` and `-webkit-touch-callout` as well,** which Micro 1 does not
+need on its lab PCs: Safari needs the first, and iOS shows its long-press menu without
+the second, with no `contextmenu` event for the script to stop.
+
+**A long-press in a field keeps its menu; a mouse right-click does not.** Julian
+accepted losing right-click paste because Ctrl+V works. A phone has no Ctrl+V, and the
+Prolific ID page tells a participant to copy their ID, so paste has to stay reachable
+there. Written as `pointerType !== 'mouse'`, so a browser reporting no pointer leaves
+fields alone: the failure that costs nothing.
+
+**`.selectable` is the exemption, for selection, right-click and long-press.** The
+template shows no completion code as text: the code rides the link (`completionlink`,
+a real no-JS link, see `prolific_return_footer.html`). So the four ways back to Prolific
+carry the class, so that Copy link address is there if the link does not open. There is
+no contact email, and bank fields are fields. A fork showing text someone must copy adds
+the class. Rejected: exempting by hand-written selectors in the script, a second list to
+forget.
+
+**Nothing relied on these events.** No `contextmenu`, `selectstart`, `dragstart` or
+`getSelection` anywhere in the participant code. `telemetry_capture.js` listens for
+`copy` and `paste`: Ctrl+C on a locked page still fires `copy`, so `copy_detected`
+records the attempt, even though nothing is copied. **So `copy_detected` now means
+"pressed copy", not "got text out".** Comparing it with sessions run with the lock off
+compares two different things. The tab monitor and focus trace listen for `blur` and
+`visibilitychange`, which the lock does not cause.
+
+**The room's pages are not locked, and cannot be by this switch.** `room_welcome.html`
+gets only `has_participant_label_file` and oTree's room wait page gets no session, so
+neither can read a per-session key. Micro 1 loads the script there unconditionally;
+here that would leave the switch unable to turn it off. A study's own stock wait page
+is also not reached, since it has no `css_bundle.html`; this template ships none.
+
+**Known cost.** Operating-system tools that read a selection (select to speak, a
+dictionary lookup) do not work on locked text. Screen readers read the page as before,
+and keyboard use and text zoom are not touched.
+
+**Enforced:** `scripts/tests/screen_lock_test.py` (real prodserver, real Chromium, by
+real mouse and keyboard, including the frozen session by the real route);
+`scripts/tests/frozen_config_test.py` strips the key. Not enforced: that a fork adds
+`selectable` to text it introduces. That relies on the README and the settings comment.
+
+---
+
 ## The dashboard's Download data button: three files, one column list, no database writes, 2026-11-05
 
 **What it is.** A button at the top right of `/experimenter_dashboard/<code>`

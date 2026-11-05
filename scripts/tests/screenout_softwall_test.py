@@ -262,7 +262,7 @@ def scenario_way_out(base):
     # left a participant without JS with NO way off the page at all.
     check('<button' not in html.lower(),
           'the way out is not a <button> that needs a script to do anything')
-    check('class="exit-button"' in html,
+    check('class="exit-button selectable"' in html,
           'it is NOT .next-button: global.js Enter-clicks the first one of '
           'those, and an irreversible exit must not be one keystroke away')
     # THE WAY OUT CARRIES THE SCREEN-OUT POPULATION'S OWN COMPLETION CODE.
