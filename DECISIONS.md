@@ -84,7 +84,84 @@ real mouse and keyboard, including the frozen session by the real route);
 
 ---
 
-## The dashboard's Download data button: three files, one column list, no database writes, 2026-11-05
+## The Download data result screen is a tick list, and the button is set up in code, 2026-11-05
+
+**After using it for real, Julian asked for a confirmation you can scan:** "Data saved",
+then one row per file, a green tick, the name and rows, the path small underneath. The
+old screen said "All 3 files were written" with a sentence per file. The confirm step uses
+the same rows and the same words. Its tick is grey, not green, because nothing has happened
+yet and the principle is to claim only what was checked. The three descriptions of what each file holds went: the README has them.
+
+**A skip and a failure both get a red X and must not read the same.** Julian asked for the
+X on the expected skip so you can see what happened. So `data_download.file_state` keeps
+two states: a skip is a red X on a plain row and the heading stays "Data saved"; a failure
+is a white X on a red disc on a tinted row, in red words, and the heading changes ("Some
+files were not saved", "Nothing was saved"). Collapsed, either a renamed `outro` reads "Data
+saved" with a file missing, or every plain study reads as broken and people learn to
+ignore the red. **The server decides the heading** (`result_heading`), not the page, so it
+is one implementation and can be tested without a browser. In browser mode it never says
+"saved", because the server cannot see a file land. A subfolder taken by a file is now a
+failure on that row of the confirm step, not a box under a row with a tick on it, and the
+main action counts only what can be saved.
+
+**The missing payment columns are one yellow line in the PAYMENTS row,** in words: "Did not
+exist in this data: Prolific ID, IBAN, BIC". The raw names are in its hover text only. It
+lists everything missing, so a plain study also reads "total earned, Prolific ID conflict",
+longer than Julian's example, because leaving out the amount would hide the one most worth
+seeing.
+
+**The button is set up in code, in `data_columns.py`, and nowhere else (Julian, after his lab
+test).** He wants this behind the scenes, not a screen: no session config key, no box at
+session creation, no dashboard control. Three things sit at the top of that file:
+`DOWNLOAD_DATA_BUTTON`, `download_files` and `DOWNLOAD_HELPER`. **In `data_columns.py` and not
+`settings.py`,** because that is where the file rules already live, so an author editing what
+the button makes finds its switch beside it, and because `data_download` stays free of oTree
+at import, which importing `settings` would end. Rejected: a key in `SESSION_CONFIG_DEFAULTS`,
+which shows up as a box in the create-session screen, the very thing he does not want.
+
+**The switch is on by default, and no helper means one raw file.** His reason: with no setup at
+all it must still work and write the full export with the SENSITIVE tag, which does no harm.
+So `DOWNLOAD_HELPER = None`, or that line deleted, gives exactly one row and one file, with no
+X for files nobody asked for. The template sets the helper because its data has bank, BIC and
+Prolific columns. **A plain study that keeps the template's helper still gets the earlier rule:**
+a red X for ANONYMOUS and a PAYMENTS file with the participant code alone. Off means no button,
+no CSS or script on the page, routes not installed, a refusal (404, not a 500) if the route exists
+anyway, and nothing about `OTREE_DATA_FOLDER` at boot or in `launch_problems`.
+
+**The helper runs with the read, under oTree's lock, not with the disk work.** It may read the
+database, which needs committed data and is not safe once the lock has gone, and there it falls
+under the same `no_autoflush` and rollback as the export, so a helper that says `.vars` by
+mistake, or changes something, writes nothing. The price is that a slow helper holds up
+participant pages; its docstring says so. Rejected: handing it a second, later read, which could
+disagree with the rows.
+
+**A helper that fails does not cost the raw file.** It gets a copy of the rows, so it cannot have
+changed them; SENSITIVE is written from the original, and the failure gets its own red row (`OTHER
+FILES`), so the heading says it. Its answer is used whole or not at all: half of a study's files
+with no word about the rest is how a missing file goes unnoticed. Everything it returns is checked
+first (`problem_with_files`), with a plain message naming the file and the problem, and a kind or
+ending that could leave the folder is refused. Rejected: a helper's failure stopping the press,
+because this is the rescue path.
+
+**The wide export is not all the data.** It holds fields, `PARTICIPANT_FIELDS` and `SESSION_FIELDS`,
+not what is only in `session.vars`, such as a chat log. The docstring says so and has the example,
+reading `session._vars`, because `.vars` marks the row as changed on every read.
+
+**The Micro 1 version is simpler, and that is fine.** `CREED_Helping/Micro 1 Experiment` has its own
+`pit_market_live/download_data.py`: it computes `total_earned` itself and has no `split_export`. It
+was tested at the lab through the launcher's folder and worked (Julian). Its button is switched off
+in that repo now, by `DOWNLOAD_BUTTON_ON = false` in its admin report's script, and the route stays;
+see that repo's CLAUDE.md. Nothing here depends on it, and the example of a computed total is the
+same idea.
+
+**Enforced:** `scripts/tests/download_data_test.py` sections M (a skip and a failure, the
+heading), N (the switch) and O (no helper gives one file; the docstring's examples are extracted
+and run, so they cannot go stale; raising and invalid helpers; no write while reading session
+vars), and `scripts/tests/download_data_browser_check.py`, in a real browser on a real server.
+
+---
+
+## The dashboard's Download data button: one column list, no database writes, 2026-11-05
 
 **What it is.** A button at the top right of `/experimenter_dashboard/<code>`
 (`data_download.py`, two routes through `otree_routes`). One press, after a
@@ -121,7 +198,7 @@ rule:** `participant.label` is in every oTree export, so taken literally the rul
 never fire; it counts only when some row has a label. `outro.1.player.earned` identifies
 nobody, and an "anonymous" file differing only by that would mislead the same way.
 Julian's example said "Only the raw file was written"; PAYMENTS always exists under his
-rule 3, so the screen says no anonymous file and lists the other two. **The confirm step
+rule 3, so the template's helper gives no anonymous file and the other two. **The confirm step
 reads the export** so it can say all this before writing, at the same cost as a press,
 paid only when an operator clicks. Rejected: guessing columns from the models, a second
 implementation of what the export contains.
@@ -132,8 +209,8 @@ implementation of what the export contains.
 same field names at any app and round, plus `iban` and `prolific_id` spellings. Refused
 rather than dropped automatically: then the button and the script would have two
 different rules, and the person who renamed the app learns the list needs updating.
-**No file because nothing to remove is correct and shown calmly; no file because of this
-is a failure and shown as one.** Kept apart in `skipped`.
+**No file because nothing to remove is correct; no file because of this is a failure.**
+Kept apart in `skipped`, and on the screen (the next entry).
 
 **The total is `outro.1.player.earned`, not `participant.payoff`.** Read from a real
 export with `participation_fee=2`: earned 87.5, payoff 85.5, because payoff is stored as
@@ -176,7 +253,7 @@ and the screen says which is missing.
 not three GETs. So the three come from one read of the database (a participant finishing
 between three requests would give three files that disagree), the CSRF check covers
 them, nothing sensitive sits behind a GET, and the server has nothing to store. The
-screen says only "sent to the browser". The visible links are the Blobs, and stop working
+heading says only "Data sent to the browser". The visible links are the Blobs, and stop working
 when the box closes, which releases them.
 
 **Login and CSRF are checked here, whatever the environment says.** The dashboard opens
