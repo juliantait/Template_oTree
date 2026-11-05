@@ -10,7 +10,7 @@ WHAT ONE PRESS MAKES (always every session in the database)
   SENSITIVE  oTree's wide export, byte for byte what /ExportWide serves. Always.
   ANONYMOUS  the same without the personal columns. Only if there is something to
              remove: otherwise it would be a raw copy that looks anonymised.
-  PAYMENTS   as many of the five payment columns as exist.
+  PAYMENTS   as many of the payment columns as exist.
 
 What goes in each is decided in `data_columns.py`, plain and readable on its own;
 this file only reads the export, writes the files and answers the page.
@@ -101,7 +101,8 @@ FILE_KINDS = (
     ('ANONYMOUS', '',
      'The same data without bank details, Prolific IDs, labels and the earned total.'),
     ('PAYMENTS', '_PAYMENTS',
-     'Who to pay: the columns that exist of participant code, Prolific ID, IBAN, BIC, total earned.'),
+     'Who to pay: the columns that exist of participant code, Prolific ID, IBAN, BIC, total earned, '
+     'Prolific ID conflict.'),
 )
 KINDS = tuple(kind for kind, _ending, _what in FILE_KINDS)
 

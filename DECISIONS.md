@@ -197,8 +197,40 @@ list of routes and was not changed.
 **Light only.** The dashboard has one theme, so the panel has one, built from its
 tokens and the quiz-mistakes overlay.
 
-**The launcher's support for setting the variable is a separate change,** in its own
-repository; `README.md` says what it has to do.
+**The Lab Launcher sets the variable from 1.12.0,** in its own repository: Lab Settings
+to show it, Advanced to select it and pick a folder.
+
+**PAYMENTS carries `before.1.player.prolific_label_conflict` as a triage flag (Julian,
+2026-11-05).** A refused Prolific claim keeps the typed ID in
+`participant.participant_id_external`, so the ID on that row also belongs to someone
+else, and someone paying from this file would not otherwise see it. The cell is the code
+of the row that owns the ID. Printed only if the column exists (rule 3), and still on the
+drop list, so never in ANONYMOUS. `FORMAT_PAYMENT_COLUMNS` was not asked to change and
+does not have it.
+
+**What ANONYMOUS still contains, on purpose (Julian, 2026-11-05).** "Anonymous" here means
+without bank details, Prolific IDs, labels and the earned total, and no more. It still
+has `outro.1.player.feedback` (free text, which can name someone), age and gender, the
+device details (`participant.device_info`, `before.1.player.device_info_json`), the raw
+telemetry, the tab-monitor and quiz logs, and `participant.code`, the link back to
+SENSITIVE. **The two tools differ here, and that is his choice, not a missed line:**
+`format_session_data.py` blanks the device blobs, the participant telemetry and those
+logs, and the button does not. Feedback is blanked by neither: the script keeps it too,
+unless the column averages over 1000 characters and its large-column sweep drops it. So
+read the feedback before sharing either file.
+
+**The Prolific ID stays empty rather than falling back to the label (Julian, 2026-11-05).**
+`participant_id_external` is the ID the person confirmed, the value payment should use
+(CODEBOOK). A label is unconfirmed, and in the lab it is a seat number. An empty cell
+says truthfully that no ID was confirmed.
+
+**No BOM (Julian, 2026-11-05).** SENSITIVE is byte for byte `/ExportWide`, which has none,
+and all three files share one writer. A BOM also becomes part of the first column's name
+in readers that do not strip it. The cost: Excel, opened by double click, can misread
+non-English characters, for example in feedback. Import as UTF-8 there.
+
+**The `participant.label` rule stays (Julian, 2026-11-05):** it counts as something to
+remove only when some row has a label, for the reason given above.
 
 **Enforced:** `scripts/tests/download_data_test.py`,
 `scripts/tests/download_data_browser_check.py`, and the new section of

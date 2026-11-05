@@ -55,7 +55,9 @@ ANON_DROP_COLUMNS = (
 # Kept as a column with every cell empty. This is the template's free JSON bucket,
 # and it can NAME a Prolific ID: a refused claim records the id that was refused and
 # a duplicate records the label (identity.py). `format_session_data.py` blanks it in
-# all its files too, so the anonymous files of the two tools agree.
+# all its files too, so the anonymous files of the two tools agree on it. It is the
+# only column blanked here: feedback and device details stay, by Julian's decision
+# (DECISIONS.md, the Download data entry).
 ANON_BLANK_COLUMNS = (
     'participant.participant_extra',
 )
@@ -76,12 +78,20 @@ _ALSO_LOOKS_PERSONAL = ('iban', 'iban_confirmation', 'prolific_id', 'prolific_pi
 #   outro.1.player.earned                the total: show-up fee + selected rounds +
 #                                        quiz bonus. NOT participant.payoff, which
 #                                        is earned minus participation_fee.
+#   before.1.player.prolific_label_conflict  a triage flag, not a payment detail.
+#                                        Empty, normally. If set, this person's
+#                                        Prolific ID claim was refused, so the ID on
+#                                        their row also belongs to someone else, and
+#                                        this cell is the code of that other row.
+#                                        Look at both before paying either. Still on
+#                                        the drop list above, so never in ANONYMOUS.
 PAYMENT_COLUMNS = (
     'participant.code',
     'participant.participant_id_external',
     'outro.1.player.bank',
     'outro.1.player.bic',
     'outro.1.player.earned',
+    'before.1.player.prolific_label_conflict',
 )
 PAYMENT_LABELS = {
     'participant.code': 'participant code',
@@ -89,6 +99,7 @@ PAYMENT_LABELS = {
     'outro.1.player.bank': 'IBAN',
     'outro.1.player.bic': 'BIC',
     'outro.1.player.earned': 'total earned',
+    'before.1.player.prolific_label_conflict': 'Prolific ID conflict',
 }
 
 # `format_session_data.py`'s payment file, which also carries the label and keeps

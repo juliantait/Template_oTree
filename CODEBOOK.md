@@ -785,6 +785,13 @@ analysis-ready output (it survives in the raw oTree export). Capture (live) and
 judgement (downstream) are kept separate; the two thresholds (75 ms, 50 chars)
 live in one place there and are re-tunable against your own pilot.
 
+**`copy_detected` means "pressed copy" when the screen lock is on.** The lock stops
+page text being selected, but Ctrl+C still fires the `copy` event, so the flag is set
+while nothing is copied (text in a field or marked `.selectable` can still be copied).
+Comparing it with sessions run with the lock off compares two different things: there,
+page text can be selected, so a press can really take text away. Tell them apart with
+`session.config.screen_lock`.
+
 **For analysis:** a `-5`/`-6` participant never reached the task and is dropped
 like any early exit. Among COMPLETERS, `bot_flag == 'flag'`, a tripped
 `honeypot_results_failed`, and the ex-post `bot_*` telemetry flags are the
@@ -866,7 +873,9 @@ Fill in per-study fields as you build the task. The template ships with:
     before paying either. Nothing is ever shown to the participant, and no
     marker is ever written into `participant.label`, which stays the real id or
     empty. `participant_extra['prolific_label_conflict']` holds the fuller
-    record (which id was refused, and whose row holds it).
+    record (which id was refused, and whose row holds it). The dashboard's
+    Download data PAYMENTS file carries this column for the triage, since the
+    id on such a row also belongs to someone else.
   - **Two more keys exist for the case where a duplicate label got in ANYWAY**
     (a hand-edited row, a legacy database, a path we did not anticipate):
     `participant_extra['duplicate_label_seen']` is written on the row a
@@ -1006,6 +1015,12 @@ indistinguishable, and it applies only to rows that predate 2026-08-23.
 `session.config.lab_session` (see "Lab session number" in the design-and-flow
 tier above). **NOT a schema change**: session config lives in the session row's
 stored config, so it adds no table column and needs no `resetdb`.
+
+**Added session config key (2026-11-05):** `screen_lock`, exported as
+`session.config.screen_lock`: `1` on (the default), `0` off. Empty for a session created
+before the key existed, which ran unlocked, when it is exported next to newer sessions;
+an export holding only such sessions has no column. Also **not a schema change**. See
+`copy_detected` in the telemetry notes above: it changes what that flag means.
 
 **Deploying this over a study that HAS data needs `otree resetdb`** — the
 build ADDS `before.Player.prolific_label_conflict`, (since 2026-08-13)

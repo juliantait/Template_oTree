@@ -309,7 +309,7 @@ def check_files(server, folder, stem, want_rows):
           'ANONYMOUS values match the wide export')
     head, pay = read_csv_bytes(data['PAYMENTS'])
     check(head == list(data_columns.PAYMENT_COLUMNS),
-          f'PAYMENTS has exactly the five columns: {", ".join(head)}')
+          f'PAYMENTS has exactly the listed columns: {", ".join(head)}')
     check(len(pay) == want_rows and all(p[c] == w[c] for p, w in zip(pay, wide_rows)
                                         for c in head),
           'PAYMENTS values match the wide export')
@@ -624,7 +624,7 @@ def scenario_browser_mode(browser, server, lab):
     check(saved.get(f'EXP_217b_{TODAY}_SENSITIVE.csv') == wide,
           'the SENSITIVE download is byte for byte /ExportWide')
     head, rows = read_csv_bytes(saved[f'EXP_217b_{TODAY}_PAYMENTS.csv'])
-    check(head == list(data_columns.PAYMENT_COLUMNS) and rows, 'the PAYMENTS download has its five columns')
+    check(head == list(data_columns.PAYMENT_COLUMNS) and rows, 'the PAYMENTS download has its listed columns')
     check(IBAN.encode() in saved[f'EXP_217b_{TODAY}_PAYMENTS.csv']
           and IBAN.encode() not in saved[f'EXP_217b_{TODAY}.csv'],
           'the IBAN is in PAYMENTS and not in ANONYMOUS')
