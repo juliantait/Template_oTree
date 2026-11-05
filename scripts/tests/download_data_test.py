@@ -361,7 +361,7 @@ def section_three_files(admin, lab, prolific):
 
         head, rows = read_csv(want['PAYMENTS'])
         check(head == list(data_columns.PAYMENT_COLUMNS),
-              f'PAYMENTS: exactly the five columns ({head})')
+              f'PAYMENTS: exactly the listed columns ({head})')
         check(len(rows) == len(wide_rows), 'PAYMENTS: every participant has a row')
         by_code = {r['participant.code']: r for r in rows}
         for w in wide_rows:
@@ -412,6 +412,9 @@ def section_three_files(admin, lab, prolific):
               'and the file still covers every session in the database')
 
 
+CONFLICT = 'before.1.player.prolific_label_conflict'
+
+
 def section_refused_claim(admin, prolific):
     section('E. ANONYMOUS and a refused Prolific claim (participant_extra names the ID)')
     codes = ot.participant_codes(prolific)
@@ -436,6 +439,21 @@ def section_refused_claim(admin, prolific):
         check('participant.participant_extra' in head
               and all(r['participant.participant_extra'] == '' for r in rows),
               'ANONYMOUS: participant_extra is there, and empty in every row')
+        check(CONFLICT not in head, 'ANONYMOUS: the conflict flag is not in it')
+
+        head, rows = read_csv(by_kind['PAYMENTS'])
+        check(CONFLICT in head, 'PAYMENTS: the conflict flag is a column')
+        pay = {r['participant.code']: r for r in rows}
+        claimant = pay[codes[1]]
+        owners = [c for c, r in pay.items()
+                  if c != codes[1] and r['participant.participant_id_external'] == PROLIFIC_ONE]
+        check(claimant['participant.participant_id_external'] == PROLIFIC_ONE and owners,
+              'PAYMENTS: the refused row shows an ID another row also holds, '
+              'which is why the flag is needed')
+        check(claimant[CONFLICT] in owners,
+              f'PAYMENTS: the flag on that row is the code of the owning row ({claimant[CONFLICT]})')
+        check(all(not r[CONFLICT] for c, r in pay.items() if c != codes[1]),
+              'PAYMENTS: the flag is empty on every other row')
 
 
 def section_never_overwrite(admin, lab):
@@ -663,7 +681,8 @@ def section_failing_loudly(admin, lab):
           f'with the reason in plain words ({parts["ANONYMOUS"]["why"]})')
     check(parts['PAYMENTS']['table'] == [['participant.code'], ['c1'], ['c2']],
           'PAYMENTS: the participant code alone still counts as a file')
-    for words in ('Prolific ID', 'IBAN', 'BIC', 'total earned', 'outro.1.player.earned'):
+    for words in ('Prolific ID', 'IBAN', 'BIC', 'total earned', 'outro.1.player.earned',
+                  'Prolific ID conflict', 'before.1.player.prolific_label_conflict'):
         check(words in parts['PAYMENTS']['note'], f'the note names what is missing: {words}')
     check('participant code' not in parts['PAYMENTS']['note'],
           'and not what is there')

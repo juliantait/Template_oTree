@@ -1062,14 +1062,17 @@ session is on the screen, so they build up in a folder you then send or upload.
 | --- | --- | --- |
 | **SENSITIVE** | always: oTree's raw wide export, unchanged, byte for byte what `/ExportWide` gives | `EXP_217_05-11-2026_SENSITIVE.csv` |
 | **ANONYMOUS** | the same, minus the columns in `data_columns.ANON_DROP_COLUMNS`, and with `participant.participant_extra` emptied. **Only if there is something to remove** (below) | `EXP_217_05-11-2026.csv` |
-| **PAYMENTS** | as many as exist, in this order: `participant.code`, the Prolific ID (`participant.participant_id_external`), IBAN (`outro.1.player.bank`), BIC (`outro.1.player.bic`), total (`outro.1.player.earned`) | `EXP_217_05-11-2026_PAYMENTS.csv` |
+| **PAYMENTS** | as many as exist, in this order: `participant.code`, the Prolific ID (`participant.participant_id_external`), IBAN (`outro.1.player.bank`), BIC (`outro.1.player.bic`), total (`outro.1.player.earned`), Prolific ID conflict (`before.1.player.prolific_label_conflict`) | `EXP_217_05-11-2026_PAYMENTS.csv` |
 
 The name's number is `session.config.lab_session` of the session being viewed, made
 safe for a file name (`217 b` becomes `217-b`), and left out when there is none:
 `EXP_05-11-2026_SENSITIVE.csv`. The date is today's on the machine running the
 server. `outro.1.player.earned` is the total: show-up fee + selected rounds + quiz
 bonus. A PAYMENTS row has either a Prolific ID or an IBAN, and an empty total means
-that participant never reached the results page.
+that participant never reached the results page. The conflict column is empty, normally.
+If it is set, that person's Prolific ID claim was refused, so the ID on the row also
+belongs to someone else, and the cell is the participant code of the other row: look at
+both before paying either.
 
 **Where the files go is set by the environment variable `OTREE_DATA_FOLDER`,** on
 the machine running the server, and from nowhere else; no request can choose it.
@@ -1094,10 +1097,9 @@ the machine running the server, and from nowhere else; no request can choose it.
   says "sent to the browser" and no more, because the server cannot see whether they
   arrived. The server keeps no copy anywhere.
 
-**The oTree Lab Launcher can set it too.** It starts `otree prodserver` with the
-environment it builds, so it only has to add `OTREE_DATA_FOLDER` to that, the way it
-sets `OTREE_LAB_SESSION`. **Launcher support is coming in a separate change**, in its
-own repository; until then, set the variable yourself where the server starts.
+**The oTree Lab Launcher sets it from 1.12.0.** Turn on `OTREE_DATA_FOLDER` in Lab
+Settings to show it, then select it in Advanced and pick a folder. With an older
+launcher, set the variable yourself where the server starts.
 
 **It confirms first and never overwrites.** The confirm step lists every path. A
 second press the same day gets `_2` on all three names (`EXP_217_05-11-2026_2.csv`),
