@@ -11,6 +11,54 @@ working.
 
 ---
 
+## Enter belongs to the focused control; everywhere else it still moves on, 2026-11-05
+
+**What it is.** `global.js` binds Enter to the page's forward action. It now first asks
+whether the focused element has an Enter action of its own: a link, button, summary,
+select, textarea, editable text, an ARIA widget role, an input button, an IME committing
+a word, or a widget that already cancelled the key. If so, that action happens and the
+forward control is not touched.
+
+**Why.** The forward action on a Prolific Results page, and on `Ended` and
+`NeutralReturn`, is the "Back to Prolific" link. `results.js` toggled the accordion and
+cancelled the key's default, but the event still reached the document handler, so the
+table opened and the participant left the study in the same keypress. Reproduced in real
+Chromium. The same one rule also fixes: Back and "Re-read instructions" on the
+instructions page went forward; the online quiz's re-read button tried to submit the
+quiz; and on the lab quiz-failure dialog, Enter on "Re-read the instructions" or on "Keep
+trying" submitted the quiz behind it, which graded the attempt and logged another failure.
+
+**Two lists that look redundant and are not.**
+
+- `OWN_ENTER_ACTION` is left to the browser. `INPUT_BUTTON` is pressed by the handler,
+  with the key cancelled. On any page with a `live_method` (every monitored page), oTree's
+  `live.js` cancels Enter's keypress on every `input`, so natively Enter on a focused
+  `<input type="submit">` does nothing. It passes on a plain fixture and on pages without
+  `live.js`, and only fails on real pages. Moving `input[type="submit"]` to the first list
+  makes Next dead on the keyboard on `payoff`, `Feedback` and others; pressing it without
+  cancelling the key would double-submit where `live.js` is absent.
+- Text inputs, radio, checkbox and range are in neither list. Enter has no action of their
+  own there beyond submitting, and "pick an answer, press Enter" is how people move on.
+
+**Rejected.** Moving the fix into `results.js` with `stopPropagation`: it would fix one
+control and leave the class. Dropping Enter-to-forward on ending pages: the brief for this
+fix was that Enter elsewhere keeps working as it does today.
+
+**Known and left as they are.** On a Prolific ending, Enter with nothing focused, or on
+the "completed" checkbox, is still the forward action, so it still leaves the study. A
+browser that does not focus a button on click (Safari) has nothing focused after a
+mouse click on the accordion, so a following Enter leaves too. Whether an ending page's
+forward action should answer Enter at all is an open decision, not an accident.
+
+**Changed behaviour.** Enter on a focused select no longer moves forward in Chromium here:
+the key is the browser's, and it did nothing on a closed list.
+
+**Enforced:** `scripts/tests/enter_key_test.py` (real prodserver, real Chromium, real
+keys, POSTs counted, plus every control kind on a fixture running the real `global.js`).
+Not enforced: that a study's new custom widget has a role in the list or cancels the key.
+
+---
+
 ## The screen lock: a switch, on by default, off for a frozen session, 2026-11-05
 
 **What it is.** `screen_lock=True` in `SESSION_CONFIG_DEFAULTS`. `css_bundle.html` loads
