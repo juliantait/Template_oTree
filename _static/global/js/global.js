@@ -183,15 +183,53 @@
         } catch (e) { /* never block a page */ }
     });
 
+    // Controls whose Enter already means something of their own. Two situations
+    // that must not collapse: Enter on one of THESE is that control's action, Enter
+    // anywhere else is "move on". On a Prolific Results page the forward action is
+    // "Back to Prolific", so collapsing them sends someone on the results accordion
+    // out of the study.
+    //
+    // Deliberately NOT here, however much they look like controls: text-like inputs,
+    // radio, checkbox and range. Enter does nothing of its own on them except submit
+    // the form, and "pick an answer, press Enter" is how people move on.
+    const OWN_ENTER_ACTION = [
+        'a[href]', 'area[href]', 'button', 'summary', 'select', 'textarea',
+        'audio[controls]', 'video[controls]',
+        '[role="button"]', '[role="link"]', '[role="tab"]', '[role="switch"]',
+        '[role="option"]', '[role="listbox"]', '[role="combobox"]',
+        '[role="menuitem"]', '[role="menuitemcheckbox"]', '[role="menuitemradio"]',
+        '[role="treeitem"]', '[role="textbox"]', '[role="searchbox"]',
+    ].join(',');
+
+    // Same rule, but these cannot be left to the browser: on any page with a
+    // live_method (every monitored page), oTree's live.js cancels Enter's keypress on
+    // all inputs, so natively Enter on them does nothing at all. Press them here, and
+    // cancel the keydown so a page without live.js does not press them a second time.
+    const INPUT_BUTTON = [
+        'input[type="submit"]', 'input[type="button"]', 'input[type="reset"]',
+        'input[type="image"]', 'input[type="file"]', 'input[type="color"]',
+    ].join(',');
+
     // Allow Enter key to activate the primary forward action (Next/Submit).
     document.addEventListener('keydown', (event) => {
         if (event.key !== 'Enter') {
             return;
         }
+        // An IME commits its word with Enter; a widget may already have used the key.
+        if (event.isComposing || event.defaultPrevented) {
+            return;
+        }
 
-        const targetTag = (event.target.tagName || '').toLowerCase();
-        if (targetTag === 'textarea') {
-            return; // keep multiline entry unaffected
+        const target = event.target;
+        if (target && target.closest) {
+            if (target.matches(INPUT_BUTTON)) {
+                event.preventDefault();
+                target.click();
+                return;
+            }
+            if (target.isContentEditable || target.closest(OWN_ENTER_ACTION)) {
+                return;
+            }
         }
 
         // Prefer explicit next button if present (e.g., instructions flow).

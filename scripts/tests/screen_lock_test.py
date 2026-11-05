@@ -518,7 +518,7 @@ def check_results_controls(page, who):
     toggle.click()
     check(toggle.get_attribute('aria-expanded') != was, f'{who}/Results: the accordion opens and closes')
     toggle.focus()
-    # Space, not Enter: global.js binds Enter to the page's forward action.
+    # Space here; Enter on this control is pinned by enter_key_test.py.
     page.keyboard.press('Space')
     check(toggle.get_attribute('aria-expanded') == was, f'{who}/Results: the accordion works by keyboard')
     label = page.locator('label[for=results_completed]')

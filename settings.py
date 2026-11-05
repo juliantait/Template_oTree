@@ -499,7 +499,11 @@ DASHBOARD_RETURN_GRACE_SECONDS = 90
 # styles). All are served from `?v=`-stamped URLs, so without this bump a
 # returning participant's cached bundle would miss them. Re-stamped with
 # `python scripts/prelaunch_check.py --stamp-assets`. See DECISIONS.md.
-STATIC_VERSION = '23'
+# 23 -> 24 on 2026-11-05: global.js's Enter handler leaves a control with its own
+# Enter action alone (the results accordion no longer sends someone to Prolific). A
+# returning participant's cached global.js would keep the old handler. See DECISIONS.md,
+# 'Enter belongs to the focused control'.
+STATIC_VERSION = '24'
 
 # --- whose study this is ------------------------------------------------------
 # THE ONE PLACE A COPIED STUDY NAMES ITS INSTITUTION IN PROSE (Julian,
