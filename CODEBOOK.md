@@ -455,6 +455,40 @@ that **provenance never gates anything** — nothing in the study behaves
 differently on an unstamped build, so a blank or `unstamped` column is never a
 reason to exclude a row on its own.
 
+### Lab session number (`session.config.lab_session`)
+
+**What it is for:** telling which lab session a row came from. It holds the lab
+session number typed in the oTree Lab Launcher, which the launcher passes as the
+environment variable `OTREE_LAB_SESSION`. There is one value per session, the
+same on every participant row of that session.
+
+**Short text, not necessarily numeric:** `217`, `217b`, `test`, `007`. Read it as
+text. A CSV reader left to guess turns `007` into `7` and, in an export that also
+holds an empty session, `217` into `217.0`.
+
+| Output | Column | Rows |
+| --- | --- | --- |
+| Wide export (`/ExportWide`) | `session.config.lab_session` | every participant row |
+| `scripts/format_session_data.py`, sensitive and anonymous files | `session.config.lab_session` (same name, value kept verbatim) | every row |
+| `scripts/format_session_data.py`, payment file | not included | |
+| Long data: R helper `scripts/helper/otree.R` in Template_Analysis, and `otree-wide-to-long.R` on the academic site | `lab_session` (character) | every long row, one per participant × app × round |
+
+**Empty if not set.** A server started without `OTREE_LAB_SESSION` gives an empty
+cell, as does a session created before this key existed when it is exported next
+to newer sessions. An export holding only such older sessions has no column at
+all. `format_session_data.py` leaves it absent rather than adding an empty one,
+as it does for every other column a session did not collect. The long data always
+has `lab_session`: `NA` when the cell is empty or the export has no such column,
+so one shape holds for old and new exports. A lab session typed as the text `NA`
+stays the string `"NA"`, which is not R's `NA`.
+
+**Fixed when the server starts, editable on the create-session form.** The value
+is read once at server start and fills the create-session form, where an
+experimenter can change it for that one session. It is then frozen on the session
+like any other config value, so restarting with another number does not change
+sessions that already exist. Nothing in the study reads it, so it cannot change
+what a participant sees.
+
 ---
 
 ## Comprehension and exit measures
@@ -954,6 +988,11 @@ oTree's `_vars` blob, so they add no table column, need no migration and need no
 `resetdb`. A participant created before they existed simply has no key, which
 reads the same as "never arrived" — the one case where the two are genuinely
 indistinguishable, and it applies only to rows that predate 2026-08-23.
+
+**Added session config key (2026-11-05):** `lab_session`, exported as
+`session.config.lab_session` (see "Lab session number" in the design-and-flow
+tier above). **NOT a schema change**: session config lives in the session row's
+stored config, so it adds no table column and needs no `resetdb`.
 
 **Deploying this over a study that HAS data needs `otree resetdb`** — the
 build ADDS `before.Player.prolific_label_conflict`, (since 2026-08-13)

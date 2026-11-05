@@ -777,7 +777,9 @@ Otherwise the generator lives in the intro app it previews: run `python3 intro/g
   > Launcher** — a small pywebview app that lives in its own private repository
   > (forkable on request) and is **not part of this template**. The experimenter
   > picks a lab and its seats; the launcher sets the launch environment
-  > (Postgres database, admin login, production mode, and the room's seat list),
+  > (Postgres database, admin login, production mode, the room's seat list, and
+  > the lab session number, which lands in the export as
+  > `session.config.lab_session`),
   > starts `otree prodserver`, and can append the CREED lab support block —
   > already shipped at the end of `settings.py` — to any project's `settings.py`
   > so the study redirects into the lab while staying completely inert unless the
@@ -796,7 +798,11 @@ Otherwise the generator lives in the intro app it previews: run `python3 intro/g
 - `scripts/format_session_data.py` : turns raw SENSITIVE data into i) csv for
   payment, ii) csv with anonymised experiment data, and iii) optionally a draft
   email with the anonymised file attached (recipient configurable via `--email`
-  or `$SESSION_DATA_EMAIL`).
+  or `$SESSION_DATA_EMAIL`). Rows stay as exported, one per participant; this
+  script does not reshape. The conversion to long data is the R helper
+  `scripts/helper/otree.R` in Template_Analysis, also offered as
+  `otree-wide-to-long.R` on the academic site. `session.config.lab_session` is
+  kept verbatim as text.
 - `scripts/set_up_otree.bat` : starts oTree on the experimenter's Windows PC in
   the lab.
 - `scripts/tests/` : HTTP-driven flow tests, escaping and frozen-config regression
@@ -1060,6 +1066,7 @@ configs, browser rendering checks) rather than just listing these files.
 | **`scripts/prelaunch_check.py`** — static config guard, no server, instant | the configuration is safe to open to participants: no `REPLACE_*` completion codes, `DEBUG` off, no testing loosenings left on | anything dynamic — it never runs a page | in the target environment, before opening a study |
 | **`scripts/predeploy_check.sh`** — boots the candidate build against a **copy of the live database** and drives real participants | the *upgrade* is safe: an existing mid-flow participant, a fresh one and a no-JS one all survive the new code | placeholder codes and other configuration problems | before every deploy onto a database that has participants |
 | **`scripts/tests/health_test.py`** — in-process, production + `AUTH_LEVEL=STUDY`: the shared route installer (`otree_routes.py`) and the `/health` route over real requests | that BOTH extra routes install from one implementation, idempotently, quiet when `otree.urls` is not importable and loud on drift, with a route under an undeclared name or on an occupied path refused; that the verdict flips 503→200→503 with the room binding **in one process**; that an unstamped build and a dirty pre-launch checklist both ride a **200**; that the open body carries the checklist NAMES and **no completion-code value**, with its key set asserted CLOSED so nothing about participants can arrive there unnoticed; and that breaking each block in turn still yields a 503 verdict, never a 500 | whether a real platform's health check is wired to it (that is a service setting this repo deliberately does not ship); HEAD, which starlette 0.14.1's TestClient cannot read — measured against a real prodserver instead | after touching `health.py`, `otree_routes.py`, either install call in `outro/__init__.py`, or `settings.ROOMS` |
+| **`scripts/tests/format_session_data_test.py`**: runs the real `scripts/format_session_data.py` **as a subprocess** on fixture exports; needs no oTree and no server | that `session.config.lab_session` reaches every row of the sensitive and anonymous files verbatim (`217b`, `007`, `NA`, `217` next to an empty session), stays out of the payment file, stays absent when an older export lacks it, and that the other columns come out the same | whether a real oTree export has that column (checked by hand end to end, DECISIONS.md 2026-11-05) | when you touch `format_session_data.py` |
 | **`scripts/tests/verify_deploy_test.py`** — runs the real `scripts/verify_deploy.py` **as a subprocess** against a programmable stub deployment; needs no oTree and no database | that the gate FAILS on the states a healthy server will not produce on demand: another commit, no stamp at all, a mismatched commit/number pair, a 404 at `/health`, a room the REST API says is unbound *even when `/health` claims otherwise*, and a room page that is an error page, too small, missing the study's markup or redirecting; that it issues only GETs, requests nothing that consumes a participant slot, and never prints a participant label; and that frozen-config findings keep the audit's two severities plus the named `build_at_creation` exemption | whether a REAL deployment behaves as the stub does — that is the transcript in `_ai/build_provenance/phase2_test_output/verify_deploy_live.txt`, against a real prodserver | after touching `scripts/verify_deploy.py`, `health.py`'s payload shape, or `predeploy_check.audit_frozen_session_configs` |
 
 **The pre-deploy upgrade check is SKIPPED when there is no database.** Run with

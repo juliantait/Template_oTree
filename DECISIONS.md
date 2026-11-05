@@ -11,6 +11,49 @@ working.
 
 ---
 
+## The launcher's lab session number is a session config key, read as text, 2026-11-05
+
+The launcher sets `OTREE_LAB_SESSION`; `settings.py` puts it in
+`SESSION_CONFIG_DEFAULTS` as `lab_session`, so oTree's wide export carries
+`session.config.lab_session` on every participant row and the create-session form
+shows it, editable. Nothing in the study reads it, so `common.cfg` does not come
+into it.
+
+**It breaks the family-prefix rule on purpose.** The name is shared with the
+launcher and the export, and it is not a `prolific_*` or other family parameter.
+It sits right after `recruitment`, a new row near the top of the form; the
+existing keys keep their order.
+
+**`format_session_data.py` reads it as text, in a second read of that one
+column.** Pandas' guessing turns `007` into `7`, `217` into `217.0` once an empty
+session shares the export, and `NA` into empty. A converter does not stop the last
+one, and `keep_default_na=False` for the whole file would change every other
+column. **An export without the column stays without it**: the script does not
+create columns a session did not collect (`existing_payment_cols`,
+`add_telemetry_derivation`), and an invented empty column would read as "this
+session was asked and had none". Rejected: copying it to a second column with a
+friendlier name, because one concept under two names is what CLAUDE.md warns
+about. This script does not reshape.
+
+**The long data is the R helper's job, and it decides missing columns the other
+way.** `scripts/helper/otree.R` in Template_Analysis and the site's
+`otree-wide-to-long.R` turn the wide export into long data, with the variable as
+`lab_session`. There it is always present, `NA` when empty or absent, because long
+output has a fixed set of columns and those files already give `NA` for a missing
+one. Keep the two behaviours apart: they follow what each output is.
+
+**A running session created before the key exists fails the pre-deploy frozen
+audit as MISSING**, like any other added key. It does not qualify for
+`MISSING_IS_THE_DESIGNED_MEANING`, whose bar is exactly one raw reader; this key
+has no reader. Left as is: the template has no live sessions.
+**Enforced:** `scripts/tests/format_session_data_test.py` (text handling, absent
+column); `scripts/tests/frozen_config_test.py` strips the key and walks. The real
+export and form were checked by hand end to end on oTree 6.0.15 on this date.
+Nothing enforces the position in the form or that oTree keeps exporting the
+column.
+
+---
+
 ## Instructions preview: bare `{% if flag %}` is resolved at build time, absent = false — 2026-10-07
 
 `intro/generate_instructions_preview.py` only understood treatment
