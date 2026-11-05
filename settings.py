@@ -568,6 +568,13 @@ SESSION_CONFIG_DEFAULTS = dict(
     # governs ends up visible on the session config itself.
     recruitment=DEFAULT_RECRUITMENT,
 
+    # The lab session number typed in the oTree Lab Launcher (217, 217b, test),
+    # empty when not used. Exported as session.config.lab_session; nothing in the
+    # study reads it. Short text, never a number: see CODEBOOK.md, "Lab session
+    # number". Unprefixed and up here so a lab operator sees it near the top of
+    # the create-session form without moving any other key.
+    lab_session=os.environ.get('OTREE_LAB_SESSION', ''),
+
     # =========================================================================
     # PILOT FEEDBACK  (axis 3 — independent of study type and DEBUG)
     # =========================================================================

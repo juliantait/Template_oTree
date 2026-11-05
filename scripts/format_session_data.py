@@ -8,6 +8,12 @@ files into the configured output directory:
     <out>/payments/Session_<N>.csv    payment columns only
     <out>/anonymous/Session_<N>.csv   anonymised data (no payment/bank columns)
 
+Rows and shape are the raw export's: one row per participant, nothing reshaped.
+The conversion to long data is the R helper scripts/helper/otree.R in
+Template_Analysis, also offered as otree-wide-to-long.R on the academic site.
+session.config.lab_session is kept verbatim as text in the sensitive and
+anonymous files (see TEXT_COLUMNS).
+
 Paths and the optional email recipient are configurable via CLI args or
 environment variables. Nothing personal is hardcoded.
 
@@ -53,6 +59,26 @@ TELEMETRY_COLUMNS = {
     'participant.telemetry_welcome': 'welcome',
     'participant.telemetry_quiz': 'quiz',
 }
+
+
+# Identifiers that look like numbers but are text, read verbatim. Left to pandas'
+# type guessing, a lab session of 007 becomes 7, a 217 in an export that also has
+# an empty session becomes 217.0, and NA becomes empty. See CODEBOOK.md, "Lab
+# session number". A column absent from an older export stays absent, like every
+# other column a session did not collect.
+TEXT_COLUMNS = ('session.config.lab_session',)
+
+
+def read_session_csv(path):
+    """The raw export as a frame, with TEXT_COLUMNS exactly as written in the
+    file. Every other column keeps pandas' default inference, which the rest of
+    this script relies on."""
+    df = pd.read_csv(str(path))
+    for column in TEXT_COLUMNS:
+        if column in df.columns:
+            df[column] = pd.read_csv(str(path), usecols=[column], dtype=str,
+                                     keep_default_na=False)[column]
+    return df
 
 
 def _median(values):
@@ -224,7 +250,7 @@ def main():
         d.mkdir(parents=True, exist_ok=True)
 
     print(f"Reading: {input_path}")
-    df = pd.read_csv(str(input_path))
+    df = read_session_csv(input_path)
 
     # BEHAVIOUR-CAPTURE DERIVATION (§D/§8.10): emit the analysis-ready bot_<page>_*
     # flags from the raw telemetry blobs, then blank the raw JSON in these
