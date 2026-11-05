@@ -310,6 +310,23 @@ def dashboard_problems():
     return problems
 
 
+def download_problems():
+    """(label, current, must_be) for the dashboard's Download data button: its
+    routes install, oTree's export is where it is expected, and OTREE_DATA_FOLDER,
+    if set, is a folder that exists. The folder belongs here because a typo is
+    otherwise found at the end of a session, when somebody presses the button.
+    Reported, never raised, like every function above."""
+    try:
+        import outro  # noqa: F401  (runs the same boot-time install a server would)
+        import data_download
+    except Exception as exc:
+        return [('Download data button (import data_download)',
+                 f'{type(exc).__name__}: {exc}',
+                 'importable: it is imported unguarded at the end of '
+                 'outro/__init__.py')]
+    return data_download.launch_problems()
+
+
 def build_line():
     """The running build, as INFORMATION and nothing else.
 
@@ -350,7 +367,7 @@ def main(argv):
         print(waiver)
     problems = (settings._prelaunch_problems() + lab_module_problems()
                 + asset_problems() + auth_level_problems()
-                + dashboard_problems())
+                + dashboard_problems() + download_problems())
     if not problems:
         print("PRE-LAUNCH OK — no testing/placeholder values detected, "
               "and the asset version matches the files under _static/.")

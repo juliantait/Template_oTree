@@ -39,6 +39,13 @@ here is therefore a walk of one session's few-hundred rows, nothing more, and
 the poll floor (2s, client-side, skip-if-in-flight) keeps the request rate
 bounded. Do not add anything per-request that scales past the session.
 
+THE ONE PART OF THIS PAGE THAT WRITES ANYTHING: "DOWNLOAD DATA"
+---------------------------------------------------------------
+The button at the top right lives in ``data_download.py``, with its own two
+routes and its own install. It is a POST that writes files, never database rows,
+so rule 1 still holds, and it needs the admin login whatever AUTH_LEVEL says.
+This module only puts its button, stylesheet and script on the page.
+
 AUTH — REUSED, NOT INVENTED
 ---------------------------
 The endpoints subclass ``otree.views.cbv.AdminView`` and reuse its login
@@ -102,6 +109,8 @@ import logging
 import re
 import time
 from html import escape
+
+import data_download
 
 logger = logging.getLogger(__name__)
 
@@ -3501,6 +3510,7 @@ tr.qm-unreadable td { color: var(--dash-amber); background: #fffceb; }
 .qm-legend span { display: inline-flex; align-items: center; gap: 5px; }
 @media (max-width: 720px) { .passes { grid-template-columns: 1fr; }
   .pass + .pass { border-left: none; border-top: 1px solid var(--line); } }
+__DOWNLOAD_CSS__
 </style></head>
 <body>
 <!-- THE OVERVIEW BLOCK: the header row, then the four condensed pills, then
@@ -3517,6 +3527,8 @@ tr.qm-unreadable td { color: var(--dash-amber); background: #fffceb; }
       <input type="checkbox" id="show-not-arrived">
       show not-arrived rows</label>
     <span class="dash-status" id="status">connecting…</span>
+    <button class="dl-open" id="dl-open" type="button"
+            title="Save this database's data as three CSV files. You confirm first.">Download data</button>
   </div>
   <div class="ov-strip" id="ov-strip"></div>
   <div class="ov-alert" id="ov-alert"></div>
@@ -3533,6 +3545,10 @@ tr.qm-unreadable td { color: var(--dash-amber); background: #fffceb; }
      panel JS fills it from one /quiz_mistakes fetch. Outside the table, so a
      broken panel cannot touch a single row. -->
 <div class="qm-overlay" id="qm-overlay" aria-hidden="true"></div>
+<!-- THE DOWNLOAD DATA OVERLAY (data_download.py). Empty until the button is
+     pressed. Its script is a separate block below, so a mistake in it cannot
+     stop the poll that paints this table. -->
+<div class="qm-overlay" id="dl-overlay" aria-hidden="true"></div>
 <script>
 'use strict';
 var DATA_URL = '__DATA_URL__';
@@ -4642,9 +4658,12 @@ if (qmInfo) {
 tick();
 setInterval(tick, POLL_MS);
 </script>
+<script>__DOWNLOAD_JS__</script>
 </body></html>"""
              # The column headers are static; the FOUR DERIVATIONS OF THE STEP
              # LIST (__STEP_HEADER__ inside them, __STEP_COUNT__, __TL_INSET__,
              # __STEPS_JSON__) are resolved PER SESSION by
              # page_template_for_steps, from that session's timeline.
-             .replace('__COLGROUP__', _COLGROUP_HTML))
+             .replace('__COLGROUP__', _COLGROUP_HTML)
+             .replace('__DOWNLOAD_CSS__', data_download.PAGE_CSS)
+             .replace('__DOWNLOAD_JS__', data_download.PAGE_JS))

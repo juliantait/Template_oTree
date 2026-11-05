@@ -112,6 +112,8 @@ The project root holds the four oTree apps plus a small set of top-level items:
 | `fee_guard.py` | the BOOT guard that refuses to start a build whose session configs (or app source) set oTree's built-in `participation_fee` to anything but 0. One payment ledger: see "Paying participants". Called from `before/__init__.py` beside the payoff guard. |
 | `payoff_guard.py` | the BOOT guard that refuses to start a build whose app modules write oTree's per-round `player.payoff`. Called from `before/__init__.py`. It exists because the alternative — `AUTO_TABULATE_PAYOFFS=False` making oTree's setter raise — fires inside a participant's request, so on a live upgrade it is a dead page mid-round rather than a data error. Root-level for the same reason as the others. |
 | `experimenter_dashboard.py` | the live operator view at `/experimenter_dashboard` (see "Experimenter dashboard"). Root-level for the same reason as the two above. |
+| `data_download.py` | the dashboard's **Download data** button: three plain CSV files from one press (see "Download data" under "Experimenter dashboard"). Root-level for the same reason. |
+| `data_columns.py` | the column lists and the rules for the three files, in one plain module (no oTree, no pandas, no web code). The button uses all of it; `scripts/format_session_data.py` uses the lists. |
 | `README.md` `CLAUDE.md` `DECISIONS.md` `docs/conventions.md` `CODEBOOK.md` | the five documents in the START HERE table above: reference manual, rules for editors, decision record, design principles, data codebook. |
 | `Preview_Instructions.command` | double-clickable (macOS): view the instructions as a coauthor would, with **no terminal** — see "Collaborating on the instructions flow". |
 | `TODO.md` | pending work. **Gitignored — local only, not in a copy.** |
@@ -802,7 +804,9 @@ Otherwise the generator lives in the intro app it previews: run `python3 intro/g
   script does not reshape. The conversion to long data is the R helper
   `scripts/helper/otree.R` in Template_Analysis, also offered as
   `otree-wide-to-long.R` on the academic site. `session.config.lab_session` is
-  kept verbatim as text.
+  kept verbatim as text. For the usual case, three files after each session, the
+  dashboard's **Download data** button does it without pandas, and both use the one
+  column list in `data_columns.py`.
 - `scripts/set_up_otree.bat` : starts oTree on the experimenter's Windows PC in
   the lab.
 - `scripts/tests/` : HTTP-driven flow tests, escaping and frozen-config regression
@@ -1026,6 +1030,95 @@ participant in an app that is NOT in their session's sequence is shown as `⁉�
 Entry, and a config missing an app the monitor reads by name (`outro`, `intro`,
 `before`, `main`) gets a `MONITOR WARNING` in the server log at launch.
 
+### Download data
+
+**One press of the button at the top right of the dashboard gives three plain CSV
+files, never a zip.** All three cover **every session in the database**, whichever
+session is on the screen, so they build up in a folder you then send or upload.
+
+| File | What it holds | Example name |
+| --- | --- | --- |
+| **SENSITIVE** | always: oTree's raw wide export, unchanged, byte for byte what `/ExportWide` gives | `EXP_217_05-11-2026_SENSITIVE.csv` |
+| **ANONYMOUS** | the same, minus the columns in `data_columns.ANON_DROP_COLUMNS`, and with `participant.participant_extra` emptied. **Only if there is something to remove** (below) | `EXP_217_05-11-2026.csv` |
+| **PAYMENTS** | as many as exist, in this order: `participant.code`, the Prolific ID (`participant.participant_id_external`), IBAN (`outro.1.player.bank`), BIC (`outro.1.player.bic`), total (`outro.1.player.earned`) | `EXP_217_05-11-2026_PAYMENTS.csv` |
+
+The name's number is `session.config.lab_session` of the session being viewed, made
+safe for a file name (`217 b` becomes `217-b`), and left out when there is none:
+`EXP_05-11-2026_SENSITIVE.csv`. The date is today's on the machine running the
+server. `outro.1.player.earned` is the total: show-up fee + selected rounds + quiz
+bonus. A PAYMENTS row has either a Prolific ID or an IBAN, and an empty total means
+that participant never reached the results page.
+
+**Where the files go is set by the environment variable `OTREE_DATA_FOLDER`,** on
+the machine running the server, and from nowhere else; no request can choose it.
+
+- **Set:** the server writes straight into `<folder>/SENSITIVE/`,
+  `<folder>/ANONYMOUS/` and `<folder>/PAYMENTS/`, which it creates when missing and
+  reuses when present. The folder itself must exist already, so a typo gives an
+  error naming it rather than a new folder somewhere else. Give a full path. The
+  check at launch (`scripts/prelaunch_check.py`) and the server's start both say so
+  if it does not exist.
+  ```bash
+  export OTREE_DATA_FOLDER="$HOME/Data/my_study"      # macOS, Linux
+  set OTREE_DATA_FOLDER=C:\Users\me\Data\my_study     # Windows batch file or cmd, no # part
+  ```
+  **Think about where it points. If the folder is inside a study's git repository,
+  or a synced folder, bank details can end up in git history or in the cloud.** The
+  button does not refuse that; it is up to you. Add the folder to `.gitignore` if it
+  lives in a repository.
+- **Not set, or a hosted server:** the browser gets three separate downloads. Your
+  browser may ask whether to allow multiple downloads: say yes. A visible link for
+  each file stays on the screen as a fallback, until you close the box. The screen
+  says "sent to the browser" and no more, because the server cannot see whether they
+  arrived. The server keeps no copy anywhere.
+
+**The oTree Lab Launcher can set it too.** It starts `otree prodserver` with the
+environment it builds, so it only has to add `OTREE_DATA_FOLDER` to that, the way it
+sets `OTREE_LAB_SESSION`. **Launcher support is coming in a separate change**, in its
+own repository; until then, set the variable yourself where the server starts.
+
+**It confirms first and never overwrites.** The confirm step lists every path. A
+second press the same day gets `_2` on all three names (`EXP_217_05-11-2026_2.csv`),
+so a set stays together; two tabs or a double click cannot share a name. Files are
+written whole under a temp name and then moved. On the screen afterwards: the full
+path and row count of every file written, and for any not written, which and why. If
+one file cannot be written the others still are.
+
+**Who can press it:** it always needs oTree's admin login, even with
+`OTREE_AUTH_LEVEL` unset, when the rest of the admin is open, and writing needs
+oTree's CSRF token. Nothing participant-related goes in logs or error text. It runs
+on a plain oTree install, without pandas. It never writes to the database, and the
+disk work happens outside oTree's global lock, so a slow folder does not hold up
+participants. Reasons, and what oTree's own export does here, are in DECISIONS.md
+(2026-11-05).
+
+**Things the ANONYMOUS file still holds:** `participant.code`, which links back to the
+SENSITIVE file; free text such as `outro.1.player.feedback`, where a participant can
+type anything; and device details such as `participant.device_info` (screen, browser),
+which `format_session_data.py` blanks and this file keeps. Read those before sharing it
+widely.
+
+**A study that lacks some of these columns** (one not built from this template, say).
+The rules are all in `data_columns.py`, plain and readable on its own, and the confirm
+step says the outcome before anything is written:
+
+- **No anonymous file if there is nothing to remove.** With none of the personal
+  columns in the export, it would be a copy of the raw data that looks anonymised. The
+  screen says so; that is not a failure. Two list columns do not count as a reason:
+  `participant.label`, in every oTree export, counts only if some row has a label; and
+  `outro.1.player.earned` identifies nobody.
+- **PAYMENTS has the columns that exist,** in the same order, and the screen names the
+  ones that do not. The participant code alone still counts as a file. A column that
+  exists and is empty is normal.
+- **A column that looks personal but is not on the list** (`payment.1.player.bank` after
+  renaming `outro`, or an `iban` field) refuses the ANONYMOUS file, as a failure naming
+  the column. Add it to the list in `data_columns.py`.
+
+**The total column belongs to the template.** A study not built from it has no
+`outro.1.player.earned`, so its PAYMENTS file has no amount until its own total column is
+added to `PAYMENT_COLUMNS`. oTree's built-in `participant.payoff` is in every export but
+leaves out `participation_fee`.
+
 ## Testing
 
 There are several kinds of check here, and that is deliberate: each one is
@@ -1054,6 +1147,8 @@ configs, browser rendering checks) rather than just listing these files.
 | **`scripts/tests/dashboard_test.py`** — in-process, production + `AUTH_LEVEL=STUDY`: the install discipline, the two dashboard acceptance criteria, row truth for every stage and all four terminal states, the entry-block boundary, an unmapped app, and read-only | that the dashboard is **unreachable without an admin login** (page, data and index, for an anonymous client AND for a mid-study participant's own cookies; the redirect leaks nothing; POST is 405); that a raising handler yields the **error panel** and `ok:false` JSON rather than a 500, and one poisoned ROW leaves the table `ok:true` with every other row live; that it **writes nothing** (byte-identical participant rows plus an ORM dirty-flag check); that an app not in the session's `app_sequence` is visibly unplaced instead of silently at Entry; that the header, grid, connector and JS step order all derive from the session's one timeline; and that the **quiz-mistakes** endpoint returns the first-attempt aggregate (worst-item-first, chosen-option counts), keeps the two passes unpooled, excludes and counts blank admin-advance submissions, degrades to `ok:false`/`available:false` without touching the main table, and carries the answer text for the renderer to escape | **it is NOT proof that the wrapper is what protects participants.** Section C's participant walks are a regression guard: participant survival rests partly on oTree's `NEW_IDMAP_EACH_REQUEST` giving every request a fresh DB session, and those checks still pass with the wrapper deleted (check C0 pins that oTree property so a future version changing it goes red). The checks that fail when the wrapper is removed are the error-panel ones. Also blind to: anything about how the page LOOKS, and concurrency — the polls here are sequential | after touching `experimenter_dashboard.py`, the entry-block stamps, or any app's `page_sequence`/app list |
 | **`scripts/tests/dashboard_timeline_test.py`** — in-process: one throwaway session's stored `app_sequence` rewritten to insert apps (one unimportable, one a `sys.modules` stub declaring `C.MONITOR_LABEL`) | that the monitor's timeline IS the session's `app_sequence`: an inserted app gets its own step at the right position with its raw name, a declared label is the header, intro shows the round number only, main shows "x of N" capped by the config, the stall threshold is found by app name, an app outside the sequence is still flagged, a tab-monitor DQ is placed where it happened, and the launch warning names a config missing a name-bound app | the inserted apps' own pages (never rendered here); how the wider timeline LOOKS — that was checked once over real HTTP with a dummy app (`_ai/monitor_dynamic/`), not on every run | after touching the timeline code in `experimenter_dashboard.py` or any `C.MONITOR_*` constant |
 | **`scripts/tests/dashboard_timeline_render_check.py`** — real headless Chromium over the dashboard's own page and JS (fixture data, no server) for **4 to 9 timeline steps** at 1024/1152/1280/1440px, raw app names included | that whatever app sequence a study runs, the header labels stay centred on the row dots (±1px), tracks stay equal, a label is cut only in the extreme ≥7-steps-at-≤1152px case and then keeps its tooltip, two-pill state cells stay on one line, rows share one height, and the page never scrolls sideways | the numbers in the cells; a real session's column widths; emoji fonts | after touching the dashboard's timeline/state CSS or `fitTimeline` |
+| **`scripts/tests/download_data_test.py`** — in-process with `AUTH_LEVEL` off and `OTREE_SKIP_CSRF` on, participants walked through the real pages; ends with real HTTP for the lock | the button's rules: the login and CSRF walls hold anyway; SENSITIVE is byte for byte `/ExportWide`, ANONYMOUS and PAYMENTS have the right columns and values; a refused Prolific claim's ID does not reach ANONYMOUS; a second press and eight at once never share or overwrite a name; every failure is on the screen; no data in error text or logs; **not one INSERT, UPDATE or DELETE** (and that oTree's own `/ExportWide` does write, so the spy can see one); the rules for a study lacking columns; a slow disk does not hold a participant page; drift fails on the button and the launch check, never at boot; Windows path spellings through `ntpath` | a real browser; **real Windows**: `ntpath` checks the spelling, not the disk | after touching `data_download.py`, `data_columns.py` or the outro's payment fields |
+| **`scripts/tests/download_data_browser_check.py`** — a real `otree prodserver` on a throwaway copy it makes itself, and real Chromium | what a person gets: three files in the right subfolders, or three real downloads from one press, with the right names and bytes; a double click and two tabs; a missing base folder, a subfolder taken by a file, an unwritable folder; refused without login or token; the Report tab's iframe; a real participant walking through during exports, with page times and timing at a realistic row count; a study NOT built from this template, on its own settings and app (no anonymous file, payments with the code alone, said before and after writing); the button's position, and the main action on screen at 1280x720, measured | **other browsers** (Safari and Firefox are not run), and a person answering the browser's multiple-downloads prompt; real Windows | after touching the button's page code, or before relying on it in a new environment |
 | **`scripts/tests/dashboard_render_check.py`** — real uvicorn + real headless Chromium at 1280/1512/1152, staging 13 participants across every state | that the operator screen is actually USABLE: the login wall stands in a browser, the poll paints and ticks without a reload, the six timeline steps are **measured** equal to within 2px, the mid-task marker reads "2 of 3", the amber row differs in sampled PIXELS rather than by class, entry-only rows dim and the toggle hides them, no horizontal page scroll, and no time/earnings/stall cell is ever clipped; and that the **quiz-mistakes panel** opens on the ⓘ, shows the two passes side by side, **escapes** a hostile answer into the DOM (injecting no element), states the blank-exclusion count, expands later attempts and dismisses on Escape | server-side correctness (that is `dashboard_test.py`'s job); whether the numbers are RIGHT — it checks that cells render legibly, not that they say the truth; anything about a real operator's screen size or emoji font | after ANY change to the dashboard's HTML, CSS or JS — a broken operator layout produces no error anywhere |
 | **`scripts/tests/dashboard_total_time_test.py`** — offline unit test of `_total_seconds`, the per-participant TOTAL timer | where the total clock **starts** (the first stage stamp) and **stops** (now while live; the `finished` stamp for a finisher; the last stamp for a terminal row), that a post-finish receipt click is not billed, that a terminal row ignores the wall clock, that a missing/garbled stamp yields no pill rather than a crash, and the **total ≥ intro** invariant | anything about how the pills LOOK or tick (that is the browser test); the intro clock's own boundary (that is `_intro_seconds`) | after touching `_total_seconds`, `_intro_seconds`, or the stage-stamp vocabulary |
 | **`scripts/tests/dashboard_timer_banner_test.py`** — real headless Chromium loading the dashboard's own page with a **mocked poll** (request routing), so the poll can be made to fail on demand | the two timer pills render (intro then total, total ≥ intro), a live pill **counts up on its own** while a frozen one does not, and the **stale-data banner** names the last good data's wall-clock time and an age that **keeps climbing** while the refresh fails — each measured at two times and asserted to have MOVED (never an absence-only check) | server-side correctness of the numbers (that is the unit test); the real network stack — the poll here is stubbed to isolate the client behaviour | after touching the dashboard's poll loop, `renderRow` time pills, `tickLivePills`, or `paintStatus` |
