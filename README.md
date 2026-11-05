@@ -324,6 +324,28 @@ Every participant field, exit code, stage timestamp and future-proofing spare
 column is documented in **`CODEBOOK.md`** (including the repurpose convention for
 spares: never rename in place).
 
+### The screen lock (`screen_lock`, ON by default)
+
+Participant pages feel like a screen, not a website: no selecting text outside
+fields, no text cursor over text, no dragging images, no right-click menu.
+Everything that should be clicked still can be, and fields work as normal. Set
+`screen_lock=False` on a config, or untick it when creating a session, to turn it
+off; the script is then not loaded and nothing is left changed.
+
+- **Text a participant must copy gets the class `selectable`**, also for right-click
+  and long-press. A forked study that shows a code, an email address or a link as
+  text must add it (specimen in `_static/global/html/template.html`). The ways back
+  to Prolific already carry it.
+- **HTML5 drag and drop in a task needs the lock off** or a `selectable` wrapper: the
+  lock stops `dragstart` everywhere else. Sliders and fields are not affected.
+- **Fields:** Ctrl+V works; the right-click menu is gone there too on a computer, and
+  a long-press on a phone stays, since a phone has no other way to paste.
+- **Not reached:** the room's two pages before a session exists (the gate and oTree's
+  wait page), oTree's "no more pages" page, and any page not including
+  `css_bundle.html`. Admin pages are never locked. F12 can undo it.
+
+Why, and what a session created before the key gets: `DECISIONS.md`, "The screen lock".
+
 ## The device check: what it inspects, and what it cannot
 
 `prolific_allowed_devices` is called a device check, and the name promises more than any

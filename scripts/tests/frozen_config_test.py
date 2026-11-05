@@ -91,6 +91,9 @@ STRIPPED = [
     # the launcher's lab session number: export only, no page reads it, and a
     # session without it must still walk
     'lab_session',
+    # the screen lock: a session without the key reads it as OFF (css_bundle.html
+    # guards with is_defined), so the script is absent and the page must not 500
+    'screen_lock',
     # recruitment plumbing
     'prolific_capture_participant_id', 'prolific_completion_redirects', 'prolific_allowed_devices',
     'prolific_cc_code', 'prolific_noconsent_code', 'prolific_dq_quiz_code',

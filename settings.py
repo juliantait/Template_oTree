@@ -499,7 +499,7 @@ DASHBOARD_RETURN_GRACE_SECONDS = 90
 # styles). All are served from `?v=`-stamped URLs, so without this bump a
 # returning participant's cached bundle would miss them. Re-stamped with
 # `python scripts/prelaunch_check.py --stamp-assets`. See DECISIONS.md.
-STATIC_VERSION = '22'
+STATIC_VERSION = '23'
 
 # --- whose study this is ------------------------------------------------------
 # THE ONE PLACE A COPIED STUDY NAMES ITS INSTITUTION IN PROSE (Julian,
@@ -574,6 +574,17 @@ SESSION_CONFIG_DEFAULTS = dict(
     # number". Unprefixed and up here so a lab operator sees it near the top of
     # the create-session form without moving any other key.
     lab_session=os.environ.get('OTREE_LAB_SESSION', ''),
+
+    # SCREEN LOCK: participant pages feel like a screen, not a website. No
+    # selecting text outside fields, no text cursor, no dragging images, no
+    # right-click menu; every control and field works as normal. ON BY DEFAULT;
+    # set screen_lock=False on a config, or untick it when creating a session, to
+    # turn it off. Then the script is not loaded and nothing is left changed. A
+    # session created before this key existed reads as OFF. An exception to
+    # "every flag ships OFF": it is no study module and gates nothing. See
+    # DECISIONS.md, "The screen lock". Text a participant must copy takes the
+    # class `selectable` (base.css).
+    screen_lock=True,
 
     # =========================================================================
     # PILOT FEEDBACK  (axis 3 — independent of study type and DEBUG)

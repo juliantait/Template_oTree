@@ -102,6 +102,34 @@ strong { color: var(--ink); font-weight: 650; }
 
 a { color: var(--accent); }
 
+/* COMPONENT: screen lock. INTENTION: participant pages feel like a screen, not
+   a website. Scoped through html.screen-lock, which only _static/global/js/screen_lock.js
+   sets and only when the session's `screen_lock` is on, so with the switch off,
+   on previews and on admin pages none of this applies. No layout property, so no
+   geometry can move.
+   Fields keep selecting; the cursor over them, over radios and over checkboxes
+   is the browser's own rule for each type, which inheritance does not touch, so
+   no cursor rule is set on them here: a bare `input { cursor: text }` would give
+   radios and checkboxes a text cursor.
+   `.selectable` is the way out, for anything a participant must be able to copy
+   (a completion link, a code, a contact address). screen_lock.js gives it its
+   right-click and long-press menu back as well. Outside the lock it does nothing. */
+html.screen-lock body {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    cursor: default;
+}
+html.screen-lock input,
+html.screen-lock textarea,
+html.screen-lock .selectable {
+    -webkit-user-select: text;
+    user-select: text;
+}
+html.screen-lock .selectable { -webkit-touch-callout: default; }
+html.screen-lock .selectable:not(a) { cursor: text; }
+html.screen-lock img { -webkit-user-drag: none; }
+
 /* --- neutralise oTree's page chrome ------------------------------------------
    oTree wraps every page in <div class="otree-body container">: its theme CSS
    gives .otree-body a max-width and a top margin, and Bootstrap's .container

@@ -42,11 +42,11 @@
 {% if prolific_completion_redirects %}
 <div class="button-row">
     {% if reason == 'screened_out' %}
-    <a class="exit-button" href="{{ prolific_screenout_return_url|escape }}">
+    <a class="exit-button selectable" href="{{ prolific_screenout_return_url|escape }}">
         Back to Prolific
     </a>
     {% else %}
-    <a class="next-button" href="{{ completionlink|escape }}">
+    <a class="next-button selectable" href="{{ completionlink|escape }}">
         Back to Prolific
     </a>
     {% endif %}

@@ -28,6 +28,11 @@
    been caught as the mechanism by which the intro claimed monitoring it did
    not have. The include gates itself; templates carry nothing.
 
+   ALSO HERE: the screen lock's script, on the tab monitor's pattern. It is what
+   switches the lock on, so a session with `screen_lock` off, or created before
+   the key existed (is_defined: missing means OFF, as in common.flag), gets
+   nothing at all. Admin pages and the room's pages do not include this bundle.
+
    Adding a stylesheet? Add it HERE, after base.css, so every page picks it up in
    one place — never as a stray <link> in one template. #}
 <link rel="stylesheet" href="{% static 'global/css/base.css' %}?v={{ C.STATIC_VERSION }}">
@@ -37,3 +42,6 @@
 <link rel="stylesheet" href="{% static 'global/css/quiz.css' %}?v={{ C.STATIC_VERSION }}">
 <link rel="stylesheet" href="{% static 'global/css/demographics.css' %}?v={{ C.STATIC_VERSION }}">
 {% include '_static/global/html/tabmonitor_assets.html' %}
+{% if is_defined('session.config.screen_lock') and session.config.screen_lock %}
+<script src="{% static 'global/js/screen_lock.js' %}?v={{ C.STATIC_VERSION }}"></script>
+{% endif %}
