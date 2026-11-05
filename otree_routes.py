@@ -6,14 +6,15 @@ callers do top-level imports and oTree puts the project root on ``sys.path``.
 
 WHY THIS FILE EXISTS
 --------------------
-Two things in this repo serve routes that are not oTree's — the experimenter
-dashboard (``experimenter_dashboard.py``, since 2026-08-12) and the deploy
-gate's health endpoint (``health.py``, since 2026-08-23). Appending a route to
+Three things in this repo serve routes that are not oTree's — the experimenter
+dashboard (``experimenter_dashboard.py``, since 2026-08-12), the deploy gate's
+health endpoint (``health.py``, since 2026-08-23) and the dashboard's Download
+data button (``data_download.py``, since 2026-11-05). Appending a route to
 oTree is ONE concept, and CLAUDE.md devotes a section to what happens when one
 concept gets two implementations: they drift, and the drift stays invisible
 until the environment changes — here, until an oTree upgrade moves the route
-table and one of the two copies is updated. So the route-table half lives here
-and both callers pass through it.
+table and one of the copies is updated. So the route-table half lives here and
+every caller passes through it.
 
 WHAT IS SHARED AND WHAT IS DELIBERATELY NOT
 --------------------------------------------

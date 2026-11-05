@@ -11,6 +11,132 @@ working.
 
 ---
 
+## The dashboard's Download data button: three files, one column list, no database writes, 2026-11-05
+
+**What it is.** A button at the top right of `/experimenter_dashboard/<code>`
+(`data_download.py`, two routes through `otree_routes`). One press, after a
+confirmation listing every path: SENSITIVE (the wide export), ANONYMOUS, PAYMENTS,
+each a plain CSV, all covering every session in the database. Julian downloads after
+each session and keeps a folder where the files build up; he decided payments are
+not limited to one session, and rejected zips because they mean unzipping and copying.
+
+**`OTREE_DATA_FOLDER`, only from the environment.** Set: the server writes into
+`<folder>/SENSITIVE`, `/ANONYMOUS`, `/PAYMENTS`. Unset, or hosted: browser downloads.
+The base folder must exist and is never created, so a typo is an error naming it.
+**A path inside a study folder is NOT refused** (Julian: up to people); the README
+warns that bank details can then reach git. Rejected: a folder field on the confirm
+step, because then a request chooses where a server writes.
+
+**One column list, `data_columns.py`,** read by the button and by
+`scripts/format_session_data.py`. The button needs no pandas, so it could not call the
+script, and a second copy of "what makes a file anonymous" is exactly what CLAUDE.md
+warns about. Moving the lists did not change what the script writes.
+
+**ANONYMOUS also empties `participant.participant_extra`,** which the drop list does
+not name. The real export showed why: a refused Prolific claim (`identity.py`) records the
+refused ID in that JSON, so a drop list of ID columns alone leaves another person's ID
+in the "anonymous" file, only in that rare case. `format_session_data.py` already
+blanks the column, so the two tools agree. **Column kept, cells empty**, so the two
+tools also have one shape.
+
+**Studies that lack columns (Julian, 2026-11-05): SENSITIVE always; ANONYMOUS only if
+there is something to remove; PAYMENTS with as many columns as exist.** With nothing to
+remove, the file would be a raw copy that looks anonymised, which is misleading. All of
+it is `data_columns.split_export`, a plain module, because Micro 1 reuses the design.
+**Two list columns are not a reason to make the file, which goes beyond the literal
+rule:** `participant.label` is in every oTree export, so taken literally the rule would
+never fire; it counts only when some row has a label. `outro.1.player.earned` identifies
+nobody, and an "anonymous" file differing only by that would mislead the same way.
+Julian's example said "Only the raw file was written"; PAYMENTS always exists under his
+rule 3, so the screen says no anonymous file and lists the other two. **The confirm step
+reads the export** so it can say all this before writing, at the same cost as a press,
+paid only when an operator clicks. Rejected: guessing columns from the models, a second
+implementation of what the export contains.
+
+**A personal-looking column left over refuses the file, it does not get dropped.**
+`ANON_DROP_COLUMNS` names exact columns, so a fork renaming `outro` would silently keep
+`payment.1.player.bank` in ANONYMOUS. `data_columns.personal_columns_left` catches the
+same field names at any app and round, plus `iban` and `prolific_id` spellings. Refused
+rather than dropped automatically: then the button and the script would have two
+different rules, and the person who renamed the app learns the list needs updating.
+**No file because nothing to remove is correct and shown calmly; no file because of this
+is a failure and shown as one.** Kept apart in `skipped`.
+
+**The total is `outro.1.player.earned`, not `participant.payoff`.** Read from a real
+export with `participation_fee=2`: earned 87.5, payoff 85.5, because payoff is stored as
+earned minus the fee (ONE LEDGER, 2026-08-13). `earned` is show-up + rounds + bonus and
+is the figure the participant's receipt shows; the export has no
+`payoff_plus_participation_fee`.
+**This column is the template's own.** A study not built from it has no `earned`, so its
+PAYMENTS has no amount until its total is added to `PAYMENT_COLUMNS`.
+
+**The export must not write, and left to itself it does.** oTree's `.vars` property
+calls `self._vars.changed()` on every read (`otree/database.py`, 6.0.15), so
+`get_rows_for_wide_csv` marks every participant and session as changed, its next query
+autoflushes an UPDATE of each `_vars`, and the commit middleware commits them: every
+row in the database rewritten, mid-session, by an export. **oTree's own `/ExportWide`
+does this.** Here the read runs under `session.no_autoflush` and is then rolled back,
+so no UPDATE is ever sent. Same values under the lock, so `/ExportWide` loses nothing
+in practice, but "the export does not dirty a row" had to be made true, and a test that
+only compared rows before and after did not notice: counting SQL statements did.
+
+**The read holds oTree's global lock; the disk does not.** The lock has to cover the
+read for committed data, as it does for `/ExportWide`. A folder on a network share or a
+synced cloud folder can stall for a long time, and participant pages must not queue
+behind that. The middleware releases the lock when the response starts, so the handlers
+read first and write in the body of a `StreamingResponse`. If oTree changes that, the
+files are written under the lock: slower, nothing lost. Rejected: asking for the
+`/health` exemption (`exempt_from_global_lock`), which would read half-committed data.
+
+**One algorithm for never overwriting, on every platform.** Temp file (mkstemp, owner
+only) in the subfolder; `O_CREAT | O_EXCL` on the final name; `os.replace` onto that
+placeholder. Rejected: `os.link` on POSIX and `os.rename` on Windows, each atomic and
+with no placeholder, because the lab's machines run Windows, this is developed on
+Linux, and a per-platform branch means the branch that matters never ran. The price: a
+reader can see an empty file for an instant, never half a file. `os.replace` is retried
+for about a second, because a Windows scanner can hold a new file open. **A number is
+skipped if any of the three names has it**, so a set stays together. **One file failing
+does not stop the others**: this is the rescue path, so the two that can be saved are,
+and the screen says which is missing.
+
+**Browser mode is one POST returning all three, turned into Blobs by the page,** and
+not three GETs. So the three come from one read of the database (a participant finishing
+between three requests would give three files that disagree), the CSRF check covers
+them, nothing sensitive sits behind a GET, and the server has nothing to store. The
+screen says only "sent to the browser". The visible links are the Blobs, and stop working
+when the box closes, which releases them.
+
+**Login and CSRF are checked here, whatever the environment says.** The dashboard opens
+with `AUTH_LEVEL` unset, and AdminView skips CSRF under `OTREE_SKIP_CSRF`. These files
+hold bank details, so `_Base` replaces AdminView's `dispatch` and uses only its
+`_is_logged_in`. An error in either check answers 403.
+
+**No exception text on the screen or in the log,** because one can quote a row:
+`_log_failure` keeps the type and line numbers. OS errors are in plain words and hold a
+path we built.
+
+**Drift fails on the button, not at boot.** `install_download_route_or_note` never
+raises; `otree.export` is looked up at press time; `launch_problems` reports both to
+`prelaunch_check.py`, along with a folder that does not exist, because that typo should
+be found before the session rather than at the end of it. `predeploy_check.py` keeps no
+list of routes and was not changed.
+
+**Light only.** The dashboard has one theme, so the panel has one, built from its
+tokens and the quiz-mistakes overlay.
+
+**The launcher's support for setting the variable is a separate change,** in its own
+repository; `README.md` says what it has to do.
+
+**Enforced:** `scripts/tests/download_data_test.py`,
+`scripts/tests/download_data_browser_check.py`, and the new section of
+`scripts/tests/format_session_data_test.py` (no second copy of the list);
+`prelaunch_check.download_problems`. **Not enforced:** nothing has run on real Windows;
+`ntpath` tests the spelling of paths and `os.replace`'s retry is simulated. Postgres was checked by hand on this date (a press writes no row, by its own counters; `/ExportWide` does) and has no test here. Safari and
+Firefox are not run. Rows in PAYMENTS for people who never reached the results page have
+an empty total, on purpose; nothing checks anyone is paid.
+
+---
+
 ## The launcher's lab session number is a session config key, read as text, 2026-11-05
 
 The launcher sets `OTREE_LAB_SESSION`; `settings.py` puts it in

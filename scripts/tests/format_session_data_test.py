@@ -13,7 +13,9 @@ type guessing would hide the very damage being tested for. It asserts:
   * a 217 next to an empty session stays 217, not 217.0, and the empty stays empty;
   * the payment file does not carry it, and still carries its own columns;
   * an older export without the column still runs and stays without it;
-  * the other columns come out the same with the column present and absent.
+  * the other columns come out the same with the column present and absent;
+  * the anonymous and payment files use the one list in data_columns.py, which the
+    dashboard's Download data button uses too.
 
 Run:  python scripts/tests/format_session_data_test.py
 """
@@ -138,6 +140,36 @@ def main():
           'the anonymous file still drops the participant label')
     check(new['sensitive'][1][0]['intro.1.player.quiz_attempt_log'] == '',
           'the attempt-log blob is still blanked')
+
+    section('one set of rules: the same list as the dashboard button')
+    sys.path.insert(0, REPO_ROOT)
+    import data_columns
+    with tempfile.TemporaryDirectory() as tmp:
+        src = os.path.join(tmp, 'wide.csv')
+        keep = ['participant.code', 'participant.payoff', LAB,
+                'outro.1.player.age', 'participant.mturk_worker_id']
+        header = keep + list(data_columns.ANON_DROP_COLUMNS)
+        with open(src, 'w', newline='') as fh:
+            writer = csv.writer(fh)
+            writer.writerow(header)
+            writer.writerow(['c1'] * len(header))
+        done = subprocess.run(
+            [sys.executable, SCRIPT, src, '1', '--out', os.path.join(tmp, 'out')],
+            capture_output=True, text=True, cwd=tmp)
+        check(done.returncode == 0, f'the script exits 0 ({done.stderr.strip()[-200:]!r})')
+        with open(os.path.join(tmp, 'out', 'anonymous', 'Session_1.csv'), newline='') as fh:
+            anon_header = next(csv.reader(fh))
+        with open(os.path.join(tmp, 'out', 'payments', 'Session_1.csv'), newline='') as fh:
+            pay_header = next(csv.reader(fh))
+    check(anon_header == keep,
+          f'the anonymous file drops exactly data_columns.ANON_DROP_COLUMNS ({anon_header})')
+    check(tuple(pay_header) == tuple(c for c in data_columns.FORMAT_PAYMENT_COLUMNS
+                                     if c in header),
+          f'the payment file is data_columns.FORMAT_PAYMENT_COLUMNS ({pay_header})')
+    source = open(SCRIPT).read()
+    check('"participant.participant_id_external"' not in source.split('def main')[1]
+          .split('required_columns')[0] and 'data_columns.ANON_DROP_COLUMNS' in source,
+          'and the script has no second copy of the list')
 
     print("\n=== SUMMARY ===")
     if _failures:

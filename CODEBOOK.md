@@ -472,6 +472,7 @@ holds an empty session, `217` into `217.0`.
 | `scripts/format_session_data.py`, sensitive and anonymous files | `session.config.lab_session` (same name, value kept verbatim) | every row |
 | `scripts/format_session_data.py`, payment file | not included | |
 | Long data: R helper `scripts/helper/otree.R` in Template_Analysis, and `otree-wide-to-long.R` on the academic site | `lab_session` (character) | every long row, one per participant × app × round |
+| Dashboard **Download data** files | `session.config.lab_session` in SENSITIVE and ANONYMOUS; not in PAYMENTS. The viewed session's value is also in the three file names, made safe (`217 b` becomes `217-b`) | every row |
 
 **Empty if not set.** A server started without `OTREE_LAB_SESSION` gives an empty
 cell, as does a session created before this key existed when it is exported next
@@ -488,6 +489,18 @@ experimenter can change it for that one session. It is then frozen on the sessio
 like any other config value, so restarting with another number does not change
 sessions that already exist. Nothing in the study reads it, so it cannot change
 what a participant sees.
+
+**Telling sessions apart in the long data.** The long data has three columns for
+this, and they are different things:
+
+| Column | What it is |
+| --- | --- |
+| `session` | the name of the CSV file the row came from. It is not an oTree value. |
+| `otree_session` | the real oTree session code (`session.code` in the wide export). New; added by the R helper in Template_Analysis. Unique per oTree session, and the safe column to group by when one file holds several sessions. |
+| `lab_session` | the lab session number typed in the launcher, above. `NA` when not set, and nothing stops two sessions having the same one. |
+
+**The Download data files** hold every session in the database, so one file can hold
+several `otree_session` values under one `session`. See "Download data" in the README.
 
 ---
 

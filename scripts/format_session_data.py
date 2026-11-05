@@ -35,6 +35,13 @@ from pathlib import Path
 
 import pandas as pd
 
+# THE ONE LIST of personal columns, shared with the dashboard's Download data
+# button. It lives at the project root; _repo finds the root and puts it on the
+# path, the same way prelaunch_check.py does.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tests'))
+from _repo import REPO_ROOT  # noqa: E402,F401  (puts the root on sys.path)
+import data_columns  # noqa: E402
+
 
 # =============================================================================
 # BEHAVIOUR-CAPTURE DERIVATION (bucket B / measure B3, §D + §8.10 of the bot
@@ -276,13 +283,7 @@ def main():
     # Never dropped by the large-column sweep below: the payment file is built
     # from these. NB the earned amount is `outro.1.player.earned` — there is no
     # `participant.earned` in this template's export.
-    required_columns = {
-        "participant.code",
-        "participant.label",
-        "participant.participant_id_external",
-        "outro.1.player.earned",
-        "outro.1.player.bank",
-        "outro.1.player.bic",
+    required_columns = set(data_columns.FORMAT_PAYMENT_COLUMNS) | {
         "outro.1.player.bank_confirmation",
     }
 
@@ -310,14 +311,7 @@ def main():
     # Lab pays by bank transfer (bank/bic); Prolific pays through the platform,
     # keyed on the confirmed id. Both sets are listed; columns a session did
     # not collect are simply absent and filtered out below.
-    payment_cols = [
-        "participant.code",
-        "participant.label",
-        "participant.participant_id_external",
-        "outro.1.player.earned",
-        "outro.1.player.bank",
-        "outro.1.player.bic",
-    ]
+    payment_cols = data_columns.FORMAT_PAYMENT_COLUMNS
     existing_payment_cols = [c for c in payment_cols if c in df.columns]
 
     if existing_payment_cols:
@@ -331,18 +325,7 @@ def main():
     # template the participant label / Prolific id columns are the personal
     # identifiers, so they go too (participant.code alone remains as the
     # anonymous key).
-    anon_drop_cols = [
-        "outro.1.player.bank",
-        "outro.1.player.bank_confirmation",
-        "outro.1.player.bic",
-        "outro.1.player.earned",
-        "participant.label",
-        "participant.participant_id_external",
-        "before.1.player.participant_label",
-        "before.1.player.participant_id_url",
-        "before.1.player.participant_id_external",
-        "before.1.player.prolific_label_conflict",
-    ]
+    anon_drop_cols = data_columns.ANON_DROP_COLUMNS
     df_anonymous = df.drop(columns=[c for c in anon_drop_cols if c in df.columns], errors="ignore")
 
     anon_path = anonymous_dir / f"Session_{session_number}.csv"

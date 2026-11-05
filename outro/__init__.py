@@ -941,3 +941,10 @@ experimenter_dashboard.note_timeline_problems()
 # `scripts/verify_deploy.py` read; the build stamp rides in its body and never
 # affects its verdict.
 health.install_health_route_or_note()
+
+# The dashboard's "Download data" button: its own two routes, the same `*_or_note`
+# rule (never raises), and a warning here if OTREE_DATA_FOLDER cannot be used, so
+# it is seen at launch. See data_download.py.
+import data_download
+
+data_download.install_download_route_or_note()
