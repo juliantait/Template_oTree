@@ -26,15 +26,24 @@ files are made from a real export, and it reads them back as raw text.
   K. Drift: loud on the button, quiet at boot; the launch check reports it.
 
   L. The lock: a slow disk does not hold up a participant page, over real HTTP.
+  M. What the screen claims: a skip and a failure stay two states, and the heading is
+     not "Data saved" when a file failed.
+  N. The switch: off means no button, routes refusing, nothing said at boot.
+  O. The helper: none gives exactly one file; the docstring's examples, run for real;
+     one that raises or returns something invalid costs the raw file nothing.
 
 What it cannot see: a real browser, a real prodserver and a participant running
 at the same time. Those are download_data_browser_check.py.
 
 Run: python scripts/tests/download_data_test.py   (boots oTree in-process)
 """
+import contextlib
 import csv
 import datetime
+import inspect
 import io
+import json
+import logging
 import logging
 import ntpath
 import os
@@ -44,6 +53,7 @@ import shutil
 import stat
 import sys
 import tempfile
+import textwrap
 import threading
 
 _TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -196,15 +206,15 @@ def section_names():
     check(dd.name_stem('217', day) == 'EXP_217_05-11-2026', 'stem with a lab session')
     check(dd.name_stem('', day) == 'EXP_05-11-2026', 'stem without one')
     check(dd.name_stem(None, day) == 'EXP_05-11-2026', 'stem with None')
-    check(dd.file_name('EXP_217_05-11-2026', 'SENSITIVE')
+    check(dd.file_name('EXP_217_05-11-2026', '_SENSITIVE')
           == 'EXP_217_05-11-2026_SENSITIVE.csv', 'the SENSITIVE name')
-    check(dd.file_name('EXP_217_05-11-2026', 'ANONYMOUS')
+    check(dd.file_name('EXP_217_05-11-2026', '')
           == 'EXP_217_05-11-2026.csv', 'the ANONYMOUS name has no ending')
-    check(dd.file_name('EXP_217_05-11-2026', 'PAYMENTS')
+    check(dd.file_name('EXP_217_05-11-2026', '_PAYMENTS')
           == 'EXP_217_05-11-2026_PAYMENTS.csv', 'the PAYMENTS name')
-    check(dd.file_name('EXP_05-11-2026', 'ANONYMOUS', 2) == 'EXP_05-11-2026_2.csv',
+    check(dd.file_name('EXP_05-11-2026', '', 2) == 'EXP_05-11-2026_2.csv',
           'a numbered set, no lab session')
-    check(dd.file_name('EXP_217_05-11-2026', 'SENSITIVE', 3)
+    check(dd.file_name('EXP_217_05-11-2026', '_SENSITIVE', 3)
           == 'EXP_217_05-11-2026_SENSITIVE_3.csv', 'a numbered SENSITIVE file')
 
 
@@ -234,7 +244,7 @@ def section_folder_setting():
         check(clean(raw, ntpath)[1] is not None,
               f'Windows {raw} is not a full path, so it is refused')
     check(ntpath.join(r'C:\Users\lab\Data', 'SENSITIVE',
-                      dd.file_name('EXP_217_05-11-2026', 'SENSITIVE'))
+                      dd.file_name('EXP_217_05-11-2026', '_SENSITIVE'))
           == r'C:\Users\lab\Data\SENSITIVE\EXP_217_05-11-2026_SENSITIVE.csv',
           'the file path a Windows machine would build')
     for bad in '<>:"/\\|?*':
@@ -508,8 +518,9 @@ def section_never_overwrite(admin, lab):
         def racer(i):
             try:
                 barrier.wait()
-                built = [dict(kind=k, rows=1, data=f'{i},{k}\r\n'.encode())
-                         for k in dd.KINDS]
+                built = [dict(kind=k, ending=e, rows=1, data=f'{i},{k}\r\n'.encode())
+                         for k, e in (('SENSITIVE', '_SENSITIVE'), ('ANONYMOUS', ''),
+                                      ('PAYMENTS', '_PAYMENTS'))]
                 results.append((i, dd.write_set(folder, stem, built)))
             except Exception as exc:                           # noqa: BLE001
                 errors.append(exc)
@@ -565,8 +576,12 @@ def section_failing_loudly(admin, lab):
         with open(os.path.join(folder, 'PAYMENTS'), 'w') as fh:
             fh.write('in the way')
         plan = admin.get(f'{ed.URL_BASE}/{lab.code}{dd.PLAN_SUFFIX}').json()
-        check(plan['ok'] and any('PAYMENTS' in w for w in plan['warnings']),
-              'the confirm step warns about it')
+        planned = {f['kind']: f for f in plan['files']}
+        check(plan['ok'] and planned['PAYMENTS']['state'] == 'failed'
+              and 'in the way' in planned['PAYMENTS']['why'],
+              'the confirm step says that file will not be saved')
+        check(planned['SENSITIVE']['state'] == planned['ANONYMOUS']['state'] == 'planned',
+              'and the other two will')
         answer = press(admin, lab.code)
         by_kind = {f['kind']: f for f in answer['files']}
         check(answer['ok'] is False, 'the answer is not ok')
@@ -681,9 +696,13 @@ def section_failing_loudly(admin, lab):
           f'with the reason in plain words ({parts["ANONYMOUS"]["why"]})')
     check(parts['PAYMENTS']['table'] == [['participant.code'], ['c1'], ['c2']],
           'PAYMENTS: the participant code alone still counts as a file')
-    for words in ('Prolific ID', 'IBAN', 'BIC', 'total earned', 'outro.1.player.earned',
-                  'Prolific ID conflict', 'before.1.player.prolific_label_conflict'):
+    for words in ('Prolific ID', 'IBAN', 'BIC', 'total earned', 'Prolific ID conflict'):
         check(words in parts['PAYMENTS']['note'], f'the note names what is missing: {words}')
+    for raw in data_columns.PAYMENT_COLUMNS[1:]:
+        check(raw not in parts['PAYMENTS']['note'] and raw in parts['PAYMENTS']['note_columns'],
+              f'{raw}: not in the words, and in the hover text')
+    check(parts['PAYMENTS']['note'].startswith('Did not exist in this data: '),
+          f'in Julian\'s words ({parts["PAYMENTS"]["note"]})')
     check('participant code' not in parts['PAYMENTS']['note'],
           'and not what is there')
 
@@ -871,7 +890,8 @@ def section_browser_mode(admin, lab):
               f'{label} is sent with no-store')
     answer = response.json()
     check(answer['ok'] and answer['mode'] == 'browser', 'the answer says browser')
-    check([f['kind'] for f in answer['files']] == list(dd.KINDS), 'with three files')
+    check([f['kind'] for f in answer['files']] == ['SENSITIVE', 'ANONYMOUS', 'PAYMENTS'],
+          'with three files')
     check([f['name'] for f in answer['files']]
           == [f'EXP_217b_{TODAY}_SENSITIVE.csv', f'EXP_217b_{TODAY}.csv',
               f'EXP_217b_{TODAY}_PAYMENTS.csv'], 'with the right names')
@@ -1121,6 +1141,352 @@ def section_drift(admin, lab):
     check(done.stdout.strip() == 'False', 'and no line of it imports pandas')
 
 
+def _rows_of(*extra_rows):
+    return [['participant.code', 'participant.label', 'participant.payoff',
+             'plain.1.player.answer']] + [list(r) for r in extra_rows]
+
+
+PLAIN_ROWS = _rows_of(['c1', '', '1.5', 'yes'])
+RENAMED_ROWS = [['participant.code', 'payment.1.player.bank'], ['c1', 'NL00']]
+
+
+def section_states():
+    section('M. what the screen claims: a skip and a failure are not the same')
+    with Folder() as folder:
+        skip = dd.run_download(dd.decide_files(PLAIN_ROWS), 'EXP_s')
+        fail = dd.run_download(dd.decide_files(RENAMED_ROWS), 'EXP_f')
+        skipped = {f['kind']: f for f in skip['files']}['ANONYMOUS']
+        failed = {f['kind']: f for f in fail['files']}['ANONYMOUS']
+        check(not skipped['written'] and not failed['written'] and skipped['why'] and failed['why'],
+              'in both, ANONYMOUS has no file and a reason')
+        check(skipped['state'] == 'skipped', f'a study with nothing to remove: skipped ({skipped["state"]})')
+        check(failed['state'] == 'failed', f'a personal column left over: failed ({failed["state"]})')
+        check(skip['heading'] == 'Data saved' and skip['ok'] is True,
+              f'the skip leaves the heading at Data saved ({skip["heading"]})')
+        check(fail['heading'] == 'Some files were not saved' and fail['ok'] is False,
+              f'the failure changes it ({fail["heading"]})')
+        check('PAYMENTS' in tree(folder)[0] and os.path.join('SENSITIVE', 'EXP_f_SENSITIVE.csv') in tree(folder),
+              'and the files that could be written are there')
+        check(failed['path'] is None and skipped['path'] is None,
+              'neither row shows a path for a file that was never going to exist')
+    with Folder() as folder:
+        good = dd.run_download(dd.decide_files(_rows_of(['c1', 'SEAT', '1', 'y'])), 'EXP_g')
+        check(good['heading'] == 'Data saved'
+              and [f['state'] for f in good['files']] == ['done'] * 3,
+              'three written: Data saved, three done')
+    with Folder() as folder:
+        with open(os.path.join(folder, 'PAYMENTS'), 'w') as fh:
+            fh.write('x')
+        one = dd.run_download(dd.decide_files(_rows_of(['c1', 'SEAT', '1', 'y'])), 'EXP_o')
+        check(one['heading'] == 'Some files were not saved',
+              f'one subfolder blocked: not Data saved ({one["heading"]})')
+    with Folder() as folder:
+        for kind in ('SENSITIVE', 'ANONYMOUS', 'PAYMENTS'):
+            with open(os.path.join(folder, kind), 'w') as fh:
+                fh.write('x')
+        none = dd.run_download(dd.decide_files(_rows_of(['c1', 'SEAT', '1', 'y'])), 'EXP_n')
+        check(none['heading'] == 'Nothing was saved' and tree(folder) == sorted(
+            ['SENSITIVE', 'ANONYMOUS', 'PAYMENTS']),
+              f'all blocked: Nothing was saved ({none["heading"]})')
+    os.environ.pop(ENV, None)
+    sent = dd.run_download(dd.decide_files(_rows_of(['c1', 'SEAT', '1', 'y'])), 'EXP_b')
+    check(sent['heading'] == 'Data sent to the browser', f'browser mode: {sent["heading"]}')
+    skip = dd.run_download(dd.decide_files(PLAIN_ROWS), 'EXP_b')
+    check(skip['heading'] == 'Data sent to the browser', 'with a skip too')
+    fail = dd.run_download(dd.decide_files(RENAMED_ROWS), 'EXP_b')
+    check(fail['heading'] == 'Some files were not sent' and fail['ok'] is False,
+          f'and a failure in browser mode is not hidden ({fail["heading"]})')
+    check({f['kind']: f for f in fail['files']}['ANONYMOUS']['state'] == 'failed'
+          and {f['kind']: f for f in skip['files']}['ANONYMOUS']['state'] == 'skipped',
+          'the two states hold in browser mode too')
+    check(dd.result_heading('browser', [dict(state='failed')]) == 'Nothing was sent',
+          'nothing sent is said as such')
+    for heading in (sent['heading'], fail['heading']):
+        check('saved' not in heading, f'and browser mode never says saved ({heading})')
+
+
+def _off(value=False):
+    """Set the switch for a block, as a study's author would in code."""
+    class Setting:
+        def __enter__(self):
+            data_columns.DOWNLOAD_DATA_BUTTON = value
+
+        def __exit__(self, *exc):
+            data_columns.DOWNLOAD_DATA_BUTTON = True
+    return Setting()
+
+
+def section_switch(admin, lab):
+    section('N. the switch')
+    check(data_columns.DOWNLOAD_DATA_BUTTON is True, 'on in the template')
+    url = f'{ed.URL_BASE}/{lab.code}'
+    on_page = admin.get(url)
+    check(on_page.status_code == 200 and 'id="dl-open"' in on_page.text
+          and 'id="dl-overlay"' in on_page.text, 'on: the button is on the page')
+    token = admin.get(url + dd.PLAN_SUFFIX).json()['csrf']
+    with _off():
+        page = admin.get(url)
+        check(page.status_code == 200 and lab.code in page.text and 'id="rows"' in page.text,
+              'off: the dashboard itself still opens')
+        for gone in ('dl-open', 'dl-overlay', 'dl-panel', 'Download data'):
+            check(gone not in page.text, f'and carries no {gone}')
+        check('__DOWNLOAD' not in page.text, 'and no placeholder is left')
+        with Folder() as folder:
+            plan = admin.get(url + dd.PLAN_SUFFIX)
+            post = admin.post(url + dd.DOWNLOAD_SUFFIX, data={'csrftoken': token})
+            for label, resp in (('the plan', plan), ('the POST', post)):
+                check(resp.status_code == 404 and resp.json()['problem'] == 'off',
+                      f'{label} refuses plainly: {resp.status_code}')
+            check(tree(folder) == [], 'and nothing is written')
+        os.environ[ENV] = os.path.join(tempfile.gettempdir(), 'download_typo_no_such')
+        try:
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                outcome = dd.install_download_route_or_note()
+            check(outcome == 'off' and 'WARNING' not in out.getvalue(),
+                  f'a bad OTREE_DATA_FOLDER: nothing said at boot ({outcome!r})')
+            check(dd.launch_problems() == [], 'and nothing in the launch check')
+        finally:
+            os.environ.pop(ENV, None)
+    os.environ[ENV] = os.path.join(tempfile.gettempdir(), 'download_typo_no_such')
+    try:
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            dd.install_download_route_or_note()
+        check('DOWNLOAD DATA WARNING' in out.getvalue() and dd.launch_problems() != [],
+              'the same bad folder with the switch on IS reported, so that absence means something')
+    finally:
+        os.environ.pop(ENV, None)
+    del data_columns.DOWNLOAD_DATA_BUTTON
+    try:
+        check(dd.button_is_on(), 'no such line at all: on, the default')
+    finally:
+        data_columns.DOWNLOAD_DATA_BUTTON = True
+    check(admin.get(url + dd.PLAN_SUFFIX).json().get('ok') is True, 'switched back on: it answers')
+
+
+class Helper:
+    """Set `data_columns.DOWNLOAD_HELPER` for a block; `Helper.REMOVE` deletes the line."""
+    REMOVE = object()
+
+    def __init__(self, helper):
+        self.helper = helper
+
+    def __enter__(self):
+        self.real = data_columns.DOWNLOAD_HELPER
+        if self.helper is Helper.REMOVE:
+            del data_columns.DOWNLOAD_HELPER
+        else:
+            data_columns.DOWNLOAD_HELPER = self.helper
+
+    def __exit__(self, *exc):
+        data_columns.DOWNLOAD_HELPER = self.real
+
+
+def docstring_examples():
+    """The examples in download_files' docstring, as functions: run, not read, so
+    the description cannot go stale without this failing."""
+    doc = inspect.getdoc(data_columns.download_files)
+    found = re.findall(r'^    def download_files\(rows\):\n(?:(?: {8}.*)?\n)+', doc, re.M)
+    made = []
+    for source in found:
+        scope = dict(vars(data_columns))
+        exec(textwrap.dedent(source), scope)
+        made.append(scope['download_files'])
+    return made
+
+
+def _plant_chat(code, lines):
+    """What an app does during a session, on its own connection and committed."""
+    from sqlalchemy.orm import Session as Orm
+    from otree.database import engine
+    from otree.models import Session
+    orm = Orm(bind=engine)
+    try:
+        session = orm.query(Session).filter_by(code=code).one()
+        session._vars['chat_log'] = lines
+        session._vars.changed()
+        orm.commit()
+    finally:
+        orm.close()
+
+
+def section_helper(admin, lab):
+    section('O1. no helper: exactly one file, in every way of having none')
+    wide = admin.get('/ExportWide').content
+    stem = f'EXP_217b_{TODAY}'
+    url = f'{ed.URL_BASE}/{lab.code}'
+    for label, setting in (('set to None', None), ('the line deleted', Helper.REMOVE)):
+        with Helper(setting):
+            with Folder() as folder:
+                plan = admin.get(url + dd.PLAN_SUFFIX).json()
+                check([(f['kind'], f['state']) for f in plan['files']] == [('SENSITIVE', 'planned')],
+                      f'{label}: the confirm step lists one file, and no skip or X')
+                answer = press(admin, lab.code)
+                check([(f['kind'], f['state']) for f in answer['files']] == [('SENSITIVE', 'done')],
+                      f'{label}: the result lists one file, done')
+                check(answer['heading'] == 'Data saved' and answer['ok'] is True,
+                      f'{label}: Data saved ({answer["heading"]})')
+                check(tree(folder) == [os.path.join('SENSITIVE', f'{stem}_SENSITIVE.csv')],
+                      f'{label}: exactly one file on disk ({tree(folder)})')
+                with open(os.path.join(folder, tree(folder)[0]), 'rb') as fh:
+                    check(fh.read() == wide, f'{label}: byte for byte /ExportWide')
+            answer = press(admin, lab.code)
+            check([f['kind'] for f in answer['files']] == ['SENSITIVE']
+                  and answer['files'][0]['text'].encode('utf-8') == wide
+                  and answer['heading'] == 'Data sent to the browser',
+                  f'{label}: browser mode, one file, same bytes')
+    with Folder() as folder:
+        answer = press(admin, lab.code)
+        check([f['kind'] for f in answer['files']] == ['SENSITIVE', 'ANONYMOUS', 'PAYMENTS']
+              and len(tree(folder)) == 3,
+              "the template's helper: its three files, so the one-file checks mean something")
+
+    section('O2. the docstring\'s examples, run for real')
+    total, no_anon, by_app, chat = docstring_examples()
+    with Helper(total), Folder() as folder:
+        answer = press(admin, lab.code)
+        check(answer['heading'] == 'Data saved', f'example 1 runs ({answer["heading"]})')
+        head, rows = read_csv(os.path.join(folder, 'PAYMENTS', f'{stem}_PAYMENTS.csv'))
+        check(head[-1] == 'total_earned', 'a computed total_earned is in PAYMENTS')
+        finished = [r for r in rows if r['outro.1.player.earned']]
+        check(finished and all(abs(float(r['total_earned']) - float(r['outro.1.player.earned'])) < 1e-9
+                               for r in finished),
+              f'and equals the template\'s own earned on {len(finished)} finished rows')
+    with Helper(no_anon), Folder() as folder:
+        answer = press(admin, lab.code)
+        check([f['kind'] for f in answer['files']] == ['SENSITIVE', 'PAYMENTS']
+              and answer['heading'] == 'Data saved' and len(tree(folder)) == 2,
+              'example 2: no anonymous file, no row for it, Data saved')
+    with Helper(by_app), Folder() as folder:
+        answer = press(admin, lab.code)
+        path = {f['kind']: f for f in answer['files']}['MAIN']['path']
+        head, rows = read_csv(path)
+        check(path.endswith(os.path.join('MAIN', f'{stem}_MAIN.csv')) and head[0] == 'participant.code'
+              and all(c == 'participant.code' or c.startswith('main.') for c in head) and len(head) > 1,
+              f'example 3: a file by app, default ending, {len(head)} columns')
+        again = press(admin, lab.code)
+        check(all(f['name'].endswith('_2.csv') for f in again['files']) and len(tree(folder)) == 8,
+              'a second press: the same set number on all four, nothing overwritten')
+
+    secret_line = 'a chat line only session.vars has'
+    _plant_chat(lab.code, [['p1', secret_line]])
+    check(secret_line.encode() not in admin.get('/ExportWide').content,
+          'what the description says: session.vars is not in the wide export')
+    before = _dump_database()
+    with Helper(chat), Folder() as folder, WriteSpy() as spy:
+        plan = admin.get(url + dd.PLAN_SUFFIX).json()
+        check('CHAT' in [f['kind'] for f in plan['files']], 'example 4: on the confirm step')
+        answer = press(admin, lab.code)
+        by = {f['kind']: f for f in answer['files']}
+        check(by['CHAT']['state'] == 'done' and by['CHAT']['rows'] == 1, 'and written, one row')
+        head, rows = read_csv(by['CHAT']['path'])
+        check(rows[0]['text'] == secret_line and rows[0]['session.code'] == lab.code,
+              'the file holds the chat line, from session._vars')
+        with open(by['SENSITIVE']['path'], 'rb') as fh:
+            check(secret_line.encode() not in fh.read(), 'and SENSITIVE does not')
+    check(spy.writes == [], f'not one write while it read ({spy.writes[:3]})')
+    check(_dump_database() == before, 'every row of every table unchanged')
+
+    def dirties(rows):
+        from otree.database import db
+        from otree.models import Session
+        for session in db.query(Session):
+            session.vars['from_helper'] = 'SHOULD NOT LAST'
+        return data_columns.split_export(rows)
+    before = _dump_database()
+    with Helper(dirties), Folder(), WriteSpy() as spy:
+        answer = press(admin, lab.code)
+    check(answer['ok'] is True and spy.writes == [] and _dump_database() == before,
+          f'a helper using .vars and even changing it writes nothing ({spy.writes[:2]})')
+
+    section('O3. a helper that raises')
+    handler_out = io.StringIO()
+    handler = logging.StreamHandler(handler_out)
+    dd.logger.addHandler(handler)
+
+    def raises(rows):
+        rows[1][0] = 'TAMPERED'
+        raise ValueError(f'a message quoting {IBAN}')
+    try:
+        with Helper(raises), Folder() as folder:
+            plan = admin.get(url + dd.PLAN_SUFFIX).json()
+            check([f['state'] for f in plan['files']] == ['planned', 'failed'],
+                  'the confirm step says so before anything is written')
+            answer = press(admin, lab.code)
+    finally:
+        dd.logger.removeHandler(handler)
+    by = {f['kind']: f for f in answer['files']}
+    check(answer['ok'] is False and answer['heading'] == 'Some files were not saved',
+          f'the heading is not Data saved ({answer["heading"]})')
+    check(by['SENSITIVE']['state'] == 'done', 'the raw file is still saved')
+    check(by['OTHER FILES']['state'] == 'failed' and 'ValueError' in by['OTHER FILES']['why'],
+          f'and the failure has its row ({by["OTHER FILES"]["why"]})')
+    check(IBAN not in json.dumps(answer) and IBAN not in handler_out.getvalue()
+          and 'ValueError' in handler_out.getvalue(),
+          'the type is said; the message, which can quote a row, is not, on screen or in the log')
+    with Helper(raises), Folder() as folder:
+        answer = press(admin, lab.code)
+        with open({f['kind']: f for f in answer['files']}['SENSITIVE']['path'], 'rb') as fh:
+            check(fh.read() == wide, 'the raw file is byte for byte, though the helper changed its rows')
+        check(tree(folder) == [os.path.join('SENSITIVE', f'{stem}_SENSITIVE.csv')],
+              'and is the one file on disk')
+    with Helper(raises):
+        answer = press(admin, lab.code)
+    check(answer['heading'] == 'Some files were not sent'
+          and answer['files'][0]['text'].encode('utf-8') == wide, 'browser mode: the same')
+    check(ed.dashboard_is_installed() and admin.get(url).status_code == 200,
+          'and the dashboard page is fine')
+
+    section('O4. a helper returning something invalid: a plain message naming the problem')
+    good = [['a'], ['1']]
+    cases = [
+        ('None', None, 'NoneType'),
+        ('a string', 'SENSITIVE', 'not a list'),
+        ('an empty list', [], 'empty list'),
+        ('not dicts', [1], 'file 1 is int'),
+        ('a typo for table', [dict(kind='X', rows=good)], 'rows'),
+        ('no kind', [dict(table=good)], 'needs a kind'),
+        ('a kind leaving the folder', [dict(kind='../x', table=good)], 'needs a kind'),
+        ('a kind with a slash', [dict(kind='a/b', table=good)], 'needs a kind'),
+        ('the same kind twice', [dict(kind='X', table=good), dict(kind='X', table=good)], 'same kind'),
+        ('an ending leaving the folder', [dict(kind='X', ending='/../y', table=good)], 'needs an ending'),
+        ('the same file name twice',
+         [dict(kind='X', ending='', table=good), dict(kind='Y', ending='', table=good)], 'same file name'),
+        ('no table and no reason', [dict(kind='X')], 'no table, and no why'),
+        ('a table and a reason', [dict(kind='X', table=good, why='no')], 'also says there is no file'),
+        ('a table that is not rows', [dict(kind='X', table='abc')], 'list of rows'),
+        ('a header that is not text', [dict(kind='X', table=[[1], [2]])], 'header of text'),
+        ('a row of another length', [dict(kind='X', table=[['a', 'b'], ['1']])], 'row 2'),
+        ('a note that is not text', [dict(kind='X', table=good, note=3)], 'note'),
+    ]
+    for label, returned, words in cases:
+        with Helper(lambda rows, r=returned: r), Folder() as folder:
+            answer = press(admin, lab.code)
+            by = {f['kind']: f for f in answer['files']}
+            why = (by.get('OTHER FILES') or {}).get('why') or ''
+            check(words in why and answer['ok'] is False, f'{label}: {why[:110]}')
+            check(tree(folder) == [os.path.join('SENSITIVE', f'{stem}_SENSITIVE.csv')],
+                  '  and the raw file alone is on disk')
+    with Helper('not a function'), Folder() as folder:
+        answer = press(admin, lab.code)
+        check(answer['heading'] == 'Some files were not saved'
+              and len(tree(folder)) == 1, 'a helper that is not a function: the same')
+    with Helper(lambda rows: data_columns.split_export(rows)
+                + [dict(kind='BAD', table=[['a'], ['\udc80']])]), Folder() as folder:
+        answer = press(admin, lab.code)
+        by = {f['kind']: f for f in answer['files']}
+        check(by['BAD']['state'] == 'failed' and 'CSV' in by['BAD']['why']
+              and by['PAYMENTS']['state'] == 'done' and len(tree(folder)) == 3,
+              f'a cell that cannot be encoded fails that file alone ({by["BAD"]["why"]})')
+    with Helper(lambda rows: [dict(kind='SENSITIVE', ending='_SENSITIVE', table=rows),
+                              dict(kind='NOTES', skipped=True, why='no notes in this data')]), Folder() as folder:
+        answer = press(admin, lab.code)
+        by = {f['kind']: f for f in answer['files']}
+        check(by['NOTES']['state'] == 'skipped' and answer['heading'] == 'Data saved',
+              "a study's own skip reads like the template's")
+
+
 def main():
     lab = ot.create_session('lab', num_participants=3,
                             modified_session_config_fields={'lab_session': '217b'})
@@ -1145,6 +1511,9 @@ def main():
     section_browser_mode(admin, lab)
     section_drift(admin, lab)
     section_lock(lab)
+    section_states()
+    section_switch(admin, lab)
+    section_helper(admin, lab)
     section_no_data(admin, lab, prolific)
 
     print('\n=== SUMMARY ===')

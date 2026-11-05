@@ -44,7 +44,8 @@ THE ONE PART OF THIS PAGE THAT WRITES ANYTHING: "DOWNLOAD DATA"
 The button at the top right lives in ``data_download.py``, with its own two
 routes and its own install. It is a POST that writes files, never database rows,
 so rule 1 still holds, and it needs the admin login whatever AUTH_LEVEL says.
-This module only puts its button, stylesheet and script on the page.
+This module only puts its button, stylesheet and script on the page, or none of
+them with the switch off (``data_columns.DOWNLOAD_DATA_BUTTON``).
 
 AUTH — REUSED, NOT INVENTED
 ---------------------------
@@ -2728,7 +2729,12 @@ def page_template_for_steps(steps) -> str:
     id can close the script element.
     """
     n = max(1, len(steps))
+    download = data_download.page_parts()
     return (_PAGE_HTML
+            .replace('__DOWNLOAD_BUTTON__', download['button'])
+            .replace('__DOWNLOAD_OVERLAY__', download['overlay'])
+            .replace('__DOWNLOAD_CSS__', download['css'])
+            .replace('__DOWNLOAD_JS__', download['js'])
             .replace('__STEP_HEADER__', _step_header_html(steps))
             .replace('__STEP_COUNT__', str(n))
             .replace('__TL_INSET__', f'{100 / n / 2:.2f}%')
@@ -3527,8 +3533,7 @@ __DOWNLOAD_CSS__
       <input type="checkbox" id="show-not-arrived">
       show not-arrived rows</label>
     <span class="dash-status" id="status">connecting…</span>
-    <button class="dl-open" id="dl-open" type="button"
-            title="Save this database's data as three CSV files. You confirm first.">Download data</button>
+    __DOWNLOAD_BUTTON__
   </div>
   <div class="ov-strip" id="ov-strip"></div>
   <div class="ov-alert" id="ov-alert"></div>
@@ -3545,10 +3550,8 @@ __DOWNLOAD_CSS__
      panel JS fills it from one /quiz_mistakes fetch. Outside the table, so a
      broken panel cannot touch a single row. -->
 <div class="qm-overlay" id="qm-overlay" aria-hidden="true"></div>
-<!-- THE DOWNLOAD DATA OVERLAY (data_download.py). Empty until the button is
-     pressed. Its script is a separate block below, so a mistake in it cannot
-     stop the poll that paints this table. -->
-<div class="qm-overlay" id="dl-overlay" aria-hidden="true"></div>
+<!-- THE DOWNLOAD DATA OVERLAY (data_download.py), when its switch is on. -->
+__DOWNLOAD_OVERLAY__
 <script>
 'use strict';
 var DATA_URL = '__DATA_URL__';
@@ -4664,6 +4667,4 @@ setInterval(tick, POLL_MS);
              # LIST (__STEP_HEADER__ inside them, __STEP_COUNT__, __TL_INSET__,
              # __STEPS_JSON__) are resolved PER SESSION by
              # page_template_for_steps, from that session's timeline.
-             .replace('__COLGROUP__', _COLGROUP_HTML)
-             .replace('__DOWNLOAD_CSS__', data_download.PAGE_CSS)
-             .replace('__DOWNLOAD_JS__', data_download.PAGE_JS))
+             .replace('__COLGROUP__', _COLGROUP_HTML))

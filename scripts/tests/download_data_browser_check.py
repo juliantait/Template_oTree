@@ -21,7 +21,14 @@ Measured and read back, not looked at:
   * a real participant walking through the study during exports, with its page
     times, and timing at a realistic row count;
   * a study NOT built from this template, on its own settings and app: no anonymous
-    file, payments with the participant code alone, said before and after writing.
+    file, payments with the participant code alone, said before and after writing;
+  * the marks: a tick or an X at the left of each row, a skip and a failure of the same
+    file measured as different, the heading following the worst outcome;
+  * the switch off, on the real template: no button, routes refusing, nothing at boot,
+    nothing in the launch check;
+  * a study's helper, edited into data_columns.py as its author would: none (one file),
+    a computed column, its own file kinds, a chat log from session vars with the
+    database unchanged, one that raises and one that returns something invalid.
 
 THE SERVER RUNS ON A THROWAWAY COPY of the project in a temp folder (this file makes
 it), so no run can touch the project's db.sqlite3. It always starts production mode
@@ -44,6 +51,7 @@ import re
 import shutil
 import signal
 import socket
+import sqlite3
 import stat
 import subprocess
 import sys
@@ -75,6 +83,7 @@ DESKTOP_UA = ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.3
 SHOTS = os.environ.get('DOWNLOAD_CHECK_SHOTS') or os.path.join(
     REPO_ROOT, '_ai', 'download_button')
 TIMING_ROWS = int(os.environ.get('DOWNLOAD_CHECK_ROWS') or 300)
+WARNING = 'Did not exist in this data: Prolific ID, IBAN, BIC, total earned, Prolific ID conflict'
 os.makedirs(SHOTS, exist_ok=True)
 
 _failures = []
@@ -265,10 +274,36 @@ class Screen:
 
     def open(self):
         self.page.goto(f'{self.server.base}/experimenter_dashboard/{self.code}')
-        self.page.wait_for_selector('#dl-open')
+        # The table, not the button: a study can switch the button off.
+        self.page.wait_for_selector('#rows')
 
     def panel_text(self):
         return ' '.join(self.page.inner_text('#dl-overlay').split())
+
+    def heading(self):
+        return self.page.inner_text('#dl-overlay h2').strip()
+
+    def states(self):
+        """{kind: the row's state class}, in the screen's order."""
+        return self.page.evaluate("""() => Object.fromEntries(
+            [...document.querySelectorAll('#dl-overlay .dl-files li')]
+              .map(li => [li.dataset.kind, li.className]))""")
+
+    def look(self, kind):
+        """How one file's row looks, measured: what a person's eye gets."""
+        return self.page.evaluate("""kind => {
+            const li = document.querySelector(`#dl-overlay li[data-kind="${kind}"]`);
+            const mark = li.querySelector('.dl-mark');
+            const words = li.querySelector('.dl-words');
+            const reason = li.querySelector('.dl-reason');
+            const s = el => el ? getComputedStyle(el) : {};
+            return {glyph: mark.textContent, markColor: s(mark).color,
+                    markBg: s(mark).backgroundColor, rowBg: s(li).backgroundColor,
+                    rowBorder: s(li).borderTopColor,
+                    reasonColor: s(reason).color,
+                    markLeft: mark.getBoundingClientRect().right
+                              <= words.getBoundingClientRect().left};
+        }""", kind)
 
     def press(self):
         self.page.click('#dl-open')
@@ -347,7 +382,12 @@ def scenario_folder(browser, server, folder, lab, prolific):
     check(confirm['height'] > other['height'] and confirm['width'] > other['width'],
           'and bigger than Cancel')
     check('—' not in text, 'no em dash in the words')
-    screen.shot('02_confirm_folder')
+    states = screen.states()
+    check(set(states.values()) == {'planned'}, f'nothing looks done yet ({states})')
+    check(screen.look('SENSITIVE')['markColor'] != 'rgb(31, 146, 84)',
+          'so the tick is not the green one')
+    check('SENSITIVE (5 rows)' in text, 'the same row words as the result')
+    screen.shot('02_confirm_folder_full_study')
 
     page.click('#dl-cancel')
     check(not page.locator('#dl-overlay.open').count(), 'Cancel closes it')
@@ -356,14 +396,23 @@ def scenario_folder(browser, server, folder, lab, prolific):
     screen.press()
     screen.confirm()
     text = screen.panel_text()
-    check('All 3 files were written' in text, f'the result says so ({text[:60]}...)')
+    check(screen.heading() == 'Data saved', f'the heading says so ({screen.heading()})')
+    check(screen.states() == {'SENSITIVE': 'done', 'ANONYMOUS': 'done', 'PAYMENTS': 'done'},
+          f'and three rows are done ({screen.states()})')
+    look = screen.look('SENSITIVE')
+    check(look['glyph'] == '\u2713' and look['markColor'] == 'rgb(31, 146, 84)' and look['markLeft'],
+          f'a green tick, to the left of the name ({look["glyph"]}, {look["markColor"]})')
+    check('SENSITIVE (5 rows)' in text, 'the row reads SENSITIVE (5 rows)')
+    check(page.locator('.dl-verdict.good').count() == 1, 'the heading uses the good style')
+    check(not page.locator('.dl-warn').count() and 'Did not exist' not in text,
+          'with every payment column there, no warning')
     stem = f'EXP_217b_{TODAY}'
     data, wide_rows = check_files(server, folder, stem, 5)
     for kind, name in (('SENSITIVE', f'{stem}_SENSITIVE.csv'), ('ANONYMOUS', f'{stem}.csv'),
                        ('PAYMENTS', f'{stem}_PAYMENTS.csv')):
         check(os.path.join(folder, kind, name) in text, f'the result lists the full {kind} path')
     check('5 rows' in text, 'and the row count')
-    screen.shot('03_result_folder')
+    screen.shot('03_result_folder_full_study')
 
     section('the data: a Prolific study and a lab one with bank details, two sessions')
     check({r['session.code'] for r in wide_rows} == {lab, prolific},
@@ -391,7 +440,8 @@ def scenario_folder(browser, server, folder, lab, prolific):
     check(f'EXP_217b_{TODAY}_SENSITIVE_2.csv' in text, 'the confirm step shows _2 already')
     screen.shot('04_confirm_second_press')
     screen.confirm()
-    check('All 3 files were written' in screen.panel_text(), 'all three written')
+    check(screen.heading() == 'Data saved' and list(screen.states().values()) == ['done'] * 3,
+          'all three written')
     check(len(tree(folder)) == 6, f'six files now ({len(tree(folder))})')
     for name in (f'SENSITIVE/{stem}_SENSITIVE_2.csv', f'ANONYMOUS/{stem}_2.csv',
                  f'PAYMENTS/{stem}_PAYMENTS_2.csv'):
@@ -422,7 +472,7 @@ def scenario_folder(browser, server, folder, lab, prolific):
     page.wait_for_selector('.dl-verdict', timeout=120000)
     second.wait_for_selector('.dl-verdict', timeout=120000)
     both = screen.panel_text() + ' ' + ' '.join(second.inner_text('#dl-overlay').split())
-    check(both.count('All 3 files were written') == 2, 'both tabs report success')
+    check(both.count('Data saved') == 2, 'both tabs report success')
     names = tree(folder)
     check(len(names) == 15, f'fifteen files, so nothing was shared or lost ({len(names)})')
     for number in ('_4', '_5'):
@@ -463,13 +513,18 @@ def scenario_broken_folders(browser, server, folder, lab):
         fh.write('in the way')
     screen.press()
     text = screen.panel_text()
-    check('A file called PAYMENTS is in the way' in text, 'the confirm step warns')
+    check('PAYMENTS will not be saved: a file is in the way' in text, 'the confirm step warns')
+    check(screen.states()['PAYMENTS'] == 'failed', 'on that row, with the failure mark')
+    check(screen.page.inner_text('#dl-confirm') == 'Save the 2 files',
+          'and the main action counts only what can be saved')
     screen.shot('06_confirm_subfolder_taken')
     screen.confirm()
     text = screen.panel_text()
-    check('Only 2 of the 3 files were written' in text, f'the result says so ({text[:70]})')
-    check('not written' in text and 'a file is in the way of that folder' in text,
-          'and says which and why')
+    check(screen.heading() == 'Some files were not saved',
+          f'the heading is not Data saved ({screen.heading()})')
+    check(screen.states() == {'SENSITIVE': 'done', 'ANONYMOUS': 'done', 'PAYMENTS': 'failed'},
+          f'and the rows say which ({screen.states()})')
+    check('PAYMENTS not saved: a file is in the way of that folder' in text, 'and why')
     check(open(os.path.join(folder, 'PAYMENTS')).read() == 'in the way',
           'the file in the way is untouched')
     screen.shot('07_result_subfolder_taken')
@@ -489,8 +544,9 @@ def scenario_broken_folders(browser, server, folder, lab):
         screen.confirm()
         text = screen.panel_text()
         os.chmod(locked, stat.S_IRWXU)
-        check('Only 2 of the 3 files were written' in text
-              and 'no permission to write there' in text,
+        check(screen.heading() == 'Some files were not saved'
+              and screen.states()['ANONYMOUS'] == 'failed'
+              and 'ANONYMOUS not saved: no permission to write there' in text,
               f'says which file and why ({text[:90]})')
         after = tree(folder)
         check(len(after) == len(before) + 2, 'and exactly two new files are on disk')
@@ -506,7 +562,9 @@ def scenario_broken_folders(browser, server, folder, lab):
         text = screen.panel_text()
         for sub in subfolders:
             os.chmod(sub, stat.S_IRWXU)
-        check('No files were written' in text and text.count('no permission to write there') == 3,
+        check(screen.heading() == 'Nothing was saved'
+              and text.count('no permission to write there') == 3
+              and screen.page.locator('.dl-verdict.bad').count() == 1,
               f'nothing can be written: the screen says so, file by file ({text[:60]})')
         check(tree(folder) == before, 'and the disk agrees')
         screen.shot('08b_result_nothing_written')
@@ -519,6 +577,7 @@ def scenario_missing_base(browser, server, missing, lab):
     screen.press()
     text = screen.panel_text()
     check(missing in text and 'does not exist' in text, 'the error names the folder')
+    check(screen.heading() == 'Nothing was saved', f'under the right heading ({screen.heading()})')
     check(screen.page.locator('#dl-confirm').count() == 0, 'there is nothing to confirm')
     check(not os.path.exists(missing), 'and nothing was created')
     screen.shot('09_missing_base_folder')
@@ -629,7 +688,9 @@ def scenario_browser_mode(browser, server, lab):
           and IBAN.encode() not in saved[f'EXP_217b_{TODAY}.csv'],
           'the IBAN is in PAYMENTS and not in ANONYMOUS')
     text = screen.panel_text()
-    check('3 files sent to the browser' in text, f'the screen says "sent to the browser" ({text[:50]})')
+    check(screen.heading() == 'Data sent to the browser',
+          f'the heading says "sent to the browser" ({screen.heading()})')
+    check(list(screen.states().values()) == ['done'] * 3, 'three rows with their tick')
     check('written' not in text and 'saved' not in text and 'arrived.' not in text.replace('whether they arrived', ''),
           'and claims nothing about them having arrived')
     check('cannot see whether they arrived' in text, 'and says the server cannot see that')
@@ -678,6 +739,8 @@ def scenario_browser_mode(browser, server, lab):
     screen.shot('13_confirm_in_report_tab')
     frame.locator('#dl-confirm').click()
     frame.locator('.dl-verdict').wait_for(timeout=120000)
+    check(frame.locator('.dl-verdict').inner_text() == 'Data sent to the browser',
+          'the iframe shows the same heading')
     downloads = get_downloads(screen, 3)
     check({d.suggested_filename for d in downloads} == want,
           f'all three arrive from inside the iframe ({len(downloads)})')
@@ -740,7 +803,7 @@ PLAIN_SETTINGS = """
 from os import environ
 SESSION_CONFIGS = [dict(name='plain', display_name='Plain study', app_sequence=['plain'],
                         num_demo_participants=2)]
-SESSION_CONFIG_DEFAULTS = dict(real_world_currency_per_point=1.00, participation_fee=0.00)
+SESSION_CONFIG_DEFAULTS = dict(real_world_currency_per_point=1.00, participation_fee=1.00)
 PARTICIPANT_FIELDS = []
 SESSION_FIELDS = []
 LANGUAGE_CODE = 'en'
@@ -752,6 +815,9 @@ SECRET_KEY = 'plain'
 ROOMS = []
 EXIT_CODES = dict(finished=1, abandoned=0)  # the dashboard's own helper module reads it
 """
+
+# Only in session.vars, so it can only be in the files if a helper adds it.
+CHAT_LINE = 'A LINE ONLY SESSION VARS HAS'
 
 PLAIN_APP = """
 from otree.api import *
@@ -774,6 +840,12 @@ class Ask(Page):
     form_model = 'player'
     form_fields = ['answer']
 
+    @staticmethod
+    def before_next_page(player, timeout_happened):
+        player.payoff = 2.5
+        player.session.vars.setdefault('chat_log', []).append(
+            [player.participant.code, 'A LINE ONLY SESSION VARS HAS'])
+
 class Done(Page):
     pass
 
@@ -786,31 +858,37 @@ data_download.install_download_route_or_note()
 """
 
 
+def make_plain_app(server):
+    """The server's copy becomes a study not built from this template: its own
+    settings and one app, carrying only the root modules the button needs."""
+    keep = ('data_download.py', 'data_columns.py', 'otree_routes.py',
+            'experimenter_dashboard.py', 'common.py', 'buildinfo.py')
+    shutil.rmtree(server.app)
+    os.makedirs(os.path.join(server.app, 'plain'))
+    os.makedirs(os.path.join(server.app, '_static', 'global', 'css'))
+    for name in keep:
+        shutil.copy(os.path.join(REPO_ROOT, name), server.app)
+    shutil.copy(os.path.join(REPO_ROOT, '_static', 'global', 'css', 'base.css'),
+                os.path.join(server.app, '_static', 'global', 'css'))
+    with open(os.path.join(server.app, 'settings.py'), 'w') as fh:
+        fh.write(PLAIN_SETTINGS)
+    with open(os.path.join(server.app, 'plain', '__init__.py'), 'w') as fh:
+        fh.write(PLAIN_APP)
+    for page in ('Ask', 'Done'):
+        with open(os.path.join(server.app, 'plain', f'{page}.html'), 'w') as fh:
+            fh.write('{{ block title }}Plain{{ endblock }}\n'
+                     '{{ block content }}{{ formfields }}{{ next_button }}{{ endblock }}\n')
+
+
 def scenario_plain_study(browser):
     """A study NOT built from this template: its own settings and one app, carrying
     only the root modules the button needs. No IBAN, BIC, Prolific or earned column
     exists, and an export with those columns cannot be faked here: it is oTree's."""
     section('a study not built from this template: no anonymous file, payments as far as they exist')
     server = Server()
-    keep = ('data_download.py', 'data_columns.py', 'otree_routes.py',
-            'experimenter_dashboard.py', 'common.py', 'buildinfo.py')
     base_dir = tempfile.mkdtemp(prefix='download_check_plain_')
     try:
-        shutil.rmtree(server.app)
-        os.makedirs(os.path.join(server.app, 'plain'))
-        os.makedirs(os.path.join(server.app, '_static', 'global', 'css'))
-        for name in keep:
-            shutil.copy(os.path.join(REPO_ROOT, name), server.app)
-        shutil.copy(os.path.join(REPO_ROOT, '_static', 'global', 'css', 'base.css'),
-                    os.path.join(server.app, '_static', 'global', 'css'))
-        with open(os.path.join(server.app, 'settings.py'), 'w') as fh:
-            fh.write(PLAIN_SETTINGS)
-        with open(os.path.join(server.app, 'plain', '__init__.py'), 'w') as fh:
-            fh.write(PLAIN_APP)
-        for page in ('Ask', 'Done'):
-            with open(os.path.join(server.app, 'plain', f'{page}.html'), 'w') as fh:
-                fh.write('{{ block title }}Plain{{ endblock }}\n'
-                         '{{ block content }}{{ formfields }}{{ next_button }}{{ endblock }}\n')
+        make_plain_app(server)
         server.resetdb()
         server.start(base_dir)
         code = api_session(server, 'plain', 2)
@@ -824,23 +902,34 @@ def scenario_plain_study(browser):
         screen = Screen(browser, server, code)
         screen.press()
         text = screen.panel_text()
-        check('No anonymous file: this study has no IBAN, BIC or Prolific columns' in text,
+        check('ANONYMOUS: no IBAN, BIC or Prolific columns in this data' in text,
               'the confirm step says there will be no anonymous file')
-        check('This study has no column for: Prolific ID' in text and 'total earned' in text,
-              'and which payment columns do not exist')
-        check('write two files' in text.lower(), 'and that two files will be written')
+        check(WARNING in text, 'and which payment columns do not exist')
+        check(screen.states() == {'SENSITIVE': 'planned', 'ANONYMOUS': 'skipped', 'PAYMENTS': 'planned'},
+              f'two files will be saved ({screen.states()})')
         check(os.path.join('ANONYMOUS', f'EXP_{TODAY}.csv') not in text,
               'and promises no anonymous path')
-        check(screen.page.inner_text('#dl-confirm') == 'Write the 2 files',
+        check(screen.page.inner_text('#dl-confirm') == 'Save the 2 files',
               'the main action counts the files')
         screen.shot('15_confirm_plain_study')
         screen.confirm()
         text = screen.panel_text()
-        check('Both files were written' in text, f'the result says so ({text[:60]})')
-        check('No anonymous file' in text and 'This study has no column for' in text,
+        check(screen.heading() == 'Data saved', f'the heading says so ({screen.heading()})')
+        check('ANONYMOUS: no IBAN, BIC or Prolific columns in this data' in text and WARNING in text,
               'and repeats why')
         check(screen.page.locator('.dl-verdict.good').count() == 1,
               'a study without those columns is not shown as a failure')
+        skip_look = screen.look('ANONYMOUS')
+        check(skip_look['glyph'] == '\u2717' and skip_look['markColor'] == 'rgb(194, 56, 74)'
+              and skip_look['markLeft'], f'the skip has its red X on the left ({skip_look})')
+        warn = screen.page.locator('#dl-overlay li[data-kind=PAYMENTS] .dl-warn')
+        check(warn.count() == 1 and warn.inner_text() == WARNING, 'the warning is inside the PAYMENTS row')
+        check(warn.evaluate('el => getComputedStyle(el).backgroundColor') == 'rgb(255, 243, 201)',
+              'and yellow')
+        for raw in data_columns.PAYMENT_COLUMNS[1:]:
+            check(raw not in text and raw in warn.get_attribute('title'),
+                  f'{raw}: not on the screen, in the hover only')
+        check('SENSITIVE (2 rows)' in text and 'PAYMENTS (2 rows)' in text, 'name, then rows')
         check('2 rows' in text and os.path.join(base_dir, 'SENSITIVE') in text,
               'with paths and rows')
         screen.shot('16_result_plain_study')
@@ -854,7 +943,8 @@ def scenario_plain_study(browser):
         head, rows = read_csv_bytes(open(os.path.join(
             base_dir, 'PAYMENTS', f'EXP_{TODAY}_PAYMENTS.csv'), 'rb').read())
         check(head == ['participant.code'] and sorted(r['participant.code'] for r in rows)
-              == sorted(p), 'PAYMENTS has the participant code alone, every participant')
+              == sorted(p), "the template's helper kept: PAYMENTS has the participant code "
+              'alone, every participant')
         screen.close()
 
         server.start(None)
@@ -867,13 +957,321 @@ def scenario_plain_study(browser):
               == [f'EXP_{TODAY}_PAYMENTS.csv', f'EXP_{TODAY}_SENSITIVE.csv'],
               'browser mode: two real downloads, no anonymous one')
         text = screen.panel_text()
-        check('2 files sent to the browser' in text and 'No anonymous file' in text,
+        check(screen.heading() == 'Data sent to the browser'
+              and 'ANONYMOUS: no IBAN, BIC or Prolific columns in this data' in text,
               f'and it says so ({text[:50]})')
         screen.shot('18_result_plain_browser')
         screen.close()
+
+        section('the same study with a personal column left over: a failure, not a skip')
+        server.stop()
+        with open(os.path.join(server.app, 'plain', '__init__.py'), 'w') as fh:
+            fh.write(PLAIN_APP.replace('answer = models.StringField(blank=True)',
+                                       'answer = models.StringField(blank=True)\n'
+                                       '    iban = models.StringField(blank=True)'))
+        server.resetdb()
+        base_two = os.path.join(base_dir, 'second')
+        os.mkdir(base_two)
+        server.start(base_two)
+        code = api_session(server, 'plain', 1)
+        screen = Screen(browser, server, code)
+        screen.press()
+        check(screen.states()['ANONYMOUS'] == 'failed'
+              and 'ANONYMOUS will not be saved: these columns look personal' in screen.panel_text(),
+              'the confirm step shows the failure already')
+        screen.shot('19_confirm_personal_column')
+        screen.confirm()
+        text = screen.panel_text()
+        check(screen.heading() == 'Some files were not saved',
+              f'the heading is not Data saved ({screen.heading()})')
+        check(screen.page.locator('.dl-verdict.bad').count() == 1, 'and uses the failure style')
+        check('ANONYMOUS not saved: these columns look personal' in text and 'plain.1.player.iban' in text,
+              'the row names the column')
+        fail_look = screen.look('ANONYMOUS')
+        check(fail_look['glyph'] == skip_look['glyph'] and fail_look['markLeft'],
+              'it also has the X on the left, as Julian asked')
+        check('rgb(194, 56, 74)' in (fail_look['markBg'], fail_look['markColor']),
+              'in red')
+        for part in ('markBg', 'rowBg', 'rowBorder', 'reasonColor'):
+            check(fail_look[part] != skip_look[part],
+                  f'and looks different from the skip: {part} {fail_look[part]} / {skip_look[part]}')
+        screen.shot('20_result_personal_column')
+        screen.close()
+        server.start(None)
+        screen = Screen(browser, server, code)
+        screen.press()
+        screen.confirm()
+        check(screen.heading() == 'Some files were not sent' and screen.states()['ANONYMOUS'] == 'failed',
+              f'browser mode: the same failure, in its own words ({screen.heading()})')
+        screen.shot('21_result_personal_column_browser')
+        screen.close()
+    finally:
+        server.destroy()
+        for root, dirs, _names in os.walk(base_dir):
+            for name in dirs:
+                os.chmod(os.path.join(root, name), stat.S_IRWXU)
+        shutil.rmtree(base_dir, ignore_errors=True)
+
+
+COMPUTED_HELPER = """
+def my_files(rows):
+    from otree.database import db
+    from otree.models import Session
+    files = split_export(rows)
+    fee = rows[0].index('session.config.participation_fee')
+    payoff = rows[0].index('participant.payoff')
+    totals = [float(row[fee] or 0) + float(row[payoff] or 0) for row in rows[1:]]
+    for file in files:
+        if file['kind'] == 'PAYMENTS':
+            table = file['table']
+            file['table'] = [table[0] + ['total_earned']] + [
+                row + [total] for row, total in zip(table[1:], totals)]
+    keep = [i for i, name in enumerate(rows[0])
+            if name == 'participant.code' or name.startswith('plain.')]
+    files.append(dict(kind='PLAIN_APP', table=[[row[i] for i in keep] for row in rows],
+                      note='A note of its own'))
+    chat = [['session.code', 'sender', 'text']]
+    for session in db.query(Session):
+        for sender, text in session._vars.get('chat_log', []):
+            chat.append([session.code, sender, text])
+    files.append(dict(kind='CHAT', ending='_chatlog', table=chat))
+    return files
+DOWNLOAD_HELPER = my_files
+"""
+
+RAISING_HELPER = """
+def my_files(rows):
+    raise KeyError('a message quoting NL91ABNA0417164300')
+DOWNLOAD_HELPER = my_files
+"""
+
+INVALID_HELPER = """
+def my_files(rows):
+    return [dict(kind='../up', table=[['a']]), dict(rows=rows)]
+DOWNLOAD_HELPER = my_files
+"""
+
+
+def edit_data_columns(app, source, extra='', remove_line=None):
+    """data_columns.py as a study's author would leave it, in the throwaway copy."""
+    with open(source) as fh:
+        text = fh.read()
+    if remove_line:
+        check(f'\n{remove_line}\n' in text, f'the copy has the line to edit: {remove_line}')
+        text = text.replace(f'\n{remove_line}\n', '\n')
+    with open(os.path.join(app, 'data_columns.py'), 'w') as fh:
+        fh.write(text + extra)
+
+
+def database_rows(server):
+    """Every row of every table of the server's own database, read-only."""
+    conn = sqlite3.connect(f'file:{os.path.join(server.app, "db.sqlite3")}?mode=ro', uri=True)
+    try:
+        names = [r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+        return {name: conn.execute(f'SELECT * FROM "{name}"').fetchall() for name in names}
+    finally:
+        conn.close()
+
+
+def scenario_helpers(browser):
+    section("a study's helper, edited into data_columns.py: none means one file")
+    server = Server()
+    source = os.path.join(REPO_ROOT, 'data_columns.py')
+    base_dir = tempfile.mkdtemp(prefix='download_check_helper_')
+    try:
+        make_plain_app(server)
+        edit_data_columns(server.app, source, remove_line='DOWNLOAD_HELPER = download_files')
+        server.resetdb()
+        folder = os.path.join(base_dir, 'none')
+        os.mkdir(folder)
+        server.start(folder)
+        code = api_session(server, 'plain', 2)
+        p = participant_codes(server, code)
+        s = requests.Session()
+        r = s.get(f'{server.base}/InitializeParticipant/{p[0]}')
+        r = s.post(r.url, data={'answer': 'hello'})
+        check('/plain/Done/' in r.url, 'a participant has answered, which writes the chat log')
+        screen = Screen(browser, server, code)
+        screen.press()
+        text = screen.panel_text()
+        check(screen.states() == {'SENSITIVE': 'planned'}, f'the helper line deleted: one row ({screen.states()})')
+        check('ANONYMOUS' not in text and 'PAYMENTS' not in text and 'Did not exist' not in text,
+              'no word about files nobody asked for')
+        check('SENSITIVE (2 rows)' in text, 'and that one row is there')
+        check(screen.page.inner_text('#dl-confirm') == 'Save the file', 'the main action counts it')
+        screen.shot('22_confirm_no_helper')
+        screen.confirm()
+        text = screen.panel_text()
+        check(screen.heading() == 'Data saved', f'Data saved ({screen.heading()})')
+        check(screen.states() == {'SENSITIVE': 'done'}, f'the one tick ({screen.states()})')
+        check(screen.page.locator('#dl-overlay .dl-mark').all_inner_texts() == ['\u2713'],
+              'and no X anywhere')
+        check('ANONYMOUS' not in text and 'PAYMENTS' not in text, 'and no other file named')
+        name = os.path.join('SENSITIVE', f'EXP_{TODAY}_SENSITIVE.csv')
+        check(tree(folder) == [name], f'exactly one file on disk ({tree(folder)})')
+        wide = http_admin(server).get(server.base + '/ExportWide').content
+        check(open(os.path.join(folder, name), 'rb').read() == wide, 'byte for byte /ExportWide')
+        screen.shot('23_result_no_helper')
+        screen.close()
+
+        server.stop()
+        edit_data_columns(server.app, source, extra='\nDOWNLOAD_HELPER = None\n')
+        folder = os.path.join(base_dir, 'none2')
+        os.mkdir(folder)
+        server.start(folder)
+        screen = Screen(browser, server, code)
+        screen.press()
+        check(screen.states() == {'SENSITIVE': 'planned'}, 'set to None: one row')
+        screen.confirm()
+        check(tree(folder) == [name], f'and one file ({tree(folder)})')
+        screen.close()
+
+        section("a helper with a computed column, its own kinds and a chat log from session vars")
+        server.stop()
+        edit_data_columns(server.app, source, extra=COMPUTED_HELPER)
+        folder = os.path.join(base_dir, 'custom')
+        os.mkdir(folder)
+        server.start(folder)
+        before = database_rows(server)
+        screen = Screen(browser, server, code)
+        screen.press()
+        check(list(screen.states()) == ['SENSITIVE', 'ANONYMOUS', 'PAYMENTS', 'PLAIN_APP', 'CHAT'],
+              f"the study's own kinds on the confirm step ({list(screen.states())})")
+        check(screen.states()['CHAT'] == 'planned', 'in the same way as the others')
+        check(os.path.join(folder, 'CHAT', f'EXP_{TODAY}_chatlog.csv') in screen.panel_text(),
+              'with its own folder and ending')
+        check(screen.page.inner_text('#dl-confirm') == 'Save the 4 files', 'and the main action counts them')
+        screen.shot('24_confirm_custom_helper')
+        screen.confirm()
+        text = screen.panel_text()
+        check(screen.heading() == 'Data saved', f'Data saved ({screen.heading()})')
+        check(screen.states() == {'SENSITIVE': 'done', 'ANONYMOUS': 'skipped', 'PAYMENTS': 'done',
+                                  'PLAIN_APP': 'done', 'CHAT': 'done'}, f'rendered the same ({screen.states()})')
+        check('CHAT (1 row)' in text and 'PLAIN_APP (2 rows)' in text, 'name, then rows')
+        check(screen.look('CHAT')['glyph'] == '\u2713' and screen.look('CHAT')['markLeft'], 'with its tick')
+        note = screen.page.locator('#dl-overlay li[data-kind=PLAIN_APP] .dl-warn')
+        check(note.count() == 1 and note.inner_text() == 'A note of its own', "and the file's note")
+        screen.shot('25_result_custom_helper')
+        names = {
+            'SENSITIVE': os.path.join('SENSITIVE', f'EXP_{TODAY}_SENSITIVE.csv'),
+            'PAYMENTS': os.path.join('PAYMENTS', f'EXP_{TODAY}_PAYMENTS.csv'),
+            'PLAIN_APP': os.path.join('PLAIN_APP', f'EXP_{TODAY}_PLAIN_APP.csv'),
+            'CHAT': os.path.join('CHAT', f'EXP_{TODAY}_chatlog.csv')}
+        check(tree(folder) == sorted(names.values()), f'on disk ({tree(folder)})')
+        head, rows = read_csv_bytes(open(os.path.join(folder, names['PAYMENTS']), 'rb').read())
+        check(head[-1] == 'total_earned'
+              and sorted(float(r['total_earned']) for r in rows) == [1.0, 3.5],
+              f'a computed total: fee 1 + payoff 2.50 for the one who answered '
+              f'({[r["total_earned"] for r in rows]})')
+        head, rows = read_csv_bytes(open(os.path.join(folder, names['CHAT']), 'rb').read())
+        check(head == ['session.code', 'sender', 'text'] and rows[0]['text'] == CHAT_LINE,
+              f'the chat log, from session._vars ({rows})')
+        raw = open(os.path.join(folder, names['SENSITIVE']), 'rb').read()
+        check(CHAT_LINE.encode() not in raw and b'hello' in raw,
+              'and it is not in the raw export, as the description says')
+        check(raw == http_admin(server).get(server.base + '/ExportWide').content,
+              'whose bytes are still /ExportWide')
+        check(database_rows(server) == before,
+              'every row of every table unchanged after a plan and a press, with session vars read')
+
+        page = screen.page
+        page.click('#dl-cancel')
+        screen.press()
+        screen.confirm()
+        check(sum(n.endswith('_2.csv') for n in tree(folder)) == 4 and len(tree(folder)) == 8,
+              'a second press: the same number on all four, nothing overwritten')
+        screen.close()
+
+        server.stop()
+        server.start(None)
+        screen = Screen(browser, server, code)
+        screen.press()
+        screen.confirm()
+        downloads = get_downloads(screen, 4)
+        check(sorted(d.suggested_filename for d in downloads) == sorted(
+            f'EXP_{TODAY}{e}.csv' for e in ('_SENSITIVE', '_PAYMENTS', '_PLAIN_APP', '_chatlog')),
+              'browser mode: four real downloads, the study\'s own among them')
+        check(screen.page.locator('#dl-overlay a[download][data-kind=CHAT]').count() == 1,
+              'with its visible link')
+        check(screen.heading() == 'Data sent to the browser', f'and the honest heading ({screen.heading()})')
+        screen.shot('26_result_custom_helper_browser')
+        screen.close()
+
+        for label, helper, words, shot in (
+                ('raises', RAISING_HELPER, 'raised KeyError', '27_result_helper_raises'),
+                ('returns something invalid', INVALID_HELPER, 'cannot be used: file 1 needs a kind',
+                 '28_result_helper_invalid')):
+            section(f'a helper that {label}: the raw file is saved, the failure is shown')
+            server.stop()
+            edit_data_columns(server.app, source, extra=helper)
+            folder = os.path.join(base_dir, shot)
+            os.mkdir(folder)
+            server.start(folder)
+            screen = Screen(browser, server, code)
+            screen.press()
+            check(screen.states() == {'SENSITIVE': 'planned', 'OTHER FILES': 'failed'},
+                  f'the confirm step says it ({screen.states()})')
+            screen.confirm()
+            text = screen.panel_text()
+            check(screen.heading() == 'Some files were not saved', f'the heading ({screen.heading()})')
+            check(screen.states() == {'SENSITIVE': 'done', 'OTHER FILES': 'failed'},
+                  f'the rows ({screen.states()})')
+            check(words in text, f'the reason, plainly: {words}')
+            check('NL91ABNA0417164300' not in text and 'NL91ABNA0417164300' not in server.log(),
+                  'and not what its message quotes, on screen or in the log')
+            check(tree(folder) == [name], f'the raw file alone ({tree(folder)})')
+            check(open(os.path.join(folder, name), 'rb').read()
+                  == http_admin(server).get(server.base + '/ExportWide').content, 'byte for byte')
+            check(not screen.errors, f'no script errors ({screen.errors})')
+            check(requests.get(server.base + '/login').status_code == 200, 'and the server is fine')
+            screen.shot(shot)
+            screen.close()
     finally:
         server.destroy()
         shutil.rmtree(base_dir, ignore_errors=True)
+
+
+def scenario_switch_off(browser, server, lab):
+    """On the real template's own copy: the constant edited, the server restarted."""
+    section('the switch off, on the template itself')
+    bad = os.path.join(server.tmp, 'no such folder')
+    env = server.env(bad)
+    prelaunch = [sys.executable, os.path.join('scripts', 'prelaunch_check.py')]
+    on = subprocess.run(prelaunch, cwd=server.app, env=env, capture_output=True, text=True, timeout=300)
+    check('OTREE_DATA_FOLDER' in on.stdout + on.stderr,
+          'switch on: the launch check reports a bad OTREE_DATA_FOLDER')
+    path = os.path.join(server.app, 'data_columns.py')
+    original = open(path).read()
+    check('\nDOWNLOAD_DATA_BUTTON = True\n' in original, 'the copy has the switch, on')
+    with open(path, 'w') as fh:
+        fh.write(original.replace('\nDOWNLOAD_DATA_BUTTON = True\n', '\nDOWNLOAD_DATA_BUTTON = False\n'))
+    try:
+        off = subprocess.run(prelaunch, cwd=server.app, env=env, capture_output=True, text=True, timeout=300)
+        check('Download data' not in off.stdout + off.stderr and 'OTREE_DATA_FOLDER' not in off.stdout + off.stderr,
+              'switch off: the launch check says nothing about it')
+        size = len(server.log())
+        server.start(bad)
+        boot = server.log()[size:]
+        check('DOWNLOAD DATA' not in boot, 'nothing about it at boot, with the same bad folder')
+        check(requests.get(server.base + '/login').status_code == 200, 'and the server runs')
+        admin = http_admin(server)
+        url = f'{server.base}/experimenter_dashboard/{lab}'
+        for label, resp in (('the plan', admin.get(url + '/download_plan', allow_redirects=False)),
+                            ('the POST', admin.post(url + '/download', data={'csrftoken': 'x'},
+                                                    allow_redirects=False))):
+            check(resp.status_code == 404, f'{label} refuses, no 500: {resp.status_code}')
+        screen = Screen(browser, server, lab)
+        check(screen.page.locator('#dl-open').count() == 0, 'no button in a real browser')
+        check(screen.page.locator('#rows').count() == 1 and screen.page.locator('.dash-top h1').count() == 1,
+              'on a dashboard that is otherwise there')
+        screen.page.wait_for_function("document.getElementById('status').textContent !== 'connecting\u2026'")
+        check(not screen.errors, f'with no script errors ({screen.errors})')
+        screen.shot('29_dashboard_switch_off')
+        screen.close()
+    finally:
+        with open(path, 'w') as fh:
+            fh.write(original)
 
 
 def main():
@@ -924,8 +1322,10 @@ def main():
                 server.start(folder)
                 big = api_session(server, 'lab', TIMING_ROWS, lab_session='timing')
                 scenario_running_session(browser, server, folder, big)
+                scenario_switch_off(browser, server, lab)
                 server.stop()
                 scenario_plain_study(browser)
+                scenario_helpers(browser)
             finally:
                 browser.close()
     finally:
