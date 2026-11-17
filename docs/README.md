@@ -106,9 +106,9 @@ paid. The admin Payments figure is then the amount you actually owe.
 Two things will refuse to boot rather than let a second ledger open, because both
 are quiet in a way you would only notice at payout:
 
-- writing oTree's per-round `player.payoff` (`payoff_guard.py`);
+- writing oTree's per-round `player.payoff` (`core/payoff_guard.py`);
 - setting oTree's built-in `participation_fee` to anything but 0
-  (`fee_guard.py`).
+  (`core/fee_guard.py`).
 
 **If you are copying a study that already sets a participation fee, it will not
 boot until you move that money into the ledger** — put it in `payment_show_up`, or into

@@ -1,8 +1,8 @@
 """APPENDING AN EXTRA ROUTE TO oTree's OWN APP — the ONE implementation.
 
-Import as ``import otree_routes``. Like ``common``, ``identity``, ``buildinfo``
-and ``experimenter_dashboard``, this file MUST stay at the project root: its
-callers do top-level imports and oTree puts the project root on ``sys.path``.
+Import as ``from core import otree_routes``. Like the other shared modules in
+``core/``, it is importable from every caller because oTree puts the project
+root on ``sys.path`` (see core/__init__.py).
 
 WHY THIS FILE EXISTS
 --------------------

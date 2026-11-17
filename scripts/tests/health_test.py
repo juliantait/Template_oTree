@@ -55,10 +55,10 @@ from otree_inprocess import boot  # noqa: E402
 
 ot = boot(production=True)          # MUST come before any app import
 
-import buildinfo                    # noqa: E402
-import experimenter_dashboard as ed  # noqa: E402
-import health                       # noqa: E402
-import otree_routes                 # noqa: E402
+from core import buildinfo                    # noqa: E402
+from core import experimenter_dashboard as ed  # noqa: E402
+from core import health                       # noqa: E402
+from core import otree_routes                 # noqa: E402
 import settings                     # noqa: E402
 
 _failures = []

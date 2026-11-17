@@ -11,6 +11,38 @@ working.
 
 ---
 
+## The shared runtime modules live in `core/`; only `settings.py` stays at the root, 2026-11-17
+
+Decided by Julian, for a cleaner root.
+
+**What it is.** The twelve modules the apps and `settings.py` import (`buildinfo`,
+`common`, `data_columns`, `data_download`, `dot_bi`, `experimenter_dashboard`,
+`fee_guard`, `health`, `identity`, `otree_routes`, `participant_tab_monitor`,
+`payoff_guard`) moved from the root into the package `core/`, imported as
+`from core import common`. None of them was a standalone tool, so none went to
+`scripts/`.
+
+**Why it works.** oTree puts the project root on `sys.path`, so a package at the
+root is as importable as a loose module was. The old docstrings said these files
+"must stay at the project root"; what was actually required is that they be
+importable from the root, which `core/` is. `scripts/` would not do: it is not a
+package and not on the path at runtime. `settings.py` cannot move: oTree requires it.
+
+**The trap the move had to avoid.** Three modules found the root as "my own
+directory" (`buildinfo.APP_ROOT`, `payoff_guard._ROOT`, `fee_guard._ROOT`). In
+`core/` that would have read the build stamp from `core/BUILD_INFO.json` and
+scanned only `core/` for payoff and fee writes, with no error. They now take
+`core.REPO_ROOT`, the same marker walk to `settings.py` as `scripts/tests/_repo.py`
+(2026-08-16 entry). `core/` is a package, so the guards' package rule scans it.
+
+**Rejected:** leaving the modules at the root (a cluttered root for a template
+people copy); an import shim at the root (two names for one module, the
+one-concept-two-implementations defect).
+**Enforced:** the full suite (`payoff_ledger_test` asserts `core/common.py` is
+scanned; `build_context_test` asserts excluding `core/common.py` from the image
+breaks the build check; `build_provenance_test` reads the stamp from the root).
+Forks that pull from the template need the same import change in their own apps.
+
 ## Enter belongs to the focused control; everywhere else it still moves on, 2026-11-05
 
 **What it is.** `global.js` binds Enter to the page's forward action. It now first asks
@@ -158,10 +190,10 @@ lists everything missing, so a plain study also reads "total earned, Prolific ID
 longer than Julian's example, because leaving out the amount would hide the one most worth
 seeing.
 
-**The button is set up in code, in `data_columns.py`, and nowhere else (Julian, after his lab
+**The button is set up in code, in `core/data_columns.py`, and nowhere else (Julian, after his lab
 test).** He wants this behind the scenes, not a screen: no session config key, no box at
 session creation, no dashboard control. Three things sit at the top of that file:
-`DOWNLOAD_DATA_BUTTON`, `download_files` and `DOWNLOAD_HELPER`. **In `data_columns.py` and not
+`DOWNLOAD_DATA_BUTTON`, `download_files` and `DOWNLOAD_HELPER`. **In `core/data_columns.py` and not
 `settings.py`,** because that is where the file rules already live, so an author editing what
 the button makes finds its switch beside it, and because `data_download` stays free of oTree
 at import, which importing `settings` would end. Rejected: a key in `SESSION_CONFIG_DEFAULTS`,
@@ -212,7 +244,7 @@ vars), and `scripts/tests/download_data_browser_check.py`, in a real browser on 
 ## The dashboard's Download data button: one column list, no database writes, 2026-11-05
 
 **What it is.** A button at the top right of `/experimenter_dashboard/<code>`
-(`data_download.py`, two routes through `otree_routes`). One press, after a
+(`core/data_download.py`, two routes through `otree_routes`). One press, after a
 confirmation listing every path: SENSITIVE (the wide export), ANONYMOUS, PAYMENTS,
 each a plain CSV, all covering every session in the database. Julian downloads after
 each session and keeps a folder where the files build up; he decided payments are
@@ -225,13 +257,13 @@ The base folder must exist and is never created, so a typo is an error naming it
 warns that bank details can then reach git. Rejected: a folder field on the confirm
 step, because then a request chooses where a server writes.
 
-**One column list, `data_columns.py`,** read by the button and by
+**One column list, `core/data_columns.py`,** read by the button and by
 `scripts/format_session_data.py`. The button needs no pandas, so it could not call the
 script, and a second copy of "what makes a file anonymous" is exactly what CLAUDE.md
 warns about. Moving the lists did not change what the script writes.
 
 **ANONYMOUS also empties `participant.participant_extra`,** which the drop list does
-not name. The real export showed why: a refused Prolific claim (`identity.py`) records the
+not name. The real export showed why: a refused Prolific claim (`core/identity.py`) records the
 refused ID in that JSON, so a drop list of ID columns alone leaves another person's ID
 in the "anonymous" file, only in that rare case. `format_session_data.py` already
 blanks the column, so the two tools agree. **Column kept, cells empty**, so the two
@@ -476,7 +508,7 @@ on the pre-pass CSS).
 
 The experimenter monitor no longer has a fixed step list. Its steps are THIS
 session's `app_sequence`, in order, then Done (`timeline_for_apps` in
-`experimenter_dashboard.py`); the header cells, grid track count, connector inset
+`core/experimenter_dashboard.py`); the header cells, grid track count, connector inset
 and the page's JS `STEPS` are all derived from that one per-session list, as they
 used to be from `STEP_LABELS` at import. A fork that adds, renames or reorders an
 app gets a correct monitor without editing the dashboard (Julian's request: the
@@ -665,7 +697,7 @@ on an **A/B split**, and every piece below is placed to keep that split coherent
 - **DOT-BI answer served under an OPAQUE id; graded server-side; never leaks.**
   The upstream repo encodes the answer only in the filename stem, so a subset of
   15 variants is vendored under opaque ids (`_static/global/img/dot_bi/dotbi_NN.gif`,
-  ~37 MB, GIFs unaltered) and the id→answer map lives in `dot_bi.py`, server-side,
+  ~37 MB, GIFs unaltered) and the id→answer map lives in `core/dot_bi.py`, server-side,
   never under `_static/` and never sent to the client. *Format choice:* kept the
   original GIFs, NOT re-encoded — lossy compression of the random-noise texture
   can destroy the concealment and human-solvability could not be verified here,
@@ -1098,11 +1130,11 @@ Appending a route to oTree's own app existed once, in
 thing, and a second copy is the inverted collapsed-distinction defect CLAUDE.md
 devotes a section to: one concept, two implementations, drifting invisibly until
 an oTree upgrade moves the route table and only one copy is updated. So the
-route-table half moved to **`otree_routes.py`** — importing `otree.urls`, the
+route-table half moved to **`core/otree_routes.py`** — importing `otree.urls`, the
 mid-import-versus-drift split, the `routes` shape check, idempotency by route
 name, extending both the table and a live `otree.asgi` router, and the
 `INSTALLED`/`ALREADY`/`NOT_IMPORTABLE` vocabulary. **Rejected:** importing the
-dashboard from `health.py`, which would make a deploy gate depend on an operator
+dashboard from `core/health.py`, which would make a deploy gate depend on an operator
 convenience.
 
 **The `AdminView` auth shape check STAYED in the dashboard**, and the split is
@@ -1184,7 +1216,7 @@ by hand after a deploy, it is not in the application path, and it cannot take a
 study down.
 
 **The room binding is read from `/api/rooms`, not from `/health`**, even though
-`/health` also knows — two independent witnesses, so a bug in `health.py` cannot
+`/health` also knows — two independent witnesses, so a bug in `core/health.py` cannot
 certify itself. The test stages exactly that: a `/health` claiming the room is
 bound while the REST API says it is not, and the gate still fails.
 
@@ -1307,7 +1339,7 @@ content — so the stamp is written at DEPLOY, by `scripts/write_build_info.py`,
 into `BUILD_INFO.json` at the app root, carried into the image by the
 Dockerfile's `COPY . .`, and **never committed** (it is gitignored: a committed
 stamp would describe the previous commit in the tree of the next one).
-`buildinfo.py` reads it once at boot. The writer takes the values as **explicit
+`core/buildinfo.py` reads it once at boot. The writer takes the values as **explicit
 arguments and never shells out to git**, so it is testable in a container that
 has neither. `build_number` is `git rev-list --count HEAD`: monotonic, derived
 rather than stored, and the half a human can say out loud.
@@ -1371,7 +1403,7 @@ would report a session created before the key existed as having been created on
 the CURRENT build: provenance invented by the very helper that protects every
 other parameter, and indistinguishable from a true record. Absent must keep
 meaning "created before build stamping existed". This is the second deliberately
-raw read in `common.py`, next to `flag`, and for a *related but different*
+raw read in `core/common.py`, next to `flag`, and for a *related but different*
 reason — the comment at each says which.
 
 ### The `.gitignore` / `railway up` interaction, written down because it bites
@@ -1722,7 +1754,7 @@ Now `settings.EXIT_CODES` (which codes exist) and `settings.EXIT_CODE_META`
 (label / emoji / kind / when, all optional) drive everything, so a fork gets the
 operator view by editing the dict it is already editing. **Two tables rather than
 one** because `EXIT_CODES` is read as `EXIT_CODES['finished'] -> int` in four
-apps, `common`, `identity.py` and the tests; giving its values a richer shape
+apps, `common`, `core/identity.py` and the tests; giving its values a richer shape
 would break every call site.
 
 **An undeclared code counts as PREMATURE, and the direction is the decision.**
@@ -2046,7 +2078,7 @@ The old names named the *thing* and lost the family: `showup`, `num_rewarded`,
 grouping, so a lab operator scrolled past Prolific-only machinery with nothing to
 say which keys were theirs. The rename is **complete and grep-verified** — a
 config key is a string-keyed lookup, so a half-rename is a silent wrong default,
-not an import error — reaching `settings.py`, `common.py`'s safe accessors, the
+not an import error — reaching `settings.py`, `core/common.py`'s safe accessors, the
 `before/`/`intro/`/`main/`/`outro/` modules and their templates (oTree exposes a
 config value to a template as a bare `vars_for_template` name, so `{% if
 device_capture %}` had to move too), the scripts, the tests, and the docs. Two
@@ -2234,7 +2266,7 @@ that is the agreement the participant is actually making about how they take
 part, not a description of the mechanism. The mechanism naming and the study
 framing are two different things, and only the first overclaimed.
 
-**The stage value was changed even though stage values are frozen** (`common.py`
+**The stage value was changed even though stage values are frozen** (`core/common.py`
 STAGE_* block). The freeze protects LIVE studies whose exports are keyed on the
 old spelling; this template has no data, a running study carries its own copy of
 the code, and pushing a template change over a live session is forbidden
@@ -2247,7 +2279,7 @@ definition so it does not read as an accident.
 description of the mechanism — the same line drawn for `tab_monitor_disqualified`
 on 2026-08-12, see below); keeping the stage value frozen (it documents the same
 overclaim in the export). **Enforced:** nothing at boot — held by this entry, the
-frozen-values note in `common.py`, the CODEBOOK stage table, and the test suites
+frozen-values note in `core/common.py`, the CODEBOOK stage table, and the test suites
 (`dashboard_test`, `task_page_test`, `tab_monitor_detail_test`, `full_journey_test`,
 `gated_flow_test`) which reference the class and stamp and go red on a half-done
 rename.
@@ -2346,7 +2378,7 @@ degradation paired with earnings; §D7 asserts the served page ships the merged
 `time` pill markup reading `data.time_summary`. `scripts/tests/dashboard_render_check.py`
 measures the two merged pills side by side over the same `of 2 finished`
 population, that the old "past intro" item is gone, and that nothing clips or
-scrolls. The monitor site-preview is regenerated from `experimenter_dashboard.py`
+scrolls. The monitor site-preview is regenerated from `core/experimenter_dashboard.py`
 (`scripts/site_previews/`).
 
 ## The dashboard may fail a LAUNCH loudly, but never a running session silently — 2026-08-17
@@ -2361,7 +2393,7 @@ operator clicks the admin Report tab mid-session costs a session.** A boot-time
 failure is therefore NOT to be softened into a silent one.
 
 **What was fixed — the one gap that boots clean and fails later (scenario 4).**
-`URL_BASE` renamed consistently *inside* `experimenter_dashboard.py` while the
+`URL_BASE` renamed consistently *inside* `core/experimenter_dashboard.py` while the
 cross-file read in `outro.vars_for_admin_report` is missed. The boot succeeds; the
 first click on oTree's own Report tab (which oTree calls **unguarded**,
 `AdminReport.get_context_data`) then 500s on the `AttributeError`. Fixed in **both
@@ -2377,12 +2409,12 @@ in. The two are complementary: the runtime fallback stops the 500, `URL_BASE
 exists` stops the stale link ever shipping.
 
 **What was deliberately LEFT failing at boot.** An earlier instinct was to wrap
-the `import experimenter_dashboard` trailer at the end of `outro/__init__.py` in a
+the `from core import experimenter_dashboard` trailer at the end of `outro/__init__.py` in a
 `try/except` so a module-level error there (scenario 3), or a wholly missing
 `URL_BASE` definition, would fail soft. **Rejected on Julian's rule:** a genuine
 import-time error in the dashboard module is a code breakage the person launching
 must see and fix, and softening it to a silent 404 is exactly the later-invisible
-failure the rule forbids. The bare `import experimenter_dashboard` stays
+failure the rule forbids. The bare `from core import experimenter_dashboard` stays
 unguarded, and it stays the LAST lines of the LAST app module for the reason
 already documented there.
 
@@ -2493,14 +2525,14 @@ URL a participant sees). **Enforced:** `settings.ROOMS`; the room tests bind to
 `study` (`room_gate_test`, `identity_test`, `full_journey_test`,
 `render_check`), so a half-done rename fails to bind a session and goes red.
 
-## `monitoring.py` was renamed to `participant_tab_monitor.py` — the old name collided with the operator monitor — 2026-08-17
+## `monitoring.py` was renamed to `core/participant_tab_monitor.py` — the old name collided with the operator monitor — 2026-08-17
 
 A pure rename, decided by Julian, recorded because the old name was actively
 misleading and someone could later "fix" it back. The module holds the
 PARTICIPANT-side tab-monitor page wiring — the `MonitoredPage` /
 `OutroMonitoredPage` bases that arm each page against tab-switching, plus the
 `assert_monitored_page_sequence` boot guard. But "monitoring" also names the
-OPERATOR's job: `experimenter_dashboard.py` is the live session monitor the
+OPERATOR's job: `core/experimenter_dashboard.py` is the live session monitor the
 experimenter watches, the previews call it "the experimenter monitor", and
 `docs/` and `TODO.md` discuss "the monitor" meaning that screen. One word for
 two unrelated things is the collapsed-distinction rule wearing a filename — a
@@ -2544,7 +2576,7 @@ in `scripts/` now imports it; no depth-to-root count survives anywhere.
 **Why a MARKER WALK and not a corrected count.** A count is only right for the
 layout it was written against, so fixing the number just re-arms the trap for
 the next move. What actually *defines* this root is that `settings.py` sits in
-it — oTree requires that, and `common.py` records that it can never move. The
+it — oTree requires that, and `core/common.py` records that it can never move. The
 helper walks up from `__file__` until it finds that marker: correct at any
 depth, from any working directory, with nobody needing to remember a number. It
 also resolves correctly from a **staged copy** of the repo, which is how the
@@ -2663,7 +2695,7 @@ sixth preview, same 1920x1080 canvas as the others.
 **It could not be built like the other five, and the reason is worth keeping.**
 Every participant preview is a hand-written body in
 `scripts/site_previews/bodies/` composed of real shipped components, with the
-real stylesheets inlined. The monitor has no body to write: `experimenter_dashboard.py`
+real stylesheets inlined. The monitor has no body to write: `core/experimenter_dashboard.py`
 serves a shell whose `<tbody>` says `Waiting for first data…`, and every row,
 timeline marker, pill and quiz cell is built by that file's own `renderRow` /
 `stateHTML` / `timelineHTML` in JavaScript from the poll's JSON. Hand-writing
@@ -2857,10 +2889,10 @@ has quietly split. This repo has already had one convention-only rule turn out t
 be nothing (three documents calling oTree's `player.payoff` raise "enforcement"
 when it fires inside a participant's request).
 
-**Boot, never request time** — the `payoff_guard.py` precedent, and the reason is
+**Boot, never request time** — the `core/payoff_guard.py` precedent, and the reason is
 the same: oTree has no migrations, so an upgrade under live sessions is how every
 study built from this template is actually deployed, and a check that fires in a
-request is a dead page for whoever is mid-study. `fee_guard.py` is called from
+request is a dead page for whoever is mid-study. `core/fee_guard.py` is called from
 `before/__init__.py` beside the other two boot guards.
 
 **THE KNOWN COST, ACCEPTED WITH EYES OPEN.** A study copied from this template
@@ -2896,7 +2928,7 @@ trade the payoff guard exists to avoid).
 **Enforced:** `fee_guard.assert_participation_fee_is_zero()`, called at boot from
 `before/__init__.py`. Two halves: the RESOLVED configs (`SESSION_CONFIG_DEFAULTS`
 must carry an explicit 0; a per-config entry may omit the key but must not set a
-fee) and an AST scan of app packages and shared root modules for
+fee) and an AST scan of app packages (the shared modules in `core/` included) for
 `participation_fee` written as anything but a literal 0 — assignment, attribute,
 `config['participation_fee']`, a `dict(participation_fee=…)` keyword, or a dict
 literal. The scanned file list comes from `payoff_guard.files_to_scan`, not a
@@ -3459,7 +3491,7 @@ distinguishable from a nearly-ejected one (`tab_monitor_focus_loss_count` keeps 
 twice. The client is told its phase (`ejects: false`) and shows no overlay
 and no warning modal in the outro — the modal's threat would be a lie there.
 The asymmetry is stated, with its why, at every site that could read as
-inconsistent: `common._apply_focus_loss`, `participant_tab_monitor.py`, the top of
+inconsistent: `common._apply_focus_loss`, `core/participant_tab_monitor.py`, the top of
 `outro/__init__.py`, settings' integrity block, README (section + diagram),
 CODEBOOK ("Tab-monitor violation counts"), docs/conventions.md.
 **Rejected:** page-by-page opt-in (the model that produced the gap — a
@@ -3512,7 +3544,7 @@ screen now appears, which is what the neighbouring pages already assumed);
 blast radius today is zero — no live sessions, the same window the
 `prolific_` rename used.
 **Enforced:** `grep "config.get('recruitment')"` returns nothing outside
-`common.py`; `scripts/tests/copy_routing_test.py` pins the single-implementation rule
+`core/common.py`; `scripts/tests/copy_routing_test.py` pins the single-implementation rule
 the accessor carries.
 
 ## Task pages inherit their wiring from `TaskPage` — the template's one use of page inheritance — 2026-08-13
@@ -3561,7 +3593,7 @@ the primary surface and works unchanged with the tab deleted or broken** —
 built that way round deliberately. `vars_for_admin_report` is internally
 defensive (oTree calls it unguarded) and catches ONLY the import, with a
 literal fallback URL as the belt.
-`experimenter_dashboard.note_admin_tab_problems` applies the identity.py
+`experimenter_dashboard.note_admin_tab_problems` applies the core/identity.py
 discipline to the one silent failure mode: quiet when oTree is legitimately
 absent, LOUD (logged, never raised) when the admin-report symbols or the
 template lookup have drifted — because drift here means the tab quietly stops
@@ -3642,7 +3674,7 @@ collapsed-distinction rule, since a name-only check would refuse to boot over
 deploy can skip — the whole point is that the server will not come up; and
 `import`-and-introspect instead of parsing, which would execute
 `intro/generate_instructions_preview.py` and its browser driver at boot.
-**Enforced:** `payoff_guard.py`; `scripts/tests/payoff_ledger_test.py` §7 (a walked
+**Enforced:** `core/payoff_guard.py`; `scripts/tests/payoff_ledger_test.py` §7 (a walked
 journey leaves every round row's `_payoff` at 0) and §8 (the guard catches six
 write forms including `setattr` with a literal name, refuses a synthetic build
 naming file and line, does NOT fire on the participant write or on prose,
@@ -3769,7 +3801,7 @@ for, which is why the review flagged it.
 Requested by Julian, from the live page. The payment picture lives on the one
 dashboard tab, so nobody opens oTree's own Payments page to see what a running
 session is paying out. The `dash-summary` strip beneath the table
-(`experimenter_dashboard.py`) has TWO items: **avg intro time**, and a single
+(`core/experimenter_dashboard.py`) has TWO items: **avg intro time**, and a single
 **earnings** pill carrying an **avg** and a **total** subsection.
 
 **Why ONE earnings pill, not two items.** avg and total run over the *same*
@@ -4147,7 +4179,7 @@ Python (case-folded) and row lookup in SQL (collation-dependent) — so a
 returning `ABC123` took a fresh row against a stored `abc123`, and behaviour
 differed between sqlite (dev) and postgres (production). One implementation,
 called by both.
-**Enforced:** `identity.py`; `scripts/tests/identity_test.py`. This bug pattern is
+**Enforced:** `core/identity.py`; `scripts/tests/identity_test.py`. This bug pattern is
 generalised as the inverted collapsed-distinction rule in `CLAUDE.md`.
 
 ## The layout geometry baseline is committed, so intentional change is reviewable — 2026-08-12

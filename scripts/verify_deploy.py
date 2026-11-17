@@ -35,7 +35,7 @@ reason the script exists.
 THE ASSERTIONS, AND THE ONE THAT MATTERS MOST
 ----------------------------------------------
   SERVING       /health answers, with a body that parses as JSON and has the
-                shape health.py publishes.
+                shape core/health.py publishes.
   BUILD_STAMP   *** THE IMPORTANT ONE. *** The RUNNING build's stamp equals the
                 commit (and build number) just deployed. It is also what makes
                 every other assertion mean anything: without it, a perfect
@@ -45,7 +45,7 @@ THE ASSERTIONS, AND THE ONE THAT MATTERS MOST
   ROOM_BINDING  GET /api/rooms reports a session bound to the expected room.
                 Read from the REST API and NOT from /health, deliberately, even
                 though /health also knows: two independent witnesses, so a bug
-                in health.py cannot certify itself.
+                in core/health.py cannot certify itself.
   ROOM_PAGE     the room URL returns 200 and RENDERS REAL CONTENT — the study's
                 own markup, not an error page and not a stub. A stray symlink
                 once shipped `_templates` EMPTY and 500'd a live welcome page
@@ -109,7 +109,7 @@ thing it saw, named.
 WHAT THIS SCRIPT DOES NOT DO. It does not deploy, roll back, restart or bind
 anything, and it takes no action on failure beyond saying so and exiting
 non-zero. It also does not fail on the pre-launch checklist: /health carries the
-BOOT BANNER's subset of it (see health.py), and failing a deploy on a partial
+BOOT BANNER's subset of it (see core/health.py), and failing a deploy on a partial
 checklist would be a check lying about its own coverage. The names are printed
 as information; `scripts/prelaunch_check.py`, run in the launch environment, is
 the complete guard and the one that refuses.
@@ -263,7 +263,7 @@ class Ctx:
 
 
 def a_serving(ctx):
-    """SERVING — /health answers with the JSON health.py publishes. Every later
+    """SERVING — /health answers with the JSON core/health.py publishes. Every later
     assertion reads the body this caches."""
     resp = ctx.get(HEALTH_PATH)
     ctx.health = None
@@ -284,7 +284,7 @@ def a_serving(ctx):
         shape = (sorted(body)[:8] if isinstance(body, dict)
                  else type(body).__name__)
         return False, f'JSON without a "build" key: {shape}', (
-            'the /health payload shape from health.py (keys: ok, status, '
+            'the /health payload shape from core/health.py (keys: ok, status, '
             'reasons, database, room, build, prelaunch)')
     ctx.health = body
     return True, f'HTTP {resp.status}, JSON payload from {HEALTH_PATH}', wanted
@@ -574,7 +574,7 @@ def _expected_from_build_info(path):
     """
     if _APP_ROOT not in sys.path:
         sys.path.insert(0, _APP_ROOT)
-    import buildinfo
+    from core import buildinfo
     info = buildinfo.load(path)
     if not info['stamped']:
         print(f'FATAL: {path} is not a usable stamp: {info["problem"]}')
@@ -618,7 +618,7 @@ def parse_args(argv):
                 'cannot run')
     if _APP_ROOT not in sys.path:
         sys.path.insert(0, _APP_ROOT)
-    import buildinfo
+    from core import buildinfo
     if not buildinfo.is_real_sha(args.commit):
         # THE SAME PREDICATE THE WRITER AND THE READER USE — one implementation,
         # so this cannot demand a shape the stamp would never carry.

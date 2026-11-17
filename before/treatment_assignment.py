@@ -58,7 +58,7 @@ deliberately different failure policy. See `assign_on_arrival`.
 """
 import random
 
-import buildinfo
+from core import buildinfo
 import settings
 
 # The PLACEHOLDER cells, from the one place they are defined (settings.py). A
@@ -102,7 +102,7 @@ def _lock_session_row(session):
 
     Imported lazily: `otree.database` / `otree.models` are core and importable by
     now, but keeping the import at call time matches this codebase's habit
-    (identity.py) and avoids any app-import-order surprise.
+    (core/identity.py) and avoids any app-import-order surprise.
     """
     from otree.database import db
     from otree.models import Session

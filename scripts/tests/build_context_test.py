@@ -606,7 +606,7 @@ def main():
     for extra, label in ((['_templates'], 'a template directory'),
                          (['**/*.html'], 'every template, nested spelling'),
                          (['_static/global/css'], 'the stylesheets'),
-                         (['common.py'], 'one root module'),
+                         (['core/common.py'], 'one shared module in core/'),
                          (['scripts/db_state.py'], 'the boot-path script')):
         broken = build_context(root, patterns + extra)
         still_ok = (not missing_from(html, broken)

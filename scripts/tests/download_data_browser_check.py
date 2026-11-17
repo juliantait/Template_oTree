@@ -66,7 +66,7 @@ from _repo import REPO_ROOT  # noqa: E402
 import requests  # noqa: E402
 
 sys.path.insert(0, REPO_ROOT)
-import data_columns  # noqa: E402
+from core import data_columns  # noqa: E402
 from main_contract import task_page_submits  # noqa: E402
 from quiz_answers import CORRECT  # noqa: E402
 import bot_walker  # noqa: E402
@@ -851,8 +851,8 @@ class Done(Page):
 
 page_sequence = [Ask, Done]
 
-import data_download
-import experimenter_dashboard
+from core import data_download
+from core import experimenter_dashboard
 experimenter_dashboard.install_dashboard_route_or_note()
 data_download.install_download_route_or_note()
 """
@@ -860,14 +860,16 @@ data_download.install_download_route_or_note()
 
 def make_plain_app(server):
     """The server's copy becomes a study not built from this template: its own
-    settings and one app, carrying only the root modules the button needs."""
+    settings and one app, carrying only the core/ modules the button needs."""
     keep = ('data_download.py', 'data_columns.py', 'otree_routes.py',
             'experimenter_dashboard.py', 'common.py', 'buildinfo.py')
     shutil.rmtree(server.app)
     os.makedirs(os.path.join(server.app, 'plain'))
     os.makedirs(os.path.join(server.app, '_static', 'global', 'css'))
-    for name in keep:
-        shutil.copy(os.path.join(REPO_ROOT, name), server.app)
+    os.makedirs(os.path.join(server.app, 'core'))
+    for name in ('__init__.py',) + keep:
+        shutil.copy(os.path.join(REPO_ROOT, 'core', name),
+                    os.path.join(server.app, 'core'))
     shutil.copy(os.path.join(REPO_ROOT, '_static', 'global', 'css', 'base.css'),
                 os.path.join(server.app, '_static', 'global', 'css'))
     with open(os.path.join(server.app, 'settings.py'), 'w') as fh:
@@ -882,7 +884,7 @@ def make_plain_app(server):
 
 def scenario_plain_study(browser):
     """A study NOT built from this template: its own settings and one app, carrying
-    only the root modules the button needs. No IBAN, BIC, Prolific or earned column
+    only the core/ modules the button needs. No IBAN, BIC, Prolific or earned column
     exists, and an export with those columns cannot be faked here: it is oTree's."""
     section('a study not built from this template: no anonymous file, payments as far as they exist')
     server = Server()
@@ -1059,7 +1061,7 @@ def edit_data_columns(app, source, extra='', remove_line=None):
     if remove_line:
         check(f'\n{remove_line}\n' in text, f'the copy has the line to edit: {remove_line}')
         text = text.replace(f'\n{remove_line}\n', '\n')
-    with open(os.path.join(app, 'data_columns.py'), 'w') as fh:
+    with open(os.path.join(app, 'core', 'data_columns.py'), 'w') as fh:
         fh.write(text + extra)
 
 
@@ -1077,7 +1079,7 @@ def database_rows(server):
 def scenario_helpers(browser):
     section("a study's helper, edited into data_columns.py: none means one file")
     server = Server()
-    source = os.path.join(REPO_ROOT, 'data_columns.py')
+    source = os.path.join(REPO_ROOT, 'core', 'data_columns.py')
     base_dir = tempfile.mkdtemp(prefix='download_check_helper_')
     try:
         make_plain_app(server)
@@ -1241,7 +1243,7 @@ def scenario_switch_off(browser, server, lab):
     on = subprocess.run(prelaunch, cwd=server.app, env=env, capture_output=True, text=True, timeout=300)
     check('OTREE_DATA_FOLDER' in on.stdout + on.stderr,
           'switch on: the launch check reports a bad OTREE_DATA_FOLDER')
-    path = os.path.join(server.app, 'data_columns.py')
+    path = os.path.join(server.app, 'core', 'data_columns.py')
     original = open(path).read()
     check('\nDOWNLOAD_DATA_BUTTON = True\n' in original, 'the copy has the switch, on')
     with open(path, 'w') as fh:

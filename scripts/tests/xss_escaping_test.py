@@ -226,7 +226,7 @@ def main():
     # doc_html().
     import json as _json
     import tempfile as _tempfile
-    import buildinfo
+    from core import buildinfo
     tmpdir = _tempfile.mkdtemp(prefix='xss_build_stamp_')
     for i, payload in enumerate(PAYLOADS):
         stamp_path = os.path.join(tmpdir, f'stamp{i}.json')

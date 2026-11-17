@@ -1,9 +1,8 @@
 """/health — THE ONE UNAUTHENTICATED ANSWER TO "IS THIS DEPLOY ALIVE?"
 
-Import as ``import health``. Like ``common``, ``identity``, ``buildinfo``,
-``otree_routes`` and ``experimenter_dashboard``, this file MUST stay at the
-project root: the install hook does a top-level import and oTree puts the
-project root on ``sys.path``.
+Import as ``from core import health``. Like the other shared modules in
+``core/``, it is importable from the install hook because oTree puts the
+project root on ``sys.path`` (see core/__init__.py).
 
 WHY THIS FILE EXISTS
 --------------------
@@ -130,7 +129,7 @@ READING IT
 import logging
 import os
 
-import otree_routes
+from core import otree_routes
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +161,7 @@ def _build_block() -> dict:
     needs a branch for "the build block is missing".
     """
     try:
-        import buildinfo
+        from core import buildinfo
         info = buildinfo.current()
         return dict(stamped=bool(info['stamped']), commit=info['commit'],
                     commit_short=info['commit_short'],

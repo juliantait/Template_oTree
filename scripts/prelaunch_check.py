@@ -199,7 +199,7 @@ def auth_level_problems():
     WHY THIS IS A LAUNCH BLOCKER AND NOT A COMMENT. The admin is not just the
     session-creation screen: the data exports are there, oTree's own monitor is
     there, and since 2026-08-12 so is the experimenter dashboard
-    (`experimenter_dashboard.py`), which puts every participant's earnings and
+    (`core/experimenter_dashboard.py`), which puts every participant's earnings and
     conduct — screen-outs, comprehension failures, tab-monitor disqualifications
     — on one page. That page reuses oTree's login rather than inventing its own,
     which is the right design and also means its security is EXACTLY this
@@ -230,7 +230,7 @@ def dashboard_problems():
     blast-radius study (`_ai/dashboard_blast_radius.md`) found a drift that
     BOOTS CLEAN and then 500s oTree's own admin Report tab the first time an
     operator clicks it mid-session: URL_BASE renamed consistently INSIDE
-    experimenter_dashboard.py while the cross-file read in
+    core/experimenter_dashboard.py while the cross-file read in
     outro.vars_for_admin_report is missed. A boot-time banner cannot catch it
     because the boot succeeds; only a click three hours into a session does.
     This guard turns that click into a launch-blocking failure, while somebody
@@ -254,7 +254,7 @@ def dashboard_problems():
     problems = []
 
     try:
-        import experimenter_dashboard as ed
+        from core import experimenter_dashboard as ed
     except Exception as exc:
         # The module both the standalone dashboard and the Report tab read is
         # broken at import — nothing else here can be checked.
@@ -318,7 +318,7 @@ def download_problems():
     Reported, never raised, like every function above."""
     try:
         import outro  # noqa: F401  (runs the same boot-time install a server would)
-        import data_download
+        from core import data_download
     except Exception as exc:
         return [('Download data button (import data_download)',
                  f'{type(exc).__name__}: {exc}',
@@ -345,7 +345,7 @@ def build_line():
     the PASS/FAIL. Never raises: `buildinfo.label()` degrades to a plain phrase.
     """
     try:
-        import buildinfo
+        from core import buildinfo
         return (f'build cleared for launch: {buildinfo.label()} '
                 f'(information only — provenance never fails this check)')
     except Exception as exc:                                   # noqa: BLE001

@@ -57,7 +57,7 @@ from otree_inprocess import boot  # noqa: E402
 
 ot = boot(production=True)          # MUST come before any app import
 
-import experimenter_dashboard as ed  # noqa: E402
+from core import experimenter_dashboard as ed  # noqa: E402
 
 URL = ed.URL_BASE
 _failures = []

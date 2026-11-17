@@ -64,7 +64,7 @@ from device_gate_test import (PHONE_UA, TABLET_UA, DESKTOP_UA, NO_UA, BLANK_UA,
                               visible_text, page_name, participant_code,
                               create, session_vars, CODES, COMPLETION_URL_RE)
 from quiz_answers import CORRECT as QUIZ_CORRECT  # answers derived from the shipped items
-import common
+from core import common
 
 # See device_gate_test: `requests` will not send a malformed header, and the
 # participant we must not turn away is precisely the one whose header is.

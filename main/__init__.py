@@ -2,8 +2,8 @@ from otree.api import *
 
 # Take NUM_ROUNDS from session defaults (static at import time for oTree).
 from settings import INSTITUTION_NAME, SESSION_CONFIG_DEFAULTS, STATIC_VERSION
-import common
-import participant_tab_monitor
+from core import common
+from core import participant_tab_monitor
 num_experimental_rounds = SESSION_CONFIG_DEFAULTS['num_experimental_rounds']
 
 # One implementation, in common.flag (raw config.get — see its docstring for
@@ -34,7 +34,7 @@ class C(BaseConstants):
     # is_displayed) but NEVER MORE than were imported here.
     NUM_ROUNDS = num_experimental_rounds
     # THE EXPERIMENTER MONITOR (optional constants; see the timeline section of
-    # experimenter_dashboard.py). The step reads "Task" and its marker "2 of N",
+    # core/experimenter_dashboard.py). The step reads "Task" and its marker "2 of N",
     # where N is THIS session's round count — the config key below caps
     # C.NUM_ROUNDS exactly as rounds_for() does, so the operator sees the same
     # total as the participant's progress strip.
@@ -211,7 +211,7 @@ class TaskPage(participant_tab_monitor.MonitoredPage):
     monitor's script/stylesheet ship to every page via css_bundle.html — no
     per-template include left to forget.)
 
-    TWO GOTCHAS, still live — participant_tab_monitor.py's docstring carries the
+    TWO GOTCHAS, still live — core/participant_tab_monitor.py's docstring carries the
     full set:
       * oTree resolves page attributes AT IMPORT: a page that must NOT be
         monitored cannot just omit something — it says ``monitored = False``
@@ -338,5 +338,5 @@ page_sequence = [GameStart, payoff]
 # MONITORED BY DEFAULT — every page above must be a
 # participant_tab_monitor.MonitoredPage subclass or explicitly opted out; a page
 # that dodged the rule fails the BOOT here, never a participant (see
-# participant_tab_monitor.py).
+# core/participant_tab_monitor.py).
 participant_tab_monitor.assert_monitored_page_sequence(__name__, page_sequence)

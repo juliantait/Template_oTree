@@ -1,16 +1,17 @@
 """Shared, oTree-free helpers used across every app.
 
-Import as ``import common``. Keeping these here (not inside any one app) means
-every app reads participant state and records outcomes the same way.
+Import as ``from core import common``. Keeping these here (not inside any one
+app) means every app reads participant state and records outcomes the same way.
 
-This file MUST stay at the project root. All four apps do a top-level
-``import common``, and oTree puts the project root on ``sys.path``; moving it into
-a subfolder (e.g. scripts/) would break that import for every app.
+It lives in the ``core/`` package with the other shared runtime modules. oTree
+puts the project root on ``sys.path``, so ``core`` is importable from every app;
+only settings.py itself must sit at the root. Do not move it into scripts/,
+which is not a package and is not on the path at runtime.
 """
 import re
 import time
 
-import buildinfo
+from core import buildinfo
 from settings import EXIT_CODES  # re-exported for convenience
 
 # =============================================================================

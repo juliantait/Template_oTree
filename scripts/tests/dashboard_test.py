@@ -60,7 +60,7 @@ import bot_walker
 
 ot = boot(production=True)          # MUST come before any app import
 
-import experimenter_dashboard as ed
+from core import experimenter_dashboard as ed
 
 _failures = []
 
@@ -291,7 +291,7 @@ def main():
     # unchanged: this is still the DASHBOARD's install behaviour, reached the
     # way a boot reaches it. `scripts/tests/health_test.py` covers the shared
     # installer itself, including that /health gets the same treatment.
-    import otree_routes
+    from core import otree_routes
     real_import = otree_routes.import_urls
     otree_routes.import_urls = lambda: (_ for _ in ()).throw(
         ImportError('simulated'))
@@ -1203,7 +1203,7 @@ def main():
     # --- 2. TAB-MONITOR VIOLATIONS WHILE THEY CLIMB (item 2): count and
     # limit together, from tab_monitor_focus_loss_count and tab_monitor_max_violations —
     # never a number in the markup.
-    import common as _common
+    from core import common as _common
     mon = ot.create_session('prolific', num_participants=1)
     mcode = ot.participant_codes(mon)[0]
     walk(ot.client(), mcode, correct, stop_after='quiz', headers=DESKTOP)
@@ -1282,8 +1282,12 @@ def main():
     # raise.
     import outro as _outro3
     import sys as _sys3
-    _saved_mod = _sys3.modules.get('experimenter_dashboard')
-    _sys3.modules['experimenter_dashboard'] = None   # makes import raise
+    import core as _core3
+    # `from core import experimenter_dashboard` reads the package ATTRIBUTE
+    # first, so the attribute goes too, or the None below is never consulted.
+    _saved_mod = _sys3.modules.get('core.experimenter_dashboard')
+    _saved_attr = _core3.__dict__.pop('experimenter_dashboard', None)
+    _sys3.modules['core.experimenter_dashboard'] = None   # makes import raise
     try:
         _OutroSub = _gmm2('outro').Subsession
         _sub = (_db2.query(_OutroSub)
@@ -1294,9 +1298,11 @@ def main():
               f'(fallback URL, no raise: {v["dashboard_url"]})')
     finally:
         if _saved_mod is None:
-            _sys3.modules.pop('experimenter_dashboard', None)
+            _sys3.modules.pop('core.experimenter_dashboard', None)
         else:
-            _sys3.modules['experimenter_dashboard'] = _saved_mod
+            _sys3.modules['core.experimenter_dashboard'] = _saved_mod
+        if _saved_attr is not None:
+            _core3.experimenter_dashboard = _saved_attr
     # The drift check (quiet / loud discipline): green against this oTree.
     check(ed.note_admin_tab_problems() == 'ok',
           'note_admin_tab_problems reports ok against the installed oTree')

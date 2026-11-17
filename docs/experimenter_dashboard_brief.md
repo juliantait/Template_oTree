@@ -27,7 +27,7 @@ watching the study run.
 - **In-process**, as a custom route inside oTree — not a separate service.
 - Appended to `otree.urls.routes`, which `asgi.py` imports as a plain
   module-level list.
-- Installed with **the same monkeypatch discipline as `identity.py`**: quiet
+- Installed with **the same monkeypatch discipline as `core/identity.py`**: quiet
   when the module is legitimately not importable yet, loud on symbol drift. The
   two cases must not be collapsed into one `except`.
 - **Reuses oTree's own login** via `_requires_login` rather than inventing an

@@ -58,7 +58,7 @@ class FakePlayer:
 
 def main():
     ot = boot()
-    import common  # importable once oTree's settings are loaded
+    from core import common  # importable once oTree's settings are loaded
 
     config = dict(tab_monitor=True, tab_monitor_max_violations=99)
 

@@ -31,8 +31,8 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _APP_ROOT = os.path.dirname(os.path.dirname(_HERE))
 sys.path.insert(0, _APP_ROOT)
 
-import experimenter_dashboard as ed      # noqa: E402
-import common                            # noqa: E402  (frozen STAGE_* names)
+from core import experimenter_dashboard as ed      # noqa: E402
+from core import common                            # noqa: E402  (frozen STAGE_* names)
 
 _failures = []
 

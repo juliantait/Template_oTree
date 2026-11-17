@@ -48,7 +48,7 @@ CAUGHT — the two places a build can carry a fee:
     profile()` has run — i.e. the values oTree will actually use, not a guess at
     them from source. The defaults must carry an explicit `0`; a per-config entry
     may omit the key (it inherits) but must not set it to anything non-zero.
-  * ANY SOURCE WRITE in a scanned app package or shared root module:
+  * ANY SOURCE WRITE in a scanned app package (core/ included) or root module:
     `participation_fee = v`, `x.participation_fee = v`,
     `config['participation_fee'] = v`, a `participation_fee=v` keyword in any
     call (`dict(...)`, a config literal), and a `'participation_fee': v` dict
@@ -103,9 +103,11 @@ discovered by a participant who was underpaid.
 import ast
 import os
 
-import payoff_guard
+from core import payoff_guard
 
-_ROOT = os.path.dirname(os.path.abspath(__file__))
+# The project root (core/__init__.py's marker walk to settings.py), not this
+# file's directory: the scan covers the apps beside settings.py, and core/.
+from core import REPO_ROOT as _ROOT
 
 _KEY = 'participation_fee'
 

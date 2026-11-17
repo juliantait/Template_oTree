@@ -39,8 +39,8 @@ import bot_walker
 
 ot = boot(production=True)          # MUST come before any app import
 
-import common
-import participant_tab_monitor
+from core import common
+from core import participant_tab_monitor
 import main
 import intro
 import outro

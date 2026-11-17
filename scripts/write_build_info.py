@@ -6,7 +6,7 @@ WHAT THIS IS FOR
 A commit cannot contain its own SHA, so the SHA is stamped at DEPLOY time. At
 deploy, extract the committed tree into a staging directory and run this script,
 which writes ``BUILD_INFO.json`` at the app root; the Dockerfile's ``COPY . .``
-then ships it into the image, and ``buildinfo.py`` reads it at boot.
+then ships it into the image, and ``core/buildinfo.py`` reads it at boot.
 
 **The file is NEVER committed** (it is in ``.gitignore``): it describes a build
 OF a commit, so committing it would put a stale stamp in the tree of the NEXT
@@ -88,11 +88,11 @@ from datetime import datetime, timezone
 # The app root, found the way everything else in this repo finds it: from THIS
 # file, never from the working directory (scripts/tests/_repo.py has the full
 # argument). One level up from scripts/ is the root only because that is where
-# settings.py and buildinfo.py sit, which is checked below by the import.
+# settings.py and core/buildinfo.py sit, which is checked below by the import.
 _APP_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _APP_ROOT)
 
-from buildinfo import (BUILD_INFO_FILENAME, BUILD_INFO_KEYS,  # noqa: E402
+from core.buildinfo import (BUILD_INFO_FILENAME, BUILD_INFO_KEYS,  # noqa: E402
                        is_real_sha)
 
 

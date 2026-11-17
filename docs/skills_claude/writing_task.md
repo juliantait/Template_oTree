@@ -61,7 +61,7 @@ study breaks silently. What you inherit:
   containing the write. Do not read that as "oTree's raise protects me" —
   `AUTO_TABULATE_PAYOFFS=False` makes the setter raise *inside a participant's
   request*, i.e. a dead page mid-round on a live upgrade, which is exactly the
-  failure the boot guard exists to get in front of (payoff_guard.py).
+  failure the boot guard exists to get in front of (core/payoff_guard.py).
   oTree auto-sums `player.payoff` across rounds, but only `payment_num_rewarded`
   rounds are paid, so that sum is a figure nobody is paid; kept apart, the
   earned figure in oTree's admin matches the `earned` computed at the end

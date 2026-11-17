@@ -2,8 +2,8 @@ from otree.api import *
 from otree import settings as otree_settings
 import json
 import time
-import common
-import participant_tab_monitor
+from core import common
+from core import participant_tab_monitor
 from settings import INSTITUTION_NAME, STATIC_VERSION
 from .quiz_items import QUIZ_ITEMS
 
@@ -34,7 +34,7 @@ class C(BaseConstants):
     # takes the one-time re-read offer, so for everyone else every round-2
     # page returns is_displayed False (empty export rows, by design).
     NUM_ROUNDS = 2
-    # THE EXPERIMENTER MONITOR (optional constants; see experimenter_dashboard.py).
+    # THE EXPERIMENTER MONITOR (optional constants; see core/experimenter_dashboard.py).
     # intro is SPLIT into Instructions and Quiz steps by page name
     # (PAGE_SPLIT_STEPS there), so this label is not a header: it names the
     # phase in the timing pill and the threshold legend ("Intro 8:12").
@@ -495,7 +495,7 @@ class quiz(participant_tab_monitor.MonitoredPage):
     @staticmethod
     def js_vars(player):
         # OWN js_vars, so it MUST spread the monitor config or this page's tab
-        # monitor silently loses it (participant_tab_monitor.py's gotcha). Then
+        # monitor silently loses it (core/participant_tab_monitor.py's gotcha). Then
         # add the behaviour-capture config for telemetry_capture.js: the quiz
         # passes EXTRA config naming its own controls (the per-item radios and the
         # re-read button) so the log can label them — structure the welcome page
@@ -629,6 +629,6 @@ page_sequence = [instructing, quiz]
 # MONITORED BY DEFAULT — every page above must be a
 # participant_tab_monitor.MonitoredPage subclass or explicitly opted out; a page
 # that dodged the rule fails the BOOT here, never a participant (see
-# participant_tab_monitor.py).
+# core/participant_tab_monitor.py).
 participant_tab_monitor.assert_monitored_page_sequence(__name__, page_sequence)
 

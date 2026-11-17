@@ -39,7 +39,7 @@ sys.path.insert(0, _TESTS_DIR)
 from _repo import REPO_ROOT  # noqa: E402  (also puts REPO_ROOT on sys.path)
 sys.path.insert(0, os.path.join(REPO_ROOT, 'scripts', 'site_previews'))
 
-import experimenter_dashboard as dash  # noqa: E402  (stdlib-only at import)
+from core import experimenter_dashboard as dash  # noqa: E402  (stdlib-only at import)
 import monitor_session as ms           # noqa: E402  (the shared fixture)
 
 WIDTHS = (1024, 1152, 1280, 1440)

@@ -28,7 +28,7 @@ from otree_inprocess import boot, path_of, page_name_of  # noqa: E402
 
 ot = boot(production=True)          # MUST come before any app import
 
-import common                        # noqa: E402  (the config accessor)
+from core import common                        # noqa: E402  (the config accessor)
 
 _failures = []
 

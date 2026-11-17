@@ -17,7 +17,7 @@
 #   clearing. With the shipped list (all four types) none of it does anything.
 # - ConfirmProlificID: confirm the platform id. Its free-text field is the one
 #   route in this template that can produce a DUPLICATE participant label, which
-#   is a permanent lockout in oTree — see identity.py.
+#   is a permanent lockout in oTree — see core/identity.py.
 #
 # ADDING A PAGE HERE? THE ONE RULE THIS APP KEEPS RE-LEARNING:
 #
@@ -47,16 +47,16 @@
 # scripts/tests/copy_routing_test.py asserts the impossibility.
 
 from otree.api import *
-import common
-import dot_bi
-import fee_guard
-import identity
-import payoff_guard
+from core import common
+from core import dot_bi
+from core import fee_guard
+from core import identity
+from core import payoff_guard
 from settings import INSTITUTION_NAME, STATIC_VERSION
 from . import treatment_assignment
 
 # Make oTree's entry lookup unable to raise MultipleResultsFound on a duplicate
-# label (identity.py, defence 2). settings.py installs it too, as early as it
+# label (core/identity.py, defence 2). settings.py installs it too, as early as it
 # can, because the room's entry views are reachable before any app module is
 # imported; that early attempt is allowed to fail quietly (the views module may
 # legitimately not be importable yet).
@@ -79,7 +79,7 @@ identity.assert_duplicate_label_guard()
 # check reads app SOURCE, so it is complete regardless of import order and of
 # which paths a test happens to walk; the indirection it cannot see is covered
 # from the other side by scripts/tests/payoff_ledger_test.py §7. Full argument in
-# payoff_guard.py's docstring.
+# core/payoff_guard.py's docstring.
 payoff_guard.assert_no_player_payoff_writes()
 
 # THE SAME DECISION, THE OTHER HALF OF IT (Julian, 2026-08-14). `player.payoff`
@@ -93,7 +93,7 @@ payoff_guard.assert_no_player_payoff_writes()
 # unenforced convention in a template drifts the first time somebody copies it.
 # Boot, never request time — same trade as above. Known cost, accepted: a copied
 # study that already sets a fee refuses to boot until the fee is moved into the
-# ledger. Full argument in fee_guard.py's docstring.
+# ledger. Full argument in core/fee_guard.py's docstring.
 fee_guard.assert_participation_fee_is_zero()
 
 class C(BaseConstants):
@@ -113,7 +113,7 @@ class C(BaseConstants):
     NUM_ROUNDS = 1
     # THE EXPERIMENTER MONITOR's header label for this app's step (optional;
     # absent -> the raw app name). See the timeline section of
-    # experimenter_dashboard.py for every MONITOR_* constant.
+    # core/experimenter_dashboard.py for every MONITOR_* constant.
     MONITOR_LABEL = 'Entry'
 
 class Subsession(BaseSubsession):
@@ -171,7 +171,7 @@ class Player(BasePlayer):
     participant_id_external = models.StringField(blank=True, label="Your Prolific ID")
     is_mobile = models.BooleanField(initial=False, blank=True)
     device_info_json = models.LongStringField(blank=True)
-    # DUPLICATE-ID TRIAGE (identity.py). Empty for everybody normally. When a
+    # DUPLICATE-ID TRIAGE (core/identity.py). Empty for everybody normally. When a
     # participant's typed id is already held by ANOTHER row in this session, the
     # claim is REFUSED — they keep their own row and finish the study, their
     # typed value is still stored verbatim in `participant_id_external`, and
@@ -195,7 +195,7 @@ class Player(BasePlayer):
     # blank=True — a no-JS submit leaves them empty, which is exactly how the
     # no-JavaScript gentle return (-6) is detected. Copied to the participant
     # fields in DotBiGate.before_next_page; the ANSWER is graded server-side
-    # against dot_bi.py and NEVER leaves the server.
+    # against core/dot_bi.py and NEVER leaves the server.
     bot_dotbi_answer = models.StringField(blank=True)
     bot_dotbi_ms = models.StringField(blank=True)
     bot_dotbi_js = models.StringField(blank=True)
@@ -453,7 +453,7 @@ def _claim_participant_label(player, raw_id):
     """Write a participant label the safe way, and record a refused claim.
 
     Never raises, never blocks, never tells the participant anything (see
-    identity.py). A conflict lands in `prolific_label_conflict` — the OWNING
+    core/identity.py). A conflict lands in `prolific_label_conflict` — the OWNING
     ROW's participant code — which is what payment triage needs to see both
     sides of a mistyped or borrowed id.
 
@@ -538,7 +538,7 @@ class welcome(Page):
             # Loud in the log and on the row if not, never fatal — at this point
             # we are inside a participant's request, and a missing guard is a
             # CONDITIONAL risk (it only matters if a duplicate exists) that must
-            # not be turned into their certain 500. See identity.py.
+            # not be turned into their certain 500. See core/identity.py.
             identity.note_guard_state(self.participant)
         except Exception:
             pass
@@ -725,7 +725,7 @@ class welcome(Page):
                 if not player.participant.label:
                     # Through claim_label, never a bare assignment: two rows
                     # sharing a label is a permanent 500 on the front door for
-                    # the id's real owner (identity.py).
+                    # the id's real owner (core/identity.py).
                     _claim_participant_label(player, url_id)
         if _flag(player, 'telemetry_device_capture') and player.device_info_json:
             common.extra_set(player.participant, 'device_info_json', player.device_info_json)
@@ -826,7 +826,7 @@ class ConfirmProlificID(Page):
         # The confirmed id is the one payment should use, so it becomes the
         # participant label the platform matches on — UNLESS another row in this
         # session already holds it, in which case the claim is refused, silently
-        # (identity.py). A typo or a pasted friend's id would otherwise create
+        # (core/identity.py). A typo or a pasted friend's id would otherwise create
         # two rows with one label, which is a permanent 500 at entry for
         # whoever really owns it. The URL-arrived value stays in
         # participant_id_url for the audit trail either way.
@@ -845,7 +845,7 @@ class TabMonitorAgree(Page):
     that flag is set, so this page marks exactly where monitoring begins — and
     since 2026-08-13 everything after it really IS monitored by default
     (participant_tab_monitor.MonitoredPage: intro and main eject at the
-    threshold, outro records only — see participant_tab_monitor.py). Between
+    threshold, outro records only — see core/participant_tab_monitor.py). Between
     2026-08-12 and then, "begins
     here" was a claim the code did not honour: the page had moved but the
     intro pages carried no monitor wiring, so the instructions and the quiz
@@ -933,7 +933,7 @@ class DotBiGate(Page):
 
     A PLAIN `Page`, not a MonitoredPage, and that is deliberate: it lives in
     `before`, which sits at/before the tab-monitor arming boundary and is
-    outside the monitored-by-default rule (participant_tab_monitor.py). It comes
+    outside the monitored-by-default rule (core/participant_tab_monitor.py). It comes
     AFTER TabMonitorAgree so the arming block stays together.
 
     SECURITY: the variant is served under an OPAQUE id; the hidden number is

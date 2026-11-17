@@ -26,7 +26,7 @@ WHY THE MARKER WALK RATHER THAN A CORRECTED COUNT
 A count is only ever right for the layout it was written against; correcting
 the number just re-arms the same trap for the next move. What actually DEFINES
 this repo's root is that `settings.py` sits in it — oTree requires that, and
-`common.py` documents that it can never move. So the root is found by walking
+only it must sit there (the shared modules live in `core/`). So the root is found by walking
 UP from this file until that marker appears. It is correct at any depth, from
 any working directory, and it needs nobody to remember to update a number when
 a directory moves again.
@@ -44,7 +44,7 @@ far the root is — and import this module::
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from _repo import REPO_ROOT          # also puts REPO_ROOT on sys.path
 
-Importing it is enough to make ``import settings``, ``import common`` and the
+Importing it is enough to make ``import settings``, ``from core import common`` and the
 app packages work; `REPO_ROOT` is exported for the tests that need to build
 paths (fixtures, the asset manifest, relpath bases).
 
@@ -56,7 +56,7 @@ import os
 import sys
 
 # The file that defines the root. oTree requires settings.py at the project
-# root, and common.py's own docstring records that it must stay there, so this
+# root (core/__init__.py records why only settings.py stays there), so this
 # marker cannot drift without the whole project breaking first.
 _ROOT_MARKER = 'settings.py'
 

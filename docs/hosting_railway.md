@@ -12,7 +12,7 @@ the workflow improves.
 > - `docs/skills_claude/hosting_a_prolific_study.md` (the end-to-end agent playbook)
 > - `docs/skills_claude/README.md` and `docs/README.md` (§6, §7)
 > - `docs/running_on_prolific.md` (its intro links here for the hosting side)
-> - `health.py`, `scripts/write_build_info.py`, `scripts/verify_deploy.py`
+> - `core/health.py`, `scripts/write_build_info.py`, `scripts/verify_deploy.py`
 > - `ideas/railway-server-metrics-panel.md`, `.gitignore`, `DECISIONS.md`
 > - **External, off-repo:** the CREED lab doc at `juliantait.eu/CREED`, section 5.1
 >   "Running the Study Online" (source in the `juliantait.github.io` repo, file

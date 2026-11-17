@@ -185,7 +185,7 @@ splitting if the file is being edited anyway; not worth a change on its own.
 - `.gitignore` / `.dockerignore` sqlite patterns — a stray zero-byte
   `db.sqlite3` under Postgres is harmless.
 - No raw SQL anywhere in the app code, so no backend-specific query syntax.
-  (The one place identity is compared, `identity.py`, was already moved out of
+  (The one place identity is compared, `core/identity.py`, was already moved out of
   SQL and into Python for exactly this reason — see `DECISIONS.md`, 2026-08-12.)
 - `scripts/set_up_otree.bat`, `MACMINI_HOSTING.md` — host-side dev docs, no
   runtime effect.

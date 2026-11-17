@@ -90,7 +90,7 @@ template's own stylesheets, untouched.
 BUILDING THE MONITOR, AND WHY IT NEEDS A BROWSER
 ------------------------------------------------
 `monitor.html` cannot be written as a body file, because the experimenter
-monitor's rows are not markup anywhere. `experimenter_dashboard.py` serves a
+monitor's rows are not markup anywhere. `core/experimenter_dashboard.py` serves a
 shell whose `<tbody>` says `Waiting for first data…`, and every row, marker,
 pill and quiz cell is built by that same file's `renderRow` / `stateHTML` /
 `timelineHTML` — in JavaScript, from the poll's JSON. Hand-writing those rows
@@ -386,7 +386,7 @@ MONITOR_NOTE = (
     '  PURPOSE so the website shows what the monitor CAN display rather than the\n'
     '  sparse subset one profile reaches; the fixture\'s own docstring says so.\n\n'
     '  THE ROWS WERE DRAWN BY THE DASHBOARD ITSELF. This is not a mock-up of the\n'
-    '  monitor: experimenter_dashboard.py\'s own JavaScript rendered every row\n'
+    '  monitor: core/experimenter_dashboard.py\'s own JavaScript rendered every row\n'
     '  below, and the DOM it produced was then frozen so the page needs no\n'
     '  server and no scripts. The controls are therefore inert here — the live\n'
     '  screen refreshes itself every two seconds.')
@@ -417,7 +417,7 @@ def build_monitor():
     from playwright.sync_api import sync_playwright   # build-time only
 
     sys.path.insert(0, str(REPO))
-    import experimenter_dashboard as dash             # stdlib-only at import
+    from core import experimenter_dashboard as dash             # stdlib-only at import
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
     import monitor_session
 

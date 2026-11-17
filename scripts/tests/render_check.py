@@ -3866,7 +3866,7 @@ def check_outro_never_ejects(server, pw):
     if the outro ejected the way intro/main do, this participant WOULD be
     disqualified — that is what makes the not-ejected assertion mean anything.
     """
-    import common
+    from core import common
     section('D3. An outro blur past the threshold: counted, never ejected, '
             'no overlay')
     xvfb, display = _start_xvfb()

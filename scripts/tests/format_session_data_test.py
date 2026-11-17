@@ -143,7 +143,7 @@ def main():
 
     section('one set of rules: the same list as the dashboard button')
     sys.path.insert(0, REPO_ROOT)
-    import data_columns
+    from core import data_columns
     with tempfile.TemporaryDirectory() as tmp:
         src = os.path.join(tmp, 'wide.csv')
         keep = ['participant.code', 'participant.payoff', LAB,

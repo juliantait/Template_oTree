@@ -83,7 +83,7 @@ from otree.session import create_session  # noqa: E402
 from otree.models import Participant, Session  # noqa: E402
 from otree.common import get_models_module  # noqa: E402
 
-import common  # noqa: E402
+from core import common  # noqa: E402
 import main  # noqa: E402
 from http_flow_test import FormParser, build_payload  # noqa: E402
 

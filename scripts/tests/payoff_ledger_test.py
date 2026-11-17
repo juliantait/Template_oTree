@@ -282,7 +282,7 @@ def main():
     # two things it must never refuse a boot over.
     import ast
     import textwrap
-    import payoff_guard
+    from core import payoff_guard
 
     scanned = payoff_guard.assert_no_player_payoff_writes()
     check(scanned > 0,
@@ -290,7 +290,7 @@ def main():
           f'({scanned}) — a guard checking nothing would also "pass"')
     scanned_files = {os.path.relpath(f, REPO_ROOT)
                      for f in payoff_guard.files_to_scan()}
-    check({'main/__init__.py', 'outro/__init__.py', 'common.py'}
+    check({'main/__init__.py', 'outro/__init__.py', 'core/common.py'}
           <= scanned_files,
           'the app modules that handle payment are among the files scanned')
     check(not any(f.startswith('scripts/tests/') for f in scanned_files),
@@ -395,7 +395,7 @@ def main():
     # outro.compute_final_payoff composes it — that is an open decision with
     # Julian, and it changes what exported columns MEAN. This measures the
     # current state so the decision can be made against real numbers.
-    import common          # the config accessor — never session.config['…']
+    from core import common          # the config accessor — never session.config['…']
     psess = ot.create_session('prolific', num_participants=1)
     pcode = ot.participant_codes(psess)[0]
     pclient = ot.client()

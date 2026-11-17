@@ -63,7 +63,7 @@ import requests  # noqa: E402
 import uvicorn  # noqa: E402
 from otree.asgi import app  # noqa: E402
 
-import experimenter_dashboard as ed  # noqa: E402
+from core import experimenter_dashboard as ed  # noqa: E402
 from intro.quiz_items import QUIZ_ITEMS  # noqa: E402
 # The passing/failing quiz maps come from quiz_answers.py — the ONE derivation
 # from the shipped items, so a study that swaps its quiz cannot leave a second

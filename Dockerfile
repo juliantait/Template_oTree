@@ -28,7 +28,7 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /app
 
 # The four apps import nothing outside the standard library except oTree itself
-# (`import common` is this repo's own root module). pandas / requests /
+# (`from core import common` is this repo's own `core/` package). pandas / requests /
 # playwright / jinja2 appear only in scripts/ (including scripts/tests/) and the previews
 # generator — host-side tooling, not the served study — so they stay out of the
 # image. Pinned rather than floating: an oTree minor bump must be a deliberate,

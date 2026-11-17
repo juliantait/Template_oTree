@@ -1,9 +1,9 @@
 """Participant IDENTITY — one participant row per external (Prolific) id, and
 never a 500 if that is ever violated anyway.
 
-Import as ``import identity``. Like ``common``, this file MUST stay at the
-project root: the apps do a top-level import and oTree puts the project root on
-``sys.path``.
+Import as ``from core import identity``. It lives in ``core/`` with the other
+shared modules; oTree puts the project root on ``sys.path``, so the apps and
+settings.py can import it (see core/__init__.py).
 
 WHY THIS EXISTS
 ---------------

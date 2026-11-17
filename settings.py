@@ -1,9 +1,9 @@
 import os
 
-import buildinfo
-import identity
+from core import buildinfo
+from core import identity
 
-# THE EARLY INSTALL of the duplicate-label guard (identity.py, defence 2). It is
+# THE EARLY INSTALL of the duplicate-label guard (core/identity.py, defence 2). It is
 # here as well as in before/__init__.py because the ROOM's entry views can be
 # reached before any app module has been imported, and a single install point
 # leaves that window open.
@@ -16,7 +16,7 @@ import identity
 # guards. The single place a missing guard IS a failure is
 # `identity.assert_duplicate_label_guard()`, called from before/__init__.py.
 # (A symbol that imports fine but has the WRONG SHAPE is version drift and does
-# raise, here or anywhere else. The two are different things — see identity.py.)
+# raise, here or anywhere else. The two are different things — see core/identity.py.)
 identity.install_duplicate_label_guard()
 
 # =============================================================================
@@ -139,7 +139,7 @@ EXIT_CODES = dict(
 # WHAT THIS IS FOR. EXIT_CODES above says which codes EXIST; this says what each
 # one MEANS to a human. They are two tables rather than one because EXIT_CODES is
 # read as `EXIT_CODES['finished']` -> int in `before`, `intro`, `outro`,
-# `common`, `identity.py` and the tests, and giving its values a richer shape
+# `common`, `core/identity.py` and the tests, and giving its values a richer shape
 # would break every one of those call sites.
 #
 # THE POINT OF IT: the monitor's endings summary is GENERATED from EXIT_CODES, so
@@ -391,7 +391,7 @@ def is_placeholder(value) -> bool:
 #  exit is a completion code now, not a URL setting. See DECISIONS.md.)
 
 # --- experimenter dashboard ----------------------------------------------------
-# The live operator view at /experimenter_dashboard (experimenter_dashboard.py,
+# The live operator view at /experimenter_dashboard (core/experimenter_dashboard.py,
 # notes in _ai/dashboard_notes.md, local only: _ai/ is gitignored). These are
 # read AT REQUEST TIME, so tuning
 # them needs only a server restart; deleting either line falls back to the same
@@ -664,7 +664,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     payment_num_rewarded=2,       # how many rounds are randomly selected for payment
     payment_quiz_bonus=5,         # bonus for passing the quiz on the first attempt
     real_world_currency_per_point=1.00,  # oTree currency conversion rate
-    # ZERO, AND HELD THERE BY A BOOT GUARD (fee_guard.py). oTree adds this ON
+    # ZERO, AND HELD THERE BY A BOOT GUARD (core/fee_guard.py). oTree adds this ON
     # TOP of participant.payoff on the admin Payments page
     # (payoff_plus_participation_fee) — a second payment channel. It does NOT
     # reach the CSV export, so it is invisible in the data and visible only
@@ -857,7 +857,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     # guarantee on resolve_recruitment_profile).
     # COVERAGE AND THE PHASE ASYMMETRY (Julian, 2026-08-13): with the module
     # on, EVERY page after the agreement screen is monitored by default
-    # (participant_tab_monitor.py) — but the consequence differs by phase,
+    # (core/participant_tab_monitor.py) — but the consequence differs by phase,
     # deliberately: violations EJECT during the instructions, quiz and task (the
     # pages the agreement protects), and are RECORDED ONLY during the outro (the
     # task is over and the data collected; ejecting a completer over their
@@ -1206,7 +1206,7 @@ PARTICIPANT_FIELDS = [
 #   "created but never arrived" — the same convention as treatment_group's ''.
 #   'unstamped' (buildinfo.UNSTAMPED_SHA) means they DID arrive, on a build
 #   carrying no BUILD_INFO.json: a real answer, not a failure, and the normal
-#   one in local development. See buildinfo.py and CODEBOOK.md.
+#   one in local development. See core/buildinfo.py and CODEBOOK.md.
 # - consent_submitted: True once the consent page has been SUBMITTED (consenting
 #   or not). The device gate's boundary: past it the check never applies again.
 #   A durable fact rather than a page index, because indices move when the page

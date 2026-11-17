@@ -381,7 +381,7 @@ A dict `{stage_name: epoch_seconds}` filled as the participant clears each stage
 | `screenout_cleared` | A screen-out was LIFTED: they came back on an accepted device before consent. |
 | `consent` | Leaving the welcome/consent page. |
 | `confirm_id` | Prolific only: leaving the Prolific-ID confirmation page (`prolific_capture_participant_id` on). |
-| `tab_monitor_agreed` | Leaving the tab-monitor agreement page, i.e. when the tab monitor was armed. Only where that page is shown (`tab_monitor` on, so Prolific by default and never the lab). *(Value renamed from `ai_safety_agreed` on 2026-08-17 — a deliberate one-off done while the template still had no data, so no live export was keyed on the old spelling; see the frozen-values note in `common.py`.)* |
+| `tab_monitor_agreed` | Leaving the tab-monitor agreement page, i.e. when the tab monitor was armed. Only where that page is shown (`tab_monitor` on, so Prolific by default and never the lab). *(Value renamed from `ai_safety_agreed` on 2026-08-17 — a deliberate one-off done while the template still had no data, so no live export was keyed on the old spelling; see the frozen-values note in `core/common.py`.)* |
 | `left_before_app` | Leaving ANY page of the `before` app — deliberately **overwritten** by each one, so its final value is the moment the participant left the entry block, whichever pages that config showed (`common.stamp_left_before_app`). |
 | `instructions_done` | Leaving the instructions page (round 1). |
 | `quiz_done` | Leaving the quiz page (overwritten by the re-read pass, if any). |
@@ -620,7 +620,7 @@ clean telemetry row means "no evidence of a problem", never "nothing happened"
 
 Same monitor, same counting, **different consequence by phase** (Julian,
 2026-08-13). With `tab_monitor` on, every page after the agreement screen is
-monitored (`participant_tab_monitor.py`), but violations split into two exported
+monitored (`core/participant_tab_monitor.py`), but violations split into two exported
 participant fields by WHERE they happened:
 
 | Column | Counts violations on | Consequence |
@@ -644,7 +644,7 @@ The two-column split is what keeps that legible in the data:
   focus loss is never counted in both columns.
 
 The full reasoning lives at `common._apply_focus_loss`; the per-phase wiring
-at `participant_tab_monitor.py`.
+at `core/participant_tab_monitor.py`.
 
 ### `tab_monitor_flag` — the column to sort when you want the attention cases
 
@@ -869,7 +869,7 @@ Fill in per-study fields as you build the task. The template ships with:
     their own row and finish the study normally, and their typed value is still
     in `participant_id_external` verbatim), because two rows sharing a label is
     a permanent 500 at entry for whoever really owns that id — see
-    `identity.py`. A non-empty value is a PAYMENT TRIAGE flag: look at both rows
+    `core/identity.py`. A non-empty value is a PAYMENT TRIAGE flag: look at both rows
     before paying either. Nothing is ever shown to the participant, and no
     marker is ever written into `participant.label`, which stays the real id or
     empty. `participant_extra['prolific_label_conflict']` holds the fuller

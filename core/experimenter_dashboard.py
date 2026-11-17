@@ -1,9 +1,9 @@
 """EXPERIMENTER DASHBOARD — a live, read-only, at-a-glance view of a running
 session, served IN-PROCESS as extra routes on oTree's own Starlette app.
 
-Import as ``import experimenter_dashboard``. Like ``identity`` and ``common``,
-this file MUST stay at the project root: the install hook does a top-level
-import and oTree puts the project root on ``sys.path``.
+Import as ``from core import experimenter_dashboard``. Like the other shared
+modules in ``core/``, it is importable from the install hook because oTree puts
+the project root on ``sys.path`` (see core/__init__.py).
 
 Open it at ``/experimenter_dashboard`` (session list) or
 ``/experimenter_dashboard/<session_code>`` (the dashboard itself), behind
@@ -111,7 +111,7 @@ import re
 import time
 from html import escape
 
-import data_download
+from core import data_download
 
 logger = logging.getLogger(__name__)
 
@@ -292,7 +292,7 @@ def _app_constants(app):
 
 def _app_rounds(app, c, config):
     """(mode, total, num_rounds) for one app. total is None unless 'fraction'."""
-    import common
+    from core import common
     try:
         num_rounds = int(getattr(c, 'NUM_ROUNDS', 1) or 1)
     except Exception:
@@ -784,7 +784,7 @@ def _safe(fn, *args):
 
 def _session_context(session) -> dict:
     """Session-constant values, computed once per snapshot, defensively."""
-    import common
+    from core import common
     # THE TIMELINE, once per snapshot. The ROUND TOTALS live in it now (per
     # app, see _app_rounds): `main`'s is min(num_experimental_rounds,
     # C.NUM_ROUNDS) via its C.MONITOR_ROUNDS_CONFIG, the same number the
@@ -859,7 +859,7 @@ def _participant_names(session) -> dict:
     inverted rule records (it already shipped once, as a Python-vs-SQL split).
     """
     try:
-        from identity import normalise_label
+        from core.identity import normalise_label
     except Exception:                       # identity not importable yet
         def normalise_label(x):             # pragma: no cover - fallback only
             return ' '.join(str(x or '').split()).casefold()
@@ -1104,7 +1104,7 @@ def _time_summary(session, ctx=None) -> dict:
     rows cannot disagree. Defensive: any failure degrades to no figures at all,
     never a raise.
     """
-    import common   # local, like every common import in this module — the
+    from core import common   # local, like every common import in this module — the
     # dashboard must stay importable with oTree absent (the _FALLBACK_EXIT_CODES
     # reasoning); the stage-name constants are only needed at request time.
     finished_codes = (ctx or {}).get('finished_codes') or codes_of_kind('finished')
@@ -1552,7 +1552,7 @@ def _non_sepa_ids(session) -> set:
     dead dashboard."""
     out = set()
     try:
-        import common
+        from core import common
         if not common.is_lab(session.config):
             return out
         from otree.common import get_models_module
@@ -1582,7 +1582,7 @@ def _participant_row(pp, ctx, now) -> dict:
     minus the dirty flag. Field access like ``pp.vars.get(...)`` is still
     what everything OUTSIDE this module must use.
     """
-    import common   # local, like every common/settings import in this
+    from core import common   # local, like every common/settings import in this
     # module — the dashboard must stay importable with oTree absent
     # (the _FALLBACK_EXIT_CODES reasoning); the stage-name constants
     # (common.STAGE_*) are only needed at request time.
@@ -1935,7 +1935,7 @@ def _reached_step(terminal, stamps, timeline, v=None) -> str:
     name, `tab_monitor_focus_events`), which is what places a DQ correctly when
     a study inserts an app with no stamps between the quiz and the task.
     """
-    import common   # local, like every common/settings import in this
+    from core import common   # local, like every common/settings import in this
     # module — the dashboard must stay importable with oTree absent
     # (the _FALLBACK_EXIT_CODES reasoning); the stage-name constants
     # (common.STAGE_*) are only needed at request time.
@@ -2035,7 +2035,7 @@ def _quiz_cell(v, stamps, step, terminal, max_failures, last_attempt_passed,
     with quiz_verify off) leaves the old behaviour exactly as it was: no
     evidence is not evidence of a force-advance.
     """
-    import common   # local, like every common/settings import in this
+    from core import common   # local, like every common/settings import in this
     # module — the dashboard must stay importable with oTree absent
     # (the _FALLBACK_EXIT_CODES reasoning); the stage-name constants
     # (common.STAGE_*) are only needed at request time.
@@ -2101,7 +2101,7 @@ def _intro_seconds(stamps, step, terminal, finished, now) -> dict:
     the one subtlety in this function; do not "simplify" it to reading the
     stamp.
     """
-    import common   # local, like every common/settings import in this
+    from core import common   # local, like every common/settings import in this
     # module — the dashboard must stay importable with oTree absent
     # (the _FALLBACK_EXIT_CODES reasoning); the stage-name constants
     # (common.STAGE_*) are only needed at request time.
@@ -2172,7 +2172,7 @@ def _total_seconds(stamps, terminal, finished, now) -> dict:
     the start, degrade to no pill (seconds=None), never a raise — the
     instrumentation-must-never-break-a-page rule, applied at cell granularity.
     """
-    import common   # local, like every common/settings import in this
+    from core import common   # local, like every common/settings import in this
     # module — the dashboard must stay importable with oTree absent
     # (the _FALLBACK_EXIT_CODES reasoning); the stage-name constants
     # (common.STAGE_*) are only needed at request time.
@@ -2220,7 +2220,7 @@ def _stall_elapsed(app, app_info, stamps, intro, seconds_on_page, now):
     Falls back to page time wherever a stamp is missing (a participant already
     mid-flow when the stamp was deployed), which is the pre-pills behaviour.
     """
-    import common   # local, like every common/settings import in this
+    from core import common   # local, like every common/settings import in this
     # module — the dashboard must stay importable with oTree absent
     # (the _FALLBACK_EXIT_CODES reasoning); the stage-name constants
     # (common.STAGE_*) are only needed at request time.
@@ -2256,7 +2256,7 @@ def _stall_elapsed(app, app_info, stamps, intro, seconds_on_page, now):
 # WHAT STAYED HERE, AND WHY IT MUST: the AdminView shape check below. It is
 # about WHO MAY LOOK AT THIS PAGE, which is this module's commitment and not a
 # property of extra routes in general — /health deliberately has no auth at all.
-import otree_routes
+from core import otree_routes
 
 INSTALLED = otree_routes.INSTALLED            # newly appended
 ALREADY = otree_routes.ALREADY                # idempotent no-op

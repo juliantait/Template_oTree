@@ -1,6 +1,6 @@
 """THE DASHBOARD'S "DOWNLOAD DATA" BUTTON: plain CSV files from one press.
 
-Import as ``import data_download``. Stays at the project root, like
+Import as ``from core import data_download``. Lives in ``core/``, like
 ``experimenter_dashboard``, which puts the button on its page. Importing this
 file pulls in the standard library only: oTree is imported inside the functions
 that need it, so nothing here can take a boot down. See DECISIONS.md, 2026-11-05.
@@ -86,8 +86,8 @@ import time
 import traceback
 import unicodedata
 
-import data_columns
-import otree_routes
+from core import data_columns
+from core import otree_routes
 
 logger = logging.getLogger(__name__)
 
@@ -757,7 +757,7 @@ def _checked_login_machinery():
     """The dashboard's own check that AdminView still carries its login, plus the
     CSRF token's name in oTree. Without either the routes are not installed: the
     button then reports it, and nothing is open."""
-    import experimenter_dashboard as ed
+    from core import experimenter_dashboard as ed
     admin_view = ed._checked_admin_view()
     from otree.common import CSRF_TOKEN_NAME
     return admin_view, ed.URL_BASE, CSRF_TOKEN_NAME

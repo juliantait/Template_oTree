@@ -108,7 +108,7 @@ def create(**modified):
 
 def server_type(ua):
     """The server's own classification, from the module the gate uses."""
-    import common
+    from core import common
     return common.classify_device(ua)
 
 

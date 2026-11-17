@@ -278,7 +278,7 @@ this deploy?").
 |---------|------|
 | Study type, flags, codes, exit codes | `settings.py` |
 | Entry, consent, id confirmation, screen-out gate | `before/` |
-| Screen-out causes, exit codes, tab-monitor handler | `common.py` |
+| Screen-out causes, exit codes, tab-monitor handler | `core/common.py` |
 | Tab-switch monitor (client) | `_static/global/js/tab_monitor.js` |
 | Endings and completion links | `outro/` |
 | Every exported column and its meaning | `CODEBOOK.md` |

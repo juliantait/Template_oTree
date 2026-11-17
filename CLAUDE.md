@@ -174,7 +174,7 @@ deliberate departure from an accreted patch.
 **A change here also ages the website.** The screens on the academic site are
 built from these stylesheets by `scripts/site_previews/build_site_previews.py` (checked by
 `scripts/site_previews/check_site_previews.py`); re-run both after touching
-`_static/global/css/` — **and after touching `experimenter_dashboard.py`'s own
+`_static/global/css/` — **and after touching `core/experimenter_dashboard.py`'s own
 stylesheet or its `renderRow`**, which the monitor preview is literally rendered
 by. Nothing fails if you don't — the site simply goes on showing an older study,
 which is exactly how the hand-written snapshots it replaced went stale.
@@ -200,7 +200,7 @@ Long labels and many steps need nothing either: the header fits itself
 
 **To split an app into several steps by page name** (as `intro` is split into
 Instructions and Quiz), add one entry to `PAGE_SPLIT_STEPS` in
-`experimenter_dashboard.py`: `'app': (('step_id', 'Label', ('PageA', 'PageB')),
+`core/experimenter_dashboard.py`: `'app': (('step_id', 'Label', ('PageA', 'PageB')),
 ...)`. A page listed nowhere sits on the app's first sub-step — list every page
 after the first sub-step, or the marker appears to move backwards.
 

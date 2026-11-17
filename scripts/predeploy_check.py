@@ -375,11 +375,11 @@ GENERIC_TEXT = 'PREDEPLOY'
 
 def _dotbi_answer(variant):
     """The correct DOT-BI number for an OPAQUE variant id, computed the server's
-    own way (dot_bi.py, repo root) — never a leak, since the variant id is
+    own way (core/dot_bi.py) — never a leak, since the variant id is
     already on the page and the answer map is server-side. None if the module or
     the id is absent, so a study without DOT-BI is unaffected. Never raises."""
     try:
-        import dot_bi
+        from core import dot_bi
         return dot_bi.answer_for(variant) if variant else None
     except Exception:
         return None

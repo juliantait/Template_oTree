@@ -74,9 +74,9 @@ from quiz_answers import CORRECT  # noqa: E402
 
 ot = boot(production=True)
 
-import data_columns  # noqa: E402
-import data_download as dd  # noqa: E402
-import experimenter_dashboard as ed  # noqa: E402
+from core import data_columns  # noqa: E402
+from core import data_download as dd  # noqa: E402
+from core import experimenter_dashboard as ed  # noqa: E402
 
 _failures = []
 ENV = dd.ENV_VAR
@@ -1123,7 +1123,7 @@ def section_drift(admin, lab):
         os.environ.pop(ENV, None)
 
     section('K3. pure on import')
-    code = ('import sys, data_download, data_columns;'
+    code = ('import sys; from core import data_download, data_columns;'
             'bad=[m for m in ("otree","pandas","starlette") if m in sys.modules];'
             'print(bad)')
     import subprocess
@@ -1132,7 +1132,7 @@ def section_drift(admin, lab):
     check(done.stdout.strip() == '[]',
           f'importing it drags in neither oTree nor pandas ({done.stdout.strip()} '
           f'{done.stderr.strip()[-120:]})')
-    code = ('import ast;t=ast.parse(open("data_download.py").read());'
+    code = ('import ast;t=ast.parse(open("core/data_download.py").read());'
             'print(any("pandas" in getattr(n,"name","") or "pandas" == getattr(n,"module","")'
             ' for s in ast.walk(t) if isinstance(s,(ast.Import,ast.ImportFrom))'
             ' for n in ([s] if isinstance(s,ast.ImportFrom) else s.names)))')

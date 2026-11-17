@@ -168,7 +168,7 @@ def drive(client, code, quiz_answers, wrong_quiz=None, max_steps=120):
 def main():
     from intro.quiz_items import QUIZ_ITEMS
     from quiz_answers import CORRECT, WRONG   # one derivation, from the shipped items
-    import common
+    from core import common
 
     correct = dict(CORRECT)
     first = QUIZ_ITEMS[0]
@@ -295,7 +295,7 @@ def main():
     # from a true one. `common.build_at_creation` is the raw reader that keeps
     # "absent" meaning absent. THIS CHECK FAILS IF ANYONE EVER ROUTES THE KEY
     # THROUGH cfg — that is its whole job.
-    import buildinfo
+    from core import buildinfo
     shipped = settings.SESSION_CONFIG_DEFAULTS['build_at_creation']
     check(isinstance(shipped, dict),
           f'the shipped value is a DICT, so oTree cannot render it as an '

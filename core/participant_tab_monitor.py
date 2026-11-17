@@ -65,7 +65,7 @@ GOTCHAS, inherited from TaskPage's docstring and still true:
 """
 from otree.api import Page
 
-import common
+from core import common
 
 
 def unmonitored_js_vars(player):

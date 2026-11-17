@@ -10,7 +10,7 @@ WHY THIS IS DATA AND NOT HTML
 -----------------------------
 Every other preview has a hand-written body composed of real shipped
 components. The experimenter monitor cannot work that way: its rows do not
-exist in any template. `experimenter_dashboard.py` ships a shell whose `<tbody>`
+exist in any template. `core/experimenter_dashboard.py` ships a shell whose `<tbody>`
 is literally `Waiting for first data…`, and every row, pill, marker and quiz
 cell is built by that file's own `renderRow`/`stateHTML`/`timelineHTML` in
 JavaScript, from the JSON the poll returns.

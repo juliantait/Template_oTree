@@ -36,8 +36,8 @@ from otree_inprocess import boot, path_of, page_name_of  # noqa: E402
 
 ot = boot(production=True)     # DEBUG off — what a participant hits
 
-import common                  # noqa: E402
-import dot_bi                  # noqa: E402
+from core import common                  # noqa: E402
+from core import dot_bi                  # noqa: E402
 import bot_walker              # noqa: E402
 from quiz_answers import CORRECT as QUIZ_CORRECT  # noqa: E402
 from main_contract import task_page_submits       # noqa: E402

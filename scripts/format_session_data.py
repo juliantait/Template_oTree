@@ -36,11 +36,11 @@ from pathlib import Path
 import pandas as pd
 
 # THE ONE LIST of personal columns, shared with the dashboard's Download data
-# button. It lives at the project root; _repo finds the root and puts it on the
-# path, the same way prelaunch_check.py does.
+# button. It lives in core/ at the project root; _repo finds the root and puts it
+# on the path, the same way prelaunch_check.py does.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tests'))
 from _repo import REPO_ROOT  # noqa: E402,F401  (puts the root on sys.path)
-import data_columns  # noqa: E402
+from core import data_columns  # noqa: E402
 
 
 # =============================================================================

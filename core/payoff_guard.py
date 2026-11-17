@@ -89,10 +89,13 @@ explicitly (`_denotes_participant`) and the two are kept apart. Do not
 import ast
 import os
 
-_ROOT = os.path.dirname(os.path.abspath(__file__))
+# The project root (core/__init__.py's marker walk to settings.py), not this
+# file's directory: the scan covers the apps beside settings.py, and core/.
+from core import REPO_ROOT as _ROOT
 
 # WHAT IS SCANNED: every oTree app package (a directory holding `__init__.py`)
-# plus the shared root-level modules those apps import. An app not currently in
+# (that includes `core/`, the package of shared modules those apps import) plus
+# any loose module at the root (settings.py). An app not currently in
 # any `app_sequence` is scanned too — it is one config edit away from being
 # live, and this is a build check, not a coverage check.
 #

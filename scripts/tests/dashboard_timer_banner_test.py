@@ -39,7 +39,7 @@ _APP_ROOT = os.path.dirname(os.path.dirname(_HERE))
 sys.path.insert(0, _APP_ROOT)
 sys.path.insert(0, os.path.join(_APP_ROOT, 'scripts', 'site_previews'))
 
-import experimenter_dashboard as ed      # noqa: E402
+from core import experimenter_dashboard as ed      # noqa: E402
 import monitor_session                   # noqa: E402  (the shared fixture)
 
 _failures = []

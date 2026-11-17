@@ -13,7 +13,7 @@ each re-deriving it (the one-implementation rule):
 
   * THE DOT-BI GATE needs the RIGHT answer under a "JS ran" flag. The answer
     never reaches the client, so a walker computes it the way the server does —
-    from dot_bi.py (imported by PATH, so the test process never configures oTree)
+    from core/dot_bi.py (imported by PATH, so the test process never configures oTree)
     and the participant code in the page URL. `dotbi_payload` returns the fields
     to inject. A real bot has neither the repo module nor the participant code
     from the admin side, which is the whole point of the gate; the test's ability
@@ -37,7 +37,7 @@ def _load_dot_bi():
     test process never has to import the oTree-configured package. dot_bi is a
     pure module (hashlib only), so this is safe and cannot come from the server
     under test."""
-    path = os.path.join(REPO_ROOT, 'dot_bi.py')
+    path = os.path.join(REPO_ROOT, 'core', 'dot_bi.py')
     spec = importlib.util.spec_from_file_location('dot_bi_forwalker', path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

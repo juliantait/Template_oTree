@@ -94,7 +94,7 @@ def main():
     import settings as _settings
     from otree.session import create_session
     from otree.database import db
-    import common
+    from core import common
 
     D = _settings.SESSION_CONFIG_DEFAULTS
     server = Server()

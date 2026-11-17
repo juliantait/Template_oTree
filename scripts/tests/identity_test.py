@@ -227,7 +227,7 @@ def assert_planted(code, label=None, exit_code=None, screenout_active=None,
 
 
 def identity_same(a, b):
-    import identity
+    from core import identity
     return identity.same_label(a, b)
 
 
@@ -255,8 +255,8 @@ def before_player_label(code):
 
 
 def main():
-    import common
-    import identity
+    from core import common
+    from core import identity
 
     # =====================================================================
     section('1. one row per id; case and whitespace are the same person')
@@ -650,7 +650,7 @@ def main():
     # seat label would show as an opaque code — which is exactly what an
     # experimenter scanning a room must not get.
     try:
-        import experimenter_dashboard
+        from core import experimenter_dashboard
         snapshot = experimenter_dashboard.session_snapshot(lab)
         row = next((x for x in snapshot['rows'] if x.get('code') == seat_code),
                    None)

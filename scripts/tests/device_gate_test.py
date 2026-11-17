@@ -48,7 +48,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _repo import REPO_ROOT  # noqa: E402  (also puts REPO_ROOT on sys.path)
 from http_flow_test import FormParser, build_payload, END_MARKERS
 from quiz_answers import CORRECT as QUIZ_CORRECT  # answers derived from the shipped items
-import common
+from core import common
 
 # `requests` REFUSES to send a header value with leading whitespace or control
 # characters — it validates client-side. A broken browser, a proxy, a privacy

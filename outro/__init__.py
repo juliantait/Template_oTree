@@ -1,7 +1,7 @@
 from otree.api import *
 import numbers, json
-import common
-import participant_tab_monitor
+from core import common
+from core import participant_tab_monitor
 from settings import INSTITUTION_NAME, STATIC_VERSION
 from .payment_rule import select_random_payouts
 
@@ -247,7 +247,7 @@ class C(BaseConstants):
     PLAYERS_PER_GROUP = None
     NUM_ROUNDS = 1
     # THE EXPERIMENTER MONITOR's header label for this app's step (optional;
-    # absent -> the raw app name). See experimenter_dashboard.py.
+    # absent -> the raw app name). See core/experimenter_dashboard.py.
     MONITOR_LABEL = 'Questionnaire'
 
 class Subsession(BaseSubsession):
@@ -602,7 +602,7 @@ def compute_final_payoff(p):
     # player.payoff any more — enforced at BOOT by
     # `payoff_guard.assert_no_player_payoff_writes()`, not by
     # AUTO_TABULATE_PAYOFFS=False, whose raise would land on a participant's
-    # page mid-round (exp_pilots review, 2026-08-14; see payoff_guard.py). And
+    # page mid-round (exp_pilots review, 2026-08-14; see core/payoff_guard.py). And
     # nothing in oTree recomputes participant.payoff afterwards (verified
     # against oTree 6.0.15: the player.payoff setter's delta is the only other
     # writer; scripts/tests/payoff_ledger_test.py pins that this value sticks, and §7
@@ -654,7 +654,7 @@ def results_live_method(player, data):
     DELEGATED to the outro's record-only handler at the end (the
     four-pieces-travel-together rule: overriding the monitored base's
     live_method must keep delegating, or this page's monitoring silently dies —
-    see participant_tab_monitor.py's gotcha list, and the test that pins this).
+    see core/participant_tab_monitor.py's gotcha list, and the test that pins this).
 
     THE CLICK STAMP: records the click on the "Back to Prolific" link, so the
     dashboard can flag a finisher who never went back to the platform (their
@@ -873,7 +873,7 @@ def vars_for_admin_report(subsession):
     the stale link. See DECISIONS.md (2026-08-17).
     """
     try:
-        import experimenter_dashboard
+        from core import experimenter_dashboard
         base = experimenter_dashboard.URL_BASE
     except Exception:
         base = '/experimenter_dashboard'
@@ -899,7 +899,7 @@ page_sequence = [Ended, NeutralReturn, Demographics, Feedback, Results]
 # participant_tab_monitor.MonitoredPage subclass (here, OutroMonitoredPage:
 # record-only — the phase note at the top
 # of this file) or explicitly opted out; a page that dodged the rule fails the
-# BOOT here, never a participant (see participant_tab_monitor.py).
+# BOOT here, never a participant (see core/participant_tab_monitor.py).
 participant_tab_monitor.assert_monitored_page_sequence(__name__, page_sequence)
 
 # EXTRA-ROUTE INSTALLS — deliberately the LAST lines of the LAST app module,
@@ -908,13 +908,13 @@ participant_tab_monitor.assert_monitored_page_sequence(__name__, page_sequence)
 #   * they must run AFTER this module's own `page_sequence` exists, because
 #     importing `otree.urls` builds the whole route table, and that walks every
 #     app's page_sequence — including this one, mid-import;
-#   * an early install from settings.py (identity.py's other install point)
+#   * an early install from settings.py (core/identity.py's other install point)
 #     would accomplish NOTHING here: `otree.urls` is never importable at
 #     settings time, and unlike the label guard there is no window to close —
 #     the routes only need to exist before `otree.asgi` builds the app, which
 #     is after every app import on every supported boot path.
 #
-# THE ROUTE-TABLE WORK ITSELF IS ONE IMPLEMENTATION, in `otree_routes.py`, which
+# THE ROUTE-TABLE WORK ITSELF IS ONE IMPLEMENTATION, in `core/otree_routes.py`, which
 # both installs below call. Two copies of "append a route to oTree" would drift
 # and the drift would only show on an oTree upgrade (CLAUDE.md's inverted rule).
 #
@@ -922,9 +922,9 @@ participant_tab_monitor.assert_monitored_page_sequence(__name__, page_sequence)
 # loudly instead. That is the one deliberate difference from identity's
 # asserting install point: the dashboard is an operator convenience and /health
 # is a deploy gate, and a boot that dies over either one fails every
-# participant. See the docstrings in experimenter_dashboard.py and health.py.
-import experimenter_dashboard
-import health
+# participant. See the docstrings in core/experimenter_dashboard.py and core/health.py.
+from core import experimenter_dashboard
+from core import health
 
 experimenter_dashboard.install_dashboard_route_or_note()
 # The admin "Report" tab's drift check (loud when the machinery it rides has
@@ -944,7 +944,7 @@ health.install_health_route_or_note()
 
 # The dashboard's "Download data" button: its own two routes, the same `*_or_note`
 # rule (never raises), and a warning here if OTREE_DATA_FOLDER cannot be used, so
-# it is seen at launch. See data_download.py.
-import data_download
+# it is seen at launch. See core/data_download.py.
+from core import data_download
 
 data_download.install_download_route_or_note()

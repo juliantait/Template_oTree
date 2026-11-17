@@ -92,7 +92,7 @@ def write_fixture(path, **overrides):
 def pure_leg(tmp):
     sys.path.insert(0, os.path.dirname(_TESTS_DIR))     # scripts/
     from _repo import REPO_ROOT                          # noqa: F401
-    import buildinfo
+    from core import buildinfo
     import write_build_info as writer
 
     section('The reader degrades to UNSTAMPED for every failure mode, and '
@@ -237,8 +237,8 @@ def inprocess_leg(stamped):
     from otree_inprocess import boot, page_name_of, path_of
 
     ot = boot(production=True)          # MUST come before any app import
-    import buildinfo                    # noqa: E402
-    import common                       # noqa: E402
+    from core import buildinfo                    # noqa: E402
+    from core import common                       # noqa: E402
     import settings                     # noqa: E402
 
     def csrf_of(html):

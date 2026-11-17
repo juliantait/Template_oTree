@@ -78,7 +78,7 @@ page must never 500 over provenance.
 
 READING IT
 ----------
-    import buildinfo
+    from core import buildinfo
     buildinfo.BUILD_INFO          # the running build, loaded ONCE at import
     buildinfo.label()             # 'build 214 · a1b2c3d'  |  'unstamped build'
 
@@ -99,8 +99,10 @@ logger = logging.getLogger(__name__)
 # from a throwaway temp directory (scripts/tests/otree_inprocess.py chdirs), and
 # a CWD-relative path would read a different file in each. This is the same
 # reasoning as scripts/tests/_repo.py's marker walk: never encode "where the
-# caller happens to be standing".
-APP_ROOT = os.path.dirname(os.path.abspath(__file__))
+# caller happens to be standing". It is the project ROOT (core/__init__.py walks
+# up to settings.py), not this file's own directory: the stamp sits beside
+# settings.py, and this module lives in core/.
+from core import REPO_ROOT as APP_ROOT
 
 BUILD_INFO_FILENAME = 'BUILD_INFO.json'
 
