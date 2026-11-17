@@ -4,8 +4,8 @@
 > copy this file to the repository root as `DECISIONS.md`, replace the title, and
 > **delete the template's own `DECISIONS.md`** (which logs the template's
 > development, not your study; carrying it over hands the next agent the wrong
-> precedent). Then delete this note and start logging below. See the README's
-> "How to use and edit this template" for where this fits in setup.
+> precedent). Then delete this note and start logging below. See
+> "How to use and edit this template" in `docs/agents/editing_a_study.md` for where this fits in setup.
 
 Design and implementation decisions with the REASON attached. **The reason is the
 point.** A forked study starts with no precedent, so every deliberate choice

@@ -36,7 +36,7 @@ WHAT IS CHECKED
   6. A ROOM REBOUND TO A NEW SESSION ORPHANS PEOPLE. Labels are matched WITHIN a
      session, so the same id lands on a fresh row in the new session. That is
      oTree's behaviour, not a bug we can fix — it is checked here so the
-     operational rule in README ("Rebinding a room mid-study") stays true.
+     operational rule in docs/agents/entry_and_identity.md ("Rebinding a room mid-study") stays true.
 
 Exit 0 = all checks passed. Never touches a real database.
 """

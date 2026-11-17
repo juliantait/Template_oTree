@@ -508,7 +508,7 @@ STATIC_VERSION = '24'
 # --- whose study this is ------------------------------------------------------
 # THE ONE PLACE A COPIED STUDY NAMES ITS INSTITUTION IN PROSE (Julian,
 # 2026-08-15). Rebranding a copied template is meant to be two image files plus
-# this line, and nothing else — see "Rebranding a copied study" in README.md.
+# this line, and nothing else — see "Rebranding a copied study" in docs/agents/editing_a_study.md.
 #
 # WHAT READS IT: participant-facing COPY that names the institution, which today
 # is the consent page's privacy sentence. Each app re-exports it as
@@ -946,7 +946,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     # else is screened out at entry and held on the consent page's index, where
     # it is served before/screened_out.html instead.
     #
-    # READ "THE DEVICE CHECK" IN README.md BEFORE NARROWING THIS. It is the
+    # READ "THE DEVICE CHECK" IN docs/agents/entry_and_identity.md BEFORE NARROWING THIS. It is the
     # reference for what the check actually inspects (the entry request's
     # User-Agent, and nothing else — no screen size, no touch, nothing
     # client-side), what the four types mean, why there is no 'laptop' type and

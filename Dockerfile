@@ -6,7 +6,7 @@
 # file, so it favours predictability over cleverness.
 #
 # Build/run commands and the environment variables that matter: see the "Docker"
-# section of README.md.
+# section of docs/agents/build_and_deploy.md.
 #
 # NO DATABASE IS BAKED IN. .dockerignore drops any db.sqlite3 from the build
 # context, and with the default (sqlite) configuration the container creates its
@@ -61,7 +61,7 @@ RUN if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.
 # correct even if someone forgets the -e flag at run time.
 ENV FORWARDED_ALLOW_IPS=*
 
-# Port 8101 is this project's standing test-hosting convention (see README.md
+# Port 8101 is this project's standing test-hosting convention (see docs/agents/build_and_deploy.md
 # and MACMINI_HOSTING.md); override with -e PORT=... plus a matching -p.
 ENV PORT=8101
 EXPOSE 8101

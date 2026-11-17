@@ -19,6 +19,7 @@ so you know the file is deliberately absent rather than missing.
 | `running_on_prolific.md` | **Operating guide for a study running on Prolific** — the ID capture, the five completion codes, the device gate, what each ending does. Moved here from a top-level `prolific/` folder on 2026-08-16; it is an operating guide, not a conversion plan. Irrelevant to a lab study. |
 | `conventions.md` | The design principles behind the template: what the parameter scheme is for, how the three controls interact, the naming rules. Moved from the repo root on 2026-08-16. Read it before adding a parameter or a page. |
 | `skills_claude/` | Authoring playbooks for whoever (or whatever) edits the template: writing the task, the instructions, the quiz, the tests, and the Railway + Prolific hosting procedures. Kept as a group — start at `skills_claude/README.md`. |
+| `agents/` | The detailed reference by topic (setup, parameters, entry gate, participant flow, payments, dashboard, testing, build and deploy, styling). Written for AI agents and indexed from `CLAUDE.md`, readable by anyone who wants the depth. |
 | `experimenter_dashboard_brief.md` | The dashboard **as it was specified**, kept deliberately un-updated so the brief can be compared against what was built. Not a description of the code. |
 
 ## 1. The three controls
@@ -35,7 +36,7 @@ top of `settings.py`. Set them and most decisions are made for you:
   the real run.
 
 They do not interact: a Prolific-configured study can be debugged with every
-module on. `README.md` has the full parameter table.
+module on. `agents/parameters.md` has the full parameter table.
 
 ## 2. Before a real launch
 
@@ -71,7 +72,7 @@ first run — and which will appear to hang on a machine with no display.
 
 ## 4. Checking a change
 
-`README.md` has the full table of what each kind of check is and is not evidence
+`agents/testing.md` has the full table of what each kind of check is and is not evidence
 of. The two rules worth knowing before you start:
 
 - **Bot tests passing is not evidence that a browser works.** Drive form pages
@@ -122,7 +123,7 @@ consent, comprehension DQ, tab-monitor DQ and device screen-out. Only the
 completed one auto-approves; the other four are REQUEST_RETURN codes that prompt
 the participant to return the submission. Create all five before launch (the
 pre-launch check refuses to start while any is still a placeholder) and give each
-return code its own reason text. Full table: the README's "The five endings and
+return code its own reason text. Full table: `agents/participant_flow.md`, "The five endings and
 their codes".
 
 One gap to know about: an experimenter can still edit the fee on a running

@@ -324,7 +324,7 @@ def scenario_way_out(base):
           f'return on phone: a reload adds no history noise ({actions(st)})')
     # Returning on a COMPUTER does clear them — that is the whole point of the
     # soft wall, and it is never silent: screenout_cleared plus the history say
-    # so. Documented in README ("The device check") as an accepted consequence.
+    # so. Documented in docs/agents/entry_and_identity.md ("The device check") as an accepted consequence.
     _, r3 = enter(base, url, DESKTOP_UA, 'return on a computer after pressing')
     st = state(base, sc, p_code)
     check(st['screenout_active'] is False and st['screenout_cleared'] is True,

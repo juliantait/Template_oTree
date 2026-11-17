@@ -452,8 +452,8 @@ def main():
     # ...and admitted here, with no code change.
     expect_admitted(base, 'unknown-admitted+odd-real-UA', ODD_BUT_REAL_UA,
                     ['computer', 'unknown'], 'unknown')
-    # Phones out, tablets fine — the second worked example in README's device
-    # section, proven to behave as documented.
+    # Phones out, tablets fine — the second worked example in the device-check
+    # section of docs/agents/entry_and_identity.md, proven to behave as documented.
     expect_admitted(base, 'no-phones+tablet', TABLET_UA,
                     ['tablet', 'computer', 'unknown'], 'tablet')
     expect_screened_out(

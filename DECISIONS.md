@@ -2243,7 +2243,7 @@ page render.
 called by both the launch gate and the test) and pairs it with a positive
 control that the guard fires on each stale shape; the launch gate itself is
 `scripts/prelaunch_check.py` (`asset_problems`, `--stamp-assets`); the "when"
-is stated at `settings.STATIC_VERSION` and in README's rebranding section.
+is stated at `settings.STATIC_VERSION` and in the rebranding section of `docs/agents/editing_a_study.md`.
 
 ## The tab monitor is named the tab monitor everywhere in the code and data — the "AI-safety" name survives only in the participant's agreement — 2026-08-17
 
@@ -3780,7 +3780,7 @@ sum to `earned` — a component nobody can reconcile is a number, not an
 itemisation; and deriving the bonus as `total − base` in the test, which passes
 whatever the data says.
 **Enforced:** `scripts/tests/payoff_ledger_test.py` §9; the rule is stated in
-README "Paying participants — the itemisation rule" and in CODEBOOK "THE
+`docs/agents/payments.md` "Paying participants — the itemisation rule" and in CODEBOOK "THE
 ITEMISATION RULE".
 
 ## The end-of-page cookie reset is gone — 2026-08-13

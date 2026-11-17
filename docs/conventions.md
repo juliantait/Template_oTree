@@ -262,7 +262,7 @@ documented. See `settings.EXIT_CODES` and the CODEBOOK.md exit-code table.
   and desktops alike (a browser cannot distinguish them, so there is no `laptop`
   type); `unknown` is a real User-Agent that matches nothing, and is admitted or
   excluded like any other type — while NO usable User-Agent at all is not a type
-  and always allows. Full reference: "The device check" in README.md.
+  and always allows. Full reference: "The device check" in `docs/agents/entry_and_identity.md`.
 - **collect_outro_bank_details** — lab IBAN/BIC/SEPA payment collection (`outro`).
 - **collect_outro_demographics** — explicit demographics questionnaire (`outro`); off
   for Prolific, which supplies demographics in its own export.

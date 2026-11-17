@@ -173,7 +173,7 @@ has to ask the participant. **`unknown`** means a real User-Agent was read and
 matched no family; it is listed like any other type, so admitting those
 participants is a configuration decision rather than a code change. A request
 with NO usable User-Agent at all is a different thing — no decision — and is
-always allowed in. **README's "The device check" section is the full reference**
+always allowed in. **"The device check" in `docs/agents/entry_and_identity.md` is the full reference**
 (what it inspects, the asymmetry, the limits); this is the operational summary.
 
 With the **default** list (all four) it does nothing at all — every device
