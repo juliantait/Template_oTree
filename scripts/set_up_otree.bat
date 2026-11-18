@@ -1,5 +1,7 @@
 @echo off
 
+REM !!! FILL IN THE CHANGE_ME_* VALUES BELOW LOCALLY ON THE LAB PC. NEVER COMMIT THE REAL VALUES (this repository is public). !!!
+
 REM FYI: REM means that row is commented out
 
 REM === Database Setup (only needed if you want to set up your own DB; this requires the postgres password to be entered into the terminal) ===
@@ -8,8 +10,8 @@ REM CREATE DATABASE experimentname;
 REM CREATE USER CHANGE_ME_DB_USER WITH PASSWORD 'CHANGE_ME_DB_PASSWORD';
 REM GRANT ALL PRIVILEGES ON DATABASE experimentname TO CHANGE_ME_DB_USER;
 
-REM === Database Management (at CREED, you can use DB 'experimenting' without issue) === 
-set DB_NAME=experimenting
+REM === Database Management (at CREED, ask the lab manager for the shared lab database name, user and password) ===
+set DB_NAME=CHANGE_ME_DB_NAME
 set DB_USER=CHANGE_ME_DB_USER
 set DB_PASSWORD=CHANGE_ME_DB_PASSWORD
 set DB_HOST=localhost
@@ -36,12 +38,12 @@ start "oTree Server" cmd /k otree prodserver
 REM === Open oTree Monitoring Page === 
 
 REM === !!! SELECT LAB !!! ===
-REM SMALL LAB: CHANGE_ME_LAB_SERVER_IP
-REM LARGE LAB: CHANGE_ME_LAB_SERVER_IP
+REM Set this to the IP address of the lab's oTree server PC (ask the lab manager; one per lab room)
+set LAB_SERVER_IP=CHANGE_ME_LAB_SERVER_IP
 
 REM Wait for prodserver to boot up & open oTree monitoring page
 timeout /t 5 >nul
-start http://CHANGE_ME_LAB_SERVER_IP:8000/rooms
+start http://%LAB_SERVER_IP%:8000/rooms
 
 echo Your postgres server is up and running :)
 echo This terminal will close now

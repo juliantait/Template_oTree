@@ -190,6 +190,9 @@ about end pages and resume-preference pages a study adds).
   column list in `core/data_columns.py`.
 - `scripts/set_up_otree.bat` : starts oTree on the experimenter's Windows PC in
   the lab.
+  It ships `CHANGE_ME_*` placeholders (database name/user/password, admin
+  password, `LAB_SERVER_IP`): fill them in locally on the lab PC and never
+  commit the real values (the repository is public).
 - `scripts/tests/` : HTTP-driven flow tests, escaping and frozen-config regression
   tests, and a measured browser render check (see [testing.md](testing.md)).
 
