@@ -275,7 +275,5 @@ database needs `RESET_DB=1` — or a hand-added column — or every participant
 page 500s. See the warning box under
 [Before a deploy](#before-a-deploy-scriptspredeploy_checksh).
 
-## Hosting an oTree experiment online (Mac mini)
-See `MACMINI_HOSTING.md` for the full self-contained guide: how the Mac mini serves an oTree experiment (Docker container + Cloudflare Tunnel subdomain), the problems we hit and how we solved them, and a step-by-step recipe to deploy a brand-new experiment. That file is gitignored (it holds private infra details) so it stays local only.
-
-**Test oTree hosting convention:** every test oTree on the Mac mini runs as a Docker container on the fixed **port 8101** (env `FORWARDED_ALLOW_IPS=*`), exposed on the tailnet via `a tailnet-only mapping`. To put a new experiment on the test server, stop/remove the old container and `docker run` the new image on the same port 8101. Reusing 8101 keeps the tailscale serve mapping and the Dock apps working untouched. See the "Test oTree hosting convention" section in `MACMINI_HOSTING.md` for the full standing convention every future test oTree must follow.
+## Hosting an oTree experiment on your own machine
+See [`docs/hosting_local.md`](../../docs/hosting_local.md) for self-hosting on hardware you control (a lab PC, a server, an always-on Mac): the Docker container, a Cloudflare Tunnel or Tailscale Funnel in front of it, binding the room, backups, and the gotchas. Managed hosting is in [`docs/hosting_railway.md`](../../docs/hosting_railway.md).

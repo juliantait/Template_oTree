@@ -62,7 +62,6 @@ previews/
 .preview_config.json
 
 # --- private / host-specific / never needed at run time -----------------------
-MACMINI_HOSTING.md
 .env
 
 # Curl cookie jars. BY PATTERN, not by filename: they only ever arrive from
@@ -78,7 +77,9 @@ MACMINI_HOSTING.md
 **/*cookie*
 cookiejar*
 **/cookiejar*
-*.command
+# Host-side double-click launchers, at any depth (a local sync launcher can sit
+# in scripts/, the instruction-preview one in previews/).
+**/*.command
 *.log
 *.bak
 .DS_Store

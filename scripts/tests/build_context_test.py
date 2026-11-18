@@ -470,6 +470,8 @@ def main():
          '`.env` is not a prefix match'),
         (['*.command'], 'GitHub_sync.command', True,
          'the host-side launchers go'),
+        (['**/*.command'], 'scripts/GitHub_sync.command', True,
+         '...including one kept in scripts/, which needs the `**/` spelling'),
     ]
     for pats, path, want, why in CASES:
         got = excluded(path, compile_all(pats))

@@ -20,7 +20,7 @@ deploy report SUCCESS with the container already exited (see
 
 It ships even though this repo deliberately contains no deploy configuration,
 because it is HOST-AGNOSTIC: it is equally the thing a lab launcher curls before
-opening the door and the thing the Mac mini's monitoring polls. Pointing a
+opening the door and the thing a self-hosted machine's monitoring polls. Pointing a
 platform healthcheck at it is a service SETTING, documented as a snippet in
 ``docs/hosting_railway.md``, not a file this repo ships.
 

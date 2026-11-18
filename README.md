@@ -58,7 +58,7 @@ The full walkthrough is in [`.claude/reference/editing_a_study.md`](.claude/refe
 ## Where to read next
 
 - **Running a study**: [`docs/README.md`](docs/README.md). What to change, what to check before launch, how participants get paid.
-- **Hosting online**: [`docs/hosting_railway.md`](docs/hosting_railway.md) for Railway, [`docs/running_on_prolific.md`](docs/running_on_prolific.md) for Prolific, [`docs/postgres_assumptions.md`](docs/postgres_assumptions.md) if you use Postgres.
+- **Hosting online**: [`docs/hosting_railway.md`](docs/hosting_railway.md) for Railway, [`docs/hosting_local.md`](docs/hosting_local.md) for a machine you control, [`docs/running_on_prolific.md`](docs/running_on_prolific.md) for Prolific, [`docs/postgres_assumptions.md`](docs/postgres_assumptions.md) if you use Postgres.
 - **A lab session**: [`.claude/reference/participant_flow.md`](.claude/reference/participant_flow.md) (lab flow) and `scripts/set_up_otree.bat` for the lab PC.
 - **Reading your data**: [`docs/CODEBOOK.md`](docs/CODEBOOK.md), the analyst's reference: every column and exit code.
 - **Why something is the way it is**: [`.claude/DECISIONS.md`](.claude/DECISIONS.md).

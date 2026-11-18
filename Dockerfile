@@ -61,8 +61,8 @@ RUN if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.
 # correct even if someone forgets the -e flag at run time.
 ENV FORWARDED_ALLOW_IPS=*
 
-# Port 8101 is this project's standing test-hosting convention (see .claude/reference/build_and_deploy.md
-# and MACMINI_HOSTING.md); override with -e PORT=... plus a matching -p.
+# Default port only: nothing depends on 8101 in particular. Override it with
+# -e PORT=... plus a matching -p (docs/hosting_local.md, step 2).
 ENV PORT=8101
 EXPOSE 8101
 

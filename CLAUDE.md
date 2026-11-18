@@ -81,7 +81,7 @@ Details: `.claude/reference/parameters.md`.
 - `docs/`: researcher guides (hosting, Prolific, Postgres, conventions) and `CODEBOOK.md`.
 - `.claude/`: agent material, tracked but kept out of the Docker image. `DECISIONS.md` and `DECISIONS_stub.md`; `reference/` (the topic index below); `skills/` (authoring playbooks as Claude Code skills, index `skills/README.md`).
 - `previews/`: instruction preview output; only `Preview_Instructions.command` (the double-click launcher) is tracked there.
-- Not tracked: `_ai/` (agent scaffolding), the rest of `previews/`, `TODO.md`, `todo.json`, `.claude/settings.local.json`, `MACMINI_HOSTING.md`, the SQLite DB.
+- Not tracked: `_ai/` (agent scaffolding), the rest of `previews/`, `todo.json`, `.claude/settings.local.json`, the SQLite DB.
 
 Full table: `.claude/reference/layout.md`.
 

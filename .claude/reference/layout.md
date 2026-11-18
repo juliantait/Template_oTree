@@ -39,11 +39,9 @@ The project root holds the four oTree apps plus a small set of top-level items:
 | `core/participant_tab_monitor.py` | the participant-side tab-monitor page bases and their boot guard. |
 | `README.md` `CLAUDE.md` `.claude/DECISIONS.md` `docs/conventions.md` `docs/CODEBOOK.md` | the five key documents (only the first two sit at the root): short human entry point, rules for agents (with the `.claude/reference/` topic index), decision record, design principles, data codebook. |
 | `previews/Preview_Instructions.command` | double-clickable (macOS): view the instructions as a coauthor would, with **no terminal** — see "Collaborating on the instructions flow". The only tracked file in `previews/`; it sits next to the output it writes. |
-| `TODO.md` | pending work. **Gitignored — local only, not in a copy.** |
-| `MACMINI_HOSTING.md` | private Mac mini hosting runbook (gitignored — kept local). |
 | dotfiles | `.gitignore`, `.gitattributes`, etc. |
 
-Not tracked in git: `_ai/` (agent scaffolding — pilot snapshots, performance reviews, audits), `previews/` (regenerable instruction previews; only the launcher is tracked), `TODO.md`, `todo.json`, `.claude/settings.local.json`, `MACMINI_HOSTING.md`, the SQLite DB, `__pycache__`, and OS cruft. Reference material a copied study genuinely needs is tracked in **`docs/`** instead — start at `docs/README.md` if you are running a study rather than editing the template.
+Not tracked in git: `_ai/` (agent scaffolding — pilot snapshots, performance reviews, audits), `previews/` (regenerable instruction previews; only the launcher is tracked), `todo.json`, `.claude/settings.local.json`, the SQLite DB, `__pycache__`, and OS cruft. Reference material a copied study genuinely needs is tracked in **`docs/`** instead — start at `docs/README.md` if you are running a study rather than editing the template.
 
 ## Pages by app (edit guidance)
 - before

@@ -187,5 +187,5 @@ splitting if the file is being edited anyway; not worth a change on its own.
 - No raw SQL anywhere in the app code, so no backend-specific query syntax.
   (The one place identity is compared, `core/identity.py`, was already moved out of
   SQL and into Python for exactly this reason — see `.claude/DECISIONS.md`, 2026-08-12.)
-- `scripts/set_up_otree.bat`, `MACMINI_HOSTING.md` — host-side dev docs, no
+- `scripts/set_up_otree.bat`, `docs/hosting_local.md` — host-side dev docs, no
   runtime effect.

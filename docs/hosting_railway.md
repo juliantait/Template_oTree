@@ -5,7 +5,7 @@ onto Railway, and the source of truth for what a hosted deploy needs in general.
 It is written to be followed by anyone: a researcher hosting their own study, or
 an agent doing it for them; where a step needs account access or a human hand, it
 is marked. It is a verified workflow, first used for `Experts/exp_pilots` on
-2026-08-14 (live at `<your-app>.up.railway.app`). Update this file when
+2026-08-14. Update this file when
 the workflow improves.
 
 > **Referenced by (update these if you move or rename this file):**
@@ -13,7 +13,7 @@ the workflow improves.
 > - `.claude/skills/README.md` and `docs/README.md` (§6, §7)
 > - `docs/running_on_prolific.md` (its intro links here for the hosting side)
 > - `core/health.py`, `scripts/write_build_info.py`, `scripts/verify_deploy.py`
-> - `ideas/railway-server-metrics-panel.md`, `.gitignore`, `.claude/DECISIONS.md`
+> - `docs/ideas/railway-server-metrics-panel.md` (local only), `.gitignore`, `.claude/DECISIONS.md`
 > - **External, off-repo:** the CREED lab doc at `juliantait.eu/CREED`, section 5.1
 >   "Running the Study Online" (source in the `juliantait.github.io` repo, file
 >   `CREED Instructions/FAQ.tex`) links this path directly.

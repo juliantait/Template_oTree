@@ -126,10 +126,10 @@ unavoidable.
 
 **Delivered, verified:** experiment built from the published template, two Fable-5
 reviews, all suites green; a live Railway SERVICE (`exp-beliefs`,
-`<your-app>.up.railway.app/room/study` returns 200) on the spare
-`Postgres` with `exp-pilots` untouched; an unpublished Prolific DRAFT ("A
+its `/room/study` returns 200) on a spare
+Postgres with `exp-pilots` untouched; an unpublished Prolific DRAFT ("A
 Study on Decision Making", 150p / 10 min, not underpaying, 120 places <= 240
-seats, five codes); a `LAUNCH_HANDOFF.md`; secrets in `MacMini/`; cost and memory
+seats, five codes); a `LAUNCH_HANDOFF.md`; secrets kept outside the repo; cost and memory
 logged.
 
 **Good judgment worth keeping:** it marked every design constant PLACEHOLDER for
