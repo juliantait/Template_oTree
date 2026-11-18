@@ -8,18 +8,19 @@ an index of topic files in `.claude/reference/` to read when a task touches that
 
 ## Read before changing anything
 
-- **`.claude/DECISIONS.md` records why things are the way they are**: each decision, its
+- **`.claude/decisions/` records why things are the way they are**: each decision, its
   reasoning, the rejected alternative and *where it is enforced* (or an
-  admission that nothing enforces it). Read it before
-  changing anything that looks wrong, and add to it in the same change that makes a
+  admission that nothing enforces it), split into topic files. Before changing
+  anything that looks wrong, read `.claude/decisions/README.md`, then the topic
+  file for what you are touching; add to it in the same change that makes a
   decision someone could later mistake for an accident. Most apparent redundancy
   here is load-bearing. The failure mode it defends against is **helpfulness**: a
   missing config value reads as an unfinished port, inert code reads as dead weight,
   a constant only coherent at one value reads as a tunable knob, and a competent
   agent "corrects" each one. The reason, written down, is what stops that.
-- **On a forked study, `.claude/DECISIONS.md` is fresh**: the fork starts its own log from
-  `.claude/DECISIONS_stub.md` (step 0 in `.claude/reference/editing_a_study.md`). Keep
-  reading it and adding to it exactly as above.
+- **On a forked study, its own decisions go in `.claude/decisions/study.md`**, started
+  from `.claude/decisions/_study_stub.md` (step 0 in `.claude/reference/editing_a_study.md`).
+  Read it first; the template's topic files stay and still explain the inherited code.
 - **`docs/CODEBOOK.md` opens with an Analyst quick start, and a fork fills it in**: its
   own primary outcomes, exclusions and pooling caveats, and its study fields in the
   primary tier (PROMPT boxes mark the spots), in the same change that swaps the
@@ -79,7 +80,7 @@ Details: `.claude/reference/parameters.md`.
 - `scripts/tests/`: the suites; `_repo.py` puts the root on `sys.path`.
 - `_static/global/`: CSS, JS, images, and `_static/global/html/template.html` (component specimens). `_templates/`: the room welcome gate.
 - `docs/`: researcher guides (hosting, Prolific, Postgres, conventions) and `CODEBOOK.md`.
-- `.claude/`: agent material, tracked but kept out of the Docker image. `DECISIONS.md` and `DECISIONS_stub.md`; `reference/` (the topic index below); `skills/` (authoring playbooks as Claude Code skills, index `skills/README.md`).
+- `.claude/`: agent material, tracked but kept out of the Docker image. `decisions/` (the decision log by topic, index `decisions/README.md`, plus the fork stub); `reference/` (the topic index below); `skills/` (authoring playbooks as Claude Code skills, index `skills/README.md`).
 - `previews/`: instruction preview output; only `Preview_Instructions.command` (the double-click launcher) is tracked there.
 - Not tracked: `_ai/` (agent scaffolding), the rest of `previews/`, `todo.json`, `.claude/settings.local.json`, the SQLite DB.
 

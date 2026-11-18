@@ -400,7 +400,7 @@ def app_of_step(timeline, step):
 # pill, no marker, no count — and, because the row had run past the last page
 # index, was silently counted as FINISHED. That inflated the finished total AND
 # both averages' denominators, which is the worst possible failure direction:
-# invisible, and flattering. See .claude/DECISIONS.md.
+# invisible, and flattering. See .claude/decisions/dashboard.md.
 #
 # EVERY FALLBACK IS PER FIELD, never all-or-nothing: a code that declares a label
 # but no emoji gets its label and an honest blank.
@@ -879,7 +879,7 @@ def _participant_names(session) -> dict:
 def _waiting_for(v, names) -> list:
     """WHO THIS PARTICIPANT IS WAITING ON, as display names.
 
-    THIS PATH IS INERT ON THE TEMPLATE AND THAT IS DELIBERATE — see .claude/DECISIONS.md
+    THIS PATH IS INERT ON THE TEMPLATE AND THAT IS DELIBERATE — see .claude/decisions/dashboard.md
     ("The waiting-for pill ships inert"). This template has no wait pages, so
     nothing writes ``participant.vars['waiting_for']`` and the pill never renders
     for anybody. It is implemented, and TESTED against the shape a real wait page
@@ -1845,7 +1845,7 @@ def _participant_row(pp, ctx, now) -> dict:
         entry_only=entry_only,
         # WHO THIS PARTICIPANT IS WAITING ON, as display names — [] for
         # everybody on this template, which ships no wait pages (see
-        # _waiting_for, and .claude/DECISIONS.md). Only an ACTIVE row can be waiting:
+        # _waiting_for, and .claude/decisions/dashboard.md). Only an ACTIVE row can be waiting:
         # a finished or terminal participant is not blocked on anybody, and a
         # stale value must not outlive the wait.
         waiting_for=(_waiting_for(v, ctx['names'])
@@ -2348,7 +2348,7 @@ def install_dashboard_route_or_note():
     unguarded call site in outro/__init__.py and kills the boot. A
     failure-reporter that can fail on the thing it is reporting is no reporter
     at all. The literal is the same string URL_BASE holds and the same fallback
-    vars_for_admin_report trusts. See .claude/DECISIONS.md (2026-08-17).
+    vars_for_admin_report trusts. See .claude/decisions/dashboard.md (2026-08-17).
     """
     try:
         outcome = install_dashboard_route()
@@ -3719,7 +3719,7 @@ function stateHTML(row) {
      That is why it is a pill in this cell rather than a column — a column would
      be empty for almost every row on almost every screen.
      INERT ON THIS TEMPLATE, DELIBERATELY: nothing ships a wait page, so
-     `waiting_for` is [] for everyone (see _waiting_for and .claude/DECISIONS.md). It is
+     `waiting_for` is [] for everyone (see _waiting_for and .claude/decisions/dashboard.md). It is
      implemented and tested against the shape a real wait page produces so a fork
      adding group matching gets the operator view for free. Do not delete it as
      dead code.
@@ -3798,8 +3798,8 @@ function stateHTML(row) {
    grouped by statusRank ascending — active rows first (sorted by name), then
    finished, then the terminal/dq red rows, then not-arrived at the bottom, then
    error — so the red/terminal rows are grouped and the not-arrived rows sit at
-   the bottom the moment the page opens, with no click required (DECISIONS:
-   default state sort). The server still ships rows in natural-name,
+   the bottom the moment the page opens, with no click required (.claude/decisions/dashboard.md:
+   the monitor defaults to the state sort). The server still ships rows in natural-name,
    unlabelled-last order (sort_rows_by_displayed_name), and one click on the
    Participant header restores that name order. A column's click sets its key and
    resets to ascending; clicking the SAME column again flips the direction.
@@ -3821,7 +3821,7 @@ function dispName(r) { return String(r.label || r.code || ''); }
    `1 if not label else 0`). Without this the client twin drifted: a bare code
    sorted purely by its own characters and jumped to wherever it happened to
    land, so clicking Participant did NOT restore the server's order "exactly"
-   (.claude/DECISIONS.md, "click-to-sort") — and it only failed when a code sorted
+   (.claude/decisions/dashboard.md, "click-to-sort") — and it only failed when a code sorted
    ahead of a real label, i.e. invisibly, on the random code. */
 function noLabelRank(r) { return r.label ? 0 : 1; }
 function naturalKey(s) {

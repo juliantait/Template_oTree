@@ -2,7 +2,7 @@
 
 For the researcher starting a study, not for whoever built the template. It
 answers "what do I have to do, and what will bite me?" — the reasoning behind
-each answer lives in `.claude/DECISIONS.md`, and you do not need it to run a study.
+each answer lives in `.claude/decisions/` (by topic), and you do not need it to run a study.
 
 Everything in `docs/` is **tracked**, so a study copied from this template gets
 all of it. Records of how the template came to be — audits, work logs, pilot
@@ -22,7 +22,7 @@ so you know the file is deliberately absent rather than missing.
 | `CODEBOOK.md` | **The analyst's reference**: every exported column, exit code and pooling caveat. A forked study fills in its own Analyst quick start. |
 | `experimenter_dashboard_brief.md` | The dashboard **as it was specified**, kept deliberately un-updated so the brief can be compared against what was built. Not a description of the code. |
 
-Agent-facing material lives in `.claude/` at the repo root, not here: the authoring playbooks as skills (`.claude/skills/`, start at its `README.md`), the detailed topic reference indexed from `CLAUDE.md` (`.claude/reference/`), and the decision log (`.claude/DECISIONS.md`). All of it is readable by anyone who wants the depth.
+Agent-facing material lives in `.claude/` at the repo root, not here: the authoring playbooks as skills (`.claude/skills/`, start at its `README.md`), the detailed topic reference indexed from `CLAUDE.md` (`.claude/reference/`), and the decision log (`.claude/decisions/`, by topic). All of it is readable by anyone who wants the depth.
 
 ## 1. The three controls
 

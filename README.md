@@ -28,7 +28,7 @@ Open http://localhost:8000/demo and click through a session. Nothing needs confi
 
 To turn it into your study:
 
-1. **Copy the template** and start your own decision log from `.claude/DECISIONS_stub.md`.
+1. **Copy the template** and start your study's own decision log, `.claude/decisions/study.md`, from `.claude/decisions/_study_stub.md`.
 2. **Pick lab or Prolific** in `settings.py` (the `recruitment` profile and the completion codes).
 3. **Build your game in `main/`**, replacing the placeholder task. Guide: `.claude/skills/writing-task/SKILL.md`.
 4. **Write the instructions and quiz** in `intro/instructions_text.html` and `intro/quiz_items.py`.
@@ -50,7 +50,7 @@ The full walkthrough is in [`.claude/reference/editing_a_study.md`](.claude/refe
 | `docs/` | guides for running a study: hosting, Prolific, Postgres, design principles, and the data codebook |
 | `.claude/skills/` | how-to guides for writing the task, instructions, quiz, consent and tests |
 | `.claude/reference/` | the detailed reference, by topic (written for AI agents, readable by anyone) |
-| `.claude/DECISIONS.md` | the decision log: why things are the way they are |
+| `.claude/decisions/` | the decision log, by topic: why things are the way they are |
 | `previews/` | instruction previews; double-click `Preview_Instructions.command` there to make them (macOS) |
 
 `settings.py` stays at the root: it holds the session configs, the recruitment profiles and every switch.
@@ -61,7 +61,7 @@ The full walkthrough is in [`.claude/reference/editing_a_study.md`](.claude/refe
 - **Hosting online**: [`docs/hosting_railway.md`](docs/hosting_railway.md) for Railway, [`docs/hosting_local.md`](docs/hosting_local.md) for a machine you control, [`docs/running_on_prolific.md`](docs/running_on_prolific.md) for Prolific, [`docs/postgres_assumptions.md`](docs/postgres_assumptions.md) if you use Postgres.
 - **A lab session**: [`.claude/reference/participant_flow.md`](.claude/reference/participant_flow.md) (lab flow) and `scripts/set_up_otree.bat` for the lab PC.
 - **Reading your data**: [`docs/CODEBOOK.md`](docs/CODEBOOK.md), the analyst's reference: every column and exit code.
-- **Why something is the way it is**: [`.claude/DECISIONS.md`](.claude/DECISIONS.md).
+- **Why something is the way it is**: [`.claude/decisions/`](.claude/decisions/README.md).
 - **Rules for editing the template**: [`CLAUDE.md`](CLAUDE.md), with the topic index into `.claude/reference/`.
 
 ## Working with Claude

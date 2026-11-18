@@ -33,7 +33,7 @@ template drifts the first time somebody copies it.** `participation_fee` is a
 standard oTree knob that every oTree tutorial sets; a researcher starting a study
 from this template will meet it in oTree's own docs, set it in good faith, and
 get a payment split they never intended and no error to tell them so. The
-.claude/DECISIONS.md entry for the payoff ledger makes the same argument, and this repo
+.claude/decisions/payments.md entry for the payoff ledger makes the same argument, and this repo
 has already had one convention-only rule quietly break (three documents claiming
 oTree's `player.payoff` raise was "enforcement" when it was not).
 
@@ -292,7 +292,7 @@ def assert_participation_fee_is_zero(root=None, defaults=None, configs=None):
             "If this is a study copied from the template that already had a "
             "fee: move it into the ledger (add it to `payment_show_up`, or into the "
             "`earned` computation in outro) and set participation_fee back to "
-            "0. See .claude/DECISIONS.md, 'participation_fee ships 0, and a boot guard "
+            "0. See .claude/decisions/payments.md, 'participation_fee ships 0, and a boot guard "
             "holds it there'.")
 
     writes, unreadable = find_fee_writes(root)
@@ -307,7 +307,7 @@ def assert_participation_fee_is_zero(root=None, defaults=None, configs=None):
             f"{listing}\n"
             "One payment ledger: the base belongs in `payment_show_up` and the total in "
             "participant.payoff. If the value really is zero but computed, make "
-            "it a literal 0 here and compute elsewhere. See .claude/DECISIONS.md, "
+            "it a literal 0 here and compute elsewhere. See .claude/decisions/payments.md, "
             "'participation_fee ships 0, and a boot guard holds it there'.")
 
     if unreadable:

@@ -4,7 +4,7 @@
 global.js binds Enter to the page's forward action. On a Prolific Results page that
 action is "Back to Prolific", so before this was fixed a keyboard user on the results
 accordion was sent out of the study. The rule now: a control with its own Enter action
-keeps it; Enter anywhere else still moves forward. See .claude/DECISIONS.md, "Enter belongs to
+keeps it; Enter anywhere else still moves forward. See .claude/decisions/styling_and_ui.md, "Enter belongs to
 the focused control".
 
 WHAT IT CHECKS
@@ -540,7 +540,7 @@ def check_prolific_results(page, context):
         page.keyboard.press('Enter')
     check(page.url == href, f'Enter with nothing focused is still the forward action ({page.url})')
 
-    # Kept as it was on purpose, and open to a decision: .claude/DECISIONS.md, same entry.
+    # Kept as it was on purpose, and open to a decision: .claude/decisions/styling_and_ui.md, same entry.
     page.goto(results_url)
     page.wait_for_load_state('load')
     page.locator('#results_completed').focus()

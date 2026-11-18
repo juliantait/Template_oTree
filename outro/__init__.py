@@ -870,7 +870,7 @@ def vars_for_admin_report(subsession):
     This is the RUNTIME half of the fix; the LAUNCH half is
     `scripts/prelaunch_check.py`'s dashboard section, which fails a launch when
     URL_BASE has drifted so somebody fixes the rename before an operator meets
-    the stale link. See .claude/DECISIONS.md (2026-08-17).
+    the stale link. See .claude/decisions/dashboard.md (2026-08-17).
     """
     try:
         from core import experimenter_dashboard

@@ -4,7 +4,7 @@ flag says so — and the flag, not the recruitment profile, is what decides.
 
     python scripts/tests/explicit_consent_test.py
 
-WHY THIS TEST EXISTS (.claude/DECISIONS.md, 2026-08-14). Whether the consent page asks
+WHY THIS TEST EXISTS (.claude/decisions/participant_flow.md, 2026-08-14). Whether the consent page asks
 an explicit question used to be decided by `prolific_completion_redirects` —
 platform plumbing standing in for an ethics decision. The split gave the
 question its own flag: default ON in SESSION_CONFIG_DEFAULTS, resolved OFF by

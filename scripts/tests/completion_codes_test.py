@@ -8,7 +8,7 @@ whole config instead of one server-chosen value. That failure is invisible unles
 each ending is driven for real, to the page a participant actually lands on, and
 then checked for the ABSENCE of the four codes belonging to other populations.
 
-THE DECISION BEING PROTECTED (.claude/DECISIONS.md, 2026-08-15). Every ending population
+THE DECISION BEING PROTECTED (.claude/decisions/participant_flow.md, 2026-08-15). Every ending population
 has its own completion code, because a shared code COLLAPSES TWO POPULATIONS
 IRREVERSIBLY on Prolific's side: once a comprehension failure and a tab-monitor
 ejection have both submitted under one `DQ-` code, the submission list cannot

@@ -236,7 +236,7 @@ intermediate moment (not just when it fills). An assigned participant **keeps
 their cell even if they then abandon** — the balance is of who *arrived*, and a
 cell is never released or re-dealt. A real multi-cell study that would rather
 balance *completers* (release an abandoned cell) is a deliberately deferred
-decision — see `.claude/DECISIONS.md`. The count-and-assign is race-safe per session (a
+decision — see `.claude/decisions/task_and_treatments.md`. The count-and-assign is race-safe per session (a
 DB row lock serialises simultaneous arrivals), so two people arriving at the same
 instant cannot both grab the same least-filled cell.
 
@@ -850,7 +850,7 @@ Fill in per-study fields as you build the task. The template ships with:
     "Treatment assignment" in the primary tier above.
   - **`consent` is populated exactly when the session ran with
     `explicit_consent` on** (before 2026-08-14 this was decided by
-    `prolific_completion_redirects` — the flag was split, see .claude/DECISIONS.md).
+    `prolific_completion_redirects` — the flag was split, see .claude/decisions/participant_flow.md).
     Null means the question was never asked (implicit consent — the lab
     profile), NOT that consent is missing: implicit consent is the act of
     continuing past the page. `False` never appears on a row that got past

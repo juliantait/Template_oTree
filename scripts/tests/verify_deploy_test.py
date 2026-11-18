@@ -359,7 +359,7 @@ def main():
     check(code == 0 and 'EXEMPT' in out and 'build_at_creation' in out,
           'and a session created BEFORE build stamping existed passes, with '
           'the named exemption shown rather than silently skipped — provenance '
-          'never fails anything (.claude/DECISIONS.md)')
+          'never fails anything (.claude/decisions/build_and_deploy.md)')
 
     section('G. the green path still passes at the end')
     STATE = green_state()

@@ -5,7 +5,7 @@
 
 WHAT THIS PINS
 --------------
-Build provenance is DOCUMENTATION, NEVER A GATE (.claude/DECISIONS.md, 2026-08-23). Two
+Build provenance is DOCUMENTATION, NEVER A GATE (.claude/decisions/build_and_deploy.md, 2026-08-23). Two
 claims follow from that, and each needs its own evidence:
 
   A. **A build with no stamp behaves EXACTLY like one with a stamp**, except in

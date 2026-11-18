@@ -13,7 +13,7 @@
 > what you owe across two numbers, and it never reaches the CSV export at all.
 > **A study copied from here that already sets a fee will refuse to boot until
 > the money is moved into the ledger** (into `payment_show_up`, or into `earned`). That
-> cost is deliberate — see `.claude/DECISIONS.md`.
+> cost is deliberate — see `.claude/decisions/payments.md`.
 
 > **ANY PAYMENT COMPONENT PAID OUTSIDE OTREE MUST STILL BE REPRESENTED INSIDE
 > OTREE, OR THE ADMIN PAYMENTS PAGE BECOMES A PARTIAL FIGURE THAT LOOKS LIKE A

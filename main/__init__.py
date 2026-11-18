@@ -102,7 +102,7 @@ class Player(BasePlayer):
     # page's OWN form (no side request), the same reliable path as client_ms. A
     # SEPARATE OBSERVER from the tab monitor (tab_monitor_* participant fields):
     # it only MEASURES, never enforces — see _static/global/js/focus_trace.js and
-    # .claude/DECISIONS.md. Named under the non-colliding `focus_trace_` family
+    # .claude/decisions/screening_and_integrity.md. Named under the non-colliding `focus_trace_` family
     # DELIBERATELY: `tab_monitor_focus_loss_count` already exists and means a
     # different thing (long departures on monitored pages that count toward
     # disqualification), so the bare name `focus_loss_count` is NOT reused.

@@ -38,7 +38,7 @@ touches no database, needs no browser — pure filesystem plus a settings import
 If check 1 FAILS, the fix is one command, and it is the whole point of the guard:
     python scripts/prelaunch_check.py --stamp-assets
 Run it whenever you change, add, rename or remove a file under `_static/` (and
-after bumping `settings.STATIC_VERSION`). See .claude/DECISIONS.md, "The asset manifest
+after bumping `settings.STATIC_VERSION`). See .claude/decisions/testing.md, "The asset manifest
 is re-stamped by hand, so a test asserts it actually was".
 """
 import os

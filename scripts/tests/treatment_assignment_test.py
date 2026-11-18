@@ -5,7 +5,7 @@ arrival, spent only by participants who actually reach the study.
     python scripts/tests/treatment_assignment_test.py
 
 WHAT THIS PINS (the reason the item was real work, not a moved call — TODO.md,
-.claude/DECISIONS.md). Treatment used to be dealt to every participant at session
+.claude/decisions/task_and_treatments.md). Treatment used to be dealt to every participant at session
 creation, balanced by construction because `itertools.cycle` deals the whole
 deck at once. It now assigns ON ARRIVAL at the first instructions page
 (`intro.instructing`), which changes two things this test guards:

@@ -216,7 +216,7 @@ up; it then refuses to start, loudly and without touching anything, as it also
 does when the target database holds a schema that is not oTree's. The image ships
 `psycopg2-binary`, so `DATABASE_URL=postgres://…` works out of the box. Why the
 old file-existence check was a data-loss bug on any managed Postgres:
-`.claude/DECISIONS.md`, "Boot initialisation is decided by inspecting the database, not
+`.claude/decisions/build_and_deploy.md`, "Boot initialisation is decided by inspecting the database, not
 by a sqlite file".
 
 Note what the guard is *not* doing: oTree creates its own missing tables on every

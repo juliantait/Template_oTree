@@ -188,7 +188,7 @@ def _row(label, step, **kw):
         entry_only=False,
         # THE OVERVIEW's inputs, in _participant_row's shape. `treatment` feeds
         # the per-cell FINISHED split; `waiting_for` is [] for everybody because
-        # this template ships no wait page (see .claude/DECISIONS.md); the ending fields
+        # this template ships no wait page (see .claude/decisions/dashboard.md); the ending fields
         # are None on an ordinary row and filled by the derivation loop on a
         # terminal one.
         treatment='',

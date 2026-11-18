@@ -20,7 +20,7 @@ stamp is missing, absent or wrong. An unstamped build is a perfectly valid
 build: it is the normal state of local development and of every test run. The
 one sanctioned exception is `scripts/verify_deploy.py`, a command a human runs
 BY HAND after a deploy, which is not in the application path and cannot take a
-study down. See .claude/DECISIONS.md.
+study down. See .claude/decisions/build_and_deploy.md.
 
 THE THREE PLACES THE BUILD IS RECORDED, AND WHY THEY ARE THREE
 --------------------------------------------------------------
@@ -39,7 +39,7 @@ none is trusted alone:
      deliberately outlives redeploys, so a creation-time stamp would claim every
      participant ran the creation-time build — false for everybody who arrived
      after the next deploy. This template already made exactly that argument for
-     `treatment_group` (assigned on arrival, not at creation — .claude/DECISIONS.md,
+     `treatment_group` (assigned on arrival, not at creation — .claude/decisions/task_and_treatments.md,
      2026-08-18); this is the same argument about a different field, which is
      why the two are stamped at the same call.
 
@@ -392,7 +392,7 @@ def init_participant_fields(participant) -> None:
     precisely the lie this design exists to avoid, because a row created now may
     not be arrived at until three deploys later. Blank therefore means "never
     arrived"; ``UNSTAMPED_SHA`` means "arrived, on a build with no stamp". This
-    is the same choice `treatment_group` makes with '' (.claude/DECISIONS.md,
+    is the same choice `treatment_group` makes with '' (.claude/decisions/task_and_treatments.md,
     2026-08-18), and for the same reason.
     """
     participant.build_sha = ''

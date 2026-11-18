@@ -269,7 +269,7 @@ def scenario_way_out(base):
     #
     # REWRITTEN 2026-08-15 — this assertion was RED ON MAIN. It read "no
     # completion code: their Prolific submission stays OPEN", which was the
-    # rule until the screen-out was given its own code that day (.claude/DECISIONS.md;
+    # rule until the screen-out was given its own code that day (.claude/decisions/participant_flow.md;
     # the reasoning is on common.prolific_screenout_return_url). An open
     # submission was judged to be limbo rather than kindness: a REQUEST_RETURN
     # code prompts the return that frees the place.

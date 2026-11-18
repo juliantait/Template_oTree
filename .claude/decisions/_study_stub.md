@@ -1,11 +1,13 @@
 # Decisions (YOUR STUDY NAME)
 
 > **This is the STUB for a study forked from oTree-Template.** On a new study,
-> copy this file over `.claude/DECISIONS.md`, replace the title, and so
-> **replace the template's own log** (it records the template's development, not
-> your study; carrying it over hands the next agent the wrong precedent). Then
-> delete this note and start logging below. See
-> "How to use and edit this template" in `.claude/reference/editing_a_study.md` for where this fits in setup.
+> copy this file to `.claude/decisions/study.md`, replace the title, delete this
+> note and start logging below. The template's own topic files in
+> `.claude/decisions/` stay: they explain the code your study inherits. This file
+> is where YOUR study's decisions go, and where they win: when one of your
+> decisions overrides a template decision, say so here and name the template
+> entry it overrides. See "How to use and edit this template" in
+> `.claude/reference/editing_a_study.md` for where this fits in setup.
 
 Design and implementation decisions with the REASON attached. **The reason is the
 point.** A forked study starts with no precedent, so every deliberate choice
@@ -38,6 +40,6 @@ note."
 
 <!--
 Delete the example above and write your first real decision the moment you make
-one. An empty log is fine on day one; a wrong-precedent log (the template's
-carried over) is not.
+one. An empty log is fine on day one; a study decision written into the
+template's topic files is not, because it gets lost among the inherited ones.
 -->

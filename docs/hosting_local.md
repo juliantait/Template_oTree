@@ -16,7 +16,7 @@ verifying a deploy). The study-side Prolific wiring is in
 > **This repo ships no deploy config, and that holds here too.** No compose
 > file, no tunnel config, no proxy config. This page is a written record of what
 > a self-hosted deploy needs, so it can be looked up and done by hand. If you
-> find yourself committing any of it, stop and raise it (`.claude/DECISIONS.md`).
+> find yourself committing any of it, stop and raise it (`.claude/decisions/build_and_deploy.md`).
 
 ## When to host it yourself, and when not to
 

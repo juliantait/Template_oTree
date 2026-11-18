@@ -1,6 +1,6 @@
 // THE SCREEN LOCK, the half CSS cannot do. Loaded by css_bundle.html only when the
 // session's `screen_lock` is on, so with it off nothing here runs. The class below
-// switches on the rules in base.css (COMPONENT: screen lock). See .claude/DECISIONS.md.
+// switches on the rules in base.css (COMPONENT: screen lock). See .claude/decisions/styling_and_ui.md.
 document.documentElement.classList.add('screen-lock');
 (function () {
     function inside(e, selector) { return e.target.closest && e.target.closest(selector); }

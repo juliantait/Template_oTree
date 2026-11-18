@@ -17,7 +17,7 @@ That promise cannot be checked by reading the block: it reads inert, and the two
 ways it could stop being inert are both silent.
 
   * `ROOMS` is MUTATED IN PLACE, never reassigned. A reassignment would drop
-    `welcome_page` (the styled room gate, .claude/DECISIONS.md 2026-08-17) and every
+    `welcome_page` (the styled room gate, .claude/decisions/entry_and_identity.md 2026-08-17) and every
     other key the project set — with no error, no traceback, and a participant
     landing on oTree's bare framework interstitial instead of the study's own
     page. Section 2 pins that nothing assigns or mutates `ROOMS` after the
@@ -27,7 +27,7 @@ ways it could stop being inert are both silent.
     variable both of them read. That is the one name where the block and the
     old lab workflow could possibly disagree, so it is the one the differential
     is aimed at (sections 3, 4 and 6). The duplicate assignment is deliberate:
-    see .claude/DECISIONS.md, "The CREED lab block is carried in settings.py".
+    see .claude/decisions/settings_and_parameters.md, "The CREED lab block is carried in settings.py".
 
 THE METHOD: A DIFFERENTIAL, NOT A REMEMBERED BASELINE
 -----------------------------------------------------

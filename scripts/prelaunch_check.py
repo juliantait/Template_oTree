@@ -226,7 +226,7 @@ def dashboard_problems():
     """(label, current, must_be) for a broken experimenter dashboard.
 
     THE LAUNCH HALF OF THE 2026-08-17 FIX (the runtime half is the widened
-    `except` in outro.vars_for_admin_report; see .claude/DECISIONS.md). The empirical
+    `except` in outro.vars_for_admin_report; see .claude/decisions/dashboard.md). The empirical
     blast-radius study (`_ai/dashboard_blast_radius.md`) found a drift that
     BOOTS CLEAN and then 500s oTree's own admin Report tab the first time an
     operator clicks it mid-session: URL_BASE renamed consistently INSIDE
@@ -331,7 +331,7 @@ def build_line():
     """The running build, as INFORMATION and nothing else.
 
     NOT a check, and deliberately not in `main`'s `problems` list: **provenance
-    is documentation, never a gate** (Julian, 2026-08-23; .claude/DECISIONS.md). An
+    is documentation, never a gate** (Julian, 2026-08-23; .claude/decisions/build_and_deploy.md). An
     unstamped build is a perfectly valid build — it is the state of every local
     run, every test run and this template as shipped — so a missing stamp must
     never fail this script, and turning it into a problem here is the one edit

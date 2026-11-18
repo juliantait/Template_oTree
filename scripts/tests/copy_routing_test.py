@@ -160,7 +160,7 @@ def mentions_device_code(problems):
 
 
 # THE SCREENED-OUT EXIT IS NOW A CODE, not a URL setting (2026-08-15; see
-# .claude/DECISIONS.md). The guarantee under test is unchanged: a Prolific study that
+# .claude/decisions/participant_flow.md). The guarantee under test is unchanged: a Prolific study that
 # could screen somebody out must have a working way out for them.
 check(mentions_device_code(guard_problems(
           recruitment='prolific', prolific_device_code=PLACEHOLDER)),

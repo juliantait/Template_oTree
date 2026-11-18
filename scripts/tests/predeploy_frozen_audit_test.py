@@ -163,7 +163,7 @@ def main():
     # THE CASE: a study that adopts build stamping while sessions are already
     # running. Those sessions predate the key, so check 2b would fail on them
     # for ever — which contradicts "provenance is documentation, never a gate"
-    # (.claude/DECISIONS.md, 2026-08-23). Simulated exactly as the stale case above is.
+    # (.claude/decisions/build_and_deploy.md, 2026-08-23). Simulated exactly as the stale case above is.
     adopting = ot.create_session('prolific', num_participants=1,
                                  modified_session_config_fields=REAL_CODES)
     removed = ot.strip_config_keys(adopting, ['build_at_creation'])

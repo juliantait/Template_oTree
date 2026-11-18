@@ -218,7 +218,7 @@ def creating_session(subsession: Subsession):
     # screen-out takes none. At creation we only mark everyone UNASSIGNED (''),
     # so the export column exists and '' means "never took a cell". The real
     # balance-on-arrival mechanism lives in before/treatment_assignment.py; see
-    # .claude/DECISIONS.md for why it moved and why assignments are permanent.
+    # .claude/decisions/task_and_treatments.md for why it moved and why assignments are permanent.
     treatment_assignment.init_unassigned(subsession)
 
 
@@ -587,7 +587,7 @@ class welcome(Page):
         # The explicit consent question (with its no-consent routing) exists
         # exactly when the `explicit_consent` flag says so — an ETHICS
         # decision with its own flag, split from `prolific_completion_redirects`
-        # on 2026-08-14 (.claude/DECISIONS.md): whether consent must be an affirmative
+        # on 2026-08-14 (.claude/decisions/participant_flow.md): whether consent must be an affirmative
         # act has nothing to do with whether we hold a completion code. The
         # lab profile resolves it OFF (implicit consent by continuing).
         if _flag(player, 'explicit_consent'):
@@ -850,7 +850,7 @@ class TabMonitorAgree(Page):
     here" was a claim the code did not honour: the page had moved but the
     intro pages carried no monitor wiring, so the instructions and the quiz
     stayed unwatched with nothing anywhere to say so (the whole-app review's
-    headline finding; recorded in .claude/DECISIONS.md).
+    headline finding; recorded in .claude/decisions/screening_and_integrity.md).
 
     WHY IT IS IN `before`, AND NOT AT THE END OF `intro` (moved 2026-08-12 —
     a deliberate correction, do not move it back).

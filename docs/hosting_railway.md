@@ -13,7 +13,7 @@ the workflow improves.
 > - `.claude/skills/README.md` and `docs/README.md` (§6, §7)
 > - `docs/running_on_prolific.md` (its intro links here for the hosting side)
 > - `core/health.py`, `scripts/write_build_info.py`, `scripts/verify_deploy.py`
-> - `docs/ideas/railway-server-metrics-panel.md` (local only), `.gitignore`, `.claude/DECISIONS.md`
+> - `docs/ideas/railway-server-metrics-panel.md` (local only), `.gitignore`, `.claude/decisions/build_and_deploy.md`
 > - **External, off-repo:** the CREED lab doc at `juliantait.eu/CREED`, section 5.1
 >   "Running the Study Online" (source in the `juliantait.github.io` repo, file
 >   `CREED Instructions/FAQ.tex`) links this path directly.
@@ -39,7 +39,7 @@ drives both, plus the Prolific API and seats/money, is
 - **This repository deliberately contains no deployment architecture.** No
   Railway config, no `railway.json`, no Procfile, no deploy scripts, no CI, no
   provider account settings. Nothing here makes the repo deployable, and that is
-  a decision, not an omission (`.claude/DECISIONS.md`).
+  a decision, not an omission (`.claude/decisions/build_and_deploy.md`).
 - This page is a **written record of what such a deploy needs**, together with the
   one workflow that has actually been run (Railway), so it can be looked up and
   implemented. If you find yourself turning it into a config file, that is the

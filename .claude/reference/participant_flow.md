@@ -192,7 +192,7 @@ as **REQUEST_RETURN** codes, each with its own reason text — the API requires
 `return_reason` on such a code — so the participant is prompted to return the
 submission, which frees the place. That is why the screen-out now carries a code
 at all: the bare researcher URL it replaces left the submission in limbo. (This
-reverses an earlier decision; see `.claude/DECISIONS.md`, both entries.)
+reverses an earlier decision; see `.claude/decisions/participant_flow.md`, both entries.)
 
 Each ending is served **only its own code**, injected per page — never a bundle
 in the template context — so a disqualified participant cannot read the completed

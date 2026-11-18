@@ -615,7 +615,7 @@ def _open_inner_scroll_overflow(server, browser, vp, java_script_enabled=True):
 # CHECK B — the three-mode scroll contract
 # ==========================================================================
 def check_scrolling(server, browser, facts):
-    """B. THE THREE-MODE CONTRACT (2026-08-18 overhaul; see .claude/DECISIONS.md).
+    """B. THE THREE-MODE CONTRACT (2026-08-18 overhaul; see .claude/decisions/styling_and_ui.md).
 
     MODE 1 (every content page, the default): the content region is PLAIN FLOW —
     it does not inner-scroll, the card grows and the WHOLE WINDOW scrolls when the
@@ -2740,7 +2740,7 @@ def check_screenout_way_out(server, browser):
             continue
         check(m['href'].startswith('http'),
               f'{label}: it is a real href ({m["href"]!r}) — not a scripted button')
-        # REVERSED 2026-08-15 (.claude/DECISIONS.md, 'Every ending population gets its
+        # REVERSED 2026-08-15 (.claude/decisions/participant_flow.md, 'Every ending population gets its
         # own completion code'). This used to assert the screen-out carried NO
         # code, so that the submission stayed open. It now carries
         # `prolific_device_code` as a REQUEST_RETURN completion URL: that

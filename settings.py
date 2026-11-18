@@ -283,7 +283,7 @@ RECRUITMENT_PROFILES = {
         # screening devices out on its own. It falls
         # through to the SESSION_CONFIG_DEFAULTS baseline (all four types = no
         # gate) and is narrowed explicitly on a config. See its note in
-        # SESSION_CONFIG_DEFAULTS and .claude/DECISIONS.md.
+        # SESSION_CONFIG_DEFAULTS and .claude/decisions/settings_and_parameters.md.
     ),
     # There is deliberately NO 'testing' profile: clickthrough loosenings are
     # the DEBUG axis (env-driven), not a study type. For a clickthrough config,
@@ -304,7 +304,7 @@ RECRUITMENT_PROFILES = {
 # so the 2026-08-12 rule sent a screened-out participant back by a plain,
 # codeless link to keep their submission open.
 #
-# What changed the answer (.claude/DECISIONS.md, 2026-08-15): an open submission is not
+# What changed the answer (.claude/decisions/participant_flow.md, 2026-08-15): an open submission is not
 # a kindness, it is LIMBO — it occupies a place, tells Prolific nothing, and
 # expires on a timer. A REQUEST_RETURN code prompts the participant to return
 # it, which frees the place. So the screen-out exit is now
@@ -388,7 +388,7 @@ def is_placeholder(value) -> bool:
 # impossible to miss: the pre-launch guard fails, and the link on the page is
 # visibly not a URL.
 # (SCREENOUT_RETURN_URL_PLACEHOLDER retired 2026-08-15: the screened-out
-#  exit is a completion code now, not a URL setting. See .claude/DECISIONS.md.)
+#  exit is a completion code now, not a URL setting. See .claude/decisions/participant_flow.md.)
 
 # --- experimenter dashboard ----------------------------------------------------
 # The live operator view at /experimenter_dashboard (core/experimenter_dashboard.py,
@@ -458,7 +458,7 @@ DASHBOARD_RETURN_GRACE_SECONDS = 90
 # 14 -> 15 on 2026-08-15: the logo files were renamed (see INSTITUTION_NAME
 # below).
 # 15 -> 16 on 2026-08-17: the notification tier ladder (base.css, tabmonitor.css,
-# global.js, quiz.js, template.html) — see .claude/DECISIONS.md.
+# global.js, quiz.js, template.html) — see .claude/decisions/styling_and_ui.md.
 # 16 -> 17 on 2026-08-18: the room entry gate's own `.room-gate` class in
 # base.css (centre the welcome content instead of foot-anchoring its button).
 # NOTE: `_templates/room_welcome.html` links base.css DIRECTLY and carries no
@@ -474,13 +474,13 @@ DASHBOARD_RETURN_GRACE_SECONDS = 90
 # `allowed_devices` -> `prolific_allowed_devices`) in the session-config key
 # family rename — a comment-only edit to a file under `_static/`, but the asset
 # manifest hashes file bytes, so the version is bumped and the manifest re-stamped
-# like any other `_static/` change. See .claude/DECISIONS.md, 'Session-config keys are
+# like any other `_static/` change. See .claude/decisions/settings_and_parameters.md, 'Session-config keys are
 # named family-first'.
 # 19 -> 20 on 2026-08-18: NEW file `_static/global/js/focus_trace.js` (the passive
 # per-page focus trace, ported net-new from exp_pilots alongside the untouched tab
 # monitor), plus its conditional include in main/game.html. Adding a file under
 # `_static/` bumps the version and re-stamps the manifest like any other change.
-# See .claude/DECISIONS.md, 'Passive focus trace ported alongside the tab monitor'.
+# See .claude/decisions/screening_and_integrity.md, 'Passive focus trace ported alongside the tab monitor'.
 # 20 -> 21 on 2026-08-21: TWO participant-visible CSS changes in the same day.
 # (a) the new `.closing-instruction` component in base.css, which centres the
 # "click the button below" sentence on BOTH endings (it rendered flush left on
@@ -490,7 +490,8 @@ DASHBOARD_RETURN_GRACE_SECONDS = 90
 # `_static/global/html/template.html` gained the specimen for (a). Both are
 # pure-CSS fixes served from a `?v=`-stamped URL, so WITHOUT this bump a
 # returning participant's cached base.css keeps the broken layout and nothing
-# anywhere reports it. See .claude/DECISIONS.md for both entries.
+# anywhere reports it. See .claude/decisions/participant_flow.md and
+# .claude/decisions/styling_and_ui.md for the two entries.
 # 21 -> 22 on 2026-09-08: the AI-bot-detection build adds files under _static/ —
 # `_static/global/js/dot_bi.js` and `_static/global/js/telemetry_capture.js`,
 # the 15 vendored DOT-BI variants + LICENSE + ATTRIBUTION under
@@ -498,16 +499,19 @@ DASHBOARD_RETURN_GRACE_SECONDS = 90
 # decoy concealment and the `.dotbi-*` progressive-enhancement / challenge
 # styles). All are served from `?v=`-stamped URLs, so without this bump a
 # returning participant's cached bundle would miss them. Re-stamped with
-# `python scripts/prelaunch_check.py --stamp-assets`. See .claude/DECISIONS.md.
+# `python scripts/prelaunch_check.py --stamp-assets`. See .claude/decisions/screening_and_integrity.md.
 # 23 -> 24 on 2026-11-05: global.js's Enter handler leaves a control with its own
 # Enter action alone (the results accordion no longer sends someone to Prolific). A
-# returning participant's cached global.js would keep the old handler. See .claude/DECISIONS.md,
+# returning participant's cached global.js would keep the old handler. See .claude/decisions/styling_and_ui.md,
 # 'Enter belongs to the focused control'.
 # 24 -> 25 on 2026-11-18: comment-only edits in base.css, tabmonitor.css,
 # screen_lock.js and tab_monitor.js (the decision log moved to
 # .claude/DECISIONS.md). The manifest hashes file bytes, so bumped and re-stamped
 # as for 19.
-STATIC_VERSION = '25'
+# 25 -> 26 on 2026-11-18: comment-only edits in the same four files, repointing
+# them at the topic files the decision log was split into (.claude/decisions/).
+# Bumped and re-stamped as for 19.
+STATIC_VERSION = '26'
 
 # --- whose study this is ------------------------------------------------------
 # THE ONE PLACE A COPIED STUDY NAMES ITS INSTITUTION IN PROSE (Julian,
@@ -545,7 +549,7 @@ INSTITUTION_NAME = 'the University of Amsterdam'
 # instructions page, permanent and race-safe per session — is real and lives in
 # `before/treatment_assignment.py`. A copied study changes THIS list and keeps
 # that mechanism. Assignment MOVED from session creation to arrival on
-# 2026-08-18 (see .claude/DECISIONS.md): a cell is now spent only by a participant who
+# 2026-08-18 (see .claude/decisions/task_and_treatments.md): a cell is now spent only by a participant who
 # actually reached the study, not by anyone who abandoned at consent or was
 # turned away by the device gate.
 TREATMENT_CELLS = ['row', 'column']
@@ -590,7 +594,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     # turn it off. Then the script is not loaded and nothing is left changed. A
     # session created before this key existed reads as OFF. An exception to
     # "every flag ships OFF": it is no study module and gates nothing. See
-    # .claude/DECISIONS.md, "The screen lock". Text a participant must copy takes the
+    # .claude/decisions/styling_and_ui.md, "The screen lock". Text a participant must copy takes the
     # class `selectable` (base.css).
     screen_lock=True,
 
@@ -637,7 +641,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     # THIS IS AN ETHICS DECISION, NOT A PLATFORM ONE. It used to be decided by
     # `prolific_completion_redirects`, which conflated "we hold a completion
     # code to send them back with" and "consent must be an affirmative act" —
-    # two things that have nothing to do with each other (.claude/DECISIONS.md,
+    # two things that have nothing to do with each other (.claude/decisions/participant_flow.md,
     # 2026-08-14). The default is ON: explicit consent is the safer footing,
     # and a study must OPT OUT of asking. The lab profile resolves it OFF —
     # implicit consent by continuing, because there is an experimenter in the
@@ -776,7 +780,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     # never disqualifies, never touches a tab-monitor variable). A participant
     # can carry a positive trace with zero tab-monitor violations. Browser half:
     # _static/global/js/focus_trace.js; server half: the focus_trace_* fields on
-    # main.Player and their wiring in main/__init__.py. See .claude/DECISIONS.md and
+    # main.Player and their wiring in main/__init__.py. See .claude/decisions/screening_and_integrity.md and
     # docs/CODEBOOK.md §2a.
     telemetry_focus_trace=False,              # passive per-page focus/unfocused-time trace
     # BEHAVIOUR CAPTURE on the WELCOME and QUIZ pages only (bucket B / measure B3
@@ -928,7 +932,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     # form-navigation reasons ONLY: the admin session-config form has no section
     # headings, so a key's family is carried entirely by its prefix and its
     # position, and this key now sits with the other `prolific_` keys at the
-    # bottom of the form. See .claude/DECISIONS.md, 'The device allow-list joins the
+    # bottom of the form. See .claude/decisions/settings_and_parameters.md, 'The device allow-list joins the
     # prolific_ naming family'.
     #
     # THE OLD RATIONALE, PRESERVED AS A SUPERSEDED NOTE (do not act on it — the
@@ -971,7 +975,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     # separate URL setting any more — a URL that embeds a code, plus a code key,
     # is one value in two places, and they drift.
     #
-    # THIS REVERSES the codeless screen-out exit (.claude/DECISIONS.md, and the old
+    # THIS REVERSES the codeless screen-out exit (.claude/decisions/participant_flow.md, and the old
     # rationale is preserved there rather than deleted). A Prolific
     # REQUEST_RETURN code PROMPTS the participant to return the submission and
     # frees the place; the bare researcher URL left it in limbo instead.
@@ -986,7 +990,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     prolific_dq_quiz_code='DQ-QUIZ-XXXXXX_REPLACE',    # comprehension DQ
     prolific_dq_tab_code='DQ-TAB-XXXXXX_REPLACE',      # tab-monitor DQ
     # THE DEVICE SCREEN-OUT NOW CARRIES A CODE TOO, and this REVERSES the
-    # earlier codeless decision — see .claude/DECISIONS.md, 'Every ending population
+    # earlier codeless decision — see .claude/decisions/participant_flow.md, 'Every ending population
     # gets its own completion code'. A Prolific REQUEST_RETURN code actively
     # PROMPTS the participant to return the submission, which frees the place;
     # the bare researcher URL it replaces left the submission sitting in limbo.
@@ -1473,7 +1477,7 @@ def _prelaunch_problems():
         # experimenter to ask, so the way out is owed whether or not the study
         # uses completion redirects. That asymmetry predates this key (it was
         # the old `prolific_screenout_return_url` rule, and its reasoning is in
-        # .claude/DECISIONS.md); it is preserved here rather than quietly lost when the
+        # .claude/decisions/participant_flow.md); it is preserved here rather than quietly lost when the
         # URL setting became a code.
         if eff.get('prolific_completion_redirects'):
             code_keys = PROLIFIC_CODE_KEYS
@@ -1518,7 +1522,7 @@ def _check_prelaunch():
     # THE RUNNING BUILD, AS INFORMATION AND NOTHING ELSE. It is printed next to
     # DEBUG because that is where somebody looks when they ask "what is this
     # server?", and it is deliberately NOT part of `_prelaunch_problems`:
-    # provenance is documentation, never a gate (.claude/DECISIONS.md, 2026-08-23), so
+    # provenance is documentation, never a gate (.claude/decisions/build_and_deploy.md, 2026-08-23), so
     # an unstamped build is not a problem here and must never become one. That
     # is also how provenance is turned "off" — a build with no BUILD_INFO.json
     # simply reports unstamped, and nothing anywhere behaves differently.

@@ -14,11 +14,12 @@ backwards. (The shipped template has more Stag Hunt content in `intro` than in
 concrete to describe, not a pattern to copy.)
 
 0. **Start your own decision log, before you change anything else.** Copy
-   [`.claude/DECISIONS_stub.md`](../DECISIONS_stub.md) over
-   `.claude/DECISIONS.md` and put your study's name in the title. This
-   **replaces the template's own log** (it logs how the *template* was built, not
-   your study, so carrying it over hands the next agent the wrong precedent). Your
-   study now has a clean, study-specific log. Then **record each deliberate
+   [`.claude/decisions/_study_stub.md`](../decisions/_study_stub.md) to
+   `.claude/decisions/study.md` and put your study's name in the title. The
+   template's topic files in `.claude/decisions/` **stay**: they record why the
+   code your study inherits is the way it is. `study.md` holds what is specific
+   to your study, and where one of your decisions overrides a template one, it
+   says so and names the entry. Then **record each deliberate
    choice with its reason in the same change that makes it**, newest first: a
    forked study starts with no precedent, and the failure mode that eats
    undocumented decisions is not ignorance but **helpfulness**: a missing config
@@ -137,7 +138,7 @@ Wiring at the call site: a `data-popup-open="ID"` button opens tier 0/2/3;
 it. Tiers 2 and 3 already had live instances when the ladder landed — the
 shared warning modal, the quiz dialogs, and the tab monitor's red away-overlay
 (tier 3) — so those keep their own behaviour and are brought in *by name*, not
-rewired; see `.claude/DECISIONS.md`.
+rewired; see `.claude/decisions/styling_and_ui.md`.
 
 ## Collaborating on the instructions flow with others?
 You can share the instructions with coauthors who don't have the codebase installed.

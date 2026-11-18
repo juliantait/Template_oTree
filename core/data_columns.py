@@ -14,7 +14,7 @@ another study or app can reuse it. Today it has two callers:
     affected by the two settings or by `download_files`.
 
 Two copies of "what makes a file anonymous" would drift, and the drift would show
-up as a bank number in a file somebody shared. See .claude/DECISIONS.md, 2026-11-05.
+up as a bank number in a file somebody shared. See .claude/decisions/data_export.md, 2026-11-05.
 
 THE TEMPLATE'S RULES (`split_export` is all of them, in this order)
 -------------------------------------------------------------------
@@ -165,7 +165,7 @@ ANON_DROP_COLUMNS = (
 # a duplicate records the label (identity.py). `format_session_data.py` blanks it in
 # all its files too, so the anonymous files of the two tools agree on it. It is the
 # only column blanked here: feedback and device details stay, by Julian's decision
-# (.claude/DECISIONS.md, the Download data entry).
+# (.claude/decisions/data_export.md, the Download data entry).
 ANON_BLANK_COLUMNS = (
     'participant.participant_extra',
 )

@@ -86,7 +86,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
 #      the process CWD (otree/database.py: DB_FILE), which is /app, so without
 #      the link the database would live in the container's own writable layer and
 #      vanish with the container. (settings.DATABASES is NOT what decides this —
-#      oTree 6 dropped Django and never reads it; see .claude/DECISIONS.md.) Harmless
+#      oTree 6 dropped Django and never reads it; see .claude/decisions/build_and_deploy.md.) Harmless
 #      under Postgres, where nothing but a stray zero-byte file appears there.
 #   2. initialise the database ONLY when it has not been initialised yet, or when
 #      RESET_DB=1 is passed explicitly. A restart must never wipe participant
@@ -125,7 +125,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
 #     zero-byte db.sqlite3 is a file that exists and a database that was never
 #     initialised, and `-f` cannot tell those apart.
 # File existence is a fact about a filesystem; the guard needs a fact about a
-# database. See .claude/DECISIONS.md ("Boot initialisation is decided by inspecting the
+# database. See .claude/decisions/build_and_deploy.md ("Boot initialisation is decided by inspecting the
 # database, not by a sqlite file") for the full reasoning.
 #
 # The probe never guesses: it answers `needs-init` only for a database with NO

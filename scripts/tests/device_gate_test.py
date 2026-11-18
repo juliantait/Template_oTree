@@ -167,7 +167,7 @@ def participant_code(url):
 #
 # WHY THE TEST SETS THEM RATHER THAN READING THE SHIPPED PLACEHOLDERS. The
 # screen-out exit is a completion URL carrying `prolific_device_code`
-# (.claude/DECISIONS.md, 2026-08-15), and the thing worth asserting is that it carries
+# (.claude/decisions/participant_flow.md, 2026-08-15), and the thing worth asserting is that it carries
 # THAT code and none of the other four — the presence-plus-absence pairing in
 # CLAUDE.md. Sentinels make both halves exact: distinct strings that cannot be
 # substrings of one another, so "the device code is present" cannot be

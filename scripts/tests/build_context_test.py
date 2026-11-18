@@ -66,7 +66,7 @@ What the Dockerfile DOES name is the boot path (`/app/scripts/db_state.py`,
   * every `/app/...` path the Dockerfile actually names.
 
 Anything added to any of those is required to survive from the moment it exists,
-with nobody remembering to update this file. See .claude/DECISIONS.md, "The build
+with nobody remembering to update this file. See .claude/decisions/build_and_deploy.md, "The build
 context's must-survive list is derived from the source tree, never from the
 ignore rules".
 

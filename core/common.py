@@ -280,7 +280,7 @@ def build_at_creation(config):
 
     NEVER raises: a session whose config cannot be read is simply unknown, not
     an exception on somebody's page or a dashboard poll. Provenance is
-    documentation, never a gate (.claude/DECISIONS.md).
+    documentation, never a gate (.claude/decisions/build_and_deploy.md).
 
     `config` may be a session config mapping or anything dict-like
     (`player.session.config`).
@@ -970,7 +970,7 @@ def prolific_screenout_return_url(config) -> str:
     would have silently reverted a deliberate decision. The prose was the stale
     half; this is the reasoning it should have carried.
 
-    WHY THE CODELESS EXIT WAS REVERSED (.claude/DECISIONS.md, "Every ending population
+    WHY THE CODELESS EXIT WAS REVERSED (.claude/decisions/participant_flow.md, "Every ending population
     gets its own completion code", 2026-08-15, which SUPERSEDES the 2026-08-12
     codeless-screen-out entry). The old argument was right that a completion
     code CLOSES a Prolific submission and that a returned submission can never

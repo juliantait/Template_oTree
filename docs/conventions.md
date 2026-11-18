@@ -49,7 +49,7 @@ Content is never clipped and a short page never collapses to a stub.
 `--single-page-font-floor` and `.screen-card` (floor, no ceiling),
 `.inner-scroll` (Mode 3) and `.single-page-fit` (Mode 2) in
 `_static/global/css/base.css`; `initSinglePageFit` in
-`_static/global/js/global.js`; the full rationale is in `.claude/DECISIONS.md` ("The
+`_static/global/js/global.js`; the full rationale is in `.claude/decisions/styling_and_ui.md` ("The
 scroll model is three modes") and `_ai/scroll_model/`.
 
 ## Typography — reading measure for prose, full width for controls
@@ -127,7 +127,7 @@ at boot (see `prelaunch_check.py`, the frozen-config guard, the exit-code table)
 A study copied from this template may reasonably want different field names for
 its own outcomes, and a boot check would turn that ordinary choice into a failure
 to work around. Read the missing check as intentional, not as an oversight. The
-full reasoning is in `.claude/DECISIONS.md` ("Participant tracking fields are named
+full reasoning is in `.claude/decisions/data_export.md` ("Participant tracking fields are named
 family-first").
 
 *Where:* `settings.PARTICIPANT_FIELDS` (the single central list, with a

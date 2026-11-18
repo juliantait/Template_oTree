@@ -4,11 +4,11 @@
 **Status:** open decisions, not defects awaiting a patch. Nothing here has been
 changed in the code; it is deliberately separate from the two defects fixed the
 same day (the Dockerfile boot guard and the predeploy database pin — both in
-`.claude/DECISIONS.md`).
+`.claude/decisions/build_and_deploy.md`).
 
 **This file is TRACKED, and it is here because a copied study inherits every gap
 in it** — item 8 especially. If you are starting a study from this template,
-this is the list of things the template does not yet do for you. `.claude/DECISIONS.md`
+this is the list of things the template does not yet do for you. `.claude/decisions/build_and_deploy.md`
 carries a short entry for each; this is the long form.
 
 ## How this list came about
@@ -186,6 +186,6 @@ splitting if the file is being edited anyway; not worth a change on its own.
   `db.sqlite3` under Postgres is harmless.
 - No raw SQL anywhere in the app code, so no backend-specific query syntax.
   (The one place identity is compared, `core/identity.py`, was already moved out of
-  SQL and into Python for exactly this reason — see `.claude/DECISIONS.md`, 2026-08-12.)
+  SQL and into Python for exactly this reason — see `.claude/decisions/entry_and_identity.md`, 2026-08-12.)
 - `scripts/set_up_otree.bat`, `docs/hosting_local.md` — host-side dev docs, no
   runtime effect.

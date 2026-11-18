@@ -207,7 +207,7 @@ html.screen-lock img { -webkit-user-drag: none; }
    components (tables, widgets) span the card's inner width.
 
    HEIGHT — MODE 1, THE DEFAULT: A FLOOR, AND NO CEILING (2026-08-18 scroll-model
-   overhaul; see .claude/DECISIONS.md "The scroll model is three modes" and
+   overhaul; see .claude/decisions/styling_and_ui.md "The scroll model is three modes" and
    _ai/scroll_model/). The card is never shorter than --card-min, so a one-line
    page still fills the screen and does not collapse to a stub. There is NO
    max-height: a card taller than the floor simply grows with its content and the
@@ -1527,7 +1527,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
        over the 44px touch floor that `min-height` guarantees, nothing
        cramped, more content above the fold), and Julian RATIFIED the shipped
        behaviour rather than restoring the scope. See the 2026-08-14 entry in
-       .claude/DECISIONS.md. Do not re-scope this to one page without a new decision.
+       .claude/decisions/styling_and_ui.md. Do not re-scope this to one page without a new decision.
 
        THE TOUCH TARGET SURVIVES, which is the constraint that decides how far
        this can go: .85em -> .5em block padding leaves each row 52px tall,
@@ -2001,7 +2001,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.12); }
    (the warning modal, the quiz dialogs, the tab monitor) and are brought in by
    NAME + the shared focus trap, not rewired — the tab-switch warning modal in
    particular is left on its own tabmonitor chrome on purpose (it owns the
-   disqualification route; see .claude/DECISIONS.md).
+   disqualification route; see .claude/decisions/styling_and_ui.md).
    =========================================================================== */
 
 /* Every popup sits above the page and never inherits the surrounding text
