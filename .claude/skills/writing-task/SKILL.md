@@ -106,8 +106,9 @@ step 4 update to match the game you built in step 2.
   `CLAUDE.md`); keep the progress-strip include and the passive-capture
   hidden-field pattern.
 - Group matching: the template ships NONE. Reference shape (not a block to
-  uncomment): `docs/group_matching_reference.py`; the open design questions
-  are in `TODO.md` under "Group matching".
+  uncomment): `docs/group_matching_reference.py`. The open design question:
+  matching cannot be designed independently of WHEN treatment and role
+  assignment happen, and a wait page needs dropout detection.
 
 **`scripts/tests/main_contract.py` — in the SAME change as `main/`:**
 the ONE module holding the task-page NAMES (`TASK_PAGES`) and per-page form

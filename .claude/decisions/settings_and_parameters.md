@@ -1,8 +1,72 @@
 # Decisions: Settings, profiles and parameters
 
-Read when you change `settings.py`: the three controls, recruitment profiles, session-config keys, the safe accessors, or the CREED lab block.
+Read when you change `settings.py`: the three controls, recruitment profiles, session-config keys, the safe accessors, or the oTree lab block (the Lab Launcher's block at the end).
 Part of the template's decision log; how to read and write an entry is in
 [`README.md`](README.md). Newest first.
+
+---
+
+## The lab block is the oTree Lab Launcher's current block, pasted verbatim — 2026-11-18
+
+`settings.py` carried the old **CREED** lab block (marker `# === CREED lab support
+… ===`, keyed on `CREED_LABEL_FILE` / `CREED_ROOM_NAME`). The current oTree Lab
+Launcher looks for a different marker (`# === oTree lab support (paste at the END
+of settings.py) ===` … `# === end oTree lab support ===`) and exports
+`OTREE_LAB_ROOM_NAME` / `OTREE_LAB_LABEL_FILE`. So it reported the template as
+having **no** lab block and offered to add one, and the old block's room / seat
+list part could never fire. The old block is replaced by the launcher's own
+current block (`LAB_BLOCK` in its `otree_core.py`, the 2026-09-21 version),
+pasted byte for byte.
+
+- **Byte for byte, because the launcher compares the text.** It finds the block
+  by the start marker, then calls it OUTDATED (offers a refresh) if the text
+  between the markers differs from its own copy, ignoring only trailing
+  whitespace. So nothing may be edited inside the markers, comments included.
+  The pointer to this entry sits in a short comment just ABOVE the start marker,
+  outside the compared region; that is why the two old `.claude/DECISIONS.md`
+  pointers that lived inside the block are gone rather than repointed.
+- **Behaviour differences from the old block, each checked against what the
+  template needs.** (1) The room part is gated on `OTREE_LAB_ROOM_NAME`, not on
+  the seat file; with a room name and no seat file the room is left open, and a
+  seat file alone does nothing. (2) An added room is called `oTree lab session`
+  (only when the launcher names a room the project lacks; the `study` room keeps
+  `Study Session`). (3) `ADMIN_USERNAME` is assigned only when
+  `OTREE_ADMIN_USERNAME` is set, instead of always re-asserting the current value;
+  the template's own line already reads that variable with default `admin`, so
+  the resolved value is the same in every environment (§7). (4) `ADMIN_PASSWORD`,
+  `AUTH_LEVEL` and `DEBUG` fire on the variable's presence rather than its
+  truthiness. (5) `DEBUG` becomes `OTREE_PRODUCTION in ("", "0")`: identical to
+  the template's presence rule for every value the launcher or
+  `set_up_otree.bat` sets (`1`), but `OTREE_PRODUCTION=0` now means debug ON while
+  the top of `settings.py` says OFF. Nothing sets `0`, so this is noted, not
+  patched (patching it would make the block OUTDATED). (6) The Postgres
+  `DATABASES` uses engine `django.db.backends.postgresql` with `""` defaults.
+- **The template's own Postgres `DATABASES` branch was aligned to the block's
+  shape** (engine name and `""` defaults) so the differential stays exact under
+  the `set_up_otree.bat` environment. oTree 6 never reads `DATABASES`
+  (`build_and_deploy.md`, 2026-08-14), so this changes nothing at runtime.
+  Rejected: dropping `DATABASES` from the differential (hides a real
+  disagreement next time) and editing the block (launcher calls it OUTDATED).
+- **`scripts/set_up_otree.bat` needed no change.** It sets neither room
+  variable, so under it only the credential, database and DEBUG overrides fire,
+  and those resolve identically to the template's own lines (§4).
+- The earlier entries below (2026-09-10, 2026-09-01) still hold their reasoning
+  (append, mutate `ROOMS` in place, nothing binds `ROOMS` after the block, the
+  overrides are deliberate redundancy); only the marker text, the variable names
+  and the exact body are superseded by this entry.
+
+**Enforced:** `scripts/tests/creed_lab_block_test.py` (name kept, as cited
+elsewhere). §1 pins the new markers, asserts no `CREED_LABEL_FILE` /
+`CREED_ROOM_NAME` / old marker remains, and pins the body's sha256 fingerprint
+(computed as the launcher's `lab_block_fingerprint` does) to the launcher's
+2026-09-21 known version: an edit inside the markers turns it red. §3-§7 are the
+same differential as before under the new variable names, plus the open-room and
+seat-file-only cases. Mutation-checked 2026-11-18: one changed character in the
+block reds §1's fingerprint check; reverting the template's engine name to
+`postgresql_psycopg2` reds §4's `DATABASES` differential. **NOT enforced:** that
+the pinned fingerprint is still the launcher's CURRENT block. When the launcher
+ships a new block, nothing here notices; paste the new text and update the pinned
+value from its `LAB_BLOCK_KNOWN_VERSIONS`.
 
 ---
 
@@ -50,6 +114,8 @@ column.
 ---
 
 ## The CREED lab block is EXTENDED to the launcher block's full behaviour — DATABASES, ADMIN_PASSWORD, AUTH_LEVEL and DEBUG, each env-gated — 2026-09-10
+
+*Partly superseded 2026-11-18: the block is now the oTree Lab Launcher's (markers `=== oTree lab support …`, variables `OTREE_LAB_ROOM_NAME` / `OTREE_LAB_LABEL_FILE`); see the entry at the top of this file. The reasoning below still applies.*
 
 The CREED Lab Launcher now appends a larger self-documenting block to a project's
 `settings.py`: one that re-asserts from the environment *everything* a lab run
@@ -122,6 +188,8 @@ byte-for-byte.
 ---
 
 ## The CREED lab block is CARRIED in `settings.py`, verbatim and last — the seat list is never hardcoded — 2026-09-01
+
+*Partly superseded 2026-11-18: the block is now the oTree Lab Launcher's (markers `=== oTree lab support …`, variables `OTREE_LAB_ROOM_NAME` / `OTREE_LAB_LABEL_FILE`); see the entry at the top of this file. The reasoning below still applies.*
 
 The CREED Lab Launcher (a GUI app, outside this repo) replaces the hand-edited
 `scripts/set_up_otree.bat` that lab staff run today. Each lab computer opens a

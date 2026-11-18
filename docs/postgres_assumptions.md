@@ -105,7 +105,7 @@ and the operator should know that.** Worth stating in the Docker section of
 
 ```python
 if os.environ.get('DB_NAME'):
-    DATABASES = {'default': {'ENGINE': 'django.db.backends.postgresql_psycopg2', ...}}
+    DATABASES = {'default': {'ENGINE': 'django.db.backends.postgresql', ...}}
 else:
     DATABASES = {'default': {'ENGINE': 'django.db.backends.sqlite3', ...}}
 ```

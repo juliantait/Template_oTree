@@ -23,12 +23,11 @@ unmatched players are regrouped differently, and where a wait page does that
 work. Whoever builds real grouping should read it for that and write fresh
 code in this template's idiom.
 
-READ FIRST, in TODO.md: the "Group matching" entry (and the
-"Move treatment randomisation" entry it is deliberately filed next to — the
-two cannot be designed independently, because role-mixed groups force the
-first matching to happen at role assignment), plus the "Wait-page dropout
-detection" entry, which is where a wait page like this one meets its failure
-mode.
+DESIGN BEFORE YOU BUILD: group matching cannot be designed independently of
+when treatment is assigned (role-mixed groups force the first matching to
+happen at role assignment; see before/treatment_assignment.py), and a wait page
+like this one needs dropout detection, because a participant who leaves while
+others wait there strands the whole group.
 """
 
 # from otree.api import WaitPage

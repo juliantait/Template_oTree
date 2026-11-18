@@ -1323,14 +1323,17 @@ ADMIN_USERNAME = os.environ.get('OTREE_ADMIN_USERNAME', 'admin')
 ADMIN_PASSWORD = os.environ.get('OTREE_ADMIN_PASSWORD', 'admin')
 
 # Postgres only when DB_NAME is set; otherwise fall back to a local SQLite file
-# so a fresh clone runs with `otree devserver` immediately.
+# so a fresh clone runs with `otree devserver` immediately. NB oTree 6 never reads
+# DATABASES (it picks the database from DATABASE_URL alone). The Postgres dict is
+# kept identical to the one the lab block at the end of this file builds, so the
+# block changes no resolved value (scripts/tests/creed_lab_block_test.py).
 if os.environ.get('DB_NAME'):
     DATABASES = {
         'default': {
-            'ENGINE': 'django.db.backends.postgresql_psycopg2',
-            'NAME': os.environ.get('DB_NAME'),
-            'USER': os.environ.get('DB_USER'),
-            'PASSWORD': os.environ.get('DB_PASSWORD'),
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ['DB_NAME'],
+            'USER': os.environ.get('DB_USER', ''),
+            'PASSWORD': os.environ.get('DB_PASSWORD', ''),
             'HOST': os.environ.get('DB_HOST', 'localhost'),
             'PORT': os.environ.get('DB_PORT', '5432'),
         }
@@ -1546,21 +1549,37 @@ def _check_prelaunch():
 
 _check_prelaunch()
 
-# === CREED lab support (paste at the END of settings.py) ===
-# CREED LAB SUPPORT — appended by the CREED lab launcher. It re-asserts, from the
-# environment, everything a lab run needs, so it OVERRIDES anything hardcoded
-# above and is completely inert unless the launcher sets its variables. Safe to
-# leave in permanently. TO REMOVE: delete everything from the banner/marker line
-# above (`# === CREED lab support ... ===`) to the END of the file.
+# The block below is the oTree Lab Launcher's own text, pasted verbatim: the launcher
+# finds it by its marker line and calls it OUTDATED if one character between the two
+# markers differs from its current copy, so do not edit, reflow or annotate inside it.
+# Why it is here and how it is tested: .claude/decisions/settings_and_parameters.md,
+# "The lab block is the oTree Lab Launcher's current block".
+# === oTree lab support (paste at the END of settings.py) ===
+# ---------------------------------------------------------------------------
+# OTREE LAB SUPPORT: appended by the oTree lab launcher.
+# TO REMOVE: delete everything from this banner line to the END of the file.
+# Safe to leave in permanently: it does NOTHING unless the launcher sets
+# its environment variables at launch. With no lab environment set, every
+# override below is skipped and your settings.py behaves exactly as before.
 #
-# NB the marker line above is how the launcher DETECTS that a project opted in (a
-# text match, not an import) — do not reflow, rename or wrap it. See .claude/DECISIONS.md,
-# "The CREED lab block is carried in settings.py".
+# Because Python binds names last, these assignments live at the END of the
+# file, so they win over anything the project hardcoded higher up, but only
+# while the launcher's variables are present. Each override is guarded by the
+# variable it needs, and its comment says in plain language what it redirects
+# and why. Everything here only redirects WHERE your program runs (the lab
+# machines, the lab database, the lab room and login); it never changes your
+# experiment's logic. Unrelated settings such as SECRET_KEY are left untouched.
+# ---------------------------------------------------------------------------
 import os as _os
 
-if _os.environ.get("CREED_LABEL_FILE"):
-    # The launcher picked a room and wrote a seat list for this run.
-    _creed_room = _os.environ.get("CREED_ROOM_NAME", "study")
+# (a) ROOMS + participant_label_file: a lab launch always names the room it
+#     opens, so make sure that room exists here. If the launcher also wrote a
+#     seat list, point the room at it so the admin gets the per-seat presence
+#     board; with no seat list the room is left OPEN (anyone joins). Adds
+#     nothing off the lab, where OTREE_LAB_ROOM_NAME is unset.
+if _os.environ.get("OTREE_LAB_ROOM_NAME"):
+    # The launcher picked the room it will open for this run.
+    _lab_room = _os.environ["OTREE_LAB_ROOM_NAME"]
 
     # ROOMS may not exist yet in this project.
     try:
@@ -1570,69 +1589,62 @@ if _os.environ.get("CREED_LABEL_FILE"):
 
     # Add the room only if the project does not already define it, so a project
     # that has its own room keeps its own settings.
-    if not any(r.get("name") == _creed_room for r in ROOMS):
-        ROOMS = list(ROOMS) + [dict(name=_creed_room, display_name="CREED lab session")]
+    if not any(r.get("name") == _lab_room for r in ROOMS):
+        ROOMS = list(ROOMS) + [dict(name=_lab_room, display_name="oTree lab session")]
 
-    # Point that room at the seat list the launcher wrote. Mutating in place
-    # means any other keys the project set on the room survive.
-    for _room in ROOMS:
-        if _room.get("name") == _creed_room:
-            _room["participant_label_file"] = _os.environ["CREED_LABEL_FILE"]
+    # Point that room at the seat list ONLY when the launcher wrote one (seats).
+    # Mutating in place means any other keys the project set on the room survive.
+    # With no seat file the room stays open (no participant_label_file).
+    if _os.environ.get("OTREE_LAB_LABEL_FILE"):
+        for _room in ROOMS:
+            if _room.get("name") == _lab_room:
+                _room["participant_label_file"] = _os.environ["OTREE_LAB_LABEL_FILE"]
 
-# oTree reads the admin password from the environment but hardcodes the admin
-# username, so without this line the launcher's admin username box would do
-# nothing. With no environment variable set this keeps whatever the project
-# already had, or "admin" if it had none.
-try:
-    _creed_admin_default = ADMIN_USERNAME
-except NameError:
-    _creed_admin_default = "admin"
-ADMIN_USERNAME = _os.environ.get("OTREE_ADMIN_USERNAME", _creed_admin_default)
-
-# The overrides below re-assert the rest of what a lab run needs, each from the
-# ONE environment variable it depends on and each inert without it. Like the
-# ADMIN_USERNAME line above they are REDUNDANT in this template — its own
-# DATABASES / ADMIN_PASSWORD / DEBUG already read the same variables higher up —
-# but a study forked from here may hardcode any of these to a literal, and then
-# the launcher's box for it would silently do nothing without the override. So
-# they stay, and each must sit AFTER the project's own assignment to win. Do not
-# "tidy" them as duplication (the ADMIN_USERNAME argument in .claude/DECISIONS.md applies
-# to each of these too).
-
-# Database: rebuild it as Postgres from the DB_* variables when DB_NAME is set,
-# so it wins over a DATABASES hardcoded above. Left alone (the project's own
-# DATABASES stands) when DB_NAME is absent. Kept byte-identical to the template's
-# own Postgres branch above, so with the launcher off the resolved value is the
-# same either way.
+# (b) DATABASES: redirect the project at the lab's PostgreSQL database, rebuilt
+#     from the DB_* variables the launcher set. Because it is assigned here at
+#     the end of the file it wins even over a DATABASES block the project
+#     hardcoded higher up, so a session cannot run against the wrong database.
+#     (oTree 6+ actually chooses its database from the DATABASE_URL environment
+#     variable, which the launcher also sets, so on that version the lab
+#     database is already in force through the environment; this settings-level
+#     DATABASES is the same redirect for Django-based oTree versions that read
+#     it, and is simply ignored where it is not.)
 if _os.environ.get("DB_NAME"):
     DATABASES = {
         "default": {
-            "ENGINE": "django.db.backends.postgresql_psycopg2",
-            "NAME": _os.environ.get("DB_NAME"),
-            "USER": _os.environ.get("DB_USER"),
-            "PASSWORD": _os.environ.get("DB_PASSWORD"),
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": _os.environ["DB_NAME"],
+            "USER": _os.environ.get("DB_USER", ""),
+            "PASSWORD": _os.environ.get("DB_PASSWORD", ""),
             "HOST": _os.environ.get("DB_HOST", "localhost"),
             "PORT": _os.environ.get("DB_PORT", "5432"),
         }
     }
 
-# Admin password: take it from the environment when the launcher sets it, so it
-# wins over a password hardcoded above. Left alone when the variable is absent.
-if _os.environ.get("OTREE_ADMIN_PASSWORD"):
+# (c) ADMIN_USERNAME: oTree reads the admin password from the environment but
+#     hardcodes the admin username, so without this line the launcher's admin
+#     username box would do nothing. Only fires when the launcher set
+#     OTREE_ADMIN_USERNAME; off the lab the project's own username (or oTree's
+#     default) is left exactly as it was.
+if "OTREE_ADMIN_USERNAME" in _os.environ:
+    ADMIN_USERNAME = _os.environ["OTREE_ADMIN_USERNAME"]
+
+# (d) ADMIN_PASSWORD: take the admin password from the launcher, so a password
+#     hardcoded in the project cannot lock the experimenter out of the lab
+#     dashboard. Only fires when the launcher set OTREE_ADMIN_PASSWORD.
+if "OTREE_ADMIN_PASSWORD" in _os.environ:
     ADMIN_PASSWORD = _os.environ["OTREE_ADMIN_PASSWORD"]
 
-# Admin login level: lock it to what the launcher asks for (STUDY in the lab, so
-# the admin, the data exports and the experimenter dashboard require a login).
-# Applied only when OTREE_AUTH_LEVEL is set; otherwise oTree's own reading of the
-# variable stands.
-if _os.environ.get("OTREE_AUTH_LEVEL"):
+# (e) AUTH_LEVEL: the launcher's access level (STUDY puts the whole site behind
+#     the admin login for a real session). Overrides any level the project
+#     hardcoded. Only fires when the launcher set OTREE_AUTH_LEVEL.
+if "OTREE_AUTH_LEVEL" in _os.environ:
     AUTH_LEVEL = _os.environ["OTREE_AUTH_LEVEL"]
 
-# Debug: re-derive it from OTREE_PRODUCTION when that variable is set, so a study
-# that hardcoded DEBUG = True above cannot ship debug pages (skip buttons, quiz
-# solutions in the browser) into a lab session. Presence-based, exactly like the
-# template's own derivation at the top of the file (OTREE_PRODUCTION set => off).
-# Left alone when the variable is absent.
+# (f) DEBUG / production: re-derive oTree's own production rule from
+#     OTREE_PRODUCTION, so a project that hardcoded DEBUG = True cannot ship
+#     debug pages and tracebacks in the lab. Only fires when the launcher set
+#     OTREE_PRODUCTION (production mode); off the lab, DEBUG is left as it was.
 if "OTREE_PRODUCTION" in _os.environ:
-    DEBUG = "OTREE_PRODUCTION" not in _os.environ
-# === end CREED lab support ===
+    DEBUG = _os.environ.get("OTREE_PRODUCTION") in (None, "", "0")
+# === end oTree lab support ===

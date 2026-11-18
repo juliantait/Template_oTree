@@ -41,7 +41,7 @@ the topic file below holding the entry it quotes.
 
 - [`study.md`](study.md) (forked studies only): the study's own decisions. On a fork, read it first.
 - [`repository_and_docs.md`](repository_and_docs.md): read when you move or rename a file or folder, change what is tracked (the double-click launchers included), or edit the docs.
-- [`settings_and_parameters.md`](settings_and_parameters.md): read when you change `settings.py`: the three controls, recruitment profiles, session-config keys, the safe accessors, or the CREED lab block.
+- [`settings_and_parameters.md`](settings_and_parameters.md): read when you change `settings.py`: the three controls, recruitment profiles, session-config keys, the safe accessors, or the oTree lab block (the Lab Launcher's block at the end).
 - [`entry_and_identity.md`](entry_and_identity.md): read when you touch the room, the device check and its screen-out, or how a participant is identified.
 - [`participant_flow.md`](participant_flow.md): read when you change the page sequence, consent, an ending, exit codes, completion codes or the Prolific redirects.
 - [`task_and_treatments.md`](task_and_treatments.md): read when you swap or edit the task in `main`, the task pages, or treatment assignment.

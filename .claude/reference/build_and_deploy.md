@@ -163,7 +163,7 @@ about end pages and resume-preference pages a study adds).
   > (Postgres database, admin login, production mode, the room's seat list, and
   > the lab session number, which lands in the export as
   > `session.config.lab_session`),
-  > starts `otree prodserver`, and can append the CREED lab support block —
+  > starts `otree prodserver`, and can append its oTree lab support block —
   > already shipped at the end of `settings.py` — to any project's `settings.py`
   > so the study redirects into the lab while staying completely inert unless the
   > launcher is running. The launcher's code is not in this repo; only the

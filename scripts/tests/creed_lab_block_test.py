@@ -1,17 +1,24 @@
 #!/usr/bin/env python
-"""The CREED lab block must be INERT unless the launcher asks for it — proved by
-running the SAME settings.py twice, with the block and without it, and requiring
-the resolved values to be equal.
+"""The lab block at the end of settings.py must be INERT unless the oTree Lab
+Launcher asks for it — proved by running the SAME settings.py twice, with the
+block and without it, and requiring the resolved values to be equal.
+
+(The file keeps its old name, creed_lab_block_test.py, because the decision log
+and the testing reference cite it by that name.)
 
 WHY THIS EXISTS
 ---------------
-`settings.py` ends with a marked block (`# === CREED lab support ... ===` ..
-`# === end CREED lab support ===`) that the CREED Lab Launcher detects by text
-match. When the launcher exports `CREED_LABEL_FILE`, the block points the room
-at a seat-label file so the admin page shows the per-seat present/absent board.
-When it does not, the block must do NOTHING AT ALL — because the same
-`settings.py` is what `scripts/set_up_otree.bat` and a bare `otree devserver`
-have always run, on lab machines nobody is going to re-test.
+`settings.py` ends with the oTree Lab Launcher's block (`# === oTree lab support
+... ===` .. `# === end oTree lab support ===`), pasted verbatim. The launcher
+finds it by TEXT MATCH on the start marker, and calls it OUTDATED (and offers to
+replace it) when the text between the markers differs from its own current copy
+by so much as a character. When the launcher exports `OTREE_LAB_ROOM_NAME` the
+block makes sure that room exists, and when it also exports
+`OTREE_LAB_LABEL_FILE` it points the room at that seat list so the admin page
+shows the per-seat present/absent board. When neither is set, the block must do
+NOTHING AT ALL — because the same `settings.py` is what
+`scripts/set_up_otree.bat` and a bare `otree devserver` have always run, on lab
+machines nobody is going to re-test.
 
 That promise cannot be checked by reading the block: it reads inert, and the two
 ways it could stop being inert are both silent.
@@ -22,12 +29,14 @@ ways it could stop being inert are both silent.
     landing on oTree's bare framework interstitial instead of the study's own
     page. Section 2 pins that nothing assigns or mutates `ROOMS` after the
     block, and section 5 pins that an ACTIVE block adds exactly one key.
-  * `ADMIN_USERNAME` is assigned by the block AND, ~150 lines earlier, by the
-    template itself — and `scripts/set_up_otree.bat` sets the very environment
-    variable both of them read. That is the one name where the block and the
-    old lab workflow could possibly disagree, so it is the one the differential
-    is aimed at (sections 3, 4 and 6). The duplicate assignment is deliberate:
-    see .claude/decisions/settings_and_parameters.md, "The CREED lab block is carried in settings.py".
+  * `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `DATABASES` and `DEBUG` are assigned by
+    the block AND, higher up, by the template itself — and
+    `scripts/set_up_otree.bat` sets the very environment variables both read.
+    Those are where the block and the old lab workflow could disagree, so the
+    differential is aimed at them (sections 3, 4 and 7). The duplicate
+    assignments are deliberate: see .claude/decisions/settings_and_parameters.md,
+    "The CREED lab block is carried in settings.py" and the 2026-11-18 entry
+    above it.
 
 THE METHOD: A DIFFERENTIAL, NOT A REMEMBERED BASELINE
 -----------------------------------------------------
@@ -52,31 +61,36 @@ values it resolves are decided by the environment AT IMPORT, and no amount of
 WHAT IT COVERS
 --------------
 1. The block is present, both markers intact (the launcher detects it by text),
-   and it is genuinely LAST in the file.
+   it is genuinely LAST in the file, and its body is byte-for-byte a block the
+   launcher shipped (its fingerprint, computed the way the launcher's
+   `lab_block_fingerprint` does, is pinned below) — so the launcher reports it
+   present and current, not OUTDATED.
 2. Nothing assigns or mutates `ROOMS` after the block — asserted from the AST,
    plus the imported `ROOMS` compared against the `ROOMS = [...]` literal
    evaluated on its own. A later assignment would silently delete the room.
-3. INERT with the CREED variables absent: A == B, and the concrete facts a
+3. INERT with the launcher's variables absent: A == B, and the concrete facts a
    participant depends on (the `study` room, its `welcome_page`, no
    `participant_label_file` anywhere, `ADMIN_USERNAME == 'admin'`).
 4. INERT under the exact environment `scripts/set_up_otree.bat` exports — read
    OUT OF THE BAT FILE, not retyped here — so the lab's existing workflow is
    what is being measured. This is the backwards-compatibility guarantee.
-5. ACTIVE with `CREED_LABEL_FILE` set: the `study` room gains
-   `participant_label_file` with that exact path and NOTHING ELSE CHANGES —
-   asserted as a key-by-key diff against the inert run, not as a spot check.
-6. `CREED_ROOM_NAME` defaults to `study`; pointed at a DIFFERENT room name it
-   appends a new room and leaves the `study` room completely alone (a
-   mistyped launcher config must not strip the room gate).
+5. ACTIVE with `OTREE_LAB_ROOM_NAME=study` + `OTREE_LAB_LABEL_FILE`: the `study`
+   room gains `participant_label_file` with that exact path and NOTHING ELSE
+   CHANGES — asserted as a key-by-key diff against the inert run. With the room
+   name but no seat file the room is left open (unchanged), and a seat file
+   with no room name does nothing.
+6. `OTREE_LAB_ROOM_NAME` pointed at a DIFFERENT room name appends a new room
+   and leaves the `study` room completely alone (a mistyped launcher config
+   must not strip the room gate).
 7. `ADMIN_USERNAME` resolves identically with and without the block when
-   `OTREE_ADMIN_USERNAME` is set — the one place the two assignments could
-   disagree.
+   `OTREE_ADMIN_USERNAME` is set.
 
 Run:  python scripts/tests/creed_lab_block_test.py
 Exit 0 = the block is inert. Boots no server, touches no database (the child
 never gets as far as connecting one), needs no browser.
 """
 import ast
+import hashlib
 import json
 import os
 import re
@@ -93,13 +107,23 @@ BAT = os.path.join(REPO_ROOT, 'scripts', 'set_up_otree.bat')
 # The two lines the launcher matches on. Retyped here ON PURPOSE: if somebody
 # reflows or "tidies" either marker, the launcher stops finding the block and
 # this test says so, which a marker read out of the file itself could not.
-START_MARKER = '# === CREED lab support (paste at the END of settings.py) ==='
-END_MARKER = '# === end CREED lab support ==='
+START_MARKER = '# === oTree lab support (paste at the END of settings.py) ==='
+END_MARKER = '# === end oTree lab support ==='
+
+# The launcher's fingerprint of its own block (sha256 of the text from the start
+# marker to the end marker, trailing whitespace per line dropped, surrounding
+# blank lines stripped: `lab_block_fingerprint` in the launcher's otree_core.py).
+# This is the 2026-09-21 entry of its LAB_BLOCK_KNOWN_VERSIONS, its current block
+# on 2026-11-18. Any edit between the markers changes it, and the launcher then
+# reports the block OUTDATED (or hand-edited). When the launcher ships a new
+# block, paste the new text verbatim and update this value from its list.
+LAUNCHER_BLOCK_SHA256 = '2c457f9add83e46a477c3048e1588701e6fd860fb3db7e877f8e823ec5b15f41'
 
 # Every environment variable this test controls. Anything in this set is
 # stripped from the inherited environment before a scenario applies its own, so
 # a scenario means exactly what it says however the suite was invoked.
-CONTROLLED = ('CREED_LABEL_FILE', 'CREED_ROOM_NAME', 'DATABASE_URL')
+# (OTREE_LAB_ROOM_NAME / OTREE_LAB_LABEL_FILE are covered by the OTREE_ prefix.)
+CONTROLLED = ('DATABASE_URL',)
 CONTROLLED_PREFIXES = ('OTREE_', 'DB_')
 
 _failures = []
@@ -154,7 +178,7 @@ with open(out_path, 'w', encoding='utf-8') as fh:
 '''
 
 # The six names the differential compares. `names_defined` is deliberately NOT
-# among them: the block legitimately leaves its own `_os`/`_creed_*` helpers
+# among them: the block legitimately leaves its own `_os`/`_lab_room` helpers
 # behind, and oTree never reads a leading-underscore setting.
 COMPARED = ('ROOMS', 'ROOMS_repr', 'ADMIN_USERNAME', 'ADMIN_PASSWORD',
             'DEBUG', 'DATABASES', 'SECRET_KEY')
@@ -314,12 +338,20 @@ def main():
           f'(found {len(trailing)}: {trailing[:3]})')
 
     block = '\n'.join(full_lines[start_index:end_index + 1])
-    for token in ('CREED_LABEL_FILE', 'CREED_ROOM_NAME', 'participant_label_file',
-                  'OTREE_ADMIN_USERNAME'):
+    for token in ('OTREE_LAB_ROOM_NAME', 'OTREE_LAB_LABEL_FILE',
+                  'participant_label_file', 'OTREE_ADMIN_USERNAME'):
         check(token in block, f'the block still reads/writes {token}')
-    check('"study"' in block or "'study'" in block,
-          'the block still defaults CREED_ROOM_NAME to the room this template '
-          'ships (`study`)')
+    normalised = '\n'.join(line.rstrip() for line in block.splitlines()).strip('\n')
+    fingerprint = hashlib.sha256(normalised.encode('utf-8')).hexdigest()
+    check(fingerprint == LAUNCHER_BLOCK_SHA256,
+          f'the block is byte-for-byte the launcher\'s current block '
+          f'(sha256 {fingerprint[:12]}…, expected {LAUNCHER_BLOCK_SHA256[:12]}…) '
+          f'— any edit inside the markers makes the launcher call it OUTDATED')
+    for legacy in ('CREED_LABEL_FILE', 'CREED_ROOM_NAME', '=== CREED lab support'):
+        check(legacy not in full_source,
+              f'no trace of the retired CREED block remains ({legacy!r}) — a '
+              f'second, older block the launcher cannot see would be the '
+              f'one-concept-two-implementations bug')
 
     # The pre-block file, reconstructed by cutting at the start marker. This is
     # the "before" half of every differential below, so prove the cut is clean.
@@ -332,8 +364,8 @@ def main():
     # word: settings.py's INSTITUTION_NAME comment has explained what
     # `has_participant_label_file` does to the room-welcome context since long
     # before this block arrived.
-    block_tokens = (START_MARKER, END_MARKER, 'CREED_LABEL_FILE',
-                    'CREED_ROOM_NAME', '_creed_',
+    block_tokens = (START_MARKER, END_MARKER, 'OTREE_LAB_LABEL_FILE',
+                    'OTREE_LAB_ROOM_NAME', '_lab_room',
                     '_room["participant_label_file"]')
     for token in block_tokens:
         check(token not in stripped_source,
@@ -341,7 +373,12 @@ def main():
         check(token in full_source,
               f'…and the shipped source DOES ({token!r}) — the paired presence, '
               f'without which the check above would pass against an empty file')
-    check(stripped_source.strip().endswith('_check_prelaunch()'),
+    # The comment lines just above the start marker (the "pasted verbatim, do
+    # not edit inside" note) sit outside the block on purpose, so they are
+    # skipped here: comments resolve nothing.
+    code_before_block = [line for line in stripped_source.splitlines()
+                         if line.strip() and not line.lstrip().startswith('#')]
+    check(code_before_block[-1:] == ['_check_prelaunch()'],
           'the stripped source ends where settings.py used to end '
           '(`_check_prelaunch()`) — so the block was appended, not inserted '
           'into the middle of something')
@@ -373,9 +410,9 @@ def main():
     with open(without_block, 'w', encoding='utf-8') as fh:
         fh.write(stripped_source)
 
-    section('3. INERT with the CREED variables absent (the differential)')
+    section('3. INERT with the launcher variables absent (the differential)')
     bare = scenario_env({})
-    for name in ('CREED_LABEL_FILE', 'CREED_ROOM_NAME'):
+    for name in ('OTREE_LAB_ROOM_NAME', 'OTREE_LAB_LABEL_FILE'):
         check(name not in bare, f'{name} is genuinely absent from this scenario')
     inert = differential('vars absent', bare, with_block, without_block, workdir)
 
@@ -425,6 +462,13 @@ def main():
           f'the bat\'s DATABASE_URL expanded as cmd.exe would '
           f'({bat_env.get("DATABASE_URL")!r})')
 
+    # The bat predates the launcher and sets neither room variable, so under it
+    # the block's room part stays off and only the credential / database /
+    # DEBUG overrides fire. Stated, so a bat that starts setting them is noticed.
+    for name in ('OTREE_LAB_ROOM_NAME', 'OTREE_LAB_LABEL_FILE'):
+        check(name not in bat_env,
+              f'scripts/set_up_otree.bat does not export {name}')
+
     lab = differential('set_up_otree.bat env', scenario_env(bat_env),
                        with_block, without_block, workdir)
 
@@ -451,51 +495,64 @@ def main():
           'no room gains a participant_label_file under the bat environment')
 
     # ------------------------------------------------------------------
-    section('5. ACTIVE with CREED_LABEL_FILE: one key added, nothing else moved')
+    section('5. ACTIVE with OTREE_LAB_ROOM_NAME + OTREE_LAB_LABEL_FILE: one key added, nothing else moved')
 
-    seat_file = os.path.join(workdir, 'creed seats.txt')   # a space, as a lab path may have
+    seat_file = os.path.join(workdir, 'lab seats.txt')   # a space, as a lab path may have
     with open(seat_file, 'w', encoding='utf-8') as fh:
         fh.write('\n'.join(['A1', 'A2', 'A3', 'B1', 'B2']) + '\n')
 
-    active = resolve(with_block, scenario_env({'CREED_LABEL_FILE': seat_file}),
-                     workdir)
+    # What the launcher exports for a seated lab run: the room it opens AND the
+    # seat list it wrote.
+    active = resolve(with_block, scenario_env(
+        {'OTREE_LAB_ROOM_NAME': 'study', 'OTREE_LAB_LABEL_FILE': seat_file}),
+        workdir)
     active_room = study_room(active['ROOMS'])
     check(active_room is not None, 'the `study` room is still the room')
-    check(active_room.get('participant_label_file') == seat_file,
+    check((active_room or {}).get('participant_label_file') == seat_file,
           f'the `study` room gained participant_label_file with the EXACT path '
-          f'exported ({active_room.get("participant_label_file")!r})')
+          f'exported ({(active_room or {}).get("participant_label_file")!r})')
     check(len(active['ROOMS']) == len(inert['ROOMS']),
           f'no room was added ({len(active["ROOMS"])} vs '
           f'{len(inert["ROOMS"])}) — the block found the existing room')
 
     base_room = study_room(inert['ROOMS'])
-    added = set(active_room) - set(base_room)
-    removed = set(base_room) - set(active_room)
-    changed = {k for k in base_room if k in active_room
+    added = set(active_room or {}) - set(base_room)
+    removed = set(base_room) - set(active_room or {})
+    changed = {k for k in base_room if k in (active_room or {})
                and base_room[k] != active_room[k]}
     check(added == {'participant_label_file'},
           f'exactly one key was added: {sorted(added)}')
     check(removed == set(), f'no key was removed: {sorted(removed)}')
     check(changed == set(),
           f'no pre-existing key changed value: {sorted(changed)}')
-    check(active_room.get('welcome_page') == base_room.get('welcome_page'),
+    check((active_room or {}).get('welcome_page') == base_room.get('welcome_page'),
           'welcome_page survives the in-place mutation — named explicitly '
           'because losing it is the failure a reassignment would cause')
     check(active['ADMIN_USERNAME'] == inert['ADMIN_USERNAME'],
           f'ADMIN_USERNAME is untouched by the seat file '
           f'({active["ADMIN_USERNAME"]!r})')
 
-    # ------------------------------------------------------------------
-    section('6. CREED_ROOM_NAME: defaults to `study`, and never clobbers it')
+    # A run with no seats: the launcher names the room but writes no seat list,
+    # and the room must stay OPEN — exactly as it ships.
+    open_run = resolve(with_block, scenario_env({'OTREE_LAB_ROOM_NAME': 'study'}),
+                       workdir)
+    check(open_run['ROOMS_repr'] == inert['ROOMS_repr'],
+          'OTREE_LAB_ROOM_NAME=study with no seat file leaves ROOMS exactly as '
+          'it ships (the room stays open, no participant_label_file)')
 
-    explicit = resolve(with_block, scenario_env(
-        {'CREED_LABEL_FILE': seat_file, 'CREED_ROOM_NAME': 'study'}), workdir)
-    check(explicit['ROOMS_repr'] == active['ROOMS_repr'],
-          'CREED_ROOM_NAME=study gives byte-identical ROOMS to leaving it '
-          'unset — the documented default is the default')
+    # A seat file with no room name: the room part is gated on the room name,
+    # so nothing happens (the retired CREED block keyed on the seat file alone).
+    seat_only = resolve(with_block, scenario_env({'OTREE_LAB_LABEL_FILE': seat_file}),
+                        workdir)
+    check(seat_only['ROOMS_repr'] == inert['ROOMS_repr'],
+          'OTREE_LAB_LABEL_FILE alone (no room name) changes nothing')
+
+    # ------------------------------------------------------------------
+    section('6. OTREE_LAB_ROOM_NAME pointed elsewhere never clobbers `study`')
 
     other = resolve(with_block, scenario_env(
-        {'CREED_LABEL_FILE': seat_file, 'CREED_ROOM_NAME': 'other_room'}), workdir)
+        {'OTREE_LAB_ROOM_NAME': 'other_room', 'OTREE_LAB_LABEL_FILE': seat_file}),
+        workdir)
     other_room = study_room(other['ROOMS'], 'other_room')
     check(other_room is not None,
           f'a room name the project does not define is ADDED (rooms: '
@@ -507,6 +564,13 @@ def main():
           f'the `study` room is left exactly as it ships — a launcher pointed '
           f'at the wrong room name must not strip the room gate '
           f'({untouched!r})')
+
+    other_open = resolve(with_block, scenario_env(
+        {'OTREE_LAB_ROOM_NAME': 'other_room'}), workdir)
+    other_open_room = study_room(other_open['ROOMS'], 'other_room')
+    check(other_open_room is not None
+          and 'participant_label_file' not in other_open_room,
+          f'with no seat file the added room is open ({other_open_room!r})')
 
     # ------------------------------------------------------------------
     section('7. ADMIN_USERNAME with OTREE_ADMIN_USERNAME set both ways')
@@ -521,7 +585,8 @@ def main():
 
     # and with the block ACTIVE as well, since that is the lab's real state
     lab_active = resolve(with_block, scenario_env(
-        {'CREED_LABEL_FILE': seat_file, 'OTREE_ADMIN_USERNAME': 'labadmin'}),
+        {'OTREE_LAB_ROOM_NAME': 'study', 'OTREE_LAB_LABEL_FILE': seat_file,
+         'OTREE_ADMIN_USERNAME': 'labadmin'}),
         workdir)
     check(lab_active['ADMIN_USERNAME'] == 'labadmin',
           f'…and with the seat file set too ({lab_active["ADMIN_USERNAME"]!r})')
@@ -533,7 +598,7 @@ def main():
         for failure in _failures:
             print(f'  - {failure}')
         return 1
-    print('ALL CHECKS PASS — the CREED lab block is inert unless asked for.')
+    print('ALL CHECKS PASS — the oTree lab block is inert unless asked for.')
     return 0
 
 

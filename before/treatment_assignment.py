@@ -14,7 +14,7 @@ abandoned at consent or was turned away by the device gate. Assigning as late as
 the first instructions page means a cell is spent only by someone who ACTUALLY
 REACHED THE STUDY, so the balance is over ARRIVALS, not over rows created. Intro
 is the latest safe point because instructions may themselves be treatment- or
-role-specific and rendering them needs the cell to exist (TODO.md).
+role-specific and rendering them needs the cell to exist.
 
 BALANCE-ON-ARRIVAL — a different algorithm, not a moved call. Once the deck is no
 longer dealt at once, `cycle` cannot keep balance: each arrival must be given a

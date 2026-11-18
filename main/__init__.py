@@ -233,9 +233,8 @@ class TaskPage(participant_tab_monitor.MonitoredPage):
 # study (a RoundStartWaitPage with perfect-stranger matching) lives in
 # docs/group_matching_reference.py — read its header first: it references names
 # this template does not have, so it is a shape to learn from, not a block to
-# uncomment. The design questions around it (matching cannot be designed
-# independently of WHEN treatment/role assignment happens) are in TODO.md
-# under "Group matching".
+# uncomment. The design question around it: matching cannot be designed
+# independently of WHEN treatment/role assignment happens.
 
 # INSERT YOUR GAME PAGES HERE
 
