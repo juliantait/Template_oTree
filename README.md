@@ -5,6 +5,25 @@ A ready-to-run oTree study you copy to start a new experiment. It has four apps
 plumbing for a physical lab and for Prolific, and guards that stop a live study
 from breaking quietly. You put your game in `main/` and run it.
 
+## What participants see
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/figures/readme/1_welcome_consent.png" alt="Welcome and consent screen, lab variant"><br><b>before</b> app: welcome and consent, lab variant (consent by continuing, no box to tick)</td>
+    <td width="50%"><img src="docs/figures/readme/2_instructions.png" alt="Instructions page"><br><b>intro</b> app: an instructions page</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/figures/readme/3_decision.png" alt="Example decision screen"><br><b>main</b> app: an example decision screen</td>
+    <td width="50%"><img src="docs/figures/readme/4_results.png" alt="Results screen, lab variant"><br><b>outro</b> app: results screen, lab variant</td>
+  </tr>
+</table>
+
+## What the experimenter sees
+
+<img src="docs/figures/readme/monitor.png" alt="Experimenter monitor page" width="100%">
+
+**Monitor** page: a lab session in progress, one row per participant. Interactive versions of these screens are on [juliantait.eu/otree-template.html](https://juliantait.eu/otree-template.html).
+
 ## What you get
 
 - **Four apps in order**: `before` (welcome, consent, Prolific ID and device check), `intro` (instructions and quiz), `main` (your task), `outro` (endings, demographics, payment).
