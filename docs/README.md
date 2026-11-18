@@ -2,7 +2,7 @@
 
 For the researcher starting a study, not for whoever built the template. It
 answers "what do I have to do, and what will bite me?" — the reasoning behind
-each answer lives in `DECISIONS.md`, and you do not need it to run a study.
+each answer lives in `.claude/DECISIONS.md`, and you do not need it to run a study.
 
 Everything in `docs/` is **tracked**, so a study copied from this template gets
 all of it. Records of how the template came to be — audits, work logs, pilot
@@ -18,9 +18,10 @@ so you know the file is deliberately absent rather than missing.
 | `group_matching_reference.py` | Reference implementation to read first if your design needs participants matched into groups. |
 | `running_on_prolific.md` | **Operating guide for a study running on Prolific** — the ID capture, the five completion codes, the device gate, what each ending does. Moved here from a top-level `prolific/` folder on 2026-08-16; it is an operating guide, not a conversion plan. Irrelevant to a lab study. |
 | `conventions.md` | The design principles behind the template: what the parameter scheme is for, how the three controls interact, the naming rules. Moved from the repo root on 2026-08-16. Read it before adding a parameter or a page. |
-| `skills_claude/` | Authoring playbooks for whoever (or whatever) edits the template: writing the task, the instructions, the quiz, the tests, and the Railway + Prolific hosting procedures. Kept as a group — start at `skills_claude/README.md`. |
-| `agents/` | The detailed reference by topic (setup, parameters, entry gate, participant flow, payments, dashboard, testing, build and deploy, styling). Written for AI agents and indexed from `CLAUDE.md`, readable by anyone who wants the depth. |
+| `CODEBOOK.md` | **The analyst's reference**: every exported column, exit code and pooling caveat. A forked study fills in its own Analyst quick start. |
 | `experimenter_dashboard_brief.md` | The dashboard **as it was specified**, kept deliberately un-updated so the brief can be compared against what was built. Not a description of the code. |
+
+Agent-facing material lives in `.claude/` at the repo root, not here: the authoring playbooks as skills (`.claude/skills/`, start at its `README.md`), the detailed topic reference indexed from `CLAUDE.md` (`.claude/reference/`), and the decision log (`.claude/DECISIONS.md`). All of it is readable by anyone who wants the depth.
 
 ## 1. The three controls
 
@@ -36,7 +37,7 @@ top of `settings.py`. Set them and most decisions are made for you:
   the real run.
 
 They do not interact: a Prolific-configured study can be debugged with every
-module on. `agents/parameters.md` has the full parameter table.
+module on. `.claude/reference/parameters.md` has the full parameter table.
 
 ## 2. Before a real launch
 
@@ -67,12 +68,12 @@ a coauthor or mark up the PDF on paper.
 Run `python3 intro/generate_instructions_preview.py --no-popup` once: it writes a
 `.preview_state.json` template and exits, you edit the values, and every run after
 that can use `--config .preview_state.json`. With neither flag the generator opens
-a form to fill in, which is what `Preview_Instructions.command` does for you on a
+a form to fill in, which is what `previews/Preview_Instructions.command` does for you on a
 first run — and which will appear to hang on a machine with no display.
 
 ## 4. Checking a change
 
-`agents/testing.md` has the full table of what each kind of check is and is not evidence
+`.claude/reference/testing.md` has the full table of what each kind of check is and is not evidence
 of. The two rules worth knowing before you start:
 
 - **Bot tests passing is not evidence that a browser works.** Drive form pages
@@ -123,7 +124,7 @@ consent, comprehension DQ, tab-monitor DQ and device screen-out. Only the
 completed one auto-approves; the other four are REQUEST_RETURN codes that prompt
 the participant to return the submission. Create all five before launch (the
 pre-launch check refuses to start while any is still a placeholder) and give each
-return code its own reason text. Full table: `agents/participant_flow.md`, "The five endings and
+return code its own reason text. Full table: `.claude/reference/participant_flow.md`, "The five endings and
 their codes".
 
 One gap to know about: an experimenter can still edit the fee on a running
@@ -182,7 +183,7 @@ not an error.
 
 Blank, `unstamped` and a SHA are three different facts and stay apart: blank
 means the participant **never arrived**, `unstamped` means they **did arrive**,
-on a build carrying no stamp, and a SHA means what it says. `CODEBOOK.md` has
+on a build carrying no stamp, and a SHA means what it says. `docs/CODEBOOK.md` has
 the analyst's version of this table.
 
 **It is on by default, and nothing anywhere fails because of it.** A missing

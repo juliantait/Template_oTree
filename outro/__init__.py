@@ -20,7 +20,7 @@ PROLIFIC_COMPLETE_URL = "https://app.prolific.com/submissions/complete?cc="
 # told the same (ejects: false) and shows no overlay and no warning modal, so
 # a completer is never threatened with a consequence that does not exist.
 # Full reasoning at common._apply_focus_loss; analyst-facing note in
-# CODEBOOK.md (a nonzero outro count on a finished row does NOT mean they
+# docs/CODEBOOK.md (a nonzero outro count on a finished row does NOT mean they
 # came close to ejection).
 # =============================================================================
 
@@ -281,14 +281,14 @@ class Player(BasePlayer):
     #           Prolific participant, and any config with collect_outro_bank_details
     #           off). It previously shipped as initial=1, which collapsed
     #           "checked, fine" with "never asked": every Prolific row exported
-    #           as if a SEPA check had passed. See CODEBOOK.md.
+    #           as if a SEPA check had passed. See docs/CODEBOOK.md.
     # A nullable field is read with field_maybe_none, NEVER bare (CLAUDE.md).
     # The warning fires on sepa == 0 and empty is not 0, so a participant who
     # was never asked can never match a warning that was never about them.
     sepa = models.IntegerField(blank=True)
     # Free-text pilot feedback; collected only when pilot_feedback is on.
     feedback = models.LongStringField(blank=True)
-    # Spare columns (future-proofing) — never rename in place; see CODEBOOK.md.
+    # Spare columns (future-proofing) — never rename in place; see docs/CODEBOOK.md.
     spare_str_1 = models.LongStringField(blank=True)
     spare_str_2 = models.LongStringField(blank=True)
 
@@ -870,7 +870,7 @@ def vars_for_admin_report(subsession):
     This is the RUNTIME half of the fix; the LAUNCH half is
     `scripts/prelaunch_check.py`'s dashboard section, which fails a launch when
     URL_BASE has drifted so somebody fixes the rename before an operator meets
-    the stale link. See DECISIONS.md (2026-08-17).
+    the stale link. See .claude/DECISIONS.md (2026-08-17).
     """
     try:
         from core import experimenter_dashboard

@@ -1,3 +1,8 @@
+---
+name: writing-welcome-consent
+description: Use when writing or editing the welcome and consent page(s) in the before/ app, including the no-consent path back to Prolific.
+---
+
 # Skill: writing the welcome + consent page(s)
 
 Read this whole file before writing or editing the welcome/consent content. The
@@ -40,7 +45,7 @@ One short, warm paragraph. It tells the participant only:
 
 That is the whole job. **Do not explain the task mechanics here.** What the stimulus
 looks like, what the choices are, how scoring works: all of that belongs to the
-instructions (`writing_instructions.md`). Front-loading it on the welcome page makes
+instructions (`.claude/skills/writing-instructions/SKILL.md`). Front-loading it on the welcome page makes
 this page long and the instructions redundant, and the participant reads it before they
 have any context to hang it on.
 
@@ -81,7 +86,7 @@ participation" as "you can stop at any time", not by deleting the clause.
   question's existence is the `explicit_consent` flag (default ON; the lab profile
   alone resolves it OFF for implicit consent with an experimenter in the room — an
   ethics decision with its own flag, split from the Prolific plumbing on 2026-08-14,
-  see DECISIONS.md); the radio and its no-consent routing are already wired under it.
+  see .claude/DECISIONS.md); the radio and its no-consent routing are already wired under it.
 - **There is a graceful no-consent path.** Offer a decline option ("I do not consent")
   next to the consent action. Decliners go to a dedicated page, shown only to them,
   which says they have chosen not to take part and offers a single button to withdraw

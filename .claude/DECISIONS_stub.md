@@ -1,11 +1,11 @@
 # Decisions (YOUR STUDY NAME)
 
 > **This is the STUB for a study forked from oTree-Template.** On a new study,
-> copy this file to the repository root as `DECISIONS.md`, replace the title, and
-> **delete the template's own `DECISIONS.md`** (which logs the template's
-> development, not your study; carrying it over hands the next agent the wrong
-> precedent). Then delete this note and start logging below. See
-> "How to use and edit this template" in `docs/agents/editing_a_study.md` for where this fits in setup.
+> copy this file over `.claude/DECISIONS.md`, replace the title, and so
+> **replace the template's own log** (it records the template's development, not
+> your study; carrying it over hands the next agent the wrong precedent). Then
+> delete this note and start logging below. See
+> "How to use and edit this template" in `.claude/reference/editing_a_study.md` for where this fits in setup.
 
 Design and implementation decisions with the REASON attached. **The reason is the
 point.** A forked study starts with no precedent, so every deliberate choice

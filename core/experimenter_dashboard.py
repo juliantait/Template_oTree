@@ -400,7 +400,7 @@ def app_of_step(timeline, step):
 # pill, no marker, no count — and, because the row had run past the last page
 # index, was silently counted as FINISHED. That inflated the finished total AND
 # both averages' denominators, which is the worst possible failure direction:
-# invisible, and flattering. See DECISIONS.md.
+# invisible, and flattering. See .claude/DECISIONS.md.
 #
 # EVERY FALLBACK IS PER FIELD, never all-or-nothing: a code that declares a label
 # but no emoji gets its label and an honest blank.
@@ -879,7 +879,7 @@ def _participant_names(session) -> dict:
 def _waiting_for(v, names) -> list:
     """WHO THIS PARTICIPANT IS WAITING ON, as display names.
 
-    THIS PATH IS INERT ON THE TEMPLATE AND THAT IS DELIBERATE — see DECISIONS.md
+    THIS PATH IS INERT ON THE TEMPLATE AND THAT IS DELIBERATE — see .claude/DECISIONS.md
     ("The waiting-for pill ships inert"). This template has no wait pages, so
     nothing writes ``participant.vars['waiting_for']`` and the pill never renders
     for anybody. It is implemented, and TESTED against the shape a real wait page
@@ -1234,7 +1234,7 @@ def _quiz_outcome_map(session) -> dict:
 # headline rates. Correctness comes from the stored `wrong` list, NEVER
 # recomputed against today's quiz_items — `intro/quiz_items.py` changes between
 # studies and even sessions, so re-grading an old `answers` blob would be
-# silently wrong (CODEBOOK.md's "wrong is stored, never recomputed"). `answers`
+# silently wrong (docs/CODEBOOK.md's "wrong is stored, never recomputed"). `answers`
 # is used only to recover the chosen option TEXT.
 # =============================================================================
 
@@ -1537,7 +1537,7 @@ def _non_sepa_ids(session) -> set:
     Three deliberate narrowings, each Julian's call, none to be widened:
       * `sepa == 0` ONLY. `sepa` is nullable and NULL means the check NEVER
         RAN (every Prolific participant, and any config with
-        collect_outro_bank_details off — see CODEBOOK.md's three-state note). Null
+        collect_outro_bank_details off — see docs/CODEBOOK.md's three-state note). Null
         must read as NO PILL: absence of a check is not a payment problem.
       * NO pill for a non-Dutch but in-SEPA account (`sepa == 1`). There is no
         yellow payment state — the bank form's BIC rule already handled the
@@ -1845,7 +1845,7 @@ def _participant_row(pp, ctx, now) -> dict:
         entry_only=entry_only,
         # WHO THIS PARTICIPANT IS WAITING ON, as display names — [] for
         # everybody on this template, which ships no wait pages (see
-        # _waiting_for, and DECISIONS.md). Only an ACTIVE row can be waiting:
+        # _waiting_for, and .claude/DECISIONS.md). Only an ACTIVE row can be waiting:
         # a finished or terminal participant is not blocked on anybody, and a
         # stale value must not outlive the wait.
         waiting_for=(_waiting_for(v, ctx['names'])
@@ -2348,7 +2348,7 @@ def install_dashboard_route_or_note():
     unguarded call site in outro/__init__.py and kills the boot. A
     failure-reporter that can fail on the thing it is reporting is no reporter
     at all. The literal is the same string URL_BASE holds and the same fallback
-    vars_for_admin_report trusts. See DECISIONS.md (2026-08-17).
+    vars_for_admin_report trusts. See .claude/DECISIONS.md (2026-08-17).
     """
     try:
         outcome = install_dashboard_route()
@@ -3719,7 +3719,7 @@ function stateHTML(row) {
      That is why it is a pill in this cell rather than a column — a column would
      be empty for almost every row on almost every screen.
      INERT ON THIS TEMPLATE, DELIBERATELY: nothing ships a wait page, so
-     `waiting_for` is [] for everyone (see _waiting_for and DECISIONS.md). It is
+     `waiting_for` is [] for everyone (see _waiting_for and .claude/DECISIONS.md). It is
      implemented and tested against the shape a real wait page produces so a fork
      adding group matching gets the operator view for free. Do not delete it as
      dead code.
@@ -3821,7 +3821,7 @@ function dispName(r) { return String(r.label || r.code || ''); }
    `1 if not label else 0`). Without this the client twin drifted: a bare code
    sorted purely by its own characters and jumped to wherever it happened to
    land, so clicking Participant did NOT restore the server's order "exactly"
-   (DECISIONS.md, "click-to-sort") — and it only failed when a code sorted
+   (.claude/DECISIONS.md, "click-to-sort") — and it only failed when a code sorted
    ahead of a real label, i.e. invisibly, on the random code. */
 function noLabelRank(r) { return r.label ? 0 : 1; }
 function naturalKey(s) {

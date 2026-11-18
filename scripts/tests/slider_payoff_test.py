@@ -2,7 +2,7 @@
 placeholder task (main/game.html, the reference example a study copies).
 
 The task is one slider that picks a payoff. The single most important rule for
-any replacement task (docs/skills_claude/writing_task.md) is that the chosen
+any replacement task (.claude/skills/writing-task/SKILL.md) is that the chosen
 value must reach participant payoff and task_done must be stamped, or every
 participant is silently paid show-up (plus quiz bonus) only. This walks it end
 to end over real HTTP-shaped requests (the in-process client) and asserts:

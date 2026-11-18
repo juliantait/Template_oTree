@@ -82,7 +82,7 @@ class Player(BasePlayer):
     # participant.comprehension_failed_attempts; see quiz_modal_state for why both exist).
     num_failed_attempts = models.IntegerField(initial=0)
     # EVERY GRADED QUIZ SUBMISSION, as a JSON list (see log_quiz_attempt and
-    # CODEBOOK.md for the shape). It answers "which items do people get
+    # docs/CODEBOOK.md for the shape). It answers "which items do people get
     # wrong a lot", which the failure COUNT cannot. A real named field
     # rather than a participant var — a participant var reaches the export
     # only via PARTICIPANT_FIELDS, and participant_extra would mix this in
@@ -96,7 +96,7 @@ class Player(BasePlayer):
     # quiz.before_next_page; the AI-likelihood flags are derived EX-POST in
     # scripts/format_session_data.py. blank=True — a no-JS submit leaves it empty.
     telemetry_quiz = models.LongStringField(blank=True)
-    # Spare columns (future-proofing) — never rename in place; see CODEBOOK.md.
+    # Spare columns (future-proofing) — never rename in place; see docs/CODEBOOK.md.
     spare_str_1 = models.LongStringField(blank=True)
     spare_str_2 = models.LongStringField(blank=True)
     # One radio field per quiz item, from the same list the solutions above
@@ -169,7 +169,7 @@ def at_will_reread_available(player) -> bool:
     So the flags DISAGREEING (`quiz_reread` True for lab, False for prolific,
     while this is False for lab and True for prolific) is not drift — it is the
     design, and it is Julian's (2026-08-11, recorded in `quiz_modal_state` and
-    in DECISIONS.md's "The lab comprehension rule is help, not ejection"). Each
+    in .claude/DECISIONS.md's "The lab comprehension rule is help, not ejection"). Each
     modality gets exactly ONE way to see the instructions again: in the lab the
     supervised second pass, plus a human to raise a hand to; online, where there
     is no such human, an always-available dialog. Two on one page would read as
@@ -526,7 +526,7 @@ class quiz(participant_tab_monitor.MonitoredPage):
         ]
         # Log EVERY graded submission, passing ones included — so the last entry
         # is the passing attempt for anyone who got through, and a failure for
-        # anyone disqualified or abandoning mid-quiz (CODEBOOK.md).
+        # anyone disqualified or abandoning mid-quiz (docs/CODEBOOK.md).
         log_quiz_attempt(player, {k: values.get(k, '') for k in QUIZ_SOLUTIONS}, wrong)
         if wrong:
             player.num_failed_attempts += 1
@@ -623,7 +623,7 @@ class quiz(participant_tab_monitor.MonitoredPage):
 # do alone is covered. Between those two dates the previous sentence was a claim
 # the code did not honour: the agreement page had moved but no monitor wiring
 # existed here, so the quiz stayed unwatched with nothing to say so — see the
-# 2026-08-13 DECISIONS.md entry. `before.TabMonitorAgree` has the arming story.
+# 2026-08-13 .claude/DECISIONS.md entry. `before.TabMonitorAgree` has the arming story.
 page_sequence = [instructing, quiz]
 
 # MONITORED BY DEFAULT — every page above must be a

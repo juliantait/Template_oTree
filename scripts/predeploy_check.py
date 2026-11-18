@@ -79,7 +79,7 @@ That proof has TWO callers on purpose: this helper at boot, and the shell
 wrapper through `--assert-engine-on` before its degraded-mode `resetdb`. One
 implementation, so a proof that passes for one decider cannot be missing for the
 other — which is exactly the hole that let a degraded run drop a live Postgres
-(fixed 2026-08-14, see DECISIONS.md). The live database is never opened.
+(fixed 2026-08-14, see .claude/DECISIONS.md). The live database is never opened.
 
 DEGRADED MODE — a template has no live database
 ------------------------------------------------
@@ -184,7 +184,7 @@ LIVE_MARKERS += tuple(
 # the ambient environment happens to name.
 #
 # This used to be decided in TWO places that could disagree, and the
-# disagreement was destructive (fixed 2026-08-14, see DECISIONS.md):
+# disagreement was destructive (fixed 2026-08-14, see .claude/DECISIONS.md):
 #   * the shell wrapper ran its degraded-mode `otree resetdb` in a subshell that
 #     INHERITED the environment, and only exported its own sqlite DATABASE_URL
 #     afterwards; and
@@ -1128,7 +1128,7 @@ MISSING_IS_THE_DESIGNED_MEANING = {
         '(common.build_at_creation) is deliberately RAW, so nothing falls back '
         'to a shipped default and no participant runs without anything — and '
         'recreating the session would not repair it, because there is nothing '
-        'broken. Provenance is documentation, never a gate (DECISIONS.md, '
+        'broken. Provenance is documentation, never a gate (.claude/DECISIONS.md, '
         '2026-08-23)'),
     'screen_lock': (
         'absent is not a defect: it is the designed meaning, namely that this '
@@ -1136,7 +1136,7 @@ MISSING_IS_THE_DESIGNED_MEANING = {
         'it, as it started. The only reader (css_bundle.html) is deliberately '
         'RAW, so nothing falls back to the shipped ON, and recreating a live '
         'session over how text selects would cost more than it repairs '
-        '(DECISIONS.md, 2026-11-05)'),
+        '(.claude/DECISIONS.md, 2026-11-05)'),
 }
 
 

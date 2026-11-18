@@ -128,11 +128,11 @@ class Player(BasePlayer):
     # more (removed 2026-08-18 with the assignment move). Treatment is assigned
     # ON ARRIVAL at intro, which is AFTER this whole app, so a `before.Player`
     # copy could only ever be written before the cell exists — i.e. always empty,
-    # which is a lie in the export (CODEBOOK.md's "column nothing records"
+    # which is a lie in the export (docs/CODEBOOK.md's "column nothing records"
     # rule). The authoritative record is the participant field
     # `treatment_group`, exported at participant level; intro reads it directly.
     # NO `initial=` AND NO `blank=True`, both deliberate and both load-bearing
-    # (`docs/skills_claude/writing_welcome_consent.md`: "Consent is an explicit
+    # (`.claude/skills/writing-welcome-consent/SKILL.md`: "Consent is an explicit
     # affirmative action … never a pre-checked box"):
     #   * `initial=True` made oTree render the "I consent" radio with `checked`,
     #     so consent was pre-ticked — measured 2026-08-10, and on a 1280x720
@@ -202,7 +202,7 @@ class Player(BasePlayer):
     # --- BEHAVIOUR CAPTURE carrier (bucket B, B3): the raw telemetry blob for
     #     the welcome page, copied verbatim to participant.telemetry_welcome. ---
     telemetry_welcome = models.LongStringField(blank=True)
-    # Spare columns (future-proofing) — never rename in place; see CODEBOOK.md.
+    # Spare columns (future-proofing) — never rename in place; see docs/CODEBOOK.md.
     spare_str_1 = models.LongStringField(blank=True)
     spare_str_2 = models.LongStringField(blank=True)
 
@@ -218,7 +218,7 @@ def creating_session(subsession: Subsession):
     # screen-out takes none. At creation we only mark everyone UNASSIGNED (''),
     # so the export column exists and '' means "never took a cell". The real
     # balance-on-arrival mechanism lives in before/treatment_assignment.py; see
-    # DECISIONS.md for why it moved and why assignments are permanent.
+    # .claude/DECISIONS.md for why it moved and why assignments are permanent.
     treatment_assignment.init_unassigned(subsession)
 
 
@@ -446,7 +446,7 @@ def _leaving_study(player) -> bool:
 # WHAT THIS CHANGES IN THE DATA: a config with `prolific_capture_participant_id`
 # ON and `telemetry_device_capture` OFF used to record device info and no longer does.
 # Neither shipped profile is affected (both set the two together), but an export
-# compared across this change must be read with it in mind — see CODEBOOK.md.
+# compared across this change must be read with it in mind — see docs/CODEBOOK.md.
 
 
 def _claim_participant_label(player, raw_id):
@@ -587,7 +587,7 @@ class welcome(Page):
         # The explicit consent question (with its no-consent routing) exists
         # exactly when the `explicit_consent` flag says so — an ETHICS
         # decision with its own flag, split from `prolific_completion_redirects`
-        # on 2026-08-14 (DECISIONS.md): whether consent must be an affirmative
+        # on 2026-08-14 (.claude/DECISIONS.md): whether consent must be an affirmative
         # act has nothing to do with whether we hold a completion code. The
         # lab profile resolves it OFF (implicit consent by continuing).
         if _flag(player, 'explicit_consent'):
@@ -850,7 +850,7 @@ class TabMonitorAgree(Page):
     here" was a claim the code did not honour: the page had moved but the
     intro pages carried no monitor wiring, so the instructions and the quiz
     stayed unwatched with nothing anywhere to say so (the whole-app review's
-    headline finding; recorded in DECISIONS.md).
+    headline finding; recorded in .claude/DECISIONS.md).
 
     WHY IT IS IN `before`, AND NOT AT THE END OF `intro` (moved 2026-08-12 —
     a deliberate correction, do not move it back).

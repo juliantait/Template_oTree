@@ -66,7 +66,7 @@ What the Dockerfile DOES name is the boot path (`/app/scripts/db_state.py`,
   * every `/app/...` path the Dockerfile actually names.
 
 Anything added to any of those is required to survive from the moment it exists,
-with nobody remembering to update this file. See DECISIONS.md, "The build
+with nobody remembering to update this file. See .claude/DECISIONS.md, "The build
 context's must-survive list is derived from the source tree, never from the
 ignore rules".
 
@@ -405,6 +405,7 @@ def main():
         'db.sqlite3': 'the development database',
         '**/db.sqlite3': 'and any nested copy of it',
         '_ai': 'agent working notes, screenshots and pilot snapshots',
+        '.claude': 'agent-facing material (decision log, reference, skills)',
         '.venv': 'a host-built virtualenv, wrong platform and huge',
         'previews': 'regenerable instruction previews',
         '.env': 'secrets',

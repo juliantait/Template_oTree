@@ -8,8 +8,10 @@ __pycache__/
 *.bak
 *.log
 
-# Generated instruction previews — regenerable output, never tracked.
-/previews/
+# Generated instruction previews: regenerable output, never tracked. The one
+# exception is the double-click launcher, which lives next to its output.
+/previews/*
+!/previews/Preview_Instructions.command
 
 # Agent working notes: briefs, review dumps, intermediate reasoning. Not
 # deliverables, so they stay local rather than shipping to a copied study.
@@ -42,3 +44,8 @@ exports/
 *cookie*.txt
 *.cookies
 *cookiejar*
+
+# Local-only agent and planner files. The repo is public: per-machine Claude
+# Code settings and the to-do board stay off it. .claude/ itself IS tracked.
+todo.json
+.claude/settings.local.json

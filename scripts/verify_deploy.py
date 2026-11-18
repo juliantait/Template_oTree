@@ -26,7 +26,7 @@ THE ONE PLACE PROVENANCE IS ALLOWED TO FAIL ANYTHING
 -----------------------------------------------------
 Build provenance is DOCUMENTATION, NEVER A GATE — nothing in `settings.py`, the
 boot banner, `/health` or any participant path may fail because a stamp is
-missing (DECISIONS.md, 2026-08-23). THIS SCRIPT IS THE SANCTIONED EXCEPTION, and
+missing (.claude/DECISIONS.md, 2026-08-23). THIS SCRIPT IS THE SANCTIONED EXCEPTION, and
 the reason it is safe to make one here: it is a command a human runs BY HAND
 after a deploy, it is not in the application path, and it cannot take a study
 down. Comparing the running stamp against the one just deployed is the whole

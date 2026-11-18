@@ -6,7 +6,7 @@ your study's real cells there. The ALGORITHM in this file — assign the
 least-filled cell on arrival, ties broken at random, atomically per session — is
 REAL and is the point of the module. Keep the mechanism, change the cells.
 
-WHY ON ARRIVAL, NOT AT SESSION CREATION (moved 2026-08-18; see DECISIONS.md).
+WHY ON ARRIVAL, NOT AT SESSION CREATION (moved 2026-08-18; see .claude/DECISIONS.md).
 Treatment used to be dealt to EVERY participant in `before.creating_session` with
 `itertools.cycle`. That is balanced only because it deals the whole session at
 once, like cards from a known deck — and it spent a cell on anyone who then
@@ -31,7 +31,7 @@ refresh of the instructions page re-enters this and returns the cell already
 held, never a second draw. A real MULTI-CELL study that would rather balance
 COMPLETERS (release an abandoned cell so it can be re-dealt) can revisit
 release-on-abandon here — it is a statistical decision about the study, recorded
-as deliberately deferred in DECISIONS.md, not an oversight.
+as deliberately deferred in .claude/DECISIONS.md, not an oversight.
 
 RACE-SAFE per session — concurrency matters. Two participants can reach the
 instructions page in the same instant. If both counted first and assigned second,
@@ -188,7 +188,7 @@ def assign_on_arrival(player) -> str:
     while pages still rendered. Build provenance is INSTRUMENTATION: it must
     never cost a participant a page, so `buildinfo.stamp_participant` swallows
     its own exceptions and returns '' (CLAUDE.md: instrumentation must never
-    break a page; DECISIONS.md: provenance is documentation, never a gate).
+    break a page; .claude/DECISIONS.md: provenance is documentation, never a gate).
 
     The stamp is taken FIRST, and before the early return, so that a participant
     who already holds a cell — one who was mid-flow when provenance was

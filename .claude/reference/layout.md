@@ -18,9 +18,10 @@ The project root holds the four oTree apps plus a small set of top-level items:
 | `scripts/` | operational scripts: `start.sh`, `prelaunch_check.py` (config guard), `predeploy_check.sh`/`.py` (upgrade gate), `export_data.py`, `format_session_data.py`, `set_up_otree.bat`. |
 | `scripts/tests/` | HTTP-driven flow tests, escaping/frozen-config regressions, and the browser render check (see "Testing"). |
 | `scripts/site_previews/` | builds the six self-contained screen previews the academic website embeds, from the live template (`build_site_previews.py`), plus the measured check that they render uncut and at one shared scale (`check_site_previews.py`). Five are participant screens built from `bodies/`; the sixth is the experimenter monitor, which is rendered by the dashboard's own JavaScript over the invented session in `monitor_session.py` and then frozen, so that step needs Playwright. Output lands in gitignored `_ai/site_previews/`. Re-run after changing `_static/global/css/` — or, for the monitor, `core/experimenter_dashboard.py`. |
-| `docs/` | **the tracked reference a copied study inherits** — start at `docs/README.md`. Hosting an online study, running one on Prolific, the design principles (`conventions.md`), the headless-Chromium recipe the render checks need, the open Postgres gaps, a group-matching reference implementation, and the experimenter-dashboard brief as it was specified. |
-| `docs/agents/` | the detailed reference by topic, split out of the old README and CLAUDE.md: setup, layout, editing a study, parameters, entry and identity, participant flow, payments, dashboard, testing, build and deploy, styling, bug patterns. Indexed from `CLAUDE.md`. |
-| `docs/skills_claude/` | authoring playbooks for an agent working ON the template: writing the task, instructions, quiz, tests, and the Railway hosting procedure. Index: `docs/skills_claude/README.md`. |
+| `docs/` | **the tracked reference a copied study inherits** — start at `docs/README.md`. The data codebook (`CODEBOOK.md`, every exported column and exit code). Hosting an online study, running one on Prolific, the design principles (`conventions.md`), the headless-Chromium recipe the render checks need, the open Postgres gaps, a group-matching reference implementation, and the experimenter-dashboard brief as it was specified. |
+| `.claude/` | agent-facing material, tracked in git but kept out of the Docker image: the decision log `DECISIONS.md` (and `DECISIONS_stub.md`, the fresh log a forked study starts from), the topic reference and the skills below. `.claude/settings.local.json` is gitignored. |
+| `.claude/reference/` | the detailed reference by topic, split out of the old README and CLAUDE.md: setup, layout, editing a study, parameters, entry and identity, participant flow, payments, dashboard, testing, build and deploy, styling, bug patterns. Indexed from `CLAUDE.md`. |
+| `.claude/skills/` | authoring playbooks as Claude Code skills, one folder per skill with a `SKILL.md`: writing the task, instructions, quiz, welcome and consent, tests, and hosting a Prolific study. Index: `.claude/skills/README.md`. |
 | `_templates/` | templates rendered OUTSIDE oTree's page system. Currently `room_welcome.html`, the styled room entry gate (see "The room welcome gate"). |
 | `settings.py` | oTree settings: session configs, recruitment profiles, feature flags, completion codes. |
 | `core/` | the shared runtime modules the apps and `settings.py` import (`from core import common`). oTree puts the project root on `sys.path`, so `core` is importable everywhere; only `settings.py` must sit at the root. One line each below. |
@@ -36,13 +37,13 @@ The project root holds the four oTree apps plus a small set of top-level items:
 | `core/health.py` | the unauthenticated `/health` route a deploy gate reads. |
 | `core/otree_routes.py` | the one implementation that appends extra routes (dashboard, /health, Download data) to oTree's app. |
 | `core/participant_tab_monitor.py` | the participant-side tab-monitor page bases and their boot guard. |
-| `README.md` `CLAUDE.md` `DECISIONS.md` `docs/conventions.md` `CODEBOOK.md` | the five top-level documents: short human entry point, rules for agents (with the `docs/agents/` topic index), decision record, design principles, data codebook. |
-| `Preview_Instructions.command` | double-clickable (macOS): view the instructions as a coauthor would, with **no terminal** — see "Collaborating on the instructions flow". |
+| `README.md` `CLAUDE.md` `.claude/DECISIONS.md` `docs/conventions.md` `docs/CODEBOOK.md` | the five key documents (only the first two sit at the root): short human entry point, rules for agents (with the `.claude/reference/` topic index), decision record, design principles, data codebook. |
+| `previews/Preview_Instructions.command` | double-clickable (macOS): view the instructions as a coauthor would, with **no terminal** — see "Collaborating on the instructions flow". The only tracked file in `previews/`; it sits next to the output it writes. |
 | `TODO.md` | pending work. **Gitignored — local only, not in a copy.** |
 | `MACMINI_HOSTING.md` | private Mac mini hosting runbook (gitignored — kept local). |
 | dotfiles | `.gitignore`, `.gitattributes`, etc. |
 
-Not tracked in git: `_ai/` (agent scaffolding — pilot snapshots, performance reviews, audits), `previews/` (regenerable instruction previews), `TODO.md`, `MACMINI_HOSTING.md`, the SQLite DB, `__pycache__`, and OS cruft. Reference material a copied study genuinely needs is tracked in **`docs/`** instead — start at `docs/README.md` if you are running a study rather than editing the template.
+Not tracked in git: `_ai/` (agent scaffolding — pilot snapshots, performance reviews, audits), `previews/` (regenerable instruction previews; only the launcher is tracked), `TODO.md`, `todo.json`, `.claude/settings.local.json`, `MACMINI_HOSTING.md`, the SQLite DB, `__pycache__`, and OS cruft. Reference material a copied study genuinely needs is tracked in **`docs/`** instead — start at `docs/README.md` if you are running a study rather than editing the template.
 
 ## Pages by app (edit guidance)
 - before

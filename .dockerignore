@@ -53,7 +53,10 @@ exports/
 .gitattributes
 
 # --- agent scaffolding and regenerable outputs --------------------------------
+# .claude/ is agent-facing material (decision log, topic reference, skills):
+# tracked in git, never needed at run time.
 _ai/
+.claude/
 previews/
 .preview_state.json
 .preview_config.json

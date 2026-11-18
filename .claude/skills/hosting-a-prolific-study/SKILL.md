@@ -1,7 +1,12 @@
+---
+name: hosting-a-prolific-study
+description: Use when asked to host and run a study built from this template on Prolific end to end: deploy on Railway, wire the study to Prolific, create the Prolific study via the API. Online studies only.
+---
+
 # Hosting and running a study on Prolific: the end-to-end agent playbook
 
 > **Referenced by (update these if you move or rename this file):**
-> - `docs/skills_claude/README.md`
+> - `.claude/skills/README.md`
 > - `docs/README.md`
 
 Audience: bossman or any agent asked to **host and run** a study built from this
@@ -11,12 +16,12 @@ than repeating them. Online studies only; a lab study needs none of this.
 
 The three reference docs this skill drives, and the split between them:
 
-- [`../hosting_railway.md`](../hosting_railway.md), the **hosting** info doc:
+- [`../hosting_railway.md`](../../../docs/hosting_railway.md), the **hosting** info doc:
   everything a hosted deploy needs in general (container host, managed Postgres,
   `DATABASE_URL`, the boot guard, the untested caveats), plus the verified Railway
   PROCEDURE (deploy-repo export, tokens, GraphQL-vs-CLI, deploy order, domains,
   env vars, study day). Source of truth for hosting.
-- [`../running_on_prolific.md`](../running_on_prolific.md), the **study-side**
+- [`../running_on_prolific.md`](../../../docs/running_on_prolific.md), the **study-side**
   info doc: the five completion codes, the entry sequence, the device allow-list,
   the participant id, what each ending does, the before-you-launch list. Source of
   truth for how the template wires to Prolific.
@@ -29,19 +34,19 @@ wiring is wrong, fix it there and link.
 ## The order (each step delegates)
 
 1. **Deploy the study on a host.** Follow
-   [`../hosting_railway.md`](../hosting_railway.md) end to end: export the deploy
+   [`../hosting_railway.md`](../../../docs/hosting_railway.md) end to end: export the deploy
    repo, create the project and Postgres, set the env vars, deploy, generate the
    domain, run the crash rehearsal. You come out of this with a live
    `https://<railway-domain>/room/<room_name>` URL and a bound session.
 2. **Wire the study to Prolific.** Follow
-   [`../running_on_prolific.md`](../running_on_prolific.md): turn on the Prolific
+   [`../running_on_prolific.md`](../../../docs/running_on_prolific.md): turn on the Prolific
    study type, create the **five** completion codes (one per ending population) in
    the Prolific UI and paste them into the matching `settings.py` keys, decide
    `prolific_allowed_devices`, set the `screenout_return_url`, and clear the
    pre-launch guard (`scripts/prelaunch_check.py`). Bind a **fresh** session
    AFTER the codes commit, because a session's config is frozen at creation, so a
    pre-codes session keeps the placeholder frozen inside it (the launch-order
-   rules are in [`../hosting_railway.md`](../hosting_railway.md)'s "Study day").
+   rules are in [`../hosting_railway.md`](../../../docs/hosting_railway.md)'s "Study day").
 3. **Create and configure the Prolific study via the API, then the human-only
    steps.** That is the rest of this file.
 
@@ -72,7 +77,7 @@ step performed by a person until it is confirmed against the API. See the
   so a precise pointer to where a live API token sits helps no legitimate reader
   (they have their own token, on their own machine) and only helps someone you
   would not want reading it. Never commit the token. Same stance as the Railway
-  project token in [`../hosting_railway.md`](../hosting_railway.md).
+  project token in [`../hosting_railway.md`](../../../docs/hosting_railway.md).
 
 ### Verified working
 
@@ -128,12 +133,12 @@ https://<railway-domain>/room/<room_name>?participant_label={{%PROLIFIC_PID%}}
 The **five completion codes**, one per ending population, and the
 `screenout_return_url` are **study configuration**, not something to invent here.
 They are specified and guarded in
-[`../running_on_prolific.md`](../running_on_prolific.md) (section 2) and
+[`../running_on_prolific.md`](../../../docs/running_on_prolific.md) (section 2) and
 `scripts/prelaunch_check.py`. This is Step 2 above: create all five in the
 Prolific study, paste them into the matching `settings.py` keys, and bind a FRESH
 session AFTER the codes commit. The launch-order rules are in
-[`../hosting_railway.md`](../hosting_railway.md)'s "Study day" and in
-[`../running_on_prolific.md`](../running_on_prolific.md).
+[`../hosting_railway.md`](../../../docs/hosting_railway.md)'s "Study day" and in
+[`../running_on_prolific.md`](../../../docs/running_on_prolific.md).
 
 ### Where the API stops and a person must act
 

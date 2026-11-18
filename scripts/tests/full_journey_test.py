@@ -54,7 +54,7 @@ each, because the two have genuinely different page sequences: prolific has
 the id confirmation and the monitor arming page, lab has the hold screen and
 the bank/demographics page. Each journey completes before the next begins, so
 rebinding the room between them strands nobody (see "Rebinding a room
-mid-study" in docs/agents/entry_and_identity.md).
+mid-study" in .claude/reference/entry_and_identity.md).
 
 Exit 0 = the participant finished. Never touches a real database.
 """

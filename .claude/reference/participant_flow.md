@@ -81,7 +81,7 @@ flowchart TD
 | `-4` screened_out | Device stopped by the entry allow-list (only when `prolific_allowed_devices` is narrowed) | `before` screened_out, in place of consent and their FIRST page — a plain link back to Prolific | **none, deliberately** ([why](entry_and_identity.md#the-device-check-what-it-inspects-and-what-it-cannot)) |
 
 > **The table above is the whole table:** every code in `settings.EXIT_CODES` is
-> set by real code and appears here (`CODEBOOK.md` names the line that sets
+> set by real code and appears here (`docs/CODEBOOK.md` names the line that sets
 > each). A reserved-but-unwired code is a lie in the export, so it gets deleted
 > rather than documented — one such code, `-5`, was removed on those grounds.
 
@@ -150,7 +150,7 @@ disqualified participant is not a completer, so they skip the bank-details page
 and the payment summary and are stranded at the machine. The lab's comprehension
 rule is the re-read pass plus the "raise your hand" notice; a failed lab
 participant is identified at analysis time by
-`comprehension_failed_attempts >= quiz_comprehension_max_failures` (see `CODEBOOK.md`).
+`comprehension_failed_attempts >= quiz_comprehension_max_failures` (see `docs/CODEBOOK.md`).
 `-4` cannot occur either unless you narrow `prolific_allowed_devices` on the config — it
 permits every device type by default in every profile, and a lab session's
 computers would pass anyway.
@@ -192,7 +192,7 @@ as **REQUEST_RETURN** codes, each with its own reason text — the API requires
 `return_reason` on such a code — so the participant is prompted to return the
 submission, which frees the place. That is why the screen-out now carries a code
 at all: the bare researcher URL it replaces left the submission in limbo. (This
-reverses an earlier decision; see `DECISIONS.md`, both entries.)
+reverses an earlier decision; see `.claude/DECISIONS.md`, both entries.)
 
 Each ending is served **only its own code**, injected per page — never a bundle
 in the template context — so a disqualified participant cannot read the completed

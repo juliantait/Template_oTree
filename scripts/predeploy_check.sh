@@ -67,7 +67,7 @@
 # THIS IS NOT BELT-AND-BRACES. Until 2026-08-14 the export sat after the
 # degraded branch and the proof covered the helper only, so the degraded
 # `resetdb` ran against whatever DATABASE_URL the operator's shell had exported
-# — dropping a live Postgres and then reporting PASS. See DECISIONS.md.
+# — dropping a live Postgres and then reporting PASS. See .claude/DECISIONS.md.
 #
 # [app-dir] defaults to the checkout containing this script; pass a different
 # directory to test another build (e.g. an unpacked release candidate). That is
@@ -222,7 +222,7 @@ tar -C "$APP_DIR" \
 # recreated, after which the run proceeded against the staged sqlite file and
 # reported PASS. A tool that exists to prevent data loss before a deploy caused
 # it, against exactly the database about to be deployed to. Fixed 2026-08-14;
-# see DECISIONS.md. DO NOT MOVE THIS BELOW THE BRANCH.
+# see .claude/DECISIONS.md. DO NOT MOVE THIS BELOW THE BRANCH.
 #
 # Refusing to honour an ambient DATABASE_URL is deliberate, not a limitation:
 # this check stages a private copy and drives fake participants through it, so

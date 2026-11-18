@@ -59,7 +59,7 @@ being told the mechanics; the brief only needed to grant the headroom.
 ### It inherited and used the fork skeletons and template patterns, unprompted
 The strongest head-to-toe signal so far. Without being told the mechanics, the
 build:
-- started a fresh `DECISIONS.md` and pointed the `CODEBOOK` at this study (the
+- started a fresh `.claude/DECISIONS.md` and pointed the `CODEBOOK` at this study (the
   two fork skeletons shipped today), rather than carrying the template's own logs;
 - assigned the role, sender type and observer claim ON ARRIVAL (the
   treatment-on-arrival pattern the template ships), not at session creation;
@@ -68,7 +68,7 @@ build:
 `main/` (the core task) was built, tested and committed as step 3; workers then
 fanned to outro and the instructions. The cron backstop fired on schedule
 throughout.
-**Flow lesson:** the skeleton-inheritance investment (fresh DECISIONS.md +
+**Flow lesson:** the skeleton-inheritance investment (fresh .claude/DECISIONS.md +
 analyst-first CODEBOOK on fork, the on-arrival assignment, the writing guides)
 pays off directly. A fresh bossman picks them up from the template alone.
 

@@ -65,7 +65,7 @@ CALLED LIKE THIS, from the staging directory at deploy:
 Exit codes: 0 written, 2 refused.
 
 IT REFUSES RATHER THAN WRITING SOMETHING PLAUSIBLE, AND THAT IS NOT A GATE.
-Build provenance never fails anything in the application (DECISIONS.md) — but
+Build provenance never fails anything in the application (.claude/DECISIONS.md) — but
 this is a deploy-time WRITER refusing its own malformed ARGUMENTS, before
 anything is deployed, and the study that results is simply an unstamped one,
 which runs perfectly. A stamp that is not a real 40-character SHA would be

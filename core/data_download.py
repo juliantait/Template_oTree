@@ -3,7 +3,7 @@
 Import as ``from core import data_download``. Lives in ``core/``, like
 ``experimenter_dashboard``, which puts the button on its page. Importing this
 file pulls in the standard library only: oTree is imported inside the functions
-that need it, so nothing here can take a boot down. See DECISIONS.md, 2026-11-05.
+that need it, so nothing here can take a boot down. See .claude/DECISIONS.md, 2026-11-05.
 
 WHAT ONE PRESS MAKES (always every session in the database)
 -----------------------------------------------------------

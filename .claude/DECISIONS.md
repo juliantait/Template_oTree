@@ -11,6 +11,34 @@ working.
 
 ---
 
+## Agent material lives in `.claude/`, the codebook in `docs/`, the preview launcher in `previews/`, 2026-11-18
+
+Decided by Julian, for a clean root: human-facing docs in `docs/`, agent-facing
+material in `.claude/`.
+
+**What moved.** `CODEBOOK.md` to `docs/CODEBOOK.md`. `docs/agents/*.md` to
+`.claude/reference/` (same names). The playbooks in `docs/skills_claude/` became
+Claude Code skills, one folder each with a `SKILL.md` whose frontmatter says
+when to use it (`.claude/skills/writing-task/` and so on; the index is
+`.claude/skills/README.md`). This log and its stub moved to `.claude/DECISIONS.md`
+and `.claude/DECISIONS_stub.md`; a fork now copies the stub over this file
+instead of to the root. `Preview_Instructions.command` moved into `previews/`,
+next to the output it writes.
+
+**The launcher in a gitignored folder.** `.gitignore` ignores `/previews/*` and
+re-includes the launcher by name, so it is the only tracked file there and every
+output stays ignored. The 2026-08-14 rule still holds: generator code never goes
+into `previews/`; only the launcher and its output do. The launcher finds the
+repo root by walking up to `settings.py`, not by assuming its own folder.
+
+**Docker.** `.claude/` is excluded in `.dockerignore`: nothing in it is needed
+at run time. `docs/` still ships, as before.
+
+**Rejected:** keeping the agent reference under `docs/` (it mixed two audiences
+in the folder a researcher is told to read).
+**Enforced:** `build_context_test` requires the `.claude` rule in
+`.dockerignore`. Nothing checks that docs keep pointing at the new paths.
+
 ## The shared runtime modules live in `core/`; only `settings.py` stays at the root, 2026-11-17
 
 Decided by Julian, for a cleaner root.
@@ -1898,7 +1926,7 @@ reaches `participant.payoff` (a high slider is paid that, not just show-up),
 `scripts/tests/payoff_ledger_test.py` / `full_journey_test.py` walk the slider
 via `main_contract`; `render_check.py` measures the task page at three
 viewports; `focus_trace_test.py`'s positive control asserts the slider renders.
-The convention is written up in `docs/skills_claude/writing_task.md`
+The convention is written up in `.claude/skills/writing-task/SKILL.md`
 ("Elicitations — the shipped slider is the reference").
 
 ## Passive focus trace ported alongside the tab monitor, as a separate observer — 2026-08-18
@@ -1955,13 +1983,13 @@ accepted and documented (below).
 no-JS safety, independence from the tab monitor incl. a source-level check that
 `focus_trace.js` names no tab-monitor symbol, and the exp_pilots claims in a real
 browser); `scripts/tests/http_flow_test.py` and `frozen_config_test.py` extended
-for the two new fields; `CODEBOOK.md` ("Passive focus trace").
+for the two new fields; `docs/CODEBOOK.md` ("Passive focus trace").
 
 **Schema-change consequence (the same rule as `round_payoff`).** This appends
 two `main.Player` columns, and oTree's `create_all` never ALTERs an existing
 table, so deploying it over a database that predates the columns 500s on every
 page that loads the model — it needs `otree resetdb`, exactly like every prior
-added column (CODEBOOK.md deploy note). The template has no live data, so this is
+added column (docs/CODEBOOK.md deploy note). The template has no live data, so this is
 free here; a STUDY already running must add the trace at a reset boundary, never
 hot over live sessions (the CLAUDE.md rule on schema changes). The local
 predeploy fixture (`_ai/live_data/`, gitignored) was regenerated on the current
@@ -2243,7 +2271,7 @@ page render.
 called by both the launch gate and the test) and pairs it with a positive
 control that the guard fires on each stale shape; the launch gate itself is
 `scripts/prelaunch_check.py` (`asset_problems`, `--stamp-assets`); the "when"
-is stated at `settings.STATIC_VERSION` and in the rebranding section of `docs/agents/editing_a_study.md`.
+is stated at `settings.STATIC_VERSION` and in the rebranding section of `.claude/reference/editing_a_study.md`.
 
 ## The tab monitor is named the tab monitor everywhere in the code and data — the "AI-safety" name survives only in the participant's agreement — 2026-08-17
 
@@ -2493,7 +2521,7 @@ export does not group, and the tab-monitor family is invisible); renaming the
 participant-facing AI-safety wording too (that is the study framing, not data);
 adding a boot check that field names match the pattern (wrong for a copied
 study). **Enforced:** nothing at boot, by design — held by `docs/conventions.md`,
-this entry, and the field lists in `settings.PARTICIPANT_FIELDS` and `CODEBOOK.md`
+this entry, and the field lists in `settings.PARTICIPANT_FIELDS` and `docs/CODEBOOK.md`
 being the single documented source. The suites that touch these fields
 (`dashboard_test`, `task_page_test`, `identity_test`, `tab_monitor_detail_test`,
 `full_journey_test`, `screenout_softwall_test`) go red on a half-done rename.
@@ -3636,7 +3664,7 @@ leaves a round column summing to a number nobody was paid.
 
 **Caught by the exp_pilots bossman**, verified against the installed oTree
 before acting: this entry, `settings.py`, `main/__init__.py`,
-`outro/__init__.py`, `CODEBOOK.md` and `docs/skills_claude/writing_task.md` all
+`outro/__init__.py`, `docs/CODEBOOK.md` and `.claude/skills/writing-task/SKILL.md` all
 said `AUTO_TABULATE_PAYOFFS=False` "makes the old habit RAISE rather than
 drift back silently" — presenting a **participant-facing crash as a safety
 feature**. The setter is oTree's own (`otree/models/player.py:41-46`), it
@@ -3780,7 +3808,7 @@ sum to `earned` — a component nobody can reconcile is a number, not an
 itemisation; and deriving the bonus as `total − base` in the test, which passes
 whatever the data says.
 **Enforced:** `scripts/tests/payoff_ledger_test.py` §9; the rule is stated in
-`docs/agents/payments.md` "Paying participants — the itemisation rule" and in CODEBOOK "THE
+`.claude/reference/payments.md` "Paying participants — the itemisation rule" and in CODEBOOK "THE
 ITEMISATION RULE".
 
 ## The end-of-page cookie reset is gone — 2026-08-13
@@ -3946,7 +3974,7 @@ JS-free, but it puts instrumentation INSIDE the one path every completer
 needs, and instrumentation must never be able to break a page (CLAUDE.md); the
 link stays a plain href that works with the whole mechanism dead.
 **Enforced:** `outro.results_live_method` (gated the same way);
-`scripts/tests/dashboard_test.py` §D8 pins the gate from both sides; CODEBOOK.md
+`scripts/tests/dashboard_test.py` §D8 pins the gate from both sides; docs/CODEBOOK.md
 documents the stamp's best-effort nature.
 
 ## The shipped quiz items are machinery placeholders, not model items — 2026-08-13
@@ -3961,7 +3989,7 @@ the shipped config doesn't produce.
 **Enforced:** the comment atop `intro/quiz_items.py`;
 `scripts/tests/example_quiz_content_test.py` §3 pins the placeholders and is designed
 to fail when a study writes its own items, forcing the test to be rewritten
-with them (see `docs/skills_claude/writing_quiz.md` for what real items look like).
+with them (see `.claude/skills/writing-quiz/SKILL.md` for what real items look like).
 
 ## The quiz-bonus rule is stated in two places, deliberately — 2026-08-13
 
@@ -4216,7 +4244,7 @@ is distinct from every deliberate outcome, each of which has its own code
 closed tab). A code nothing records is a lie in the export, so
 reserved-but-unwired codes are deleted, not documented (`timed_out`, removed
 2026-08-10).
-**Enforced:** `common.init_participant`; the codes table in `CODEBOOK.md`;
+**Enforced:** `common.init_participant`; the codes table in `docs/CODEBOOK.md`;
 tests assert on numeric codes rather than ending copy
 (`full_journey_test`, `device_gate_test`).
 
@@ -4240,7 +4268,7 @@ green under bots); a content test loosened until it survives a content change
 was never testing the content; a drift check that fails on everything gets
 ignored and then catches nothing (see the two-severity entry above). Every
 check must correspond to a participant it could save.
-**Enforced:** as method, in `docs/skills_claude/writing_tests.md` (real HTTP, no-JS
+**Enforced:** as method, in `.claude/skills/writing-tests/SKILL.md` (real HTTP, no-JS
 submits, phone User-Agents, visible-text assertions, measured rendering);
 structurally, nowhere — this one is held by review and by the suites being the
 shape they are.

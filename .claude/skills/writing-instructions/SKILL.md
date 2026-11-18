@@ -1,3 +1,8 @@
+---
+name: writing-instructions
+description: Use when writing or editing participant instructions (intro/instructions_text.html) or a try-it page for a study built from this template.
+---
+
 # Skill: writing participant instructions
 
 Read this whole file before writing or editing instructions. The deliverable is the

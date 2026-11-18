@@ -9,20 +9,20 @@ is marked. It is a verified workflow, first used for `Experts/exp_pilots` on
 the workflow improves.
 
 > **Referenced by (update these if you move or rename this file):**
-> - `docs/skills_claude/hosting_a_prolific_study.md` (the end-to-end agent playbook)
-> - `docs/skills_claude/README.md` and `docs/README.md` (§6, §7)
+> - `.claude/skills/hosting-a-prolific-study/SKILL.md` (the end-to-end agent playbook)
+> - `.claude/skills/README.md` and `docs/README.md` (§6, §7)
 > - `docs/running_on_prolific.md` (its intro links here for the hosting side)
 > - `core/health.py`, `scripts/write_build_info.py`, `scripts/verify_deploy.py`
-> - `ideas/railway-server-metrics-panel.md`, `.gitignore`, `DECISIONS.md`
+> - `ideas/railway-server-metrics-panel.md`, `.gitignore`, `.claude/DECISIONS.md`
 > - **External, off-repo:** the CREED lab doc at `juliantait.eu/CREED`, section 5.1
 >   "Running the Study Online" (source in the `juliantait.github.io` repo, file
 >   `CREED Instructions/FAQ.tex`) links this path directly.
 
 Companions: the study-side Prolific wiring a researcher configures (completion
 codes, entry sequence, device gate, endings) is in
-[`running_on_prolific.md`](./running_on_prolific.md); the end-to-end playbook that
+[`running_on_prolific.md`](running_on_prolific.md); the end-to-end playbook that
 drives both, plus the Prolific API and seats/money, is
-[`skills_claude/hosting_a_prolific_study.md`](./skills_claude/hosting_a_prolific_study.md).
+[`.claude/skills/hosting-a-prolific-study/SKILL.md`](../.claude/skills/hosting-a-prolific-study/SKILL.md).
 
 > **Two notes where this file describes `exp_pilots`, not this template:** the
 > resetdb guard lives in `exp_pilots`' `start.sh`, whereas in this template it is
@@ -39,7 +39,7 @@ drives both, plus the Prolific API and seats/money, is
 - **This repository deliberately contains no deployment architecture.** No
   Railway config, no `railway.json`, no Procfile, no deploy scripts, no CI, no
   provider account settings. Nothing here makes the repo deployable, and that is
-  a decision, not an omission (`DECISIONS.md`).
+  a decision, not an omission (`.claude/DECISIONS.md`).
 - This page is a **written record of what such a deploy needs**, together with the
   one workflow that has actually been run (Railway), so it can be looked up and
   implemented. If you find yourself turning it into a config file, that is the
@@ -74,7 +74,7 @@ reason. See "What is already in the image, and why" below.
    builds `http://` links on an `https://` site and redirects and assets break.
 5. **The Prolific wiring** — study URL, completion codes, and the return URL for
    a screened-out participant — which is study configuration, not hosting. It is
-   in [`running_on_prolific.md`](./running_on_prolific.md) and guarded by
+   in [`running_on_prolific.md`](running_on_prolific.md) and guarded by
    `scripts/prelaunch_check.py`.
 6. **A deploy that maps to an exact commit**, so you can say which code a given
    participant saw. A private repo holding only the experiment is the usual

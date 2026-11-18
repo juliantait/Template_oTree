@@ -1,8 +1,8 @@
 # Running this template on Prolific
 
 > **Referenced by (update these if you move or rename this file):**
-> - `docs/skills_claude/hosting_a_prolific_study.md` (the end-to-end agent playbook)
-> - `docs/skills_claude/README.md` and `docs/README.md`
+> - `.claude/skills/hosting-a-prolific-study/SKILL.md` (the end-to-end agent playbook)
+> - `.claude/skills/README.md` and `docs/README.md`
 > - `docs/hosting_railway.md` (its general hosting reference links here for the Prolific wiring)
 > - `README.md` (root) and `settings.py`
 > - **External, off-repo:** the CREED lab doc at `juliantait.eu/CREED`, section 5.1
@@ -20,14 +20,14 @@ since been built, and two of the mechanisms it documented no longer exist:
   submission" link inside a validation error) — replaced by a server-side gate
   that runs *before the consent page is rendered*, see §4;
 - the **`timedout` participant variable** (`0/1/3`) — replaced by the numeric
-  `exit_code` scheme in `settings.EXIT_CODES` and `CODEBOOK.md`. There is no
+  `exit_code` scheme in `settings.EXIT_CODES` and `docs/CODEBOOK.md`. There is no
   `timedout` field anywhere in the template. A `timed_out = -5` exit code was
   briefly defined and then deleted, precisely because nothing set it.
 
 If you find advice elsewhere that references either, it is stale.
 
 A Prolific study has to be hosted somewhere for participants to reach it; see
-[`hosting_railway.md`](./hosting_railway.md) for the verified way to put a study
+[`hosting_railway.md`](hosting_railway.md) for the verified way to put a study
 built from this template online.
 
 ---
@@ -173,7 +173,7 @@ has to ask the participant. **`unknown`** means a real User-Agent was read and
 matched no family; it is listed like any other type, so admitting those
 participants is a configuration decision rather than a code change. A request
 with NO usable User-Agent at all is a different thing — no decision — and is
-always allowed in. **"The device check" in `docs/agents/entry_and_identity.md` is the full reference**
+always allowed in. **"The device check" in `.claude/reference/entry_and_identity.md` is the full reference**
 (what it inspects, the asymmetry, the limits); this is the operational summary.
 
 With the **default** list (all four) it does nothing at all — every device
@@ -281,4 +281,4 @@ this deploy?").
 | Screen-out causes, exit codes, tab-monitor handler | `core/common.py` |
 | Tab-switch monitor (client) | `_static/global/js/tab_monitor.js` |
 | Endings and completion links | `outro/` |
-| Every exported column and its meaning | `CODEBOOK.md` |
+| Every exported column and its meaning | `docs/CODEBOOK.md` |

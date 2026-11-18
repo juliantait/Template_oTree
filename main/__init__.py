@@ -102,7 +102,7 @@ class Player(BasePlayer):
     # page's OWN form (no side request), the same reliable path as client_ms. A
     # SEPARATE OBSERVER from the tab monitor (tab_monitor_* participant fields):
     # it only MEASURES, never enforces — see _static/global/js/focus_trace.js and
-    # DECISIONS.md. Named under the non-colliding `focus_trace_` family
+    # .claude/DECISIONS.md. Named under the non-colliding `focus_trace_` family
     # DELIBERATELY: `tab_monitor_focus_loss_count` already exists and means a
     # different thing (long departures on monitored pages that count toward
     # disqualification), so the bare name `focus_loss_count` is NOT reused.
@@ -117,8 +117,8 @@ class Player(BasePlayer):
     focus_trace_unfocused_ms = models.FloatField(blank=True)
     # --- spare columns (future-proofing) -------------------------------------
     # Never rename in place. To repurpose one, record the mapping (with a date)
-    # in CODEBOOK.md and add a rename-before-launch todo. See the repurpose
-    # convention in CODEBOOK.md and docs/conventions.md.
+    # in docs/CODEBOOK.md and add a rename-before-launch todo. See the repurpose
+    # convention in docs/CODEBOOK.md and docs/conventions.md.
     spare_str_1 = models.LongStringField(blank=True)
     spare_str_2 = models.LongStringField(blank=True)
 

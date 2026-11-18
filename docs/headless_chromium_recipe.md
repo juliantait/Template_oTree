@@ -209,5 +209,5 @@ Playwright worked here as-is.
   viewports into `_ai/render_check/`, then asserts the layout contract by
   measurement (card gaps, scrolling, focus rings, the monitor overlay, the
   scroll affordance measured off the pixels).
-- `skills_claude/writing_tests.md` — the "Rendering checks" section, which is
+- `.claude/skills/writing-tests/SKILL.md` — the "Rendering checks" section, which is
   where a future agent will look first.

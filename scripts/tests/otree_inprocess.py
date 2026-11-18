@@ -11,7 +11,7 @@ yourself; these drive oTree's own ASGI app inside the test process.
     session = ot.create_session('prolific', num_participants=2)
 
 Two traps this exists to get right, both learnt the hard way (see
-`docs/skills_claude/writing_tests.md`):
+`.claude/skills/writing-tests/SKILL.md`):
 
 1. **The database.** oTree opens the RELATIVE name `db.sqlite3` in the CURRENT
    DIRECTORY at import time (`otree/database.py`: `DB_FILE`,

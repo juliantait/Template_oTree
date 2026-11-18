@@ -280,7 +280,7 @@ def build_at_creation(config):
 
     NEVER raises: a session whose config cannot be read is simply unknown, not
     an exception on somebody's page or a dashboard poll. Provenance is
-    documentation, never a gate (DECISIONS.md).
+    documentation, never a gate (.claude/DECISIONS.md).
 
     `config` may be a session config mapping or anything dict-like
     (`player.session.config`).
@@ -970,7 +970,7 @@ def prolific_screenout_return_url(config) -> str:
     would have silently reverted a deliberate decision. The prose was the stale
     half; this is the reasoning it should have carried.
 
-    WHY THE CODELESS EXIT WAS REVERSED (DECISIONS.md, "Every ending population
+    WHY THE CODELESS EXIT WAS REVERSED (.claude/DECISIONS.md, "Every ending population
     gets its own completion code", 2026-08-15, which SUPERSEDES the 2026-08-12
     codeless-screen-out entry). The old argument was right that a completion
     code CLOSES a Prolific submission and that a returned submission can never
@@ -1017,7 +1017,7 @@ def prolific_screenout_return_url(config) -> str:
 # in participant_extra, and that cause is what selects the sentence the
 # participant reads on the ending (see outro/Ended.html).
 #
-# WHY THE CODE STAYS GENERIC: the exit-code table in CODEBOOK.md is a contract —
+# WHY THE CODE STAYS GENERIC: the exit-code table in docs/CODEBOOK.md is a contract —
 # every code in it must be set by a real code path, so codes are not minted
 # speculatively. A new screen-out reason therefore adds a CAUSE and a sentence
 # here, NOT a new exit code. Analysis still gets one clean "screened out at
@@ -1274,7 +1274,7 @@ def extra_set(participant, key, value):
 #   tab_monitor_focus_loss_count_outro  violations after the task (outro pages). NEVER
 #                           disqualifies, whatever the count — a nonzero value
 #                           on a finished participant does NOT mean they came
-#                           close to ejection. See CODEBOOK.md.
+#                           close to ejection. See docs/CODEBOOK.md.
 #
 # Event dedup (tab_monitor_focus_event_ids) is deliberately SHARED across both phases, so
 # a replayed event id cannot be counted once per phase.
@@ -1291,7 +1291,7 @@ def extra_set(participant, key, value):
 # human decision, and what should I do about it?** — because answering that from
 # the raw columns requires knowing which phase ejects, which does not, and what
 # `tab_monitor_max_violations` was set to for THAT session. A reader who has
-# never opened CODEBOOK.md cannot get there, and a reader who half-remembers it
+# never opened docs/CODEBOOK.md cannot get there, and a reader who half-remembers it
 # gets there wrongly: a nonzero `tab_monitor_focus_loss_count_outro` on a finished
 # participant looks alarming and means "keep and pay them".
 #

@@ -47,7 +47,7 @@ NOT part of readiness, on purpose, and both are REPORTED in the body instead:
     the moment it should.
   * THE BUILD STAMP. An unstamped build is a local or hand-built run, not an
     unhealthy one — and PROVENANCE IS DOCUMENTATION, NEVER A GATE (Julian,
-    2026-08-23; DECISIONS.md). Reported here, fatal nowhere except
+    2026-08-23; .claude/DECISIONS.md). Reported here, fatal nowhere except
     ``scripts/verify_deploy.py``, which a human runs by hand after a deploy.
 
 **WHICH ROOM, AND THE FORK THAT HAS NONE.** This template's participant entry

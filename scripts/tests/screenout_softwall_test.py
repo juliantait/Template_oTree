@@ -269,7 +269,7 @@ def scenario_way_out(base):
     #
     # REWRITTEN 2026-08-15 — this assertion was RED ON MAIN. It read "no
     # completion code: their Prolific submission stays OPEN", which was the
-    # rule until the screen-out was given its own code that day (DECISIONS.md;
+    # rule until the screen-out was given its own code that day (.claude/DECISIONS.md;
     # the reasoning is on common.prolific_screenout_return_url). An open
     # submission was judged to be limbo rather than kindness: a REQUEST_RETURN
     # code prompts the return that frees the place.
@@ -324,7 +324,7 @@ def scenario_way_out(base):
           f'return on phone: a reload adds no history noise ({actions(st)})')
     # Returning on a COMPUTER does clear them — that is the whole point of the
     # soft wall, and it is never silent: screenout_cleared plus the history say
-    # so. Documented in docs/agents/entry_and_identity.md ("The device check") as an accepted consequence.
+    # so. Documented in .claude/reference/entry_and_identity.md ("The device check") as an accepted consequence.
     _, r3 = enter(base, url, DESKTOP_UA, 'return on a computer after pressing')
     st = state(base, sc, p_code)
     check(st['screenout_active'] is False and st['screenout_cleared'] is True,

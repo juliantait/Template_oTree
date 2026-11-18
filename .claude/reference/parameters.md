@@ -38,10 +38,10 @@ off-by-default is **`explicit_consent`** (the consent page asks an explicit
 it ships **ON**, because asking is the safer ethical footing and a study must
 opt out — the lab profile resolves it OFF (implicit consent by continuing,
 with an experimenter in the room). It is an ethics decision with its own flag,
-not Prolific plumbing — see DECISIONS.md (2026-08-14). Thresholds (`quiz_comprehension_max_failures`,
+not Prolific plumbing — see .claude/DECISIONS.md (2026-08-14). Thresholds (`quiz_comprehension_max_failures`,
 `tab_monitor_*`) and Prolific codes (`prolific_cc_code`, `prolific_noconsent_code`, `prolific_dq_code`)
 are config values too. Each participant records a numeric
-`exit_code` (see `CODEBOOK.md`). `C.NUM_ROUNDS` is fixed at import — a config may
+`exit_code` (see `docs/CODEBOOK.md`). `C.NUM_ROUNDS` is fixed at import — a config may
 run fewer rounds, never more.
 
 **`prolific_allowed_devices`** (the entry device allow-list) and **`prolific_screenout_return_url`**
@@ -51,7 +51,7 @@ section — **[The device check](entry_and_identity.md#the-device-check-what-it-
 deliver. Read it before narrowing the list.
 
 Every participant field, exit code, stage timestamp and future-proofing spare
-column is documented in **`CODEBOOK.md`** (including the repurpose convention for
+column is documented in **`docs/CODEBOOK.md`** (including the repurpose convention for
 spares: never rename in place).
 
 ### The screen lock (`screen_lock`, ON by default)
@@ -74,4 +74,4 @@ off; the script is then not loaded and nothing is left changed.
   wait page), oTree's "no more pages" page, and any page not including
   `css_bundle.html`. Admin pages are never locked. F12 can undo it.
 
-Why, and what a session created before the key gets: `DECISIONS.md`, "The screen lock".
+Why, and what a session created before the key gets: `.claude/DECISIONS.md`, "The screen lock".

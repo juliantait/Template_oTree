@@ -31,7 +31,7 @@ trade, and it slipped through because a raise reads as the strict, careful
 option.
 
 This repo has already refused exactly this trade twice, both recorded in
-DECISIONS.md:
+.claude/DECISIONS.md:
 
   * `identity.install_duplicate_label_guard` must fail QUIETLY at its early
     install point (cannot-import-yet is not drift); and
@@ -107,7 +107,7 @@ from core import REPO_ROOT as _ROOT
 # proves the guard works, so it is named here rather than left to luck.
 #
 # THE LIST IS SHORT ON PURPOSE. `docs/`, `previews/`, `_ai/`,
-# `_static/`, `docs/skills_claude/` are NOT listed even though nothing in them
+# `_static/`, `.claude/skills/` are NOT listed even though nothing in them
 # should ever be scanned: they are not packages, so they are skipped anyway,
 # and naming them would create a real hazard — an app later called `prolific`
 # would be silently exempted from the guard, which is the failure mode this
@@ -267,7 +267,7 @@ def assert_no_player_payoff_writes(root=None):
             "not a data error.\n"
             "Record the round's value in the game's own field "
             "(main.Player.round_payoff) and let outro.compute_final_payoff "
-            "write participant.payoff once. See DECISIONS.md, 'One payment "
+            "write participant.payoff once. See .claude/DECISIONS.md, 'One payment "
             "ledger'.")
     if unreadable:
         listing = '\n'.join(f'    {rel}  {reason}' for rel, reason in unreadable)

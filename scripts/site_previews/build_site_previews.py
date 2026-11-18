@@ -478,7 +478,7 @@ Date.prototype.toLocaleTimeString = function () { return '10:42:18 AM'; };
 
 
 def main():
-    # THE SAME TWO FILES A REBRAND REPLACES (docs/agents/editing_a_study.md, "Rebranding a copied
+    # THE SAME TWO FILES A REBRAND REPLACES (.claude/reference/editing_a_study.md, "Rebranding a copied
     # study"). Named by ROLE, never by institution, so a copied study that
     # swaps its marks gets correct previews without touching this script.
     logo_university = data_uri('university_logo.jpg')

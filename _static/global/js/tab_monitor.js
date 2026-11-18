@@ -8,7 +8,7 @@
 // detect AI use. The mechanism is named the tab monitor everywhere in the code
 // and docs. The participant-facing agreement page still frames this as an
 // AI-safety agreement — that is the study framing the participant reads, and it
-// is deliberately left as written; see DECISIONS.md.
+// is deliberately left as written; see .claude/DECISIONS.md.
 //
 // CREDITED TO NICOLAS ORLINK (original client logic).
 //

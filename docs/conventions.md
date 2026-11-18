@@ -49,7 +49,7 @@ Content is never clipped and a short page never collapses to a stub.
 `--single-page-font-floor` and `.screen-card` (floor, no ceiling),
 `.inner-scroll` (Mode 3) and `.single-page-fit` (Mode 2) in
 `_static/global/css/base.css`; `initSinglePageFit` in
-`_static/global/js/global.js`; the full rationale is in `DECISIONS.md` ("The
+`_static/global/js/global.js`; the full rationale is in `.claude/DECISIONS.md` ("The
 scroll model is three modes") and `_ai/scroll_model/`.
 
 ## Typography — reading measure for prose, full width for controls
@@ -127,11 +127,11 @@ at boot (see `prelaunch_check.py`, the frozen-config guard, the exit-code table)
 A study copied from this template may reasonably want different field names for
 its own outcomes, and a boot check would turn that ordinary choice into a failure
 to work around. Read the missing check as intentional, not as an oversight. The
-full reasoning is in `DECISIONS.md` ("Participant tracking fields are named
+full reasoning is in `.claude/DECISIONS.md` ("Participant tracking fields are named
 family-first").
 
 *Where:* `settings.PARTICIPANT_FIELDS` (the single central list, with a
-description block) and `CODEBOOK.md` are the documented source of the field
+description block) and `docs/CODEBOOK.md` are the documented source of the field
 names; nothing enforces the pattern by design.
 
 ## Feature flags and recruitment profiles — resolved once, visible, never silent
@@ -213,7 +213,7 @@ reverted if it still holds what the screen-out put there — and it never touche
 the audit history, which is what "how many were turned away" is counted from.
 Every code in the table must be **set by real code** — a code that nothing
 records is a lie in the export, so a reserved-but-unwired code gets deleted, not
-documented. See `settings.EXIT_CODES` and the CODEBOOK.md exit-code table.
+documented. See `settings.EXIT_CODES` and the docs/CODEBOOK.md exit-code table.
 
 ## Modules (all OFF by default)
 
@@ -262,7 +262,7 @@ documented. See `settings.EXIT_CODES` and the CODEBOOK.md exit-code table.
   and desktops alike (a browser cannot distinguish them, so there is no `laptop`
   type); `unknown` is a real User-Agent that matches nothing, and is admitted or
   excluded like any other type — while NO usable User-Agent at all is not a type
-  and always allows. Full reference: "The device check" in `docs/agents/entry_and_identity.md`.
+  and always allows. Full reference: "The device check" in `.claude/reference/entry_and_identity.md`.
 - **collect_outro_bank_details** — lab IBAN/BIC/SEPA payment collection (`outro`).
 - **collect_outro_demographics** — explicit demographics questionnaire (`outro`); off
   for Prolific, which supplies demographics in its own export.

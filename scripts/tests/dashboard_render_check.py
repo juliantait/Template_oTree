@@ -1348,7 +1348,7 @@ def check_quiz_mistakes(base):
 # sticky summary + header, and click-to-sort — folded in from the former
 # standalone dashboard_sticky_check.py / dashboard_sort_check.py (2026-08-25).
 # The other legs above never SCROLL and never CLICK a header, so these two are
-# the only place those two behaviours are measured. See DECISIONS.md.
+# the only place those two behaviours are measured. See .claude/DECISIONS.md.
 # --------------------------------------------------------------------------
 _STICKY_MEASURE_JS = '''() => {
   const r = el => el.getBoundingClientRect();
@@ -1408,7 +1408,7 @@ def check_sticky(base):
     participant rows scroll — in BOTH the standalone page and the 100dvh iframe
     of the oTree Report tab (outro/admin_report.html). The other legs here never
     scroll, so this is the only place the sticky behaviour is measured. See
-    DECISIONS.md ("The dashboard summary and table header are STICKY")."""
+    .claude/DECISIONS.md ("The dashboard summary and table header are STICKY")."""
     from playwright.sync_api import sync_playwright
     section('headless Chromium: sticky summary + table header')
     sess = ot.create_session('lab', num_participants=24, label='')
@@ -1516,7 +1516,7 @@ def _monotonic(names, rows_by_name, col, ascending):
     server's own natural_label_key) with UNLABELLED ROWS LAST — the same two-part
     key the server sorts on (sort_rows_by_displayed_name: `1 if not label else 0`
     then natural_label_key), because clicking Participant must restore the
-    server's order EXACTLY (DECISIONS.md). A bare-code row is unlabelled even
+    server's order EXACTLY (.claude/DECISIONS.md). A bare-code row is unlabelled even
     though its rendered name looks like any other, so the rank comes from the
     row's own label, not from the displayed string. Everything else the numeric
     key."""
@@ -1533,7 +1533,7 @@ def check_sort(base, sess):
     """CLICK-TO-SORT on the data columns — client-side, toggling asc/desc with a
     ▲/▼ marker, surviving the 2s auto-refresh — and the TIMELINE column
     deliberately NOT sortable. Runs over the 13-row overview session (every State
-    bucket present) already staged for check_overview. See DECISIONS.md ("The
+    bucket present) already staged for check_overview. See .claude/DECISIONS.md ("The
     dashboard columns are click-to-sort")."""
     from playwright.sync_api import sync_playwright
     section('headless Chromium: click-to-sort columns')

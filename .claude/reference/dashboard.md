@@ -41,7 +41,7 @@ that has not set it to `STUDY`. This page shows earnings and per-participant
 conduct; treat it like the data exports.
 
 **A broken dashboard may fail a LAUNCH loudly, but never a running session
-silently** (DECISIONS.md, 2026-08-17). A bug inside a row degrades to an error
+silently** (.claude/DECISIONS.md, 2026-08-17). A bug inside a row degrades to an error
 row, a bug in a handler to the error panel, and a failed route install to a 404 —
 never a participant 500 (that is the module's first rule). The one drift that used
 to boot clean and then 500 oTree's own admin **Report tab** mid-session — the
@@ -143,7 +143,7 @@ oTree posts for *advance slowest participants*, not a participant's answers).
 Scope is both the session-level aggregate and the per-participant detail. The
 panel is Escape-dismissible, styled from the dashboard's own tokens. Its look is
 the approved mock (`_ai/quiz_mistakes_mock.html`, local only); the reasoning is
-in DECISIONS.md (2026-08-17).
+in .claude/DECISIONS.md (2026-08-17).
 
 **Adding a column** is three marked places and nothing else — compute the value
 in `_participant_row` (`ADD A COLUMN HERE`), add a `<th>` to `_COLGROUP_HTML`,
@@ -226,7 +226,7 @@ others still are.
 oTree's CSRF token. Nothing participant-related goes in logs or error text. It runs
 on a plain oTree install, without pandas. It never writes to the database, and the
 disk work happens outside oTree's global lock, so a slow folder does not hold up
-participants. Reasons, and what oTree's own export does here, are in DECISIONS.md
+participants. Reasons, and what oTree's own export does here, are in .claude/DECISIONS.md
 (2026-11-05).
 
 **Things the ANONYMOUS file still holds:** `participant.code`, which links back to the
@@ -303,7 +303,7 @@ needs no dashboard edit. What a fork may set, all optional, on the app's `C`:
   (else `_DEFAULT`; `main` also reads its legacy `_TASK`).
 
 Long labels and many steps need nothing either: the header fits itself
-(`fitTimeline`, see DECISIONS.md 2026-10-03) and stays aligned with the dots;
+(`fitTimeline`, see .claude/DECISIONS.md 2026-10-03) and stays aligned with the dots;
 `scripts/tests/dashboard_timeline_render_check.py` measures it for 4–9 steps.
 
 **To split an app into several steps by page name** (as `intro` is split into

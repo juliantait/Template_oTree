@@ -17,7 +17,7 @@ participant never sees that way. A leak test run there measures the debug panel.
 `OTREE_PRODUCTION` is set below, before oTree loads, so the mode cannot be
 inherited or forgotten.
 
-WHAT IS UNDER TEST (both added 2026-08-21; see DECISIONS.md)
+WHAT IS UNDER TEST (both added 2026-08-21; see .claude/DECISIONS.md)
 
   1. "Please leave up to 2 weeks for the payment to be processed" is a LAB
      sentence. The lab collects an IBAN and the institution transfers weeks

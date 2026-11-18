@@ -875,7 +875,7 @@ def scenario_not_locked(browser, server, prolific):
     state = page.evaluate("""() => ({start: !!document.querySelector('.next-button'),
         script: !!document.querySelector('script[src*="screen_lock"]'),
         cls: document.documentElement.classList.contains('screen-lock')})""")
-    # The room has no session, so a per-session switch cannot reach it. DECISIONS.md.
+    # The room has no session, so a per-session switch cannot reach it. .claude/DECISIONS.md.
     check(state['start'] and not state['script'] and not state['cls'],
           f'the room gate, before any session, carries no lock ({state})')
     context.close()

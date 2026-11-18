@@ -1,3 +1,8 @@
+---
+name: writing-quiz
+description: Use when writing or editing the comprehension quiz items in intro/quiz_items.py.
+---
+
 # Skill: writing the comprehension quiz
 
 Read this whole file before writing or editing quiz items. The deliverable is
@@ -61,7 +66,7 @@ annoyance, and another chance to teach something you shouldn't.
   (e.g. "the box is re-drawn every round" when it isn't) — never absurdities or joke
   options, which make the item a giveaway by elimination.
 - **Plain wording, no jargon.** Use exactly the same vocabulary as the instructions
-  (one term per concept — see `writing_instructions.md`), frequencies not probabilities.
+  (one term per concept — see `.claude/skills/writing-instructions/SKILL.md`), frequencies not probabilities.
 
 ### Example shape (good)
 

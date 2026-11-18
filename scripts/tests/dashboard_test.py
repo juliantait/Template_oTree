@@ -1710,7 +1710,7 @@ def main():
 
     section('G3. THE WAITING-FOR PILL — inert here, but PROVEN to render')
     # THIS TEMPLATE SHIPS NO WAIT PAGE, so `waiting_for` is [] for everybody and
-    # the pill never renders in a real run (see DECISIONS.md). Wiring that is
+    # the pill never renders in a real run (see .claude/DECISIONS.md). Wiring that is
     # never exercised is wiring nobody knows works — the ai_safety_monitor.js
     # failure in CLAUDE.md was exactly a feature that looked configured and
     # silently refused to run. So: feed one participant the SHAPE a real wait

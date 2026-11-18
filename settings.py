@@ -108,8 +108,8 @@ BOT_DETECTION_ARMED = True
 # Numeric outcome recorded on every participant so no export row is ever blank.
 # Initialised to 0 ("abandoned") at session creation, set to 1 on a clean
 # finish, or to a negative reason code when a participant leaves early. Keep in
-# sync with the CODEBOOK.md exit-code table.
-# EVERY code here must be set by some code path, and CODEBOOK.md names the line
+# sync with the docs/CODEBOOK.md exit-code table.
+# EVERY code here must be set by some code path, and docs/CODEBOOK.md names the line
 # that sets it. A reserved code that nothing records is a lie in the export:
 # delete it rather than document it (one such code has already been removed).
 EXIT_CODES = dict(
@@ -283,7 +283,7 @@ RECRUITMENT_PROFILES = {
         # screening devices out on its own. It falls
         # through to the SESSION_CONFIG_DEFAULTS baseline (all four types = no
         # gate) and is narrowed explicitly on a config. See its note in
-        # SESSION_CONFIG_DEFAULTS and DECISIONS.md.
+        # SESSION_CONFIG_DEFAULTS and .claude/DECISIONS.md.
     ),
     # There is deliberately NO 'testing' profile: clickthrough loosenings are
     # the DEBUG axis (env-driven), not a study type. For a clickthrough config,
@@ -304,7 +304,7 @@ RECRUITMENT_PROFILES = {
 # so the 2026-08-12 rule sent a screened-out participant back by a plain,
 # codeless link to keep their submission open.
 #
-# What changed the answer (DECISIONS.md, 2026-08-15): an open submission is not
+# What changed the answer (.claude/DECISIONS.md, 2026-08-15): an open submission is not
 # a kindness, it is LIMBO — it occupies a place, tells Prolific nothing, and
 # expires on a timer. A REQUEST_RETURN code prompts the participant to return
 # it, which frees the place. So the screen-out exit is now
@@ -388,7 +388,7 @@ def is_placeholder(value) -> bool:
 # impossible to miss: the pre-launch guard fails, and the link on the page is
 # visibly not a URL.
 # (SCREENOUT_RETURN_URL_PLACEHOLDER retired 2026-08-15: the screened-out
-#  exit is a completion code now, not a URL setting. See DECISIONS.md.)
+#  exit is a completion code now, not a URL setting. See .claude/DECISIONS.md.)
 
 # --- experimenter dashboard ----------------------------------------------------
 # The live operator view at /experimenter_dashboard (core/experimenter_dashboard.py,
@@ -458,7 +458,7 @@ DASHBOARD_RETURN_GRACE_SECONDS = 90
 # 14 -> 15 on 2026-08-15: the logo files were renamed (see INSTITUTION_NAME
 # below).
 # 15 -> 16 on 2026-08-17: the notification tier ladder (base.css, tabmonitor.css,
-# global.js, quiz.js, template.html) — see DECISIONS.md.
+# global.js, quiz.js, template.html) — see .claude/DECISIONS.md.
 # 16 -> 17 on 2026-08-18: the room entry gate's own `.room-gate` class in
 # base.css (centre the welcome content instead of foot-anchoring its button).
 # NOTE: `_templates/room_welcome.html` links base.css DIRECTLY and carries no
@@ -474,13 +474,13 @@ DASHBOARD_RETURN_GRACE_SECONDS = 90
 # `allowed_devices` -> `prolific_allowed_devices`) in the session-config key
 # family rename — a comment-only edit to a file under `_static/`, but the asset
 # manifest hashes file bytes, so the version is bumped and the manifest re-stamped
-# like any other `_static/` change. See DECISIONS.md, 'Session-config keys are
+# like any other `_static/` change. See .claude/DECISIONS.md, 'Session-config keys are
 # named family-first'.
 # 19 -> 20 on 2026-08-18: NEW file `_static/global/js/focus_trace.js` (the passive
 # per-page focus trace, ported net-new from exp_pilots alongside the untouched tab
 # monitor), plus its conditional include in main/game.html. Adding a file under
 # `_static/` bumps the version and re-stamps the manifest like any other change.
-# See DECISIONS.md, 'Passive focus trace ported alongside the tab monitor'.
+# See .claude/DECISIONS.md, 'Passive focus trace ported alongside the tab monitor'.
 # 20 -> 21 on 2026-08-21: TWO participant-visible CSS changes in the same day.
 # (a) the new `.closing-instruction` component in base.css, which centres the
 # "click the button below" sentence on BOTH endings (it rendered flush left on
@@ -490,7 +490,7 @@ DASHBOARD_RETURN_GRACE_SECONDS = 90
 # `_static/global/html/template.html` gained the specimen for (a). Both are
 # pure-CSS fixes served from a `?v=`-stamped URL, so WITHOUT this bump a
 # returning participant's cached base.css keeps the broken layout and nothing
-# anywhere reports it. See DECISIONS.md for both entries.
+# anywhere reports it. See .claude/DECISIONS.md for both entries.
 # 21 -> 22 on 2026-09-08: the AI-bot-detection build adds files under _static/ —
 # `_static/global/js/dot_bi.js` and `_static/global/js/telemetry_capture.js`,
 # the 15 vendored DOT-BI variants + LICENSE + ATTRIBUTION under
@@ -498,17 +498,21 @@ DASHBOARD_RETURN_GRACE_SECONDS = 90
 # decoy concealment and the `.dotbi-*` progressive-enhancement / challenge
 # styles). All are served from `?v=`-stamped URLs, so without this bump a
 # returning participant's cached bundle would miss them. Re-stamped with
-# `python scripts/prelaunch_check.py --stamp-assets`. See DECISIONS.md.
+# `python scripts/prelaunch_check.py --stamp-assets`. See .claude/DECISIONS.md.
 # 23 -> 24 on 2026-11-05: global.js's Enter handler leaves a control with its own
 # Enter action alone (the results accordion no longer sends someone to Prolific). A
-# returning participant's cached global.js would keep the old handler. See DECISIONS.md,
+# returning participant's cached global.js would keep the old handler. See .claude/DECISIONS.md,
 # 'Enter belongs to the focused control'.
-STATIC_VERSION = '24'
+# 24 -> 25 on 2026-11-18: comment-only edits in base.css, tabmonitor.css,
+# screen_lock.js and tab_monitor.js (the decision log moved to
+# .claude/DECISIONS.md). The manifest hashes file bytes, so bumped and re-stamped
+# as for 19.
+STATIC_VERSION = '25'
 
 # --- whose study this is ------------------------------------------------------
 # THE ONE PLACE A COPIED STUDY NAMES ITS INSTITUTION IN PROSE (Julian,
 # 2026-08-15). Rebranding a copied template is meant to be two image files plus
-# this line, and nothing else — see "Rebranding a copied study" in docs/agents/editing_a_study.md.
+# this line, and nothing else — see "Rebranding a copied study" in .claude/reference/editing_a_study.md.
 #
 # WHAT READS IT: participant-facing COPY that names the institution, which today
 # is the consent page's privacy sentence. Each app re-exports it as
@@ -541,7 +545,7 @@ INSTITUTION_NAME = 'the University of Amsterdam'
 # instructions page, permanent and race-safe per session — is real and lives in
 # `before/treatment_assignment.py`. A copied study changes THIS list and keeps
 # that mechanism. Assignment MOVED from session creation to arrival on
-# 2026-08-18 (see DECISIONS.md): a cell is now spent only by a participant who
+# 2026-08-18 (see .claude/DECISIONS.md): a cell is now spent only by a participant who
 # actually reached the study, not by anyone who abandoned at consent or was
 # turned away by the device gate.
 TREATMENT_CELLS = ['row', 'column']
@@ -574,7 +578,7 @@ SESSION_CONFIG_DEFAULTS = dict(
 
     # The lab session number typed in the oTree Lab Launcher (217, 217b, test),
     # empty when not used. Exported as session.config.lab_session; nothing in the
-    # study reads it. Short text, never a number: see CODEBOOK.md, "Lab session
+    # study reads it. Short text, never a number: see docs/CODEBOOK.md, "Lab session
     # number". Unprefixed and up here so a lab operator sees it near the top of
     # the create-session form without moving any other key.
     lab_session=os.environ.get('OTREE_LAB_SESSION', ''),
@@ -586,7 +590,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     # turn it off. Then the script is not loaded and nothing is left changed. A
     # session created before this key existed reads as OFF. An exception to
     # "every flag ships OFF": it is no study module and gates nothing. See
-    # DECISIONS.md, "The screen lock". Text a participant must copy takes the
+    # .claude/DECISIONS.md, "The screen lock". Text a participant must copy takes the
     # class `selectable` (base.css).
     screen_lock=True,
 
@@ -633,7 +637,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     # THIS IS AN ETHICS DECISION, NOT A PLATFORM ONE. It used to be decided by
     # `prolific_completion_redirects`, which conflated "we hold a completion
     # code to send them back with" and "consent must be an affirmative act" —
-    # two things that have nothing to do with each other (DECISIONS.md,
+    # two things that have nothing to do with each other (.claude/DECISIONS.md,
     # 2026-08-14). The default is ON: explicit consent is the safer footing,
     # and a study must OPT OUT of asking. The lab profile resolves it OFF —
     # implicit consent by continuing, because there is an experimenter in the
@@ -703,7 +707,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     #     the online rule ejects on, so "failed comprehension" means one thing
     #     across both study types. (Failing already costs payment_quiz_bonus, which is
     #     paid only when comprehension_failed_attempts == 0.)
-    # See CODEBOOK.md (and _ai/lab_comprehension_proposal.md, local only:
+    # See docs/CODEBOOK.md (and _ai/lab_comprehension_proposal.md, local only:
     # _ai/ is gitignored, so it is not in a copied study).
     quiz_comprehension_max_failures=3,   # wrong attempts that count as failing the quiz
     # The ONLINE consequence of crossing the threshold: disqualify, record exit
@@ -772,8 +776,8 @@ SESSION_CONFIG_DEFAULTS = dict(
     # never disqualifies, never touches a tab-monitor variable). A participant
     # can carry a positive trace with zero tab-monitor violations. Browser half:
     # _static/global/js/focus_trace.js; server half: the focus_trace_* fields on
-    # main.Player and their wiring in main/__init__.py. See DECISIONS.md and
-    # CODEBOOK.md §2a.
+    # main.Player and their wiring in main/__init__.py. See .claude/DECISIONS.md and
+    # docs/CODEBOOK.md §2a.
     telemetry_focus_trace=False,              # passive per-page focus/unfocused-time trace
     # BEHAVIOUR CAPTURE on the WELCOME and QUIZ pages only (bucket B / measure B3
     # of the bot-detection spec, §D). ONE shared capture module
@@ -924,7 +928,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     # form-navigation reasons ONLY: the admin session-config form has no section
     # headings, so a key's family is carried entirely by its prefix and its
     # position, and this key now sits with the other `prolific_` keys at the
-    # bottom of the form. See DECISIONS.md, 'The device allow-list joins the
+    # bottom of the form. See .claude/DECISIONS.md, 'The device allow-list joins the
     # prolific_ naming family'.
     #
     # THE OLD RATIONALE, PRESERVED AS A SUPERSEDED NOTE (do not act on it — the
@@ -946,7 +950,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     # else is screened out at entry and held on the consent page's index, where
     # it is served before/screened_out.html instead.
     #
-    # READ "THE DEVICE CHECK" IN docs/agents/entry_and_identity.md BEFORE NARROWING THIS. It is the
+    # READ "THE DEVICE CHECK" IN .claude/reference/entry_and_identity.md BEFORE NARROWING THIS. It is the
     # reference for what the check actually inspects (the entry request's
     # User-Agent, and nothing else — no screen size, no touch, nothing
     # client-side), what the four types mean, why there is no 'laptop' type and
@@ -967,7 +971,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     # separate URL setting any more — a URL that embeds a code, plus a code key,
     # is one value in two places, and they drift.
     #
-    # THIS REVERSES the codeless screen-out exit (DECISIONS.md, and the old
+    # THIS REVERSES the codeless screen-out exit (.claude/DECISIONS.md, and the old
     # rationale is preserved there rather than deleted). A Prolific
     # REQUEST_RETURN code PROMPTS the participant to return the submission and
     # frees the place; the bare researcher URL left it in limbo instead.
@@ -982,7 +986,7 @@ SESSION_CONFIG_DEFAULTS = dict(
     prolific_dq_quiz_code='DQ-QUIZ-XXXXXX_REPLACE',    # comprehension DQ
     prolific_dq_tab_code='DQ-TAB-XXXXXX_REPLACE',      # tab-monitor DQ
     # THE DEVICE SCREEN-OUT NOW CARRIES A CODE TOO, and this REVERSES the
-    # earlier codeless decision — see DECISIONS.md, 'Every ending population
+    # earlier codeless decision — see .claude/DECISIONS.md, 'Every ending population
     # gets its own completion code'. A Prolific REQUEST_RETURN code actively
     # PROMPTS the participant to return the submission, which frees the place;
     # the bare researcher URL it replaces left the submission sitting in limbo.
@@ -1156,14 +1160,14 @@ PARTICIPANT_FIELDS = [
 # - participant_id_external: External platform participant id (Prolific etc.).
 # - stage_timestamps: {stage: epoch_seconds}; when the participant cleared a stage.
 # - participant_extra: A JSON-able dict reserved for future use (repurpose
-#   convention in CODEBOOK.md — never rename in place).
+#   convention in docs/CODEBOOK.md — never rename in place).
 # - tab_monitor_disqualified / tab_monitor_focus_loss_count / tab_monitor_focus_event_ids: tab monitor
 #   state. tab_monitor_focus_loss_count counts ONLY the ejecting phases (intro + main) —
 #   crossing tab_monitor_max_violations there disqualifies.
 # - tab_monitor_focus_loss_count_outro: violations AFTER the task (outro pages), recorded
 #   only — never a disqualification, whatever the count. Its own column so an
 #   analyst can tell a completed-with-violations participant from a
-#   nearly-ejected one (see common._apply_focus_loss and CODEBOOK.md).
+#   nearly-ejected one (see common._apply_focus_loss and docs/CODEBOOK.md).
 # - tab_monitor_focus_events: one {page, region, ts} record per COUNTED focus loss. `page`
 #   is the SERVER's own participant._current_page_name, never the client's
 #   reported pathname — the client half of the monitor is the half a participant
@@ -1174,7 +1178,7 @@ PARTICIPANT_FIELDS = [
 #   an AT-LEAST, not a count — 4 against 2 means at least two were lost, possibly
 #   more — so it is a maximum, never a sum, and must never be totalled across
 #   participants as if it were a number of events. 0 means no evidence of loss,
-#   NOT proof that nothing was lost (see CODEBOOK.md).
+#   NOT proof that nothing was lost (see docs/CODEBOOK.md).
 # - tab_monitor_flag / tab_monitor_where: the READER-FACING pair, derived from
 #   the three raw columns above by common.derive_tab_monitor_flag — what to DO
 #   ('' | observed | warned | disqualified, most severe wins) and WHERE to look
@@ -1206,7 +1210,7 @@ PARTICIPANT_FIELDS = [
 #   "created but never arrived" — the same convention as treatment_group's ''.
 #   'unstamped' (buildinfo.UNSTAMPED_SHA) means they DID arrive, on a build
 #   carrying no BUILD_INFO.json: a real answer, not a failure, and the normal
-#   one in local development. See core/buildinfo.py and CODEBOOK.md.
+#   one in local development. See core/buildinfo.py and docs/CODEBOOK.md.
 # - consent_submitted: True once the consent page has been SUBMITTED (consenting
 #   or not). The device gate's boundary: past it the check never applies again.
 #   A durable fact rather than a page index, because indices move when the page
@@ -1260,7 +1264,7 @@ USE_POINTS = False
 # Payments page shows exactly the figure the participant was shown. With this
 # False, the per-round payoff column is omitted from the export entirely
 # (deliberately ABSENT, not silently empty — see the payment-record note in
-# CODEBOOK.md; no data is lost, every round is in payoff_vector).
+# docs/CODEBOOK.md; no data is lost, every round is in payoff_vector).
 #
 # WHAT THIS FLAG DOES NOT DO (exp_pilots review, 2026-08-14). It ALSO makes
 # oTree's own player.payoff setter raise (otree/models/player.py:41-46) — but
@@ -1469,7 +1473,7 @@ def _prelaunch_problems():
         # experimenter to ask, so the way out is owed whether or not the study
         # uses completion redirects. That asymmetry predates this key (it was
         # the old `prolific_screenout_return_url` rule, and its reasoning is in
-        # DECISIONS.md); it is preserved here rather than quietly lost when the
+        # .claude/DECISIONS.md); it is preserved here rather than quietly lost when the
         # URL setting became a code.
         if eff.get('prolific_completion_redirects'):
             code_keys = PROLIFIC_CODE_KEYS
@@ -1514,7 +1518,7 @@ def _check_prelaunch():
     # THE RUNNING BUILD, AS INFORMATION AND NOTHING ELSE. It is printed next to
     # DEBUG because that is where somebody looks when they ask "what is this
     # server?", and it is deliberately NOT part of `_prelaunch_problems`:
-    # provenance is documentation, never a gate (DECISIONS.md, 2026-08-23), so
+    # provenance is documentation, never a gate (.claude/DECISIONS.md, 2026-08-23), so
     # an unstamped build is not a problem here and must never become one. That
     # is also how provenance is turned "off" — a build with no BUILD_INFO.json
     # simply reports unstamped, and nothing anywhere behaves differently.
@@ -1546,7 +1550,7 @@ _check_prelaunch()
 # above (`# === CREED lab support ... ===`) to the END of the file.
 #
 # NB the marker line above is how the launcher DETECTS that a project opted in (a
-# text match, not an import) — do not reflow, rename or wrap it. See DECISIONS.md,
+# text match, not an import) — do not reflow, rename or wrap it. See .claude/DECISIONS.md,
 # "The CREED lab block is carried in settings.py".
 import os as _os
 
@@ -1588,7 +1592,7 @@ ADMIN_USERNAME = _os.environ.get("OTREE_ADMIN_USERNAME", _creed_admin_default)
 # but a study forked from here may hardcode any of these to a literal, and then
 # the launcher's box for it would silently do nothing without the override. So
 # they stay, and each must sit AFTER the project's own assignment to win. Do not
-# "tidy" them as duplication (the ADMIN_USERNAME argument in DECISIONS.md applies
+# "tidy" them as duplication (the ADMIN_USERNAME argument in .claude/DECISIONS.md applies
 # to each of these too).
 
 # Database: rebuild it as Postgres from the DB_* variables when DB_NAME is set,

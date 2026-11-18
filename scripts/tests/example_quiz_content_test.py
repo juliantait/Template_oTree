@@ -160,7 +160,7 @@ def main():
           'one item is the trivial machinery placeholder (ice/water)')
     # A real study replaces the two above with its own load-bearing
     # comprehension items (prior, round independence, payment mechanics — see
-    # docs/skills_claude/writing_quiz.md) and checks the WORDING that matters, e.g.
+    # .claude/skills/writing-quiz/SKILL.md) and checks the WORDING that matters, e.g.
     #   check('two of the ten rounds are paid' in text, 'payment rule stated')
 
     # ---- 4. grading mechanics --------------------------------------------

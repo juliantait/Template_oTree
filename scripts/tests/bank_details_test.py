@@ -14,7 +14,7 @@ Both read the country through `outro.iban_country_code` — one implementation,
 two questions on top of it.
 
 Driven over the in-process ASGI client (real HTTP POSTs against the real form,
-per docs/skills_claude/writing_tests.md — no bots): each case walks a real lab
+per .claude/skills/writing-tests/SKILL.md — no bots): each case walks a real lab
 participant to the Demographics page and submits the exact payload a browser
 would. There are no JS-filled hidden fields on this form, so the no-JS variant
 is the same POST.

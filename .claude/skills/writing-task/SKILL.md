@@ -1,3 +1,8 @@
+---
+name: writing-task
+description: Use when replacing the template's placeholder game with a study's own task in main/ (pages, models, templates). Covers the build order and every placeholder site that must change with it.
+---
+
 # Skill: writing the task (swapping the game)
 
 Read this whole file before replacing the shipped placeholder game. The
@@ -24,11 +29,11 @@ the description before the thing it describes is backwards.
 1. **Decide the audience** — lab or Prolific — and set the recruitment
    settings that follow (`recruitment` profile, the module flags, completion
    codes). See `settings.py`'s three-axes header and
-   `writing_welcome_consent.md` for the entry pages.
+   `.claude/skills/writing-welcome-consent/SKILL.md` for the entry pages.
 2. **Build the GAME in `main/`.** Pages subclass `TaskPage`; your last page
    calls `finish_task_block`. Details below.
 3. **Fix `intro` to MATCH what you actually built**: the instructions
-   (`writing_instructions.md`), the quiz items (`writing_quiz.md`), the
+   (`.claude/skills/writing-instructions/SKILL.md`), the quiz items (`.claude/skills/writing-quiz/SKILL.md`), the
    worked example and its constants. One vocabulary across all of them.
 4. **The `outro` work that is still required**: the payment rule
    (`outro/payment_rule.py`) and whatever your study needs at the end
@@ -71,7 +76,7 @@ study breaks silently. What you inherit:
 - **The stage stamps** (`common.stamp_stage`) — the dashboard and export read
   them; `finish_task_block` writes the task's own.
 - **The spare columns** (`spare_str_1/2`) — never rename in place; the
-  repurpose convention is in `CODEBOOK.md`.
+  repurpose convention is in `docs/CODEBOOK.md`.
 - **The hidden-field rules**: JS-filled fields (the `client_ms` pattern in
   `main/game.html`) are `blank=True`, rendered as EXPLICIT hidden inputs, read
   with `field_maybe_none`, and must tolerate arriving empty (no-JS submit).
@@ -115,14 +120,14 @@ update it with the contract — it tolerates unknown names by design.)
 **`intro/` — description, AFTER the game exists (step 3):**
 
 - `intro/instructions_text.html` — the worked Stag Hunt instructions, whole
-  cloth. Method: `writing_instructions.md`.
+  cloth. Method: `.claude/skills/writing-instructions/SKILL.md`.
 - `intro/__init__.py` — `C.STAG_PAYOFF` / `C.HARE_PAYOFF` / `C.STAG_ALONE`
   and the keys `instructions_context` passes for them (`stag_payoff` …):
   replace with your study's own numbers/keys. The builder itself
   (one dict, two pages) stays.
 - `intro/quiz_items.py` — the placeholder quiz ("Did you read and understand
   …") exists to exercise the machinery, not to be kept. Method:
-  `writing_quiz.md`.
+  `.claude/skills/writing-quiz/SKILL.md`.
 - Regenerate previews: `intro/generate_instructions_preview.py --config
   .preview_state.json`.
 
@@ -148,7 +153,7 @@ is assigned before that page renders).
 - `outro/payment_rule.py` — `select_random_payouts` is the shipped rule
   (pay `payment_num_rewarded` random rounds). Change the rule here; the participant-
   facing description of it lives in the instructions (factual wording only —
-  see `writing_instructions.md`'s Payment section).
+  see `.claude/skills/writing-instructions/SKILL.md`'s Payment section).
 - `outro/Results.html` renders the receipt from `compute_final_payoff`'s
   figures; if your payment structure adds lines, both move together.
 
@@ -159,7 +164,7 @@ is assigned before that page renders).
   (its own header says how).
 - `scripts/tests/render_check.py` — after any task-template change, re-run; the card
   floor is DERIVED from the task screen (leg Q says re-derive if it fails)
-  and layout moves need `--update-baseline` (see `writing_tests.md`).
+  and layout moves need `--update-baseline` (see `.claude/skills/writing-tests/SKILL.md`).
 - The suites that walk the flow by page name (`full_journey_test`,
   `frozen_config_test`, `xss_escaping_test`, `dashboard_test`,
   `payoff_ledger_test`, `bank_details_test`, `dashboard_render_check`,
@@ -226,6 +231,6 @@ Rules a beginner cannot infer from the code alone:
       built, in one vocabulary; previews regenerated.
 - [ ] `DASHBOARD_STALL_SECONDS_TASK` re-checked against your round length.
 - [ ] JS-filled hidden fields: explicit inputs, `blank=True`,
-      `field_maybe_none`, in the no-JS empty-post list (`writing_tests.md`).
+      `field_maybe_none`, in the no-JS empty-post list (`.claude/skills/writing-tests/SKILL.md`).
 - [ ] The suite run end to end (`full_journey_test` at the real round count),
       plus a render check with the baseline updated intentionally.

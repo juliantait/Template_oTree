@@ -14,15 +14,33 @@
 # WHAT CHANGED, AND WHY THE OLD ONE HAD TO GO: it ran
 # `previews/generate_instructions_preview.py`, a copy frozen on 2026-05-28
 # inside the gitignored previews/ OUTPUT directory, eleven lines behind the real
-# generator and writing to the same filenames — so clicking it silently replaced
-# current previews with output from three-month-old code. `previews/` is where
-# output LANDS; it is not where code lives. Never point this at anything in
-# there.
+# generator and writing to the same filenames, so clicking it silently replaced
+# current previews with output from three-month-old code.
+#
+# WHERE THIS FILE LIVES: in previews/, next to the output it produces, so a
+# coauthor finds the button where the previews appear. It is the one tracked
+# file in that folder (.gitignore re-includes it by name). The generator code
+# itself stays in intro/; never copy generator code into previews/, and never
+# point this launcher at anything in there except the output files.
 
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR"
+
+# Find the repo root by walking up to settings.py, never by counting
+# directories (CLAUDE.md), so this still works if the file moves again.
+ROOT="$SCRIPT_DIR"
+while [ ! -f "$ROOT/settings.py" ] && [ "$ROOT" != "/" ]; do
+    ROOT="$(dirname "$ROOT")"
+done
+if [ ! -f "$ROOT/settings.py" ]; then
+    echo "✗ Cannot find the project root (no settings.py above $SCRIPT_DIR)."
+    echo ""
+    echo "  Press Enter to close..."
+    read -r
+    exit 1
+fi
+cd "$ROOT"
 
 GENERATOR="intro/generate_instructions_preview.py"
 
@@ -35,15 +53,15 @@ finish() {
 }
 
 if [ ! -f "$GENERATOR" ]; then
-    echo "✗ Cannot find $GENERATOR — is this file still in the project root?"
+    echo "✗ Cannot find $GENERATOR — is this file still inside the project?"
     finish 1
 fi
 
 # --- Pick a Python: project venv first, then system. ----------------------
 PY=""
 for c in venv .venv env .env; do
-    if [ -x "$SCRIPT_DIR/$c/bin/python3" ]; then
-        PY="$SCRIPT_DIR/$c/bin/python3"
+    if [ -x "$ROOT/$c/bin/python3" ]; then
+        PY="$ROOT/$c/bin/python3"
         break
     fi
 done
@@ -72,7 +90,7 @@ if [ -n "$MISSING" ]; then
     echo "✗ Missing Python packages: $MISSING"
     echo ""
     echo "  Install into a project-local venv (recommended):"
-    echo "    cd \"$SCRIPT_DIR\""
+    echo "    cd \"$ROOT\""
     echo "    python3 -m venv venv && source venv/bin/activate"
     echo "    pip install jinja2 playwright"
     echo "    playwright install chromium"

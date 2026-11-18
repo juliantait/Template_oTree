@@ -236,7 +236,7 @@ intermediate moment (not just when it fills). An assigned participant **keeps
 their cell even if they then abandon** — the balance is of who *arrived*, and a
 cell is never released or re-dealt. A real multi-cell study that would rather
 balance *completers* (release an abandoned cell) is a deliberately deferred
-decision — see `DECISIONS.md`. The count-and-assign is race-safe per session (a
+decision — see `.claude/DECISIONS.md`. The count-and-assign is race-safe per session (a
 DB row lock serialises simultaneous arrivals), so two people arriving at the same
 instant cannot both grab the same least-filled cell.
 
@@ -500,7 +500,7 @@ this, and they are different things:
 | `lab_session` | the lab session number typed in the launcher, above. `NA` when not set, and nothing stops two sessions having the same one. |
 
 **The Download data files** hold every session in the database, so one file can hold
-several `otree_session` values under one `session`. See "Download data" in `docs/agents/dashboard.md`.
+several `otree_session` values under one `session`. See "Download data" in `.claude/reference/dashboard.md`.
 
 ---
 
@@ -850,7 +850,7 @@ Fill in per-study fields as you build the task. The template ships with:
     "Treatment assignment" in the primary tier above.
   - **`consent` is populated exactly when the session ran with
     `explicit_consent` on** (before 2026-08-14 this was decided by
-    `prolific_completion_redirects` — the flag was split, see DECISIONS.md).
+    `prolific_completion_redirects` — the flag was split, see .claude/DECISIONS.md).
     Null means the question was never asked (implicit consent — the lab
     profile), NOT that consent is missing: implicit consent is the act of
     continuing past the page. `False` never appears on a row that got past
@@ -1028,5 +1028,5 @@ build ADDS `before.Player.prolific_label_conflict`, (since 2026-08-13)
 focus_trace_departures` / `focus_trace_unfocused_ms`, and oTree has no
 migrations, so a database without those columns 500s on every page that loads
 the model. Retiring the in-flight sessions is not sufficient. See the warning box
-under "Before a deploy" in `docs/agents/build_and_deploy.md` for the full procedure and the one
+under "Before a deploy" in `.claude/reference/build_and_deploy.md` for the full procedure and the one
 hand-migration alternative.

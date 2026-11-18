@@ -11,7 +11,7 @@ documents, not a dozen loose files.
 
 ``REPO_ROOT`` is the project root, found by walking UP from this file to the
 directory holding ``settings.py`` — the same marker walk as
-``scripts/tests/_repo.py`` (see DECISIONS.md, "The repo root is found by walking
+``scripts/tests/_repo.py`` (see .claude/DECISIONS.md, "The repo root is found by walking
 up to `settings.py`, never by counting directories"). The modules here that need
 the root (the build stamp in ``buildinfo``, the source scans in ``payoff_guard``
 and ``fee_guard``) read it from here rather than from their own directory, which

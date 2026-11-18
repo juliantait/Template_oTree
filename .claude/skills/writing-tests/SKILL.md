@@ -1,3 +1,8 @@
+---
+name: writing-tests
+description: Use before writing, editing or running any test in scripts/tests/ for this template or a study built from it, including rendering checks in a headless browser.
+---
+
 # Skill: writing tests for a study built from this template
 
 Read this whole file before writing or editing tests. The deliverable is one or

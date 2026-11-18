@@ -70,7 +70,7 @@ TELEMETRY_COLUMNS = {
 
 # Identifiers that look like numbers but are text, read verbatim. Left to pandas'
 # type guessing, a lab session of 007 becomes 7, a 217 in an export that also has
-# an empty session becomes 217.0, and NA becomes empty. See CODEBOOK.md, "Lab
+# an empty session becomes 217.0, and NA becomes empty. See docs/CODEBOOK.md, "Lab
 # session number". A column absent from an older export stays absent, like every
 # other column a session did not collect.
 TEXT_COLUMNS = ('session.config.lab_session',)
@@ -266,7 +266,7 @@ def main():
     # are present in every output written from df.
     df = add_telemetry_derivation(df)
 
-    # Bulky JSON telemetry/audit blobs this template exports (see CODEBOOK.md).
+    # Bulky JSON telemetry/audit blobs this template exports (see docs/CODEBOOK.md).
     # Their cells are BLANKED in every output: they are logs for debugging and
     # audit, not analysis data, and they bloat the CSV. Payment and analysis
     # JSON (payouts, all_round_payoffs, payoff_vector, stage_timestamps) is

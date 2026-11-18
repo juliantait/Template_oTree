@@ -5,7 +5,7 @@
 ## How to use and edit this template
 
 An ordered walkthrough for starting a new study, for people and agents alike.
-Each step names what to edit and links the `docs/skills_claude/` file that holds
+Each step names what to edit and links the `.claude/skills/` file that holds
 the method — read the matching skill file **before** editing that surface.
 The order matters: the game is built in `main` **before** `intro` is written,
 because `intro` *describes* the game and describing before building is
@@ -14,10 +14,10 @@ backwards. (The shipped template has more Stag Hunt content in `intro` than in
 concrete to describe, not a pattern to copy.)
 
 0. **Start your own decision log, before you change anything else.** Copy
-   [`docs/DECISIONS_stub.md`](../DECISIONS_stub.md) to the repository root as
-   `DECISIONS.md`, put your study's name in the title, and **delete the
-   template's own `DECISIONS.md`** (it logs how the *template* was built, not your
-   study, so carrying it over hands the next agent the wrong precedent). Your
+   [`.claude/DECISIONS_stub.md`](../DECISIONS_stub.md) over
+   `.claude/DECISIONS.md` and put your study's name in the title. This
+   **replaces the template's own log** (it logs how the *template* was built, not
+   your study, so carrying it over hands the next agent the wrong precedent). Your
    study now has a clean, study-specific log. Then **record each deliberate
    choice with its reason in the same change that makes it**, newest first: a
    forked study starts with no precedent, and the failure mode that eats
@@ -25,7 +25,7 @@ concrete to describe, not a pattern to copy.)
    value reads as an unfinished port and gets filled in, inert code reads as dead
    weight and gets deleted, a constant only coherent at one value reads as a
    tunable knob and gets tuned. The stub explains this and shows the entry format.
-   **The same fork-time step applies to `CODEBOOK.md`:** it opens with an Analyst
+   **The same fork-time step applies to `docs/CODEBOOK.md`:** it opens with an Analyst
    quick start built around the template's placeholder slider outcome, so replace
    that quick start with your study's own primary outcomes, exclusions and pooling
    caveats, and add your study fields to its primary tier (the file marks each
@@ -36,7 +36,7 @@ concrete to describe, not a pattern to copy.)
    chosen via the `recruitment` profile plus the module flags and (for
    Prolific) the completion codes; see [the parameter scheme](parameters.md). Then shape
    the entry pages: welcome + consent live in `before/welcome+consent.html`
-   and `before/__init__.py` → [`docs/skills_claude/writing_welcome_consent.md`](../skills_claude/writing_welcome_consent.md).
+   and `before/__init__.py` → [`.claude/skills/writing-welcome-consent/SKILL.md`](../skills/writing-welcome-consent/SKILL.md).
    Treatment assignment: set your cells in `settings.TREATMENT_CELLS`
    (shipped as the placeholder `['row', 'column']`) — treatments are assigned
    **on arrival** at the first instructions page (`intro.instructing`), so a
@@ -49,17 +49,17 @@ concrete to describe, not a pattern to copy.)
    subclassing `TaskPage` and keeping the machinery you inherit (round loop,
    progress strip, monitoring, payoff plumbing); update
    `scripts/tests/main_contract.py` in the same change
-   → [`docs/skills_claude/writing_task.md`](../skills_claude/writing_task.md), the
+   → [`.claude/skills/writing-task/SKILL.md`](../skills/writing-task/SKILL.md), the
    full manifest of everything a game swap touches.
 3. **Write `intro` to match the game you built.**
    Instructions content: edit `intro/instructions_text.html` — each
    `<div class="instruction-block">` is shown as one page to participants;
    add, edit, or reorder blocks there to change the instruction pages
-   → [`docs/skills_claude/writing_instructions.md`](../skills_claude/writing_instructions.md).
+   → [`.claude/skills/writing-instructions/SKILL.md`](../skills/writing-instructions/SKILL.md).
    Quiz questions: edit `intro/quiz_items.py` — define `QUIZ_ITEMS` entries
    with `field`, `prompt`, `choices`, and `answer`; the intro quiz reads
    directly from this file
-   → [`docs/skills_claude/writing_quiz.md`](../skills_claude/writing_quiz.md).
+   → [`.claude/skills/writing-quiz/SKILL.md`](../skills/writing-quiz/SKILL.md).
 4. **The `outro` work.** Experimental payoff: edit `outro/payment_rule.py` to
    determine how participants are actually paid — the logic inside this file
    controls which rounds and payoffs are selected for payment at the end.
@@ -67,7 +67,7 @@ concrete to describe, not a pattern to copy.)
 5. **Test what you built** — real HTTP, a no-JS submit, and a measured render
    check; before launch run `scripts/prelaunch_check.py` and
    `scripts/predeploy_check.sh`
-   → [`docs/skills_claude/writing_tests.md`](../skills_claude/writing_tests.md) and
+   → [`.claude/skills/writing-tests/SKILL.md`](../skills/writing-tests/SKILL.md) and
    [testing.md](testing.md).
 
 ### Rebranding a copied study (whose logos and whose university)
@@ -137,12 +137,12 @@ Wiring at the call site: a `data-popup-open="ID"` button opens tier 0/2/3;
 it. Tiers 2 and 3 already had live instances when the ladder landed — the
 shared warning modal, the quiz dialogs, and the tab monitor's red away-overlay
 (tier 3) — so those keep their own behaviour and are brought in *by name*, not
-rewired; see `DECISIONS.md`.
+rewired; see `.claude/DECISIONS.md`.
 
 ## Collaborating on the instructions flow with others?
 You can share the instructions with coauthors who don't have the codebase installed.
 
-**No terminal? Double-click `Preview_Instructions.command`** (macOS). It picks a
+**No terminal? Double-click `previews/Preview_Instructions.command`** (macOS). It picks a
 Python, checks the two packages the generator needs, runs it against saved
 settings if you have them, and opens the interactive preview in your browser. It
 drives the maintained generator in `intro/` — never the stale copy that the

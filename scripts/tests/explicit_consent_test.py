@@ -4,7 +4,7 @@ flag says so — and the flag, not the recruitment profile, is what decides.
 
     python scripts/tests/explicit_consent_test.py
 
-WHY THIS TEST EXISTS (DECISIONS.md, 2026-08-14). Whether the consent page asks
+WHY THIS TEST EXISTS (.claude/DECISIONS.md, 2026-08-14). Whether the consent page asks
 an explicit question used to be decided by `prolific_completion_redirects` —
 platform plumbing standing in for an ethics decision. The split gave the
 question its own flag: default ON in SESSION_CONFIG_DEFAULTS, resolved OFF by
@@ -26,7 +26,7 @@ the lab profile. This test pins all four corners of that:
 Driven over the in-process HTTP client against a throwaway database
 (otree_inprocess.boot) in PRODUCTION mode. Assertions about copy are made on
 rendered visible text; assertions about the radio are made on raw-HTML
-structure (name="consent"), per docs/skills_claude/writing_tests.md.
+structure (name="consent"), per .claude/skills/writing-tests/SKILL.md.
 """
 import os
 import re

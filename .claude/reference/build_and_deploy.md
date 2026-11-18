@@ -46,7 +46,7 @@ pre-deploy cannot tell you the completion codes are still placeholders.
 >   dead study.
 > - Six columns were **removed** the same day (`intro.Player.participant_label`,
 >   `skiptoquiz`; `outro.Player.selected_round1`, `selected_round2`, `pay1`,
->   `pay2` — see CODEBOOK.md). Leftover columns in an old database are harmless
+>   `pay2` — see docs/CODEBOOK.md). Leftover columns in an old database are harmless
 >   to reads, but they mean the file no longer matches the models either.
 > - The **page sequence changed, in both `before` and `intro`**: the
 >   tab-monitor agreement page (`TabMonitorAgree`) moved OUT of the end of `intro`
@@ -216,7 +216,7 @@ up; it then refuses to start, loudly and without touching anything, as it also
 does when the target database holds a schema that is not oTree's. The image ships
 `psycopg2-binary`, so `DATABASE_URL=postgres://…` works out of the box. Why the
 old file-existence check was a data-loss bug on any managed Postgres:
-`DECISIONS.md`, "Boot initialisation is decided by inspecting the database, not
+`.claude/DECISIONS.md`, "Boot initialisation is decided by inspecting the database, not
 by a sqlite file".
 
 Note what the guard is *not* doing: oTree creates its own missing tables on every

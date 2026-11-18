@@ -9,7 +9,7 @@ files and the page names in more.
 
 This is DATA, not a framework: each test file stays runnable on its own
 (`python scripts/tests/<name>.py`), which is the suite's documented convention
-(docs/skills_claude/writing_tests.md). scripts/predeploy_check.py's
+(.claude/skills/writing-tests/SKILL.md). scripts/predeploy_check.py's
 RESUME_PREFERENCE also names these pages, but tolerates unknown ones by
 design — update it with this file, it just will not break if you forget.
 """

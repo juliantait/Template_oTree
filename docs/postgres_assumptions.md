@@ -4,11 +4,11 @@
 **Status:** open decisions, not defects awaiting a patch. Nothing here has been
 changed in the code; it is deliberately separate from the two defects fixed the
 same day (the Dockerfile boot guard and the predeploy database pin — both in
-`DECISIONS.md`).
+`.claude/DECISIONS.md`).
 
 **This file is TRACKED, and it is here because a copied study inherits every gap
 in it** — item 8 especially. If you are starting a study from this template,
-this is the list of things the template does not yet do for you. `DECISIONS.md`
+this is the list of things the template does not yet do for you. `.claude/DECISIONS.md`
 carries a short entry for each; this is the long form.
 
 ## How this list came about
@@ -95,7 +95,7 @@ and 2 together when a study is actually going to be hosted on Postgres. Until
 then, the honest operating rule is: **this template's deploy gate covers sqlite
 deployments; a Postgres deployment is being upgraded without an upgrade check,
 and the operator should know that.** Worth stating in the Docker section of
-`docs/agents/build_and_deploy.md` in exactly those words.
+`.claude/reference/build_and_deploy.md` in exactly those words.
 
 ---
 
@@ -137,7 +137,7 @@ way it needs a comment saying `DATABASES` is not consulted, or it will be
 
 Both halves teach the inert mechanism from #4. Fix with #4, in the same change —
 whichever way #4 goes, this sentence changes with it. (The Docker section, now in
-`docs/agents/build_and_deploy.md`, was already updated to name `DATABASE_URL` as the real control.)
+`.claude/reference/build_and_deploy.md`, was already updated to name `DATABASE_URL` as the real control.)
 
 ## 6. ~~The image ships no Postgres driver~~ — FIXED, this was never a record item
 
@@ -186,6 +186,6 @@ splitting if the file is being edited anyway; not worth a change on its own.
   `db.sqlite3` under Postgres is harmless.
 - No raw SQL anywhere in the app code, so no backend-specific query syntax.
   (The one place identity is compared, `core/identity.py`, was already moved out of
-  SQL and into Python for exactly this reason — see `DECISIONS.md`, 2026-08-12.)
+  SQL and into Python for exactly this reason — see `.claude/DECISIONS.md`, 2026-08-12.)
 - `scripts/set_up_otree.bat`, `MACMINI_HOSTING.md` — host-side dev docs, no
   runtime effect.
